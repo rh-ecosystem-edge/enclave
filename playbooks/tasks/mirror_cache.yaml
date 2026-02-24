@@ -1,0 +1,54 @@
+---
+- name: Validate dc_cache mandatory variables
+  ansible.builtin.fail:
+    msg: "Variables dc_cache_address, dc_cache_user and dc_cache_password are mandatory"
+  when: >
+    dc_cache_address | default('') | length == 0 or
+    dc_cache_user | default('') | length == 0 or
+    dc_cache_password | default('') | length == 0
+
+- name: Generate pull secret for datacenter cache
+  ansible.builtin.set_fact:
+    __pull_secret_dc:
+      auths:
+        "{{ dc_cache_address }}":
+          auth: "{{ (dc_cache_user + ':' + dc_cache_password) | ansible.builtin.b64encode }}"
+  no_log: true
+
+- name: Combine pull secrets
+  ansible.builtin.set_fact:
+    __pull_secret_cache: "{{ pullSecret | from_json | ansible.builtin.combine(__pull_secret_dc, recursive=true) }}"
+  no_log: true
+
+- name: Create pull-secret-cache file with the combination
+  ansible.builtin.copy:
+    content: "{{ __pull_secret_cache | to_json }}"
+    dest: "{{ workingDir }}/config/pull-secret-cache.json"
+  no_log: true
+
+- name: Create imagesetconfiguration-cache.yaml for datacenter cache
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration-cache.yaml"
+
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
+- name: Start oc-mirror process
+  ansible.builtin.shell: >
+    {{ workingDir }}/bin/oc-mirror --v2
+    --log-level {{ ocMirrorLogLevel }}
+    --authfile {{ workingDir }}/config/pull-secret-cache.json
+    --dest-tls-verify=false
+    -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml
+    --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace
+    --parallel-images 10 --parallel-layers 10
+    --retry-times 10 --retry-delay 0
+    docker://{{ dc_cache_address }}
+    > {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log 2>&1
+  retries: 5
+  delay: 10
+  register: __r_oc_mirror_cache
+  until: __r_oc_mirror_cache is success
