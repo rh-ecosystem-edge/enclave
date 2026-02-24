@@ -7,11 +7,15 @@
 # - Generate combined pull secret
 # - Run oc-mirror to mirror OpenShift images and operator catalogs
 # - Mirror additional images (Vault, ArgoCD, etc.)
+# - Mirror images to datacenter cache (optional)
 #
 # IMPORTANT: This phase requires significant disk space (~150GB+) and time (~30+ minutes)
 #
 # Usage:
 #   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user
+#
+#   # Mirror images to datacenter cache
+#   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user --tags mirror-cache
 
 - name: Phase 2 - Mirror registry setup
   hosts: localhost
@@ -25,6 +29,15 @@
         apply:
           tags: always
       tags: always
+
+    - name: Include tasks for mirror-cache
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_cache.yaml
+        apply:
+          tags: mirror-cache
+      tags:
+        - mirror-cache
+        - never
 
     - name: Verify disconnected mode
       ansible.builtin.assert:

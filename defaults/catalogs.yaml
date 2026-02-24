@@ -1,3 +1,7 @@
 ---
+certified_operator_catalog: "registry.redhat.io/redhat/certified-operator-index"
+certified_operator_catalog_version: "v4.20"
+rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
+rh_operator_catalog_version: "v4.20"
 mirror_rh_operator_catalog: "mirror-redhat-operators"
 mirror_certified_rh_operator_catalog: "mirror-certified-operators"
