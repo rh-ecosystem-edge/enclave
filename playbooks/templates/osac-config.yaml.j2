@@ -16,12 +16,8 @@ stringData:
 {% if osac_provisioning_provider | default('aap') == 'aap' %}
   OSAC_AAP_URL: "{{ osac_aap_url | default('https://osac-aap-ansible-aap.apps.{{ clusterName }}.{{ baseDomain }}') }}"
   OSAC_AAP_TOKEN: "{{ osac_aap_token }}"
-{% if osac_aap_provision_template is defined %}
-  OSAC_AAP_PROVISION_TEMPLATE: "{{ osac_aap_provision_template }}"
-{% endif %}
-{% if osac_aap_deprovision_template is defined %}
-  OSAC_AAP_DEPROVISION_TEMPLATE: "{{ osac_aap_deprovision_template }}"
-{% endif %}
+  OSAC_AAP_PROVISION_TEMPLATE: "{{ osac_aap_provision_template | default('osac-create-compute-instance') }}"
+  OSAC_AAP_DEPROVISION_TEMPLATE: "{{ osac_aap_deprovision_template | default('osac-delete-compute-instance') }}"
 {% if osac_aap_status_poll_interval is defined %}
   OSAC_AAP_STATUS_POLL_INTERVAL: "{{ osac_aap_status_poll_interval }}"
 {% endif %}
