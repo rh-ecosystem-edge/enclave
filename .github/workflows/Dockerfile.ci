@@ -1,0 +1,58 @@
+FROM registry.access.redhat.com/ubi9/ubi
+
+# Configure DNS
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
+# Install EPEL for additional packages like shellcheck
+RUN dnf install -y \
+    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    dnf clean all
+
+# Install system dependencies
+# UBI9 comes with curl-minimal, replace it with full curl
+RUN dnf install -y --allowerasing \
+    ca-certificates \
+    curl \
+    make \
+    shellcheck \
+    python3 \
+    python3-pip \
+    tar \
+    gzip \
+    git \
+    && dnf clean all
+
+# Install Docker CLI
+RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo && \
+    dnf install -y docker-ce-cli && \
+    dnf clean all
+
+# Install Python packages
+RUN pip3 install --no-cache-dir \
+    yamllint \
+    ansible-core \
+    ansible-lint \
+    jsonschema
+
+# Pre-install Ansible Galaxy collections
+# Copy requirements.yml from repository root
+COPY requirements.yml /tmp/requirements.yml
+RUN ansible-galaxy collection install -r /tmp/requirements.yml && \
+    rm /tmp/requirements.yml
+
+# Symlink collections to /usr/local for system-wide access
+RUN mkdir -p /usr/local/share/ansible/collections && \
+    ln -s /root/.ansible/collections/ansible_collections /usr/local/share/ansible/collections/ansible_collections
+
+# Set environment variable for Ansible to find collections
+ENV ANSIBLE_COLLECTIONS_PATH=/usr/local/share/ansible/collections:/root/.ansible/collections
+
+# Set working directory
+WORKDIR /workspace
+
+# Configure DNS (in case it's needed at runtime)
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
+    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
+
+CMD ["/bin/bash"]
