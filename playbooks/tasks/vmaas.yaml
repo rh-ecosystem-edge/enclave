@@ -1,4 +1,21 @@
 ---
+- name: "Create ACM Addons for VMaaS cluster"
+  environment:
+    KUBECONFIG: "{{ rootDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', '../templates/acm-addons.yaml.j2') | from_yaml }}"
+  vars:
+    acm_addons:
+      - "config-policy-controller"
+      - "governance-policy-framework"
+      - "cert-policy-controller"
+      - "application-manager"
+    cluster_ns: "{{ vmaas_clusters[0] }}"
+  loop: "{{ acm_addons }}"
+  loop_control:
+    loop_var: addon
+
 - name: ACM policy for VMaaS
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"

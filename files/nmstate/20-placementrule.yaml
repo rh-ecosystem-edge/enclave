@@ -4,9 +4,14 @@ metadata:
   name: nmstate
   namespace: openshift-acm-policies
 spec:
+  clusterConditions:
+    - status: 'True'
+      type: ManagedClusterConditionAvailable
   clusterSelector:
     matchExpressions:
-    - key: sovcloud.open-cluster-management.io/vmaas
-      operator: In
+    - key: local-cluster
+      operator: NotIn
       values:
       - "true"
+    matchLabels:
+      sovcloud.open-cluster-management.io/vmaas: "true"
