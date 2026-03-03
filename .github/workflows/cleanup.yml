@@ -26,6 +26,7 @@ jobs:
   cleanup:
     name: Infrastructure Cleanup
     runs-on: [self-hosted, enclave-small]
+    environment: enclave-ci
     timeout-minutes: 30
 
     env:

@@ -48,6 +48,7 @@ jobs:
   e2e-deployment:
     name: E2E Deployment Test
     runs-on: [self-hosted, enclave-large]
+    environment: enclave-ci
     timeout-minutes: 180  # 3 hours
 
     env:
