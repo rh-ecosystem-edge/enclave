@@ -70,10 +70,10 @@
   vars:
     aap_name: "osac-aap"
     aap_ns: "ansible-aap"
-    aap_controller_name: "{{ aap_name }}-controller"
+    aap_controller_name: "{{ aap_name }}"
     aap_token_description: "OSAC Operator Token"
     aap_token_overwrite: false
-    aap_api_path: "/api/v2"
+    aap_api_path: "/api/controller/v2"
     aap_api_user: "admin"
     aap_api_validate_certs: false
   block:
