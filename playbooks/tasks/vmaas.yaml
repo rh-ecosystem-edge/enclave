@@ -109,6 +109,19 @@
       delay: 5
       until: __r_create_aap_config is success
 
+    # Required by OSAC although is empty, it must be present
+    # vm and cluster share the same secret
+    - name: "Create cluster-fulfillment-ig secret"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "cluster-fulfillment-ig"
+            namespace: "{{ aap_ns }}"
+          type: Opaque
+
     - name: "Create osac-sa Service Account in AAP namespace"
       kubernetes.core.k8s:
         state: present
