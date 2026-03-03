@@ -1,0 +1,43 @@
+---
+- name: "Search VMaaS clusters"
+  kubernetes.core.k8s_info:
+    api_version: cluster.open-cluster-management.io/v1
+    kind: ManagedCluster
+    label_selectors:
+      - "sovcloud.open-cluster-management.io/vmaas=true"
+  register: __vmaas_clusters
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: "No VMaaS clusters"
+  ansible.builtin.fail:
+    msg: "No ManagedCluster resources with the label 'sovcloud.open-cluster-management.io/vmaas=true' found."
+  ignore_errors: true
+  when: __vmaas_clusters.resources | length == 0
+
+- name: "Set vmaas_clusters fact"
+  ansible.builtin.set_fact:
+    vmaas_clusters: "{{ __vmaas_clusters.resources | map(attribute='metadata.name') | list }}"
+
+- name: "Check Ansible Automation Platform license"
+  ansible.builtin.stat:
+    path: "{{ aap_license_file }}"
+  register: __aap_license_stat
+
+- name: "No Ansible Automation Platform license"
+  ansible.builtin.fail:
+    msg: "Ansible Automation Platform license file not found at {{ aap_license_file }}"
+  ignore_errors: true
+  when: >
+    __aap_license_stat.stat.exists is not defined or
+    not __aap_license_stat.stat.exists | bool
+
+- name: "Deploy VMaaS"
+  ansible.builtin.include_tasks:
+    file: vmaas.yaml
+    apply:
+      tags: vmaas
+  when:
+    - vmaas_clusters | length > 0
+    - __aap_license_stat.stat.exists is defined
+    - __aap_license_stat.stat.exists | bool

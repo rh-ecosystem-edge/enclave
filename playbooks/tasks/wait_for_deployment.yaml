@@ -1,0 +1,23 @@
+---
+- name: Pause for 3 minutes for the baremetal to be rebooted
+  ansible.builtin.pause:
+    minutes: 3
+
+- name: Wait for bootstrap to be completed
+  ansible.builtin.command: |
+    {{ workingDir }}/bin/openshift-install --dir {{ workingDir }}/ocp-cluster/ agent wait-for bootstrap-complete --log-level=debug
+
+- name: Wait for installation to be completed
+  ansible.builtin.command: |
+    {{ workingDir }}/bin/openshift-install --dir {{ workingDir }}/ocp-cluster/ agent wait-for install-complete  --log-level=debug
+
+- name: Detach virtual media from hosts
+  loop: "{{ agent_hosts }}"
+  loop_control:
+    loop_var: agent_host
+  ansible.builtin.include_tasks:
+    file: tasks/configure_hardware_ironic_detach_vmedia.yaml
+
+- name: Cleanup Ironic
+  ansible.builtin.include_tasks:
+    file: tasks/configure_hardware_ironic_cleanup.yaml

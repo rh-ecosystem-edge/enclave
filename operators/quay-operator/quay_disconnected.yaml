@@ -1,0 +1,51 @@
+---
+# Quay disconnected tasks: imageset for oc-mirror and mirror run.
+# This file is included only when disconnected | default(true).
+
+- name: Copy imagesetconfiguration to imagesetconfiguration.internal.yaml
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+    dest: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
+
+- name: Replace registry.redhat.io with internal quay
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
+    regexp: 'catalog: registry.redhat.io'
+    replace: "catalog: {{ quayHostname }}:8443"
+
+- name: Ensure .config/containers/ exists
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/"
+    state: directory
+
+- name: Generate registries.conf for the oc-mirror process
+  ansible.builtin.template:
+    src: "../../templates/registries.conf.j2"
+    dest: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+
+- name: Start oc-mirror process
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile {{ workingDir }}/config/pull-secret.quay.json \
+      -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-quay \
+      docker://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }} \
+      --dest-tls-verify=false \
+      --src-tls-verify=false \
+      --parallel-images 10 \
+      --parallel-layers 10 \
+      --retry-times 10 \
+      --retry-delay 0 \
+      --image-timeout 40m0s \
+      > {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log 2>&1
+
+  retries: 5
+  delay: 10
+  register: r_oc_mirror_quay
+  until: r_oc_mirror_quay is succeeded
+
+- name: Delete registries.conf for the oc-mirror process
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+    state: absent

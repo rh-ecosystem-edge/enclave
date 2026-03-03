@@ -1,0 +1,12 @@
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: nmstate
+  namespace: openshift-acm-policies
+spec:
+  clusterSelector:
+    matchExpressions:
+    - key: sovcloud.open-cluster-management.io/vmaas
+      operator: In
+      values:
+      - "true"

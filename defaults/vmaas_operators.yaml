@@ -1,0 +1,15 @@
+kubevirt:
+  channel: stable
+
+nmstate:
+  channel: stable
+
+osac_operator:
+  image: ghcr.io/osac-project/osac-operator
+  tag: sha-bba9d8c
+
+aap_bootstrap_job:
+  image: ghcr.io/osac-project/osac-aap
+  tag: latest
+
+aap_license_file: "{{ workingDir }}/config/aap-license.zip"

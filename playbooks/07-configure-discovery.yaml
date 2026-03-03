@@ -1,0 +1,131 @@
+---
+- name: Configure hardware discovery
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks: common/load-vars.yaml
+
+    - name: Set discovery_hosts default
+      ansible.builtin.set_fact:
+        discovery_hosts: []
+      when: discovery_hosts is not defined
+
+    - name: Deploy Metal3 common resources
+      ansible.builtin.include_tasks: "../playbooks/tasks/deploy_metal3_common.yaml"
+
+    - name: Deploy Ironic
+      ansible.builtin.include_tasks: "../playbooks/tasks/deploy_ironic.yaml"
+
+    - name: Deploy Baremetal Operator
+      ansible.builtin.include_tasks: "../playbooks/tasks/deploy_bmo.yaml"
+
+    - name: Create Namespace for infraenv
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: infraenv
+
+    - name: Read pull secret from file
+      ansible.builtin.set_fact:
+        pull_secret_content: "{{ lookup('file', '{{ workingDir }}/config/pull-secret.quay.json') | from_json }}"
+
+    - name: Create pullsecret for infraenv
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: pullsecret
+            namespace: infraenv
+          stringData:
+            .dockerconfigjson: "{{ pull_secret_content | to_json }}"
+            type: kubernetes.io/dockerconfigjson
+
+    - name: Create Infraenv
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: agent-install.openshift.io/v1beta1
+          kind: InfraEnv
+          metadata:
+            name: infraenv
+            namespace: infraenv
+          spec:
+            cpuArchitecture: x86_64
+            imageType: minimal-iso
+            ipxeScriptType: DiscoveryImageAlways
+            sshAuthorizedKey: "{{ lookup('file', sshPubPath) }}"
+            additionalNTPSources: "{{ defaultNtpServers | default([]) }}"
+            agentLabels:
+              cluster-name: "infraenv"
+            pullSecretRef:
+              name: pullsecret
+            nmStateConfigLabelSelector:
+              matchLabels:
+                infraenvs.agent-install.openshift.io: infraenv
+            ignitionConfigOverride: '{"ignition":{"version":"3.2.0"},"storage":{"files":[{"path":"/etc/containers/policy.json","mode":420,"overwrite":true,"contents":{"source":"data:text/plain;charset=utf-8;base64,ewogICAgImRlZmF1bHQiOiBbCiAgICAgICAgewogICAgICAgICAgICAidHlwZSI6ICJpbnNlY3VyZUFjY2VwdEFueXRoaW5nIgogICAgICAgIH0KICAgIF0sCiAgICAidHJhbnNwb3J0cyI6CiAgICAgICAgewogICAgICAgICAgICAiZG9ja2VyLWRhZW1vbiI6CiAgICAgICAgICAgICAgICB7CiAgICAgICAgICAgICAgICAgICAgIiI6IFt7InR5cGUiOiJpbnNlY3VyZUFjY2VwdEFueXRoaW5nIn1dCiAgICAgICAgICAgICAgICB9CiAgICAgICAgfQp9"}}]}}'
+
+    - name: Display discovery hosts status
+      ansible.builtin.debug:
+        msg: "{{ 'Configuring ' + (discovery_hosts | length | string) + ' discovery host(s)' if (discovery_hosts is defined and discovery_hosts | length > 0) else 'No discovery hosts configured - skipping agent discovery' }}"
+
+    - name: Configure discovery hosts
+      when: discovery_hosts is defined and discovery_hosts | length > 0
+      ansible.builtin.include_tasks:
+        file: tasks/configure_discovery_host.yaml
+      loop: "{{ discovery_hosts }}"
+      loop_control:
+        loop_var: discovery_host
+
+    - name: Wait for the Agents
+      when: discovery_hosts is defined and discovery_hosts | length > 0
+      block:
+        - name: Get discovered Agents
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          kubernetes.core.k8s_info:
+            validate_certs: false
+            api_version: agent-install.openshift.io/v1beta1
+            kind: Agent
+            namespace: infraenv
+          register: r_agents
+          retries: 40
+          delay: 30
+          vars:
+            discovered_macs: "{{ r_agents.resources | selectattr('status.inventory', 'defined') | map(attribute='status') | map(attribute='inventory') | map(attribute='interfaces') | flatten | map(attribute='macAddress') | map('lower') | list }}"
+            expected_macs: "{{ discovery_hosts | map(attribute='macAddress') | map('lower') | list }}"
+          until: expected_macs | difference(discovered_macs) | length == 0
+      rescue:
+        - name: Get BareMetalHost resources
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          kubernetes.core.k8s_info:
+            validate_certs: false
+            api_version: metal3.io/v1alpha1
+            kind: BareMetalHost
+            namespace: infraenv
+          register: r_bmhs
+
+        - name: Print provisioning states for non-provisioned hosts
+          ansible.builtin.debug:
+            msg: |
+              Name: {{ item.metadata.name }}
+              Provisioning State: {{ item.status.provisioning.state | default('unknown') }}
+              Error Message: {{ item.status.errorMessage | default('none') }}
+          loop: "{{ r_bmhs.resources | selectattr('status.provisioning.state', 'defined') | rejectattr('status.provisioning.state', 'equalto', 'provisioned') | list }}"
+          when: r_bmhs.resources | length > 0
+
+        - name: Fail after printing BMH states
+          ansible.builtin.fail:
+            msg: "Wait for new agents task failed. Check for BareMetalHost provisioning errors."

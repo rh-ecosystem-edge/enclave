@@ -1,0 +1,6 @@
+---
+# Quay mirror hostname pattern (uses baseDomain from user config/global.yaml)
+quayHostname: "mirror.{{ baseDomain }}"
+
+# Quay CA certificate path (uses workingDir from user config/global.yaml)
+quayCAPath: "{{ workingDir }}/data/quay-rootCA/rootCA.pem"

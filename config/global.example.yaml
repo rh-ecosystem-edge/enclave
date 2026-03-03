@@ -1,0 +1,136 @@
+##############################################################################
+# GLOBAL CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'global.yaml' and fill in your values
+##############################################################################
+
+# ============================================================================
+# Base Configuration
+# ============================================================================
+workingDir: YOUR_ROOT_DIRECTORY       # Example: "/home/enclave"
+
+# ============================================================================
+# Network Configuration
+# ============================================================================
+# Cluster Network Settings (install-config.yaml parameters)
+baseDomain: YOUR_BASE_DOMAIN          # Example: enclave-test.nodns.in
+clusterName: YOUR_CLUSTER_NAME        # Example: mgmt
+machineNetwork: YOUR_MACHINE_NETWORK  # Example: 192.168.2.0/24
+apiVIP: YOUR_API_VIP                  # Example: 192.168.2.201
+ingressVIP: YOUR_INGRESS_VIP          # Example: 192.168.2.202
+
+# Network Infrastructure
+defaultDNS: YOUR_DNS_SERVER           # Example: 9.30.31.32
+defaultGateway: YOUR_GATEWAY          # Example: 192.168.2.10
+defaultPrefix: 24
+
+# First control plane node IP (in the machineNetwork)
+rendezvousIP: YOUR_RENDEZVOUS_IP      # Example: 192.168.2.24
+
+# LZ IP where HTTP server serves the installation ISO to IPMI nodes
+lzBmcIP: YOUR_LZ_WEB_SERVER_IP        # Example: 100.64.1.10
+
+# ============================================================================
+# Quay Registry Configuration
+# ============================================================================
+quayUser: YOUR_QUAY_ADMIN_USERNAME
+quayPassword: YOUR_QUAY_ADMIN_PASSWORD
+
+# ============================================================================
+# Quay Backend Storage Configuration
+# ============================================================================
+# Option 1: External S3/RadosGW storage (RECOMMENDED for production)
+quayBackend: RadosGWStorage
+quayBackendRGWConfiguration:
+  access_key: YOUR_S3_ACCESS_KEY
+  secret_key: YOUR_S3_SECRET_KEY
+  bucket_name: YOUR_S3_BUCKET_NAME
+  hostname: YOUR_RADOSGW_ENDPOINT_HOSTNAME
+
+# Option 2: Local storage (NOT recommended for production)
+# quayBackend: LocalStorage
+
+# ============================================================================
+# Storage Backend
+# ============================================================================
+# Storage backend for block devices for quay database and assisted installer
+# Options: lvms or odf
+# blockStorageBackend: odf
+blockStorageBackend: lvms
+
+# ============================================================================
+# Storage Configuration (LVMS) (optional)
+# ============================================================================
+#lvmsConfig:
+#  deviceSelector:
+#    optionalPaths:
+#      - /dev/disk/by-path/YOUR_DISK_PATH_1
+#      - /dev/disk/by-path/YOUR_DISK_PATH_2
+#      - /dev/disk/by-path/YOUR_DISK_PATH_3
+
+# ============================================================================
+# Storage Configuration (ODF)
+# ============================================================================
+# When odf is set, it is needed to configure the odfExternalConfig variable
+# with the data obtained from ceph-external-cluster-details-exporter.py script
+# odfExternalConfig:
+#  '[{"name": "external-cluster-user-command",
+#     "kind": "ConfigMap", "data": ..}]'
+
+# ============================================================================
+# OpenShift Configuration
+# ============================================================================
+# Disconnected mode
+disconnected: true
+
+# Encrypt installation partition with TPM v2
+diskEncryption: false
+
+# SSH public key path for cluster nodes
+sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
+
+# Variables for oc-mirror
+ocMirrorLogLevel: debug
+
+# Additional NTP sources for cluster nodes (optional)
+# defaultNtpServers:
+#  - YOUR_NTP_SERVER_1
+#  - YOUR_NTP_SERVER_2
+
+# ============================================================================
+# Pull Secret Configuration
+# ============================================================================
+# Obtain from: https://console.redhat.com/openshift/install/pull-secret
+pullSecret: '{"auths":{"YOUR_PULL_SECRET"}}'
+pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
+
+# ============================================================================
+# Cluster Hosts Configuration (Agent Hosts)
+# ============================================================================
+agent_hosts:
+  - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
+    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
+    ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
+    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
+    rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: YOUR_REDFISH_USER
+    redfishPassword: YOUR_REDFISH_PASSWORD
+  # Add more hosts as needed (minimum 3 for HA)
+
+# For complex network setups you can use mapInterfaces and networkConfig
+# instead of the macAddress and ipAddress parameters
+# See docs/CONFIGURATION_REFERENCE.md for reference
+
+# ============================================================================
+# Discovery Hosts Configuration
+# ============================================================================
+# Discovery hosts for cloud infrastructure (CaaS)
+# These are worker nodes that will be discovered and added to the cluster
+discovery_hosts:
+  - name: YOUR_NODE_NAME              # Example: node01
+    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
+    ipAddress: YOUR_IP_ADDRESS        # Shoul be in machineNetwork
+    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
+    rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: YOUR_REDFISH_USER
+    redfishPassword: YOUR_REDFISH_PASSWORD
+  # Add more hosts as needed

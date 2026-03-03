@@ -1,0 +1,30 @@
+- name: Create Namespace for ACM Policies
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.file', '../../files/catalogsource-configuration/00-namespace.yaml') | from_yaml }}"
+
+- name: Create ACM Policy for mirrored catalogsource
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', '../../files/catalogsource-configuration/10-policy.yaml.j2') | from_yaml }}"
+
+- name: Create ACM PlacementRule for mirrored catalogsource
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', '../../files/catalogsource-configuration/20-placementrule.yaml.j2') | from_yaml }}"
+
+- name: Create ACM PlacementBinding for mirrored catalogsource
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', '../../files/catalogsource-configuration/30-placementbinding.yaml.j2') | from_yaml }}"

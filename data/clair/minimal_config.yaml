@@ -1,0 +1,12 @@
+http_listen_addr: :8080
+introspection_addr: :8081
+indexer:
+  connstring: ""
+  scanlock_retry: 10
+  layer_scan_concurrency: 5
+matcher:
+  connstring: ""
+  max_conn_pool: 100
+notifier:
+  connstring: ""
+  delivery_interval: 1m

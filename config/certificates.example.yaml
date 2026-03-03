@@ -1,0 +1,49 @@
+##############################################################################
+# SSL CERTIFICATES CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'certificates.yaml' and provide your certs
+##############################################################################
+
+# ============================================================================
+# SSL Certificates Configuration
+# ============================================================================
+# Required: Provide valid SSL certificates from your CA or Let's Encrypt/ZeroSSL
+#
+# You need three certificates:
+# 1. API certificate for: api.<clusterName>.<baseDomain>
+# 2. Ingress wildcard certificate for: *.apps.<clusterName>.<baseDomain>
+# 3. Root CA certificate
+# ============================================================================
+
+# API Certificate
+sslAPICertificateKey: |
+  -----BEGIN PRIVATE KEY-----
+  YOUR_API_PRIVATE_KEY
+  -----END PRIVATE KEY-----
+
+sslAPICertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  YOUR_API_CERTIFICATE
+  -----END CERTIFICATE-----
+  -----BEGIN CERTIFICATE-----
+  YOUR_INTERMEDIATE_CA_CERT (if applicable)
+  -----END CERTIFICATE-----
+
+# Ingress Certificate (*.apps)
+sslIngressCertificateKey: |
+  -----BEGIN PRIVATE KEY-----
+  YOUR_INGRESS_PRIVATE_KEY
+  -----END PRIVATE KEY-----
+
+sslIngressCertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  YOUR_INGRESS_CERTIFICATE
+  -----END CERTIFICATE-----
+  -----BEGIN CERTIFICATE-----
+  YOUR_INTERMEDIATE_CA_CERT (if applicable)
+  -----END CERTIFICATE-----
+
+# Root CA Certificate
+sslCACertificate: |
+  -----BEGIN CERTIFICATE-----
+  YOUR_ROOT_CA_CERTIFICATE
+  -----END CERTIFICATE-----

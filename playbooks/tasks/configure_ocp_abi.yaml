@@ -1,0 +1,100 @@
+---
+- name: Ensure {{ workingDir }}/.ssh/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/.ssh/"
+    state: directory
+    mode: "0700"
+
+- name: Generate SSH keypair if doesn't exist
+  community.crypto.openssh_keypair:
+    path: "{{ sshPubPath | replace('.pub','') }}"
+    type: ed25519
+    regenerate: never
+    backend: cryptography
+    private_key_format: ssh
+
+- name: Copy pull secret to config directory for Ironic (connected mode)
+  when: not (disconnected | default(true))
+  ansible.builtin.copy:
+    src: "{{ pullSecretPath }}"
+    dest: "{{ workingDir }}/config/pull-secret.json"
+    remote_src: true
+
+- name: Extract openshift-install binary
+  ansible.builtin.command: |
+    {{ workingDir }}/bin/oc adm release extract --registry-config={{ pullSecretPath }} --command=openshift-install --to {{ workingDir }}/bin/
+    quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
+
+- name: Ensure {{ workingDir }}/ocp-cluster/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/ocp-cluster/"
+    state: directory
+
+- name: Ensure {{ workingDir }}/ocp-cluster/openshift/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/ocp-cluster/openshift/"
+    state: directory
+
+- name: Set install-config template based on deployment mode
+  ansible.builtin.set_fact:
+    install_config_template: "install-config-{{ 'disconnected' if (disconnected | default(true)) else 'connected' }}.yaml.j2"
+
+- name: Display selected template
+  ansible.builtin.debug:
+    msg: "Using template: {{ install_config_template }} for {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+
+- name: Generate the install-config.yaml from mode-specific template
+  ansible.builtin.template:
+    src: "../../templates/{{ install_config_template }}"
+    dest: "{{ workingDir }}/ocp-cluster/install-config.yaml"
+
+- name: Generate the agent-config.yaml from template
+  ansible.builtin.template:
+    src: "../../templates/agent-config.yaml.j2"
+    dest: "{{ workingDir }}/ocp-cluster/agent-config.yaml"
+
+- name: Copy custom manifests from mirror registry to the ABI directory
+  when: disconnected | default(true)
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/{{ item }}"
+    dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item }}"
+  loop:
+    - idms-oc-mirror.yaml
+    - itms-oc-mirror.yaml
+    - signature-configmap.yaml
+    - cs-redhat-operator-index-v4-20.yaml
+
+- name: Enable diskEncryption if set
+  when: diskEncryption | default(false) == true
+  block:
+    - name: Generate cluster manifests
+      ansible.builtin.command: |
+        {{ workingDir }}/bin/openshift-install agent create cluster-manifests --dir {{ workingDir }}/ocp-cluster/
+
+    - name: Set diskEncryption config var
+      ansible.builtin.set_fact:
+        disk_encryption_def: |
+          diskEncryption:
+            enableOn: all
+            mode: tpmv2
+
+    - name: Add diskEncryption
+      ansible.builtin.blockinfile:
+        path: "{{ workingDir }}/ocp-cluster/cluster-manifests/agent-cluster-install.yaml"
+        append_newline: true
+        prepend_newline: true
+        insertafter: "spec:"
+        block: "{{ disk_encryption_def | indent(2, true) }}"
+
+- name: Generate the ISO image
+  ansible.builtin.command:
+    cmd: "{{ workingDir }}/bin/openshift-install agent create image --dir {{ workingDir }}/ocp-cluster/"
+
+- name: Ensure {{ workingDir }}/ocp-cluster/abi-iso/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/ocp-cluster/abi-iso/"
+    state: directory
+
+- name: Move to {{ workingDir }}/ocp-cluster/abi-iso/
+  ansible.builtin.command:
+    cmd: mv "{{ workingDir }}/ocp-cluster/agent.x86_64.iso" "{{ workingDir }}/ocp-cluster/abi-iso/agent.x86_64.iso"

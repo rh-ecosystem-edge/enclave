@@ -1,0 +1,47 @@
+# Ansible-lint configuration for Enclave Lab
+# Using 'basic' profile for gradual adoption
+# See: https://ansible.readthedocs.io/projects/lint/profiles/
+
+profile: basic  # More lenient than 'min', focuses on critical issues
+
+# Ignore certain rules that are not critical for now
+skip_list:
+  - yaml[line-length]         # Line length issues (handled by yamllint)
+  - yaml[trailing-spaces]     # Trailing spaces (handled by yamllint)
+  - yaml[indentation]         # Indentation issues (handled by yamllint)
+  - yaml[document-start]      # Document start markers
+  - name[casing]              # Task name casing
+  - name[template]            # Task name templating
+  - risky-file-permissions    # File permissions warnings (can be addressed later)
+  - no-changed-when           # Missing changed_when (can be addressed later)
+  - fqcn[action-core]         # Fully qualified collection names (can be addressed later)
+  - jinja[spacing]            # Jinja2 spacing issues (can be addressed later)
+  - literal-compare           # Don't compare to literal True/False (can be addressed later)
+  - key-order                 # Task key order (can be addressed later)
+  - var-naming[pattern]       # Variable naming pattern (can be addressed later)
+
+# Only fail on actual errors, not warnings
+strict: false
+
+# File and directory exclusions
+exclude_paths:
+  - .git/
+  - .github/
+  - .idea/
+  - node_modules/
+  - venv/
+  - .venv/
+  - '*.j2'
+  - '*.jinja2'
+  - config/global.example.yaml
+  - config/certificates.example.yaml
+  - schemas/
+
+# Allow certain Ansible features
+loop_var_prefix: "{role}_"
+
+# Use cached results when available
+use_default_rules: true
+
+# Skip automatic collection installation (collections are pre-installed in CI image)
+offline: true

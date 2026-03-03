@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ osac_config_name | default('osac-config') }}
+  namespace: {{ osac_operator_ns | default('osac-operator-system') }}
+type: Opaque
+stringData:
+  OSAC_REMOTE_CLUSTER_KUBECONFIG: "/var/run/secrets/vmaas-cluster/kubeconfig"
+  OSAC_PROVISIONING_PROVIDER: "{{ osac_provisioning_provider | default('aap') }}"
+{% if osac_provisioning_provider | default('aap') == 'eda' %}
+  OSAC_COMPUTE_INSTANCE_PROVISION_WEBHOOK: "{{ osac_compute_instance_provision_webhook | default('https://osac-aap-eda-ansible-aap.apps.{{ clusterName }}.{{ baseDomain }}/webhook/provision') }}"
+  OSAC_COMPUTE_INSTANCE_DEPROVISION_WEBHOOK: "{{ osac_compute_instance_deprovision_webhook | default('https://osac-aap-eda-ansible-aap.apps.{{ clusterName }}.{{ baseDomain }}/webhook/deprovision') }}"
+{% endif %}
+{% if osac_provisioning_provider | default('aap') == 'aap' %}
+  OSAC_AAP_URL: "{{ osac_aap_url | default('https://osac-aap-controller-ansible-aap.apps.{{ clusterName }}.{{ baseDomain }}') }}"
+  OSAC_AAP_TOKEN: "{{ osac_aap_token }}"
+{% if osac_aap_provision_template is defined %}
+  OSAC_AAP_PROVISION_TEMPLATE: "{{ osac_aap_provision_template }}"
+{% endif %}
+{% if osac_aap_deprovision_template is defined %}
+  OSAC_AAP_DEPROVISION_TEMPLATE: "{{ osac_aap_deprovision_template }}"
+{% endif %}
+{% if osac_aap_status_poll_interval is defined %}
+  OSAC_AAP_STATUS_POLL_INTERVAL: "{{ osac_aap_status_poll_interval }}"
+{% endif %}
+{% endif %}
+{% if osac_cluster_create_webhook is defined %}
+  OSAC_CLUSTER_CREATE_WEBHOOK: "{{ osac_cluster_create_webhook }}"
+{% endif %}
+{% if osac_cluster_delete_webhook is defined %}
+  OSAC_CLUSTER_DELETE_WEBHOOK: "{{ osac_cluster_delete_webhook }}"
+{% endif %}
+{% if osac_hostpool_create_webhook is defined %}
+  OSAC_HOSTPOOL_CREATE_WEBHOOK: "{{ osac_hostpool_create_webhook }}"
+{% endif %}
+{% if osac_hostpool_delete_webhook is defined %}
+  OSAC_HOSTPOOL_DELETE_WEBHOOK: "{{ osac_hostpool_delete_webhook }}"
+{% endif %}

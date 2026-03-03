@@ -1,0 +1,3 @@
+---
+mirror_rh_operator_catalog: "mirror-redhat-operators"
+mirror_certified_rh_operator_catalog: "mirror-certified-operators"

@@ -1,0 +1,49 @@
+---
+- name: Gather facts on a specific container
+  containers.podman.podman_container_info:
+    name: quay-app
+  register: r_container_quay_app
+
+- name: Install mirror-registry
+  when:
+    - r_container_quay_app.containers | default([]) | length == 0
+  block:
+    - name: Deploy mirror-registry
+      ansible.builtin.command: |
+        {{ workingDir }}/bin/mirror-registry  install --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data --initPassword "{{ quayPassword }}" --initUser "{{ quayUser }}"
+      register: r_mirror_registry
+
+
+- name: Generate pull secret for internal mirror
+  ansible.builtin.set_fact:
+    pullSecretInternal: '{"auths":{"{{ quayHostname }}:8443":{"auth":"{{ (quayUser + ":" + quayPassword) | ansible.builtin.b64encode }}"}}}'
+
+- name: Combine pull secrets
+  ansible.builtin.set_fact:
+    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=true) }}"
+
+- name: Create pull-secret file with the combination
+  ansible.builtin.copy:
+    content: "{{ pullSecretNew }}"
+    dest: "{{ workingDir }}/config/pull-secret.json"
+
+- name: Create pull-secret internal file with the combination
+  ansible.builtin.copy:
+    content: "{{ pullSecretInternal }}"
+    dest: "{{ workingDir }}/config/pull-secret.internal.json"
+
+- name: Copy imagesetconfiguration.yaml
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+
+- name: Change permissions  # FIXME
+  command: chmod u+x {{ workingDir }}/bin/oc-mirror
+
+- name: Start oc-mirror process
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc-mirror --v2 --log-level {{ ocMirrorLogLevel }} --authfile {{ workingDir }}/config/pull-secret.json -c {{ workingDir }}/config/imagesetconfiguration.yaml --workspace file://{{ workingDir }}/config/oc-mirror-workspace docker://{{ quayHostname }}:8443 --dest-tls-verify=false --parallel-images 10 --parallel-layers 10 --retry-times 10 --retry-delay 0 > {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log 2>&1
+  retries: 5
+  delay: 10
+  register: r_oc_mirror
+  until: r_oc_mirror is success

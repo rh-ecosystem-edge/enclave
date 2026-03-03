@@ -1,0 +1,82 @@
+---
+# Phase 6: Day-2 Operations - Optional advanced features
+# This phase configures advanced features and ACM policies
+#
+# Performs:
+# - Clair configuration for disconnected Quay (disconnected only)
+# - ACM policies for mirrored catalogsources (disconnected only)
+# - ACM policies for model configuration
+#
+# Usage:
+#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
+#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags clair-disconnected
+#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags acm-policy-catalogsources,model-config
+
+- name: Phase 6 - Day-2 operations
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Display day-2 mode
+      ansible.builtin.debug:
+        msg: "Running day-2 operations in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+      tags: always
+
+    - name: Configure ACM ClusterImageSets
+      ansible.builtin.include_tasks:
+        file: ../operators/advanced-cluster-management/acm_cis.yaml
+        apply:
+          tags: acm-cis
+      tags: acm-cis
+
+    - name: Configure Quay in disconnected environments
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/quay_disconnected.yaml
+        apply:
+          tags: quay-disconnected
+      tags: quay-disconnected
+
+    - name: Configure Clair in disconnected environments
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/clair_disconnected.yaml
+        apply:
+          tags: clair-disconnected
+      tags: clair-disconnected
+
+    - name: Mirrored catalogsource configuration ACM policy
+      when: disconnected | default(true)
+      vars:
+        short_version_dot: "{{ openshift_version.version.split('.')[:2] | join('.') }}"
+        short_version_dash: "{{ openshift_version.version.split('.')[:2] | join('-') }}"
+      ansible.builtin.include_tasks:
+        file: tasks/catalogsource.yaml
+        apply:
+          tags: acm-policy-catalogsources
+      loop: "{{ openshift_versions }}"
+      loop_control:
+        loop_var: openshift_version
+      tags: acm-policy-catalogsources
+
+    - name: Model configurations
+      ansible.builtin.include_tasks:
+        file: tasks/model_config.yaml
+        apply:
+          tags: model-config
+      tags: model-config
+
+    - name: Kubevirt - VMaaS
+      ansible.builtin.include_tasks:
+        file: tasks/vmaas_validation.yaml
+        apply:
+          tags: vmaas
+      tags: vmaas

@@ -1,0 +1,3 @@
+---
+- ansible.builtin.debug: 
+    msg: "Operator configured properly, no further actions"

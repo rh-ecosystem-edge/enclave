@@ -1,0 +1,63 @@
+apiVersion: v1
+baseDomain: {{ baseDomain }}
+metadata:
+  creationTimestamp: null
+  name: {{ clusterName }}
+
+# It will be a compact cluster, so we specify 0 replicas
+compute:
+- architecture: amd64
+  hyperthreading: Enabled
+  name: worker
+  platform: {}
+  replicas: 0
+
+# And 3 control plane nodes
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: 3
+
+# Cluster networking
+networking:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  machineNetwork:
+  - cidr: {{ machineNetwork }}
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
+
+# Here we set up VIPs
+platform:
+  baremetal:
+    apiVIPs:
+      - {{ apiVIP }}
+    ingressVIPs:
+      - {{ ingressVIP }}
+
+publish: External
+pullSecret: |
+  {{ lookup('file', pullSecretPath) }}
+
+# We include an SSH key for easy debugging
+sshKey: |
+  {{ lookup('file', sshPubPath) }}
+
+# From now on, we will configure the mirror-registry
+
+# We need to include the CA to trust the mirror-registry's self-signed certificate
+additionalTrustBundle: |
+  {{ lookup('file', quayCAPath) | indent(2) }}
+  {{ sslAPICertificateFullChain | default('') | indent(2) }}
+# And we add IMDS to point to the mirror during the installation
+imageDigestSources:
+  - mirrors:
+    - {{ quayHostname }}:8443/openshift/release
+    source: quay.io/openshift-release-dev/ocp-v4.0-art-dev
+  - mirrors:
+    - {{ quayHostname }}:8443/openshift/release-images
+    source: quay.io/openshift-release-dev/ocp-release

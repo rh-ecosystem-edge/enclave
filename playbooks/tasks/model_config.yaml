@@ -1,0 +1,31 @@
+- name: Create Namespace for ACM Policies
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/00-namespace.yaml') | from_yaml }}"
+
+- name: Create ACM Policy for Model configuration
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', '../../files/model-configuration/10-policy.yaml.j2') | from_yaml }}"
+
+
+- name: Create ACM PlacementRule for Model configuration
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/20-placementrule.yaml') | from_yaml }}"
+
+- name: Create ACM PlacementBinding for Model configuration
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/30-placementbinding.yaml') | from_yaml }}"

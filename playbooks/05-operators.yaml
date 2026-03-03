@@ -1,0 +1,36 @@
+---
+# Phase 5: Operators - Operator installation
+# This phase installs and configures OpenShift operators
+#
+# Performs:
+# - Disable default catalog sources (disconnected mode)
+# - Install storage operators (LVMS/ODF)
+# - Install general operators from defaults/operators.yaml
+#
+# Usage:
+#   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
+
+- name: Phase 5 - Operator installation
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Display operator installation mode
+      ansible.builtin.debug:
+        msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+      tags: always
+
+    - name: Configure operators
+      ansible.builtin.include_tasks:
+        file: tasks/configure_operators.yaml
+        apply:
+          tags: operators
+      tags: operators

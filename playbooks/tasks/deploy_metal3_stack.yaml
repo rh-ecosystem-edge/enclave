@@ -1,0 +1,157 @@
+---
+# Ironic deployment tasks - deploys Ironic and HTTP server in a pod
+
+- name: Get ironic image from OpenShift release
+  ansible.builtin.command: >
+    {{ workingDir }}/bin/oc adm release info --registry-config={{ workingDir }}/config/pull-secret.json --image-for ironic
+    quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
+  register: r_ironic_image
+  changed_when: false
+
+- name: Set ironic image fact
+  ansible.builtin.set_fact:
+    metal3_ironic_image: "{{ r_ironic_image.stdout }}"
+
+- name: Generate htpasswd hash for Ironic credentials
+  ansible.builtin.command: /usr/bin/htpasswd -nbB "{{ metal3_ironic_username }}" "{{ metal3_ironic_password }}"
+  register: r_htpasswd
+  changed_when: false
+  no_log: true
+
+- name: Set htpasswd variable
+  ansible.builtin.set_fact:
+    metal3_ironic_htpasswd: "{{ r_htpasswd.stdout }}"
+  no_log: true
+
+- name: Create podman secret for ironic htpasswd
+  containers.podman.podman_secret:
+    name: metal3-ironic-htpasswd
+    data: "{{ metal3_ironic_htpasswd }}"
+    state: present
+    force: false
+  no_log: true
+
+- name: Create podman secret for CA bundle
+  containers.podman.podman_secret:
+    name: metal3-ca-bundle
+    data: "{{ sslIngressCertificateFullChain + sslCACertificate | default('') }}"
+    state: present
+    force: false
+  no_log: true
+
+- name: Create ironic-conf volume
+  containers.podman.podman_volume:
+    name: metal3-ironic-conf
+    state: present
+
+- name: Create ironic-data volume
+  containers.podman.podman_volume:
+    name: metal3-ironic-data
+    state: present
+
+- name: Create ironic-shared volume
+  containers.podman.podman_volume:
+    name: metal3-ironic-shared
+    state: present
+
+- name: Create metal3-ironic pod
+  containers.podman.podman_pod:
+    name: metal3-ironic
+    network: host
+    share: net,ipc,uts
+    state: created
+
+- name: Run ironic container
+  containers.podman.podman_container:
+    name: ironic
+    pod: metal3-ironic
+    image: "{{ metal3_ironic_image }}"
+    authfile: "{{ workingDir }}/config/pull-secret.json"
+    user: "1002:1003"
+    cap_drop:
+      - ALL
+    volume:
+      - metal3-ironic-conf:/conf
+      - metal3-ironic-data:/data
+      - metal3-ironic-shared:/shared
+    secrets:
+      - metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400
+      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
+    env:
+      IRONIC_LISTEN_PORT: "6385"
+      HTTP_PORT: "6180"
+      LISTEN_ALL_INTERFACES: "true"
+      USE_IRONIC_INSPECTOR: "false"
+      PROVISIONING_IP: "{{ lzBmcIP }}"
+      IRONIC_USE_MARIADB: "false"
+      IRONIC_EXPOSE_JSON_RPC: "false"
+      OS_JSON_RPC__PORT: "6189"
+      WEBSERVER_CACERT_FILE: /certs/ca-bundle.crt
+    command:
+      - /bin/runironic
+    state: started
+
+- name: Run httpd container
+  containers.podman.podman_container:
+    name: httpd
+    pod: metal3-ironic
+    image: "{{ metal3_ironic_image }}"
+    authfile: "{{ workingDir }}/config/pull-secret.json"
+    user: "1002:1003"
+    cap_drop:
+      - ALL
+    volume:
+      - metal3-ironic-shared:/shared
+    env:
+      IRONIC_LISTEN_PORT: "6385"
+      HTTP_PORT: "6180"
+      LISTEN_ALL_INTERFACES: "true"
+      USE_IRONIC_INSPECTOR: "false"
+      PROVISIONING_IP: "{{ lzBmcIP }}"
+    command:
+      - /bin/runhttpd
+    state: started
+
+- name: Wait for metal3-ironic pod and containers to be running
+  containers.podman.podman_pod_info:
+    name: metal3-ironic
+  register: r_pod_ready
+  retries: 60
+  delay: 5
+  until: >
+    r_pod_ready.pods | length > 0 and
+    r_pod_ready.pods[0].Containers | selectattr('State', 'equalto', 'running') | list | length == 3
+  changed_when: false
+
+- name: Verify HTTP server accessibility
+  ansible.builtin.uri:
+    url: "http://{{ lzBmcIP }}:6180/"
+    method: HEAD
+    status_code: [200, 301, 302, 404]
+  register: r_http
+  retries: 30
+  delay: 10
+  until: r_http is succeeded
+
+- name: Verify Ironic API accessibility
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/"
+    method: GET
+    status_code: [200, 401]
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+  register: r_ironic_api
+  retries: 30
+  delay: 10
+  until: r_ironic_api is succeeded
+
+- name: Display metal3-ironic pod status
+  containers.podman.podman_pod_info:
+    name: metal3-ironic
+  register: r_pod_status
+
+- name: Show pod status
+  ansible.builtin.debug:
+    msg: "Pod: {{ r_pod_status.pods[0].Name }} | State: {{ r_pod_status.pods[0].State }} | Containers: {{ r_pod_status.pods[0].Containers | length }}"
+  when: r_pod_status.pods | length > 0

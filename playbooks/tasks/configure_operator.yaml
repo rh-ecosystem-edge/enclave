@@ -1,0 +1,115 @@
+---
+- name: "Ensure Namespace exists"
+  kubernetes.core.k8s:
+    state: present
+    api_version: v1
+    kind: Namespace
+    name: "{{ operator.namespace }}"
+  register: r_namespace_exists
+  retries: 6
+  delay: 5
+  until: r_namespace_exists is success
+
+- name: "Ensure OperatorGroup exists"
+  when:
+    - operator.namespace != "openshift-operators"
+    - operator.disableTargetNamespace | default(false) | bool != true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ operator.name }}-og"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        targetNamespaces:
+          - "{{ operator.namespace }}"
+  register: r_operatorgroup_exists
+  retries: 6
+  delay: 5
+  until: r_operatorgroup_exists is success
+
+- name: "Ensure OperatorGroup exists (without targetNamespace)"
+  when:
+    - operator.namespace != "openshift-operators"
+    - operator.disableTargetNamespace | default(false) | bool
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1
+      kind: OperatorGroup
+      metadata:
+        name: "{{ operator.name }}-og"
+        namespace: "{{ operator.namespace }}"
+      spec:
+  register: r_operatorgroup_exists
+  retries: 6
+  delay: 5
+  until: r_operatorgroup_exists is success
+
+- name: "Check if Subscription already exists"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator.name }}"
+    namespace: "{{ operator.namespace }}"
+  register: r_sub_check
+
+- name: "Ensure Subscription exists"
+  when: r_sub_check.resources | length == 0
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        installPlanApproval: Automatic
+        channel: "{{ operator.defaultChannel }}"
+        name: "{{ operator.name }}"
+        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        sourceNamespace: openshift-marketplace
+  register: r_sub_exists
+  retries: 6
+  delay: 5
+  until: r_sub_exists is success
+
+- name: "Get Installed CSV ({{ operator.name }})"
+  when: r_sub_check.resources | length == 0
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator.name }}"
+    namespace: "{{ operator.namespace }}"
+  register: r_subscription
+  retries: 30
+  delay: 10
+  until:
+  - r_subscription.resources[0].status.currentCSV is defined
+  - r_subscription.resources[0].status.currentCSV | length > 0
+
+- name: "Wait until CSV is installed"
+  when: r_sub_check.resources | length == 0
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    name: "{{ r_subscription.resources[0].status.currentCSV }}"
+    namespace: "{{ operator.namespace }}"
+  register: r_csv
+  retries: 30
+  delay: 30
+  until:
+  - r_csv.resources[0].status.phase is defined
+  - r_csv.resources[0].status.phase | length > 0
+  - r_csv.resources[0].status.phase == "Succeeded"
+
+
+- name: Include specific tasks for the operator
+  ansible.builtin.include_tasks: "{{ item }}"
+  with_first_found:
+    - files:
+        - "../../operators/{{ operator.name }}/tasks.yaml"
+      skip: true

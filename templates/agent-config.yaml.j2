@@ -1,0 +1,54 @@
+apiVersion: v1beta1
+kind: AgentConfig
+metadata:
+  name: {{ clusterName }}
+
+# The rendezvous IP is the IP address of one of the nodes to be installed. It
+# will act as the node that will coordinate the installation
+rendezvousIP:  {{ rendezvousIP }}
+
+# If defaultNtpServers are defined, add it to the configuration
+{% if defaultNtpServers | default("") | length > 0  %}
+additionalNTPSources:
+{{ defaultNtpServers | to_nice_yaml }}  
+{% endif %}
+
+# And we add the network configuration of each host, in nmstate format
+hosts:
+{% for host in agent_hosts %}
+- hostname: {{ host.name }}
+{% if host.rootDisk | default("") != "/dev/vda" %}
+  rootDeviceHints:
+    deviceName:  {{ host.rootDisk }}
+{% endif %}
+{% if host.networkConfig | default(false) %}
+  interfaces:
+    {{ host.mapInterfaces | to_nice_yaml | indent(4) }}
+  networkConfig:
+    {{ host.networkConfig | to_nice_yaml | indent(4) }}
+{% else %}
+  interfaces:
+  - name: eno1
+    macAddress: {{ host.macAddress }}
+  networkConfig:
+    interfaces:
+    - name: eno1
+      type: ethernet
+      state: up
+      mac-address:  {{ host.macAddress }}
+      ipv4:
+        enabled: true
+        address:
+        - ip: {{ host.ipAddress }}
+          prefix-length:  {{ defaultPrefix }}
+    routes:
+      config:
+      - next-hop-address:  {{ defaultGateway }}
+        next-hop-interface: eno1
+        destination: 0.0.0.0/0
+    dns-resolver:
+      config:
+        server:
+          -  {{ defaultDNS }}
+{% endif %}
+{% endfor %}

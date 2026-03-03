@@ -1,0 +1,16 @@
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: catalogsource-configuration-{{ short_version_dash }}
+  namespace: openshift-acm-policies
+spec:
+  clusterSelector:
+    matchExpressions:
+    - key: openshiftVersion-major-minor
+      operator: In
+      values:
+      - "{{ short_version_dot }}"
+    - key: local-cluster
+      operator: NotIn
+      values:
+      - "true"

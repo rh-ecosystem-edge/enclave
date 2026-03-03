@@ -1,0 +1,17 @@
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: {{ discovery_host.name }}
+  namespace: infraenv
+  labels:
+    infraenvs.agent-install.openshift.io: infraenv
+  annotations:
+    inspect.metal3.io: disabled
+spec:
+  online: {{ bmh_online | lower }}
+  automatedCleaningMode: disabled
+  bootMACAddress: "{{ discovery_host.macAddress }}"
+  bmc:
+    address: "redfish-virtualmedia+https://{{ discovery_host.redfish }}/redfish/v1/Systems/{{ discovery_host.bmcSystemId | default('1') }}"
+    credentialsName: {{ discovery_host.name }}-bmc-secret
+    disableCertificateVerification: true

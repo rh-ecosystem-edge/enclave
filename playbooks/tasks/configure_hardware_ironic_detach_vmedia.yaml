@@ -1,0 +1,55 @@
+---
+# Detach virtual media ISO from Ironic nodes after deployment
+# This removes the boot ISO from virtual media without affecting the deployed host
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Check metal3-ironic-username
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_username_secret           
+  failed_when: false                        
+  changed_when: false     
+  no_log: true        
+                                                    
+- name: Get metal3-ironic-password                                                                                                                                                                                 
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_password_secret
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Set ironic username from existing secret
+  ansible.builtin.set_fact:
+    metal3_ironic_username: "{{ r_username_secret.stdout }}"
+  no_log: true
+
+- name: Set ironic password from existing secret
+  ansible.builtin.set_fact:
+    metal3_ironic_password: "{{ r_password_secret.stdout }}"
+  no_log: true
+
+- name: Get node UUID for detaching vmedia
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ agent_host.name }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  register: node_info
+
+- name: Detach virtual media ISO from node
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_info.json.uuid }}/vmedia"
+    method: DELETE
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [204]
+  ignore_errors: true

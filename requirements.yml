@@ -1,0 +1,18 @@
+---
+# Ansible Collections Requirements
+# Install with: ansible-galaxy collection install -r requirements.yml
+#
+# Note: This file should be kept in sync with ansible_collections.txt
+# (which is used for offline/air-gapped installations)
+
+collections:
+  - name: ansible.utils
+    version: ">=2.0.0"
+  - name: kubernetes.core
+    version: ">=2.0.0"
+  - name: containers.podman
+    version: ">=1.0.0"
+  - name: community.crypto
+    version: ">=2.0.0"
+  - name: community.general
+    version: ">=2.0.0"

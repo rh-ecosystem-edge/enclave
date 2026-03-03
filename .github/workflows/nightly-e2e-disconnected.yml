@@ -1,0 +1,316 @@
+name: Nightly E2E - Disconnected Mode
+
+# Daily scheduled test in disconnected mode (full air-gapped deployment)
+# Runs at 10:00 PM EST (03:00 UTC) in parallel with connected mode
+
+on:
+  schedule:
+    # Run daily at 10:00 PM EST (03:00 UTC) - parallel with connected mode
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    # Allow manual triggering for testing
+
+# Prevent concurrent nightly runs
+concurrency:
+  group: nightly-disconnected
+  cancel-in-progress: false
+
+jobs:
+  nightly-disconnected-deployment:
+    name: Nightly Disconnected Deployment
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 240
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      ENCLAVE_DEPLOYMENT_MODE: disconnected
+      CLEANUP_AFTER: 'true'
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Generate cluster name with date
+        id: cluster_name
+        run: |
+          # Use date-based cluster name for easy identification
+          # Keep it short to fit bridge name limit (15 chars): nd-YYYYMMDD = 11 chars, nd-YYYYMMDD-c = 13 chars
+          DATE_STAMP=$(date +%Y%m%d)
+          CLUSTER_NAME="nd-${DATE_STAMP}"
+          echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV
+          echo "Generated cluster name: ${CLUSTER_NAME} (nightly disconnected)"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pre-flight checks
+        id: preflight
+        run: |
+          echo "## Nightly E2E Deployment - Disconnected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check required environment variables
+          echo "### Environment Variables" >> $GITHUB_STEP_SUMMARY
+          if [ -z "$DEV_SCRIPTS_PATH" ]; then
+            echo "❌ DEV_SCRIPTS_PATH not set" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
+
+          if [ -z "$WORKING_DIR" ]; then
+            echo "❌ WORKING_DIR not set" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ WORKING_DIR: $WORKING_DIR" >> $GITHUB_STEP_SUMMARY
+
+          if [ -z "$PULL_SECRET" ]; then
+            echo "❌ PULL_SECRET not set" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ PULL_SECRET configured" >> $GITHUB_STEP_SUMMARY
+
+      - name: Clean infrastructure
+        id: clean
+        run: |
+          echo "## Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Cleaning up any leftover infrastructure..." >> $GITHUB_STEP_SUMMARY
+
+          make clean
+
+          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create infrastructure
+        id: create_infra
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs and networks..." >> $GITHUB_STEP_SUMMARY
+
+          make environment
+
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Provision Landing Zone
+        id: provision_lz
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+
+          make provision-landing-zone
+
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        id: install_enclave
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copying code and installing dependencies on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+
+          make install-enclave
+
+          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy OpenShift cluster
+        id: deploy_cluster
+        run: |
+          echo "## Deploying OpenShift Cluster (Disconnected Mode)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Starting full air-gapped deployment with mirror registry..." >> $GITHUB_STEP_SUMMARY
+          echo "Expected duration: ~120 minutes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Phases:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Prepare - Download binaries (~5 min)" >> $GITHUB_STEP_SUMMARY
+          echo "2. Mirror - Set up Quay and mirror images (~20 min, ~130GB)" >> $GITHUB_STEP_SUMMARY
+          echo "3. Deploy - Install OpenShift cluster (~50 min)" >> $GITHUB_STEP_SUMMARY
+          echo "4. Post-install - Configure cluster (~5 min)" >> $GITHUB_STEP_SUMMARY
+          echo "5. Operators - Install operators (~20 min)" >> $GITHUB_STEP_SUMMARY
+          echo "6. Day-2 - Advanced features (~10 min)" >> $GITHUB_STEP_SUMMARY
+          echo "7. Discovery - Hardware discovery setup (~10 min)" >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster
+
+          echo "✅ Cluster deployment complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify cluster deployment
+        if: success()
+        id: verify_cluster
+        run: |
+          set +e
+
+          echo "## Verifying Cluster Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get Landing Zone IP using helper script
+          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+
+          if [ -z "$LZ_IP" ]; then
+            echo "❌ Cannot find Landing Zone IP" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ Landing Zone IP: $LZ_IP" >> $GITHUB_STEP_SUMMARY
+
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          # Get cluster operators status
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cluster Operators" >> $GITHUB_STEP_SUMMARY
+          ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co" >> $GITHUB_STEP_SUMMARY || true
+
+          # Verify mirror registry
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
+          ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Cluster verification complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Use centralized artifact collection script
+          ./scripts/collect_ci_artifacts.sh deployment artifacts 2>&1 | tee artifact-collection.log
+
+          # Append summary to GitHub Step Summary
+          if [ -f artifacts/collection-summary.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            cat artifacts/collection-summary.txt >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Cleanup infrastructure
+        if: always()
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          make clean
+
+          echo "✅ Infrastructure cleaned up" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Nightly Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: Disconnected (Air-gapped)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Slack on success
+        if: success()
+        run: |
+          PAYLOAD=$(cat <<'EOF'
+          {
+            "text": ":green_jenkins_circle: Nightly E2E Test - Disconnected Mode PASSED",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": ":green_jenkins_circle: Nightly E2E - Disconnected Mode Success",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Cluster:*\n${{ env.ENCLAVE_CLUSTER_NAME }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Type:*\nFull Air-gapped"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n${{ github.ref_name }}"
+                  }
+                ]
+              }
+            ]
+          }
+          EOF
+          )
+
+          # Send to all webhook URLs (space-separated in secret)
+          for WEBHOOK_URL in ${{ secrets.SLACK_WEBHOOK_URLS }}; do
+            curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
+          done
+
+      - name: Notify Slack on failure
+        if: failure()
+        run: |
+          PAYLOAD=$(cat <<'EOF'
+          {
+            "text": ":red_jenkins_circle: Nightly E2E Test - Disconnected Mode FAILED",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": ":red_jenkins_circle: Nightly E2E - Disconnected Mode Failed",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Cluster:*\n${{ env.ENCLAVE_CLUSTER_NAME }}"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Type:*\nFull Air-gapped"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n${{ github.ref_name }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "⚠️ *Action Required:* Disconnected deployment validation failed - check workflow logs"
+                }
+              }
+            ]
+          }
+          EOF
+          )
+
+          # Send to all webhook URLs (space-separated in secret)
+          for WEBHOOK_URL in ${{ secrets.SLACK_WEBHOOK_URLS }}; do
+            curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
+          done

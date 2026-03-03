@@ -1,0 +1,17 @@
+---
+# Schema Validation Playbook
+# Validates all config files against their JSON schemas
+#
+# Usage:
+#   ansible-playbook playbooks/validate-schema.yaml -e workingDir=/home/cloud-user
+
+- name: Schema Validation
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Include schema validation tasks
+      ansible.builtin.include_tasks:
+        file: tasks/schema_validation.yaml
+        apply:
+          tags: schema-validation
+      tags: schema-validation

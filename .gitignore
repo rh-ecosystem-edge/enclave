@@ -1,0 +1,5 @@
+*.tar
+config/*.yaml
+!config/*.example.yaml
+debug.yaml
+.claude

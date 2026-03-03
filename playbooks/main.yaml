@@ -1,0 +1,56 @@
+---
+# Enclave Lab - Main Deployment Playbook
+#
+# Supports both connected and disconnected deployment modes:
+#
+# DISCONNECTED MODE (default):
+#   Phase 1: Prepare - Download binaries and content
+#   Phase 2: Mirror - Set up local registry and mirror images
+#   Phase 3: Deploy - Deploy OpenShift cluster
+#   Phase 4: Post-Install - Cluster-level configuration
+#   Phase 5: Operators - Install and configure operators
+#   Phase 6: Day2 - Optional advanced features
+#   Phase 7: Configure Discovery - Hardware discovery (optional)
+#
+# CONNECTED MODE:
+#   Phase 1: Prepare - Download binaries and content
+#   Phase 2: SKIPPED - No mirroring needed
+#   Phase 3: Deploy - Deploy OpenShift cluster (pulls from upstream)
+#   Phase 4: Post-Install - Cluster-level configuration
+#   Phase 5: Operators - Install and configure operators
+#   Phase 6: Day2 - Optional advanced features
+#   Phase 7: Configure Discovery - Hardware discovery (optional)
+#
+# Usage:
+#   # Full deployment (disconnected mode)
+#   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
+#
+#   # Full deployment (connected mode)
+#   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user -e disconnected=false
+#
+#   # Run specific phases
+#   ansible-playbook playbooks/04-post-install.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags model-config
+
+- name: Phase 1 - Prepare environment
+  ansible.builtin.import_playbook: 01-prepare.yaml
+
+- name: Phase 2 - Mirror registry setup
+  ansible.builtin.import_playbook: 02-mirror.yaml
+  when: disconnected | default(true) | bool
+
+- name: Phase 3 - Deploy OpenShift cluster
+  ansible.builtin.import_playbook: 03-deploy.yaml
+
+- name: Phase 4 - Post-installation configuration
+  ansible.builtin.import_playbook: 04-post-install.yaml
+
+- name: Phase 5 - Operator installation
+  ansible.builtin.import_playbook: 05-operators.yaml
+
+- name: Phase 6 - Day-2 operations
+  ansible.builtin.import_playbook: 06-day2.yaml
+
+- name: Phase 7 - Configure hardware discovery
+  ansible.builtin.import_playbook: 07-configure-discovery.yaml

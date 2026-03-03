@@ -1,0 +1,48 @@
+apiVersion: v1
+baseDomain: {{ baseDomain }}
+metadata:
+  creationTimestamp: null
+  name: {{ clusterName }}
+
+# It will be a compact cluster, so we specify 0 replicas
+compute:
+- architecture: amd64
+  hyperthreading: Enabled
+  name: worker
+  platform: {}
+  replicas: 0
+
+# And 3 control plane nodes
+controlPlane:
+  architecture: amd64
+  hyperthreading: Enabled
+  name: master
+  platform: {}
+  replicas: 3
+
+# Cluster networking
+networking:
+  clusterNetwork:
+  - cidr: 10.128.0.0/14
+    hostPrefix: 23
+  machineNetwork:
+  - cidr: {{ machineNetwork }}
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
+
+# Here we set up VIPs
+platform:
+  baremetal:
+    apiVIPs:
+      - {{ apiVIP }}
+    ingressVIPs:
+      - {{ ingressVIP }}
+
+publish: External
+pullSecret: |
+  {{ lookup('file', pullSecretPath) }}
+
+# We include an SSH key for easy debugging
+sshKey: |
+  {{ lookup('file', sshPubPath) }}

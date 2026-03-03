@@ -1,0 +1,39 @@
+---
+# Phase 1: Prepare - Download binaries and content
+# This phase is common to both connected and disconnected deployments
+#
+# Downloads:
+# - OpenShift client tools (oc, kubectl)
+# - OpenShift installer binaries
+# - Mirror registry binary
+# - Additional content images
+#
+# Usage:
+#   ansible-playbook playbooks/01-prepare.yaml -e workingDir=/home/cloud-user
+
+- name: Phase 1 - Prepare environment
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Download content
+      ansible.builtin.include_tasks:
+        file: tasks/download_content.yaml
+        apply:
+          tags: download-content
+      tags: download-content
+
+    - name: Download control binaries
+      ansible.builtin.include_tasks:
+        file: tasks/download_control_binaries.yaml
+        apply:
+          tags: download-control-binaries
+      tags: download-control-binaries

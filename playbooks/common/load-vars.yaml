@@ -1,0 +1,24 @@
+---
+
+- name: Include global deployment vars
+  ansible.builtin.include_vars: "{{ vars_file | default('../../config/global.yaml') }}"
+
+- name: Include certificate vars
+  ansible.builtin.include_vars: ../../config/certificates.yaml
+
+- name: Include common configuration
+  ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
+  loop:
+    - content_images.yaml
+    - control_binaries.yaml
+    - model_operators.yaml
+    - operators.yaml
+    - platforms.yaml
+    - storage_operators.yaml
+    - vmaas_operators.yaml
+    - catalogs.yaml
+    - mirror_registry.yaml
+    - quay_operator.yaml
+    - lvms_operator.yaml
+  loop_control:
+    loop_var: config_file

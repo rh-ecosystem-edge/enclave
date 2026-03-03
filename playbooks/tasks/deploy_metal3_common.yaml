@@ -1,0 +1,56 @@
+---
+# Common tasks for Metal3 deployment - shared authentication secrets
+
+- name: Check if metal3-ironic-username secret exists
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_username_secret_check
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Check if metal3-ironic-password secret exists
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_password_secret_check
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Generate random ironic username if secret doesn't exist
+  ansible.builtin.set_fact:
+    metal3_ironic_username: "ironic-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
+  when: r_username_secret_check.rc != 0
+  no_log: true
+
+- name: Generate random ironic password if secret doesn't exist
+  ansible.builtin.set_fact:
+    metal3_ironic_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits,punctuation length=32') }}"
+  when: r_password_secret_check.rc != 0
+  no_log: true
+
+- name: Set ironic username from existing secret
+  ansible.builtin.set_fact:
+    metal3_ironic_username: "{{ r_username_secret_check.stdout }}"
+  when: r_username_secret_check.rc == 0
+  no_log: true
+
+- name: Set ironic password from existing secret
+  ansible.builtin.set_fact:
+    metal3_ironic_password: "{{ r_password_secret_check.stdout }}"
+  when: r_password_secret_check.rc == 0
+  no_log: true
+
+- name: Create podman secret for ironic username
+  containers.podman.podman_secret:
+    name: metal3-ironic-username
+    data: "{{ metal3_ironic_username }}"
+    state: present
+    force: false
+  no_log: true
+
+- name: Create podman secret for ironic password
+  containers.podman.podman_secret:
+    name: metal3-ironic-password
+    data: "{{ metal3_ironic_password }}"
+    state: present
+    force: false
+  no_log: true

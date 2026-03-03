@@ -1,0 +1,83 @@
+- name: Get Clair Pod object from quay-enterprise
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: quay-enterprise
+    label_selectors:
+      - quay-component=clair-app
+  register: clair_pod_list
+
+- name: Set Pod fact and verify existence
+  ansible.builtin.set_fact:
+    clair_pod: "{{ clair_pod_list.resources[0] }}"
+  failed_when: clair_pod_list.resources | length == 0
+
+- name: Create local export directory
+  ansible.builtin.file:
+    path: "{{ workingDir }}/data/clair"
+    state: directory
+    mode: '0777'
+
+- name: Create minimal Clair config for export
+  ansible.builtin.copy:
+    dest: "{{ workingDir }}/data/clair/config.yaml"
+    content: |
+      http_listen_addr: :8080
+      introspection_addr: :8081
+      indexer:
+        connstring: ""
+        scanlock_retry: 10
+        layer_scan_concurrency: 5
+      matcher:
+        connstring: ""
+        max_conn_pool: 100
+      notifier:
+        connstring: ""
+        delivery_interval: 1m
+
+- name: Export vulnerability data on Landing Zone
+  containers.podman.podman_container:
+    name: clair-exporter
+    image: "{{ clair_pod.spec.containers[0].image | regex_replace('^registry\\.redhat\\.io', quayHostname + ':8443') }}"
+    authfile: "{{ workingDir }}/config/pull-secret.quay.json"
+    tls_verify: no
+    rm: yes
+    volumes:
+      - "{{ workingDir }}/data/clair:/data:Z"
+    entrypoint: "/usr/bin/clairctl"
+    command: "--config /data/config.yaml export-updaters /data/updates.json.gz"
+    detach: false
+
+- name: Ensure directory /var/www/html/clair/
+  become: true
+  ansible.builtin.file:
+    path: "/var/www/html/clair/"
+    state: directory
+
+- name: Copy to /var/www/html/clair/
+  become: true
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/data/clair/updates.json.gz"
+    dest: "/var/www/html/clair/updates.json.gz"
+
+- name: Get Clair Pod object from quay-enterprise
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: quay-enterprise
+    label_selectors:
+      - quay-component=clair-app
+  register: clair_pod_list
+
+- name: Set Pod fact and verify existence
+  ansible.builtin.set_fact:
+    clair_pod: "{{ clair_pod_list.resources[0] }}"
+  failed_when: clair_pod_list.resources | length == 0
+
+- name: Execute Import inside the Clair Pod
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc exec -n quay-enterprise {{ clair_pod.metadata.name }} -- \
+    /bin/sh -c "
+      set -e
+      curl -L -o /tmp/updates.json.gz http://{{ quayHostname }}/clair/updates.json.gz
+      /usr/bin/clairctl --config /clair/config.yaml import-updaters /tmp/updates.json.gz
+    "
+  register: import_output

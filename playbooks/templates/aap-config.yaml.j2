@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ aap_config_name | default('config-as-code-ig') }}
+  namespace: {{ aap_ns | default('ansible-aap') }}
+type: Opaque
+stringData:
+  REMOTE_CLUSTER_KUBECONFIG_SECRET_NAME: "{{ aap_kubeconfig_secret_name | default('vmaas-cluster-kubeconfig') }}"

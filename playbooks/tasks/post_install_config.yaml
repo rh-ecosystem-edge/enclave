@@ -1,0 +1,55 @@
+- name: Add discovery crontab task
+  ansible.builtin.cron:
+    name: "Cloud hardware - discovery and recycle"
+    minute: "0"
+    hour: "*"
+    job: "cd {{ playbook_dir }}/../ && /usr/bin/ansible-playbook -e @config/global.yaml -e @config/certificates.yaml playbooks/07-configure-discovery.yaml"
+
+- name: "Ensure redhat-lz-admin Namespace exists"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    api_version: v1
+    kind: Namespace
+    name: redhat-lz-admin
+  register: r_namespace_creds_exists
+  retries: 6
+  delay: 5
+  until: r_namespace_creds_exists is success
+
+- name: Create quay-credentials Secret
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: quay-credentials
+        namespace: redhat-lz-admin
+      type: Opaque
+      stringData:
+        username: "{{ quayUser }}"
+        password: "{{ quayPassword }}"
+
+- name: Configure custom TLS certificates
+  ansible.builtin.include_tasks: configure_certificates.yaml
+  when:
+    - sslAPICertificateFullChain is defined
+    - sslAPICertificateFullChain | length > 0
+
+- name: Wait for kube-apiserver ClusterOperator to finish progressing and be healthy
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    kind: ClusterOperator
+    name: kube-apiserver
+  register: co_info
+  retries: 100
+  delay: 5
+  until: >
+    co_info.resources[0].status.conditions | default(['']) | selectattr('type','equalto','Progressing') | map(attribute='status') | first == 'False' and
+    co_info.resources[0].status.conditions | default(['']) | selectattr('type','equalto','Available') | map(attribute='status') | first == 'True' and
+    co_info.resources[0].status.conditions | default(['']) | selectattr('type','equalto','Degraded') | map(attribute='status') | first == 'False'

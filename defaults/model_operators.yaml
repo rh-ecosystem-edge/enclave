@@ -1,0 +1,38 @@
+---
+model_operators:
+  - name: nfd
+    defaultChannel: stable
+    channels:
+    - name: stable
+  - name: gpu-operator-certified
+    defaultChannel: v25.10
+    channels:
+    - name: v25.10
+  - name: limitador-operator
+    defaultChannel: stable
+    channels:
+    - name: stable
+  - name: authorino-operator
+    defaultChannel: stable
+    channels:
+    - name: stable
+  - name: dns-operator
+    defaultChannel: stable
+    channels:
+    - name: stable
+  - name: rhcl-operator
+    defaultChannel: stable
+    channels:
+    - name: stable
+  - name: leader-worker-set
+    defaultChannel: stable-v1.0
+    channels:
+    - name: stable-v1.0
+  - name: rhods-operator
+    defaultChannel: fast-3.x
+    channels:
+    - name: fast-3.x
+  - name: servicemeshoperator3
+    defaultChannel: stable
+    channels:
+    - name: stable

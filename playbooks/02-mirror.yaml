@@ -1,0 +1,42 @@
+---
+# Phase 2: Mirror - Set up mirror registry and mirror images
+# This phase is ONLY for disconnected deployments
+#
+# Performs:
+# - Deploy local Quay registry (mirror-registry)
+# - Generate combined pull secret
+# - Run oc-mirror to mirror OpenShift images and operator catalogs
+# - Mirror additional images (Vault, ArgoCD, etc.)
+#
+# IMPORTANT: This phase requires significant disk space (~150GB+) and time (~30+ minutes)
+#
+# Usage:
+#   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user
+
+- name: Phase 2 - Mirror registry setup
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Verify disconnected mode
+      ansible.builtin.assert:
+        that:
+          - disconnected | default(true) | bool
+        fail_msg: "Phase 2 (Mirror) should only run in disconnected mode. Set disconnected=true in config/global.yaml"
+        success_msg: "Running in disconnected mode - proceeding with mirroring"
+      tags: mirror-registry
+
+    - name: Include tasks for mirror-registry
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_registry.yaml
+        apply:
+          tags: mirror-registry
+      tags: mirror-registry

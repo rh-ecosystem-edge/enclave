@@ -1,0 +1,38 @@
+apiVersion: agent-install.openshift.io/v1beta1
+kind: NMStateConfig
+metadata:
+  name: nmstate-{{ discovery_host.name }}
+  namespace: infraenv
+  labels:
+    infraenvs.agent-install.openshift.io: infraenv
+spec:
+{% if discovery_host.networkConfig | default(false) %}
+  interfaces:
+    {{ discovery_host.mapInterfaces | to_nice_yaml | indent(4) }}
+  config:
+    {{ discovery_host.networkConfig | to_nice_yaml | indent(4) }}
+{% else %}
+  config:
+   interfaces:
+   - name: eno1
+     type: ethernet
+     state: up
+     mac-address:  {{ discovery_host.macAddress }}
+     ipv4:
+       enabled: true
+       address:
+       - ip: {{ discovery_host.ipAddress }}
+         prefix-length:  {{ defaultPrefix }}
+   routes:
+     config:
+     - next-hop-address:  {{ defaultGateway }}
+       next-hop-interface: eno1
+       destination: 0.0.0.0/0
+   dns-resolver:
+     config:
+       server:
+         -  {{ defaultDNS }}
+  interfaces:
+   - name: eno1
+     macAddress: {{ discovery_host.macAddress }}
+{% endif %}

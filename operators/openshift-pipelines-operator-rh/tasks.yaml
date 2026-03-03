@@ -1,0 +1,16 @@
+---
+- name: Wait for TektonConfig to be Ready
+  kubernetes.core.k8s_info:
+    api_version: operator.tekton.dev/v1alpha1
+    kind: TektonConfig
+    name: config
+    wait: true
+    wait_sleep: 10
+    wait_timeout: 300
+    wait_condition:
+      status: "True"
+      type: Ready
+  register: r_tekton_config_info
+  until: r_tekton_config_info is success
+  retries: 120
+  delay: 30

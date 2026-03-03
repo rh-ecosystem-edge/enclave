@@ -1,0 +1,86 @@
+---
+# Enclave Lab YAML Linting Configuration
+# This configuration is optimized for Ansible playbooks and Kubernetes manifests
+# Currently set to warning-only mode to allow gradual adoption
+
+extends: default
+
+rules:
+  # Line length - warn only for now
+  line-length:
+    max: 200
+    level: warning
+
+  # Indentation - warn only for now, allow both styles
+  indentation:
+    spaces: consistent
+    indent-sequences: whatever
+    level: warning
+
+  # Comments - allow flexibility
+  comments:
+    min-spaces-from-content: 1
+    level: warning
+
+  # Document start (---) - disable, not required
+  document-start: disable
+
+  # Trailing spaces - warn only for now
+  trailing-spaces:
+    level: warning
+
+  # Empty lines - warn only
+  empty-lines:
+    max: 3
+    level: warning
+
+  # Key duplicates - error (this is a real problem)
+  key-duplicates:
+    level: error
+
+  # Brackets - warn on spacing issues
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    level: warning
+
+  # Braces - warn on spacing issues
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+    level: warning
+
+  # Commas - warn only
+  commas:
+    level: warning
+
+  # Colons - warn only
+  colons:
+    level: warning
+
+  # Truthy values - disable (Ansible uses yes/no, on/off which are valid)
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no', 'on', 'off']
+    check-keys: false
+    level: warning
+
+  # Comments indentation - required by ansible-lint
+  comments-indentation: disable
+
+  # Octal values - required by ansible-lint
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+    level: warning
+
+ignore: |
+  .github/
+  .git/
+  .idea/
+  node_modules/
+  venv/
+  .venv/
+  **/*.j2
+  **/*.jinja2
+  # Ignore example files that might not be perfectly formatted
+  config/*.example.yaml

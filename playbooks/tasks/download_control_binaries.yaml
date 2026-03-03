@@ -1,0 +1,63 @@
+---
+- name: Ensure directory {{ workingDir }}/bin/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/"
+    state: directory
+
+- name: Ensure {{ workingDir }}/dist/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/dist/"
+    state: directory
+
+- name: Ensure {{ workingDir }}/config/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/config/"
+    state: directory
+
+- name: Ensure {{ workingDir }}/logs/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: Download oc
+  ansible.builtin.get_url:
+    url: "{{ control_binaries.openshift_client.url }}"
+    dest: "{{ workingDir }}/dist/openshift-client-linux.tar.gz"
+    checksum: "{{ control_binaries.openshift_client.checksum }}"
+
+- name: Unarchive openshift-client-linux.tar.gz to {{ workingDir }}/bin/
+  ansible.builtin.unarchive:
+    src: "{{ workingDir }}/dist/openshift-client-linux.tar.gz"
+    dest: "{{ workingDir }}/bin/"
+    remote_src: true
+
+- name: Download helm
+  ansible.builtin.get_url:
+    url: "{{ control_binaries.helm.url }}"
+    dest: "{{ workingDir }}/bin/helm"
+    checksum: "{{ control_binaries.helm.checksum }}"
+    mode: "0750"
+
+- name: Download latest mirror registry available
+  ansible.builtin.get_url:
+    url: "{{ control_binaries.mirror_registry.url }}"
+    dest: "{{ workingDir }}/dist/mirror-registry-amd64.tar.gz"
+    checksum: "{{ control_binaries.mirror_registry.checksum }}"
+
+- name: Unarchive mirror-registry-amd64.tar.gz to {{ workingDir }}/bin/
+  ansible.builtin.unarchive:
+    src: "{{ workingDir }}/dist/mirror-registry-amd64.tar.gz"
+    dest: "{{ workingDir }}/bin/"
+    remote_src: true
+
+- name: Download latest oc-mirror available
+  ansible.builtin.get_url:
+    url: "{{ control_binaries.oc_mirror.url }}"
+    dest: "{{ workingDir }}/dist/oc-mirror.tar.gz"
+    checksum: "{{ control_binaries.oc_mirror.checksum }}"
+
+- name: Unarchive oc-mirror.tar.gz to {{ workingDir }}/bin/
+  ansible.builtin.unarchive:
+    src: "{{ workingDir }}/dist/oc-mirror.tar.gz"
+    dest: "{{ workingDir }}/bin/"
+    remote_src: true

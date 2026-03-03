@@ -1,0 +1,14 @@
+---
+control_binaries:
+  openshift_client:
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.20.8/openshift-client-linux.tar.gz"
+    checksum: "sha256:baa84c69b15dbfd3f3c2b920b2eceb674cd6be30ef3aa3484d6fb88ca0a98445"
+  helm:
+    url: "https://developers.redhat.com/content-gateway/file/pub/openshift-v4/clients/helm/3.17.1/helm-linux-amd64"
+    checksum: "sha256:ef6c04f6a748d0f1d624a94a56dc0db83f8d70a65e3dbb19e94107126efcc5fd"
+  mirror_registry:
+    url: "https://developers.redhat.com/content-gateway/file/pub/openshift-v4/clients/mirror-registry/1.3.11/mirror-registry.tar.gz"
+    checksum: "sha256:b2fbf8b13d794cdebb8baee48afbfa78d13c4d76a1c60fc99d52c3c9abd31cf1"
+  oc_mirror:
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.20.15/oc-mirror.tar.gz"
+    checksum: "sha256:59791d2e6b84ee380bc6a180e4e5e2006590ca1e0f146b0176819386e11e26d1"

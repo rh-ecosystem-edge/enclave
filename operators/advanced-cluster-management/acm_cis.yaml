@@ -1,0 +1,41 @@
+---
+# ACM CIS tasks: ClusterImageSet reconciliation
+
+- name: Get current ClusterImageSet
+  kubernetes.core.k8s_info:
+    api_version: hive.openshift.io/v1
+    kind: ClusterImageSet
+  register: r_cluster_image_set
+
+- name: Set desired ClusterImageSet names
+  ansible.builtin.set_fact:
+    r_desired_image_set: "{{ openshift_versions | map(attribute='version') | map('regex_replace', '^(.*)$', 'openshift-v\\1-disconnected') | list }}"
+
+- name: Delete existing ClusterImageSet
+  kubernetes.core.k8s:
+    state: absent
+    definition:
+      apiVersion: hive.openshift.io/v1
+      kind: ClusterImageSet
+      metadata:
+        name: "{{ imageset.metadata.name }}"
+  when:
+    - imageset.metadata.name != "local-cluster-image-set"
+    - imageset.metadata.name not in r_desired_image_set
+  loop: "{{ r_cluster_image_set.resources }}"
+  loop_control:
+    loop_var: imageset
+
+- name: Create ClusterImageSet
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: hive.openshift.io/v1
+      kind: ClusterImageSet
+      metadata:
+        name: openshift-v{{ v.version }}-disconnected
+      spec:
+        releaseImage: "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/release-images:{{ v.version }}-x86_64"
+  loop: "{{ openshift_versions }}"
+  loop_control:
+    loop_var: v

@@ -1,0 +1,68 @@
+- name: validate defaults/catalogs.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/catalogs.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/catalogs.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/content_images.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/content_images.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/content_images.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/control_binaries.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/control_binaries.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/control_binaries.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/model_operators.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/model_operators.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/operators.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/operators.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/storage_operators.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/storage_operators.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/platforms.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/platforms.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/mirror_registry.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/mirror_registry.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/mirror_registry.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/quay_operator.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/quay_operator.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/quay_operator.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: validate defaults/lvms_operator.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/lvms_operator.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/lvms_operator.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
+- name: Include deployment vars
+  ansible.builtin.include_vars: ../../defaults/platforms.yaml
+
+- name: Validate mgmt_openshift_version is in the versions list
+  ansible.builtin.assert:
+    that:
+      - mgmt_openshift_version in (openshift_versions | map(attribute='version') | list)
+    fail_msg: "mgmt_openshift_version {{ mgmt_openshift_version }} is not in the openshift_versions list!"

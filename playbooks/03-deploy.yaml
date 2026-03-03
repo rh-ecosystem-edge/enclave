@@ -1,0 +1,74 @@
+---
+# Phase 3: Deploy - OpenShift cluster deployment
+# This phase is common to both connected and disconnected deployments
+#
+# Performs:
+# - Generate SSH keys
+# - Extract openshift-install binary
+# - Generate install-config.yaml and agent-config.yaml
+# - Copy mirror manifests (disconnected only)
+# - Generate Agent-Based Installer ISO
+# - Copy ISO to web server
+# - Setup Ironic and boot agent hosts via virtual media
+# - Wait for deployment to complete
+# - Detach virtual media from hosts
+# - Clean up Ironic
+#
+# Usage:
+#   ansible-playbook playbooks/03-deploy.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
+
+- name: Phase 3 - Deploy OpenShift cluster
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Display deployment mode
+      ansible.builtin.debug:
+        msg: "Deploying in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+      tags: always
+
+    - name: Include tasks for OCP ABI
+      ansible.builtin.include_tasks:
+        file: tasks/configure_ocp_abi.yaml
+        apply:
+          tags: configure-abi
+      tags: configure-abi
+
+    - name: Configure DNS resolution for cluster
+      ansible.builtin.include_tasks:
+        file: tasks/configure_dns.yaml
+        apply:
+          tags: configure-abi
+      tags: configure-abi
+
+    - name: Setup Ironic for hardware configuration
+      ansible.builtin.include_tasks:
+        file: tasks/configure_hardware_ironic_setup.yaml
+        apply:
+          tags: hardware
+      tags: hardware
+
+    - name: Configure and boot hosts via Ironic
+      loop: "{{ agent_hosts }}"
+      loop_control:
+        loop_var: agent_host
+      ansible.builtin.include_tasks:
+        file: tasks/configure_hardware_ironic_node.yaml
+        apply:
+          tags: hardware
+      tags: hardware
+
+    - name: Wait for deployment
+      ansible.builtin.include_tasks:
+        file: tasks/wait_for_deployment.yaml
+        apply:
+          tags: wait-deployment
+      tags: wait-deployment

@@ -1,0 +1,233 @@
+name: Infrastructure Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_strategy:
+        description: 'Cleanup strategy after run'
+        required: true
+        default: 'on_failure'
+        type: choice
+        options:
+          - always
+          - on_failure
+          - never
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Allow parallel execution with unique cluster names per run
+# Each job gets isolated VMs, networks, and resources
+concurrency:
+  group: enclave-ci-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  infra-verify:
+    name: Infrastructure Verification
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 120
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      # For PR runs: always cleanup to avoid leaving infrastructure
+      # For manual runs: use input parameter (default: on_failure)
+      CLEANUP_STRATEGY: ${{ github.event_name == 'pull_request' && 'always' || inputs.cleanup_strategy || 'on_failure' }}
+      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Generate unique cluster name
+        id: cluster_name
+        run: |
+          # Generate short hash from run_id to stay within 15-char bridge name limit
+          # Cluster name: eci-XXXXXXXX (12 chars)
+          # Networks: eci-XXXXXXXX-b/c (14 chars) - fits in 15 char limit
+          SHORT_ID=$(echo "${{ github.run_id }}" | sha256sum | cut -c1-8)
+          CLUSTER_NAME="eci-${SHORT_ID}"
+          echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV
+          echo "Generated cluster name: ${CLUSTER_NAME}"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Workflow information
+        run: |
+          echo "## Workflow Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Strategy**: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "- **PR Number**: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **PR Title**: ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Pre-flight checks
+        id: preflight
+        run: |
+          echo "## Infrastructure Verification Pre-flight Checks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check required environment variables
+          echo "### Environment Variables" >> $GITHUB_STEP_SUMMARY
+          if [ -z "$DEV_SCRIPTS_PATH" ]; then
+            echo "❌ DEV_SCRIPTS_PATH not set" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
+
+          if [ -z "$WORKING_DIR" ]; then
+            echo "❌ WORKING_DIR not set" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+          echo "✅ WORKING_DIR: $WORKING_DIR" >> $GITHUB_STEP_SUMMARY
+
+
+          # Check system resources
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### System Resources" >> $GITHUB_STEP_SUMMARY
+          TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
+          echo "✅ Total RAM: ${TOTAL_RAM}GB" >> $GITHUB_STEP_SUMMARY
+
+          AVAILABLE_DISK=$(df -h $WORKING_DIR | awk 'NR==2{print $4}')
+          echo "✅ Available disk space: $AVAILABLE_DISK" >> $GITHUB_STEP_SUMMARY
+
+          # Check libvirt access
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Libvirt Access" >> $GITHUB_STEP_SUMMARY
+          if sudo virsh list --all > /dev/null 2>&1; then
+            echo "✅ Libvirt access verified" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Cannot access libvirt" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All pre-flight checks passed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create test infrastructure
+        id: create_infra
+        run: |
+          echo "## Creating Test Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+
+          make environment
+
+      - name: Provision Landing Zone
+        id: provision_lz
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream 10 on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+
+          make provision-landing-zone
+
+      - name: Install Enclave Lab (Connected Mode)
+        id: install_enclave
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Running in connected mode for faster testing..." >> $GITHUB_STEP_SUMMARY
+
+          ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
+
+      - name: Collect artifacts
+        if: always()
+        run: |
+          echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          mkdir -p ci-artifacts
+
+          # Copy environment.json if it exists
+          if [ -f "$WORKING_DIR/environment.json" ]; then
+            cp "$WORKING_DIR/environment.json" ci-artifacts/
+            echo "✅ Collected environment.json" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Collect VM status
+          sudo virsh list --all > ci-artifacts/vm-status.txt 2>&1 || true
+          echo "✅ Collected VM status" >> $GITHUB_STEP_SUMMARY
+
+          # Collect network status
+          sudo virsh net-list --all > ci-artifacts/network-status.txt 2>&1 || true
+          echo "✅ Collected network status" >> $GITHUB_STEP_SUMMARY
+
+          # Collect installation logs from Landing Zone if accessible
+          if [ -f "$WORKING_DIR/environment.json" ]; then
+            LZ_IP=$(jq -r '.vms.landing_zone.networks.bmc.ip // empty' "$WORKING_DIR/environment.json" 2>/dev/null || true)
+            if [ -n "$LZ_IP" ]; then
+              SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+              # Collect Enclave installation log (not deployment.log - that's for OpenShift deployment)
+              if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/installation.log" 2>/dev/null; then
+                scp $SSH_OPTS cloud-user@$LZ_IP:/home/cloud-user/enclave/installation.log ci-artifacts/ 2>/dev/null || true
+                if [ -f ci-artifacts/installation.log ]; then
+                  echo "✅ Collected Enclave installation log" >> $GITHUB_STEP_SUMMARY
+                fi
+              fi
+
+              # NOTE: config/global.yaml is NOT collected directly due to credential exposure risk
+              # A sanitized version is included in the must-gather tarball below
+
+              # Run gather.sh on LZ and copy logs archive to ci-artifacts/must-gather
+              # Note: gather.sh may not exist in infra-only runs
+              if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/must-gather/gather.sh" 2>/dev/null; then
+                mkdir -p ci-artifacts/must-gather
+                GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave/must-gather && GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh ../config/global.yaml 2>&1" || echo "gather.sh failed or not found")
+                if [ -n "$GATHER_OUT" ]; then
+                  echo "$GATHER_OUT" > ci-artifacts/must-gather/gather-output.txt
+                fi
+
+                # Copy logs archive to ci-artifacts/must-gather
+                scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/must-gather/lz-logs-*.tar.gz" ci-artifacts/must-gather/ 2>/dev/null || true
+                if ls ci-artifacts/must-gather/lz-logs-*.tar.gz 1>/dev/null 2>&1; then
+                  echo "✅ Collected LZ logs archive" >> $GITHUB_STEP_SUMMARY
+                else
+                  echo "ℹ️ No must-gather archive (normal for infra-only runs)" >> $GITHUB_STEP_SUMMARY
+                fi
+              else
+                echo "ℹ️ Skipping must-gather (normal for infra-only runs)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-verify-artifacts
+          path: ci-artifacts/
+          retention-days: 7
+
+      - name: Cleanup infrastructure
+        if: |
+          always() &&
+          (env.CLEANUP_STRATEGY == 'always' ||
+           (failure() && env.CLEANUP_STRATEGY == 'on_failure'))
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Cleanup strategy: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+
+          make clean || true
+          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Workflow summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Strategy**: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+          echo "- **Result**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ This PR run will **always cleanup** infrastructure after completion" >> $GITHUB_STEP_SUMMARY
+          fi

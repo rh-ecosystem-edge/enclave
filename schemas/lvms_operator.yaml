@@ -1,0 +1,26 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  lvmsConfigDefaults:
+    type: object
+    description: Default configuration for LVMS
+    additionalProperties: false
+    properties:
+      deviceSelector:
+        type: object
+        additionalProperties: false
+        properties:
+          forceWipeDevicesAndDestroyAllData:
+            type: boolean
+            description: Force wipe devices and destroy all data
+        required:
+          - forceWipeDevicesAndDestroyAllData
+    required:
+      - deviceSelector
+
+required:
+  - lvmsConfigDefaults

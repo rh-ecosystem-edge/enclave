@@ -1,0 +1,36 @@
+- name: "Configure NMStateConfig for [{{ discovery_host.name }}]"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    validate_certs: false
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'templates/nmstateconfig.yaml.j2') }}"
+
+- name: "Create BMC credentials secrets for [{{ discovery_host.name }}]"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    validate_certs: false
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'templates/bmc-secret.yaml.j2') }}"
+
+- name: "Check if BareMetalHost [{{ discovery_host.name }}] exists"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    validate_certs: false
+    api_version: metal3.io/v1alpha1
+    kind: BareMetalHost
+    name: "{{ discovery_host.name }}"
+    namespace: infraenv
+  register: bmh_check
+
+- name: "Create BareMetalHost resources for [{{ discovery_host.name }}]"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    validate_certs: false
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', 'templates/baremetalhost.yaml.j2') }}"
+  vars:
+    bmh_online: "{{ bmh_check.resources[0].spec.online if bmh_check.resources | length > 0 else false }}"

@@ -1,0 +1,13 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: catalogsource-configuration-{{ short_version_dash }}
+  namespace: openshift-acm-policies
+placementRef:
+  apiGroup: apps.open-cluster-management.io
+  kind: PlacementRule
+  name: catalogsource-configuration-{{ short_version_dash }}
+subjects:
+- apiGroup: policy.open-cluster-management.io
+  kind: Policy
+  name: catalogsource-configuration-{{ short_version_dash }}

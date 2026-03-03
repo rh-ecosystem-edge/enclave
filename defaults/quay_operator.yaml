@@ -1,0 +1,13 @@
+---
+# Quay features
+quayFeatureProxyStorage: true
+quayFeatureQuotaManagement: true
+
+# Default storage configuration for all Quay backends
+quayBackendDefaults:
+  storage_path: /datastorage/registry
+
+# Additional defaults applied only when quayBackend is RadosGWStorage
+quayBackendRGWDefaults:
+  is_secure: true
+  port: 443

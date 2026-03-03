@@ -1,0 +1,25 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  mgmt_openshift_version:
+    type: string
+    description: Management cluster OpenShift version
+  openshift_versions:
+    type: array
+    minItems: 1
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          description: OpenShift version to be available
+      required:
+      - version
+required:
+- mgmt_openshift_version
+- openshift_versions

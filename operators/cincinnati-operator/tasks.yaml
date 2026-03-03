@@ -1,0 +1,98 @@
+---
+- name: Create OpenShift Update Service application object
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: updateservice.operator.openshift.io/v1
+      kind: UpdateService
+      metadata:
+        name: service
+        namespace: openshift-update-service
+      spec:
+        graphDataImage: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/graph-image
+        releases: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/release-images
+        replicas: 2
+
+- name: Create ACM Policy for Update Service
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: Policy
+      metadata:
+        annotations:
+          policy.open-cluster-management.io/categories: CM Configuration Management
+          policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+          policy.open-cluster-management.io/standards: NIST SP 800-53
+        name: update-service
+        namespace: openshift-acm-policies
+      spec:
+        disabled: false
+        remediationAction: enforce
+        policy-templates:
+        - objectDefinition:
+            apiVersion: policy.open-cluster-management.io/v1
+            kind: ConfigurationPolicy
+            metadata:
+              name: update-service
+            spec:
+              evaluationInterval:
+                compliant: 2h
+                noncompliant: 45s
+              object-templates:
+              - complianceType: musthave
+                objectDefinition:
+                  apiVersion: config.openshift.io/v1
+                  kind: ClusterVersion
+                  metadata:
+                    name: version
+                  spec:
+                    upstream: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
+
+- name: Create ACM PlacementRule for Update Service
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition:
+      apiVersion: apps.open-cluster-management.io/v1
+      kind: PlacementRule
+      metadata:
+        name: update-service
+        namespace: openshift-acm-policies
+      spec:
+        clusterSelector:
+          matchExpressions:
+          - key: cluster.open-cluster-management.io/clusterset
+            operator: In
+            values:
+            - "account"
+            - "default"
+            - "platform"
+
+- name: Create ACM PlacementBinding for Update Service
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: PlacementBinding
+      metadata:
+        name: update-service
+        namespace: openshift-acm-policies
+      placementRef:
+        name: update-service
+        kind: PlacementRule
+        apiGroup: apps.open-cluster-management.io
+      subjects:
+        - name: update-service
+          kind: Policy
+          apiGroup: policy.open-cluster-management.io
