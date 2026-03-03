@@ -29,8 +29,8 @@ jobs:
     timeout-minutes: 120
 
     env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       # For PR runs: always cleanup to avoid leaving infrastructure
       # For manual runs: use input parameter (default: on_failure)

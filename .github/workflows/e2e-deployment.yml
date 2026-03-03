@@ -52,8 +52,8 @@ jobs:
     timeout-minutes: 180  # 3 hours
 
     env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       # Use manual input if available, otherwise default to 'connected' for PR runs
       ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
