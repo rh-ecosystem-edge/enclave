@@ -670,6 +670,18 @@ if [ "$BOOT_COMPLETE" = true ]; then
         exit 1
     fi
 
+    # Add mirror hostnames -> LZ cluster IP so master VMs can resolve both short and FQDN forms
+    MIRROR_SHORT_HOST="mirror"
+    MIRROR_FQDN="mirror.${BASE_DOMAIN:-lab}"
+    info "Adding DNS entry: ${MIRROR_SHORT_HOST}, ${MIRROR_FQDN} -> ${CLUSTER_IP} (Landing Zone) on network ${CLUSTER_NETWORK_NAME}..."
+    if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
+        "<host ip='${CLUSTER_IP}'><hostname>${MIRROR_SHORT_HOST}</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
+        --live --config 2>/dev/null; then
+        warning "Could not add mirror DNS entry (network may not support live update)"
+    else
+        info "✓ DNS entry added: ${MIRROR_SHORT_HOST}, ${MIRROR_FQDN} -> ${CLUSTER_IP}"
+    fi
+
     echo ""
     info "========================================="
     info "Landing Zone VM Provisioned Successfully"

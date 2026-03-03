@@ -2,7 +2,7 @@
 operators:
 
   - name: quay-operator
-    version: 3.15.2
+    version: 3.15.3
     defaultChannel: stable-3.15
     channels:
     - name: stable-3.15
@@ -35,7 +35,7 @@ operators:
     csvName: update-service-operator
 
   - name: openshift-gitops-operator
-    version: 1.19.1
+    version: 1.19.2
     defaultChannel: gitops-1.19
     channels:
     - name: gitops-1.19
@@ -44,7 +44,7 @@ operators:
     global: true
 
   - name: openshift-pipelines-operator-rh
-    version: 1.20.2
+    version: 1.20.3
     defaultChannel: pipelines-1.20
     channels:
     - name: pipelines-1.20
@@ -53,7 +53,7 @@ operators:
     global: true
 
   - name: netobserv-operator
-    version: 1.10.1
+    version: 1.11.0
     defaultChannel: stable
     channels:
     - name: stable
@@ -63,7 +63,7 @@ operators:
     csvName: network-observability-operator
 
   - name: cluster-logging
-    version: 6.4.1
+    version: 6.4.2
     defaultChannel: stable-6.4
     channels:
     - name: stable-6.4
@@ -71,7 +71,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: loki-operator
-    version: 6.4.1
+    version: 6.4.2
     defaultChannel: stable-6.4
     channels:
     - name: stable-6.4
@@ -80,7 +80,7 @@ operators:
     global: true
 
   - name: redhat-oadp-operator
-    version: 1.5.3
+    version: 1.5.4
     defaultChannel: stable
     channels:
     - name: stable
@@ -126,7 +126,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
-    version: 4.20.0-202601271911
+    version: 4.20.0-202602091941
     defaultChannel: stable
     channels:
     - name: stable
@@ -136,7 +136,7 @@ operators:
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
-    version: 2.5.0-0.1768928092
+    version: 2.5.0-0.1772612774
     defaultChannel: stable-2.5-cluster-scoped
     channels:
     - name: stable-2.5-cluster-scoped

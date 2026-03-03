@@ -34,7 +34,7 @@
       --dest-tls-verify=false \
       --src-tls-verify=false \
       --parallel-images 10 \
-      --parallel-layers 10 \
+      --parallel-layers {{ 1 if quayBackend == 'LocalStorage' else 10 }} \
       --retry-times 10 \
       --retry-delay 0 \
       --image-timeout 40m0s \

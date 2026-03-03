@@ -66,6 +66,16 @@
     share: net,ipc,uts
     state: created
 
+- name: Wait for metal3-ironic pod to exist
+  containers.podman.podman_pod_info:
+    name: metal3-ironic
+  register: r_pod_infra_check
+  retries: 30
+  delay: 2
+  until:
+    - r_pod_infra_check.pods | length > 0
+  changed_when: false
+
 - name: Set ironic secrets list (with CA bundle)
   when: ssl_certs_configured | bool
   ansible.builtin.set_fact:

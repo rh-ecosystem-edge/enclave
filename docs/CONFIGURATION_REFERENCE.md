@@ -764,7 +764,7 @@ pullSecret: |
 
 **Example**:
 ```yaml
-pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
+pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 ```
 
 ## Storage Configuration

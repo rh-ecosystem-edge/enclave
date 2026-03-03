@@ -37,7 +37,7 @@
   ansible.builtin.wait_for:
     port: "{{ http_server_port }}"
     host: localhost
-    timeout: 10
+    timeout: 30
 
 - name: Verify ISO is accessible via temporary HTTP server
   ansible.builtin.uri:

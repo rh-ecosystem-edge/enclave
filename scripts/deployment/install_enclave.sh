@@ -265,8 +265,8 @@ if [ "$PULL_SECRET_FOUND" = true ]; then
     info "  Validated pull secret contains registry.redhat.io credentials"
 
     # Copy to Landing Zone
-    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ROOT_DIR}/.config"
-    scp $SSH_OPTS "$PULL_SECRET_SOURCE" "${LZ_SSH}:${LZ_ROOT_DIR}/.config/pull-secret.json"
+    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ROOT_DIR}/config"
+    scp $SSH_OPTS "$PULL_SECRET_SOURCE" "${LZ_SSH}:${LZ_ROOT_DIR}/config/pull-secret.json"
 
     success "Pull secret copied to Landing Zone"
 
@@ -281,7 +281,7 @@ import yaml
 import json
 
 # Read the pull secret
-with open('/home/cloud-user/.config/pull-secret.json', 'r') as f:
+with open('/home/cloud-user/config/pull-secret.json', 'r') as f:
     pull_secret = json.load(f)
 
 # Read config/global.yaml
