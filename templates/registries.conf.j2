@@ -63,6 +63,12 @@
 
 [[registry]]
   prefix = ""
+  location = "registry.redhat.io/ubi9-minimal"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/ubi9-minimal"
+
+[[registry]]
+  prefix = ""
   location = "registry.redhat.io/multicluster-engine"
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/multicluster-engine"
@@ -277,3 +283,9 @@
   location = "registry.redhat.io/ansible-automation-platform"
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/ansible-automation-platform"
+
+[[registry]]
+  prefix = ""
+  location = "registry.redhat.io/ansible-automation-platform-tech-preview"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/ansible-automation-platform-tech-preview"
