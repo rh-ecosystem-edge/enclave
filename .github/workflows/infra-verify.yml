@@ -22,10 +22,54 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  debug-env-test:
+    name: Debug Environment Test
+    runs-on: [self-hosted, enclave-small]
+    environment: enclave-ci
+    timeout-minutes: 5
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      TEST_VAR_FROM_VARS: ${{ vars.DEV_SCRIPTS_PATH }}
+      TEST_VAR_FROM_SECRETS: ${{ secrets.DEV_SCRIPTS_PATH }}
+
+    steps:
+      - name: Print all environment variables
+        run: |
+          echo "## Debug Environment Test" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "### GitHub Context - vars:" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- vars.DEV_SCRIPTS_PATH: '${{ vars.DEV_SCRIPTS_PATH }}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- vars.WORKING_DIR: '${{ vars.WORKING_DIR }}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "### GitHub Context - secrets:" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.DEV_SCRIPTS_PATH: '${{ secrets.DEV_SCRIPTS_PATH }}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.WORKING_DIR: '${{ secrets.WORKING_DIR }}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.PULL_SECRET: ${{ secrets.PULL_SECRET != '' && 'SET' || 'NOT SET' }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "### Shell Environment Variables:" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- DEV_SCRIPTS_PATH: '${DEV_SCRIPTS_PATH}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- WORKING_DIR: '${WORKING_DIR}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- TEST_VAR_FROM_VARS: '${TEST_VAR_FROM_VARS}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- TEST_VAR_FROM_SECRETS: '${TEST_VAR_FROM_SECRETS}'" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+
+          echo "### All Environment Variables:" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' | tee -a $GITHUB_STEP_SUMMARY
+          env | sort | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' | tee -a $GITHUB_STEP_SUMMARY
+
   infra-verify:
     name: Infrastructure Verification
     runs-on: [self-hosted, enclave-small]
+    environment: enclave-ci
     timeout-minutes: 120
+    needs: debug-env-test
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
@@ -65,6 +109,24 @@ jobs:
             echo "- **PR Title**: $PR_TITLE" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Debug - Dump contexts and variables
+        run: |
+          echo "## Debug Information" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "### GitHub Context Variables (secrets context):" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.WORKING_DIR: ${{ secrets.WORKING_DIR }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- secrets.PULL_SECRET: ${{ secrets.PULL_SECRET != '' && 'SET' || 'NOT SET' }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "### GitHub Context Variables (vars context):" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- vars.DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "- vars.WORKING_DIR: ${{ vars.WORKING_DIR }}" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "### All Environment Variables (sorted):" | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' | tee -a $GITHUB_STEP_SUMMARY
+          env | sort | tee -a $GITHUB_STEP_SUMMARY
+          echo '```' | tee -a $GITHUB_STEP_SUMMARY
 
       - name: Pre-flight checks
         id: preflight
