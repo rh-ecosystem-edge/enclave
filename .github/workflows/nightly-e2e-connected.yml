@@ -22,8 +22,8 @@ jobs:
     timeout-minutes: 180
 
     env:
-      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
       CLEANUP_AFTER: 'true'

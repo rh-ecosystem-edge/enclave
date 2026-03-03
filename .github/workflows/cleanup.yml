@@ -29,8 +29,8 @@ jobs:
     timeout-minutes: 30
 
     env:
-      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
       CLEANUP_LEVEL: ${{ inputs.cleanup_level || 'standard' }}
 
     steps:
