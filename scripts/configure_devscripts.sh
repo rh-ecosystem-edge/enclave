@@ -99,7 +99,7 @@ export MASTER_VCPU=12         # 12 vCPUs
 # Extra disks for storage (used by LVMS for PersistentVolumes)
 export VM_EXTRADISKS=true
 export VM_EXTRADISKS_LIST="vdb"
-export VM_EXTRADISKS_SIZE="60G"
+export VM_EXTRADISKS_SIZE="120G"
 
 # =============================================================================
 # Landing Zone VM Specs
@@ -146,6 +146,9 @@ export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 
 # Cluster domain (for DNS)
 export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
+
+# Base domain (so dev-scripts uses .lab not test.metalkube.org for CLUSTER_DOMAIN)
+export BASE_DOMAIN="lab"
 
 # Working directory (where VMs and configs are stored)
 export WORKING_DIR="/opt/dev-scripts"

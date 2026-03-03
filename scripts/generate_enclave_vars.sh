@@ -164,6 +164,8 @@ quayPassword: SuperPrivate123!
 # Option 1: External S3/RadosGW storage (RECOMMENDED for production)
 # Option 2: Local storage (NOT recommended for production)
 quayBackend: LocalStorage
+quayBackendLocalStorageConfiguration:
+  storage_path: /datastorage/registry
 
 # ============================================================================
 # Storage Backend
@@ -202,7 +204,7 @@ defaultNtpServers: []
 # Pull secret will be read from pullSecretPath
 pullSecret:
   auths: {}
-pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
+pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 
 # Discovery hosts for hardware discovery (optional)
 # Add hosts here if you want to use the discovery feature
