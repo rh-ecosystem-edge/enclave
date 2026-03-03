@@ -22,10 +22,13 @@ YELLOW="\e[33m"
 
 # Parse arguments
 TOKEN="${1}"
-NUM_RUNNERS="${2:-64}"
+NUM_RUNNERS="${2:-5}"
 URL="https://github.com/rh-ecosystem-edge/enclave"
 RUNNER_VERSION="2.311.0"
 BASE_DIR="$HOME/action-runners"
+
+# Get hostname prefix (short hostname without domain)
+HOST_PREFIX=$(hostname -s)
 
 # Validate required parameters
 if [ -z "$TOKEN" ]; then
@@ -43,6 +46,7 @@ fi
 
 echo -e "${BOLD}GitHub Actions Runner Setup${RESETS}"
 echo -e "${GREEN}Repository: $URL${RESETS}"
+echo -e "${GREEN}Hostname prefix: $HOST_PREFIX${RESETS}"
 echo -e "${GREEN}Runners to create: $NUM_RUNNERS${RESETS}"
 echo -e "${GREEN}Base directory: $BASE_DIR${RESETS}"
 echo ""
@@ -81,7 +85,7 @@ echo ""
 
 # 3. Loop to create N runners
 for i in $(seq 1 "$NUM_RUNNERS"); do
-    RUNNER_NAME="pr-validation-$(printf "%02d" "$i")"
+    RUNNER_NAME="${HOST_PREFIX}-runner-$(printf "%02d" "$i")"
     RUNNER_DIR="$BASE_DIR/runner-$i"
 
     echo -e "${BOLD}--- Setting up $RUNNER_NAME ($(($i))/$NUM_RUNNERS) ---${RESETS}"
