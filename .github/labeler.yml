@@ -1,0 +1,43 @@
+# Area labels - no prefix, based on file paths
+
+deployment:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'playbooks/0[1-7]-*.yaml'
+      - 'playbooks/main.yaml'
+      - 'scripts/generate_*.sh'
+      - 'Makefile'
+      - 'defaults/**/*'
+      - 'config/**/*'
+
+ci-cd:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**/*'
+      - 'scripts/runners/**/*'
+
+infrastructure:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'scripts/create_*.sh'
+      - 'scripts/configure_*.sh'
+      - 'scripts/provision_*.sh'
+      - 'scripts/cleanup.sh'
+      - 'playbooks/tasks/create_*.yaml'
+      - 'playbooks/tasks/configure_*.yaml'
+      - 'playbooks/tasks/provision_*.yaml'
+
+validation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'schemas/**/*'
+      - 'validations.sh'
+      - 'playbooks/tasks/validate_*.yaml'
+
+operators:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'operators/**/*'
+      - 'playbooks/05-operators.yaml'
+      - 'playbooks/tasks/*operator*.yaml'
+      - 'playbooks/tasks/deploy_operator*.yaml'
