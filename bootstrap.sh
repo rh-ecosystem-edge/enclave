@@ -9,6 +9,23 @@ getValue(){
 
 global_vars=${1:-config/global.yaml}
 certs_vars=${2:-config/certificates.yaml}
+
+if [ ! -f "$global_vars" ]; then
+    echo "Error: $global_vars not found."
+    if [ -z "$1" ]; then
+        echo "Copy config/global.example.yaml to $global_vars and fill in your values."
+    fi
+    exit 1
+fi
+
+if [ ! -f "$certs_vars" ]; then
+    echo "Error: $certs_vars not found."
+    if [ -z "$2" ]; then
+        echo "Copy config/certificates.example.yaml to $certs_vars and fill in your values."
+    fi
+    exit 1
+fi
+
 workingDir=$(getValue .workingDir)
 lck=~/.lck-rh-lz
 DSTAMP=$(date +%Y%m%d_%H%M%S)
