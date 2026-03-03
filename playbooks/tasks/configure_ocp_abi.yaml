@@ -13,13 +13,6 @@
     backend: cryptography
     private_key_format: ssh
 
-- name: Copy pull secret to config directory for Ironic (connected mode)
-  when: not (disconnected | default(true))
-  ansible.builtin.copy:
-    src: "{{ pullSecretPath }}"
-    dest: "{{ workingDir }}/config/pull-secret.json"
-    remote_src: true
-
 - name: Extract openshift-install binary
   ansible.builtin.command: |
     {{ workingDir }}/bin/oc adm release extract --registry-config={{ pullSecretPath }} --command=openshift-install --to {{ workingDir }}/bin/

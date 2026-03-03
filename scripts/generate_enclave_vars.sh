@@ -178,25 +178,12 @@ blockStorageBackend: lvms
 lvmsConfig: {}
 
 # ============================================================================
-# OpenShift Configuration
+# OpenShift Deployment Configuration (optional)
 # ============================================================================
-# Disconnected mode
-disconnected: true
-
-# Encrypt installation partition with TPM v2
-diskEncryption: false
-
-# SSH public key path for cluster nodes
-sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
-
-# Variables for oc-mirror
-ocMirrorLogLevel: info
-
-# Additional NTP sources for cluster nodes (optional)
-defaultNtpServers: []
+# Leaving default values
 
 # ============================================================================
-# Pull Secret Configuration
+# Pull Secret and SSH Public Key Configuration
 # ============================================================================
 # Obtain from: https://console.redhat.com/openshift/install/pull-secret
 # Pull secret will be read from pullSecretPath
@@ -204,7 +191,12 @@ pullSecret:
   auths: {}
 pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
 
-# Discovery hosts for hardware discovery (optional)
+# SSH public key path for cluster nodes
+sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
+
+# ============================================================================
+# Discovery Hosts Configuration
+# ============================================================================
 # Add hosts here if you want to use the discovery feature
 discovery_hosts: []
 

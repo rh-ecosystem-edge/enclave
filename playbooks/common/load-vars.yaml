@@ -1,5 +1,8 @@
 ---
 
+- name: Include deployment defaults
+  ansible.builtin.include_vars: ../../defaults/deployment.yaml
+
 - name: Include global deployment vars
   ansible.builtin.include_vars: "{{ vars_file | default('../../config/global.yaml') }}"
 

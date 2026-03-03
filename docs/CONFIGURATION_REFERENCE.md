@@ -748,13 +748,15 @@ pullSecret: |
 
 #### `pullSecretPath`
 
-**Description**: Path to pull secret file (alternative to inline `pullSecret`).
+**Description**: Path to pull secret JSON file. Defaults to `{{ workingDir }}/config/pull-secret.json`. Override in `config/global.yaml` if your pull secret is stored elsewhere.
 
 **Type**: String (file path)
 
+**Default**: `{{ workingDir }}/config/pull-secret.json`
+
 **Example**:
 ```yaml
-pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
+pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
 ```
 
 ## Storage Configuration
@@ -1144,11 +1146,18 @@ defaultPrefix: 24
 rendezvousIP: 192.168.2.24
 lzBmcIP: 100.64.1.10
 
-# OpenShift Configuration
-disconnected: true
-diskEncryption: false
+# OpenShift Deployment Configuration (optional — uncomment only to override defaults)
+# disconnected: false  # Default: true (set to false for connected deployments)
+# diskEncryption: true  # Default: false (set to true to enable TPM v2 encryption)
+# ocMirrorLogLevel: debug  # Default: info
+# defaultNtpServers:  # No additional servers by default
+#  - YOUR_NTP_SERVER_1
+#  - YOUR_NTP_SERVER_2
+
+# Pull Secret and SSH Public Key
+pullSecret: '{"auths":{"cloud.openshift.com":{...},"quay.io":{...}}}'
+# pullSecretPath: "{{ workingDir }}/config/pull-secret.json"  # Default
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
-ocMirrorLogLevel: debug
 
 # Storage Backend
 blockStorageBackend: lvms
@@ -1187,9 +1196,6 @@ quayBackendRGWConfiguration:
   bucket_name: quay-bucket-name
   hostname: ocs-storagecluster-cephobjectstore-openshift-storage.apps.store.enclave-test.nodns.in
 
-# Pull Secret
-pullSecret: '{"auths":{"cloud.openshift.com":{...},"quay.io":{...}}}'
-pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 ```
 
 ### `config/certificates.yaml`

@@ -1,0 +1,12 @@
+---
+# Default deployment mode. Override in config/global.yaml to deploy in connected mode.
+disconnected: true
+
+# Default disk encryption setting. Override in config/global.yaml to enable TPM v2 encryption.
+diskEncryption: false
+
+# Default oc-mirror log level. Override in config/global.yaml for more verbosity.
+ocMirrorLogLevel: info
+
+# Default pull secret path. Override in config/global.yaml if stored elsewhere.
+pullSecretPath: "{{ workingDir }}/config/pull-secret.json"

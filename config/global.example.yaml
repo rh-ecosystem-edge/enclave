@@ -77,31 +77,31 @@ blockStorageBackend: lvms
 #     "kind": "ConfigMap", "data": ..}]'
 
 # ============================================================================
-# OpenShift Configuration
+# OpenShift Deployment Configuration (optional)
+# All settings below have defaults. Uncomment only to override.
 # ============================================================================
-# Disconnected mode
-disconnected: true
+# Disconnected mode (default: true, set to false for connected deployments)
+# disconnected: false
 
-# Encrypt installation partition with TPM v2
-diskEncryption: false
+# Encrypt installation partition with TPM v2 (default: false, set to true to enable)
+# diskEncryption: true
 
-# SSH public key path for cluster nodes
-sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
+# Log level for oc-mirror (default: info, options: trace, debug, info, error)
+# ocMirrorLogLevel: debug
 
-# Variables for oc-mirror
-ocMirrorLogLevel: debug
-
-# Additional NTP sources for cluster nodes (optional)
+# Additional NTP sources for cluster nodes (no additional servers by default)
 # defaultNtpServers:
 #  - YOUR_NTP_SERVER_1
 #  - YOUR_NTP_SERVER_2
 
 # ============================================================================
-# Pull Secret Configuration
+# Pull Secret and SSH Public Key Configuration
 # ============================================================================
 # Obtain from: https://console.redhat.com/openshift/install/pull-secret
 pullSecret: '{"auths":{"YOUR_PULL_SECRET"}}'
-pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
+
+# SSH public key path for cluster nodes
+sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
 
 # ============================================================================
 # Cluster Hosts Configuration (Agent Hosts)
