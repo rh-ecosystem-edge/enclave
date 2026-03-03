@@ -1,0 +1,6 @@
+self-hosted-runner:
+  # Custom runner labels for enclave CI infrastructure
+  labels:
+    - pr-validation   # Fast validation jobs
+    - enclave-small   # Medium jobs like infra-verify
+    - enclave-large   # Long-running E2E jobs
