@@ -8,6 +8,13 @@ operators:
     namespace: quay-enterprise
     source: cs-redhat-operator-index-v4-20
 
+  - name: multicluster-engine
+    defaultChannel: stable-2.10
+    channels:
+    - name: stable-2.10
+    namespace: multicluster-engine
+    source: cs-redhat-operator-index-v4-20
+
   - name: advanced-cluster-management
     defaultChannel: release-2.15
     channels:
