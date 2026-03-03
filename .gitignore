@@ -3,3 +3,8 @@ config/*.yaml
 !config/*.example.yaml
 debug.yaml
 .claude
+CLAUDE.md
+
+# IDE folders
+.vscode/
+.idea/
