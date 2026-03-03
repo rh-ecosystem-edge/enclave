@@ -45,32 +45,50 @@ jobs:
 
       - name: Pre-flight checks
         id: preflight
+        shell: bash {0}
         run: |
-          echo "## Nightly E2E Deployment - Connected Mode" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          set +e  # Don't exit on first error, collect all failures
+          FAILED=0
+
+          echo "## Nightly E2E Deployment - Connected Mode" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" | tee -a $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" | tee -a $GITHUB_STEP_SUMMARY
+          echo "" | tee -a $GITHUB_STEP_SUMMARY
 
           # Check required environment variables
-          echo "### Environment Variables" >> $GITHUB_STEP_SUMMARY
+          echo "### Environment Variables" | tee -a $GITHUB_STEP_SUMMARY
           if [ -z "$DEV_SCRIPTS_PATH" ]; then
-            echo "❌ DEV_SCRIPTS_PATH not set" >> $GITHUB_STEP_SUMMARY
-            exit 1
+            echo "❌ DEV_SCRIPTS_PATH not set" | tee -a $GITHUB_STEP_SUMMARY
+            FAILED=1
+          else
+            echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
           fi
-          echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
 
           if [ -z "$WORKING_DIR" ]; then
-            echo "❌ WORKING_DIR not set" >> $GITHUB_STEP_SUMMARY
-            exit 1
+            echo "❌ WORKING_DIR not set" | tee -a $GITHUB_STEP_SUMMARY
+            FAILED=1
+          else
+            echo "✅ WORKING_DIR: $WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
           fi
-          echo "✅ WORKING_DIR: $WORKING_DIR" >> $GITHUB_STEP_SUMMARY
 
           if [ -z "$PULL_SECRET" ]; then
-            echo "❌ PULL_SECRET not set" >> $GITHUB_STEP_SUMMARY
+            echo "❌ PULL_SECRET not set" | tee -a $GITHUB_STEP_SUMMARY
+            FAILED=1
+          else
+            echo "✅ PULL_SECRET configured" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+
+          if [ $FAILED -eq 0 ]; then
+            echo "" | tee -a $GITHUB_STEP_SUMMARY
+            echo "✅ All pre-flight checks passed" | tee -a $GITHUB_STEP_SUMMARY
+          else
+            echo "" | tee -a $GITHUB_STEP_SUMMARY
+            echo "❌ Pre-flight checks failed" | tee -a $GITHUB_STEP_SUMMARY
+            echo "" | tee -a $GITHUB_STEP_SUMMARY
+            echo "**Action Required**: Configure repository variables and secrets in Settings → Secrets and variables → Actions" | tee -a $GITHUB_STEP_SUMMARY
             exit 1
           fi
-          echo "✅ PULL_SECRET configured" >> $GITHUB_STEP_SUMMARY
 
       - name: Clean infrastructure
         id: clean
