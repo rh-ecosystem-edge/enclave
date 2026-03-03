@@ -45,27 +45,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  e2e-deployment:
-    name: E2E Deployment Test
-    runs-on: [self-hosted, enclave-large]
-    timeout-minutes: 180  # 3 hours
-
-    env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
-      PULL_SECRET: ${{ secrets.PULL_SECRET }}
-      # Use manual input if available, otherwise default to 'connected' for PR runs
-      ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
-      # Use manual input if available, otherwise default to 'true' for PR runs
-      CLEANUP_AFTER: ${{ github.event.inputs.cleanup_after || 'true' }}
-      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
-      OPENSHIFT_CI: "true"
+  check-e2e-needed:
+    name: Check if E2E should run
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Check if E2E should run
+      - name: Check if E2E-relevant files changed
         uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -89,20 +80,44 @@ jobs:
               - 'validations.sh'
               - 'setup_*.sh'
 
-      - name: Report E2E decision
+      - name: Make decision
+        id: decision
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "▶️  Manual trigger - E2E will run"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "▶️  Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
-            echo "✓ E2E-relevant files changed - E2E will run"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✓ E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           else
-            echo "ℹ️  Only documentation/config files changed - E2E will be skipped"
-            echo "To run E2E anyway, use manual workflow_dispatch"
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
+            echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
+  e2e-deployment:
+    name: E2E Deployment Test
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 180  # 3 hours
+    needs: check-e2e-needed
+    if: needs.check-e2e-needed.outputs.should_run == 'true'
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      # Use manual input if available, otherwise default to 'connected' for PR runs
+      ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
+      # Use manual input if available, otherwise default to 'true' for PR runs
+      CLEANUP_AFTER: ${{ github.event.inputs.cleanup_after || 'true' }}
+      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Generate unique cluster name
-        # Run if: manual trigger OR relevant files changed
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: cluster_name
         run: |
           # Generate short hash from run_id to stay within 15-char bridge name limit
@@ -114,7 +129,6 @@ jobs:
           echo "Generated cluster name: ${CLUSTER_NAME}"
 
       - name: Pre-flight checks
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: preflight
         shell: bash {0}
         run: |
@@ -174,7 +188,6 @@ jobs:
           fi
 
       - name: Clean existing infrastructure
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: clean
         run: |
           echo "## Cleaning Existing Infrastructure" >> $GITHUB_STEP_SUMMARY
@@ -186,7 +199,6 @@ jobs:
           echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Create infrastructure
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: create_infra
         run: |
           echo "## Creating Test Infrastructure" >> $GITHUB_STEP_SUMMARY
@@ -198,7 +210,6 @@ jobs:
           echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: provision_lz
         run: |
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
@@ -210,7 +221,6 @@ jobs:
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: install_enclave
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
@@ -222,7 +232,6 @@ jobs:
           echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 1 - Prepare binaries and content
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_prepare
         run: |
           echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
@@ -234,7 +243,7 @@ jobs:
           echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 2 - Mirror registry setup
-        if: (github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true') && env.ENCLAVE_DEPLOYMENT_MODE != 'connected'
+        if: env.ENCLAVE_DEPLOYMENT_MODE != 'connected'
         id: deploy_mirror
         run: |
           echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
@@ -246,7 +255,6 @@ jobs:
           echo "✅ Phase 2 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 3 - Deploy OpenShift cluster
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_install
         run: |
           echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
@@ -258,7 +266,6 @@ jobs:
           echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 4 - Post-install configuration
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_post_install
         run: |
           echo "## Phase 4: Post-Install Configuration" >> $GITHUB_STEP_SUMMARY
@@ -270,7 +277,6 @@ jobs:
           echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 5 - Install operators
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_operators
         run: |
           echo "## Phase 5: Operators" >> $GITHUB_STEP_SUMMARY
@@ -282,7 +288,6 @@ jobs:
           echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 6 - Day-2 operations
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_day2
         run: |
           echo "## Phase 6: Day-2 Operations" >> $GITHUB_STEP_SUMMARY
@@ -294,7 +299,6 @@ jobs:
           echo "✅ Phase 6 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 7 - Configure hardware discovery
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: deploy_discovery
         run: |
           echo "## Phase 7: Hardware Discovery" >> $GITHUB_STEP_SUMMARY
@@ -306,7 +310,6 @@ jobs:
           echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify cluster deployment
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.e2e == 'true'
         id: verify_cluster
         run: |
           set +e  # Don't exit on error, handle errors explicitly
