@@ -1,0 +1,183 @@
+name: Cleanup Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_level:
+        description: 'Cleanup level'
+        required: true
+        default: 'standard'
+        type: choice
+        options:
+          - standard
+          - deep
+          - full
+  schedule:
+    # Weekly scheduled cleanup - Sunday at 4 AM UTC
+    - cron: '0 4 * * 0'
+
+# CRITICAL: Cleanup must wait for all other jobs to complete
+# Uses global concurrency group to prevent cleanup during active tests
+concurrency:
+  group: enclave-ci-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Infrastructure Cleanup
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 30
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ secrets.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ secrets.WORKING_DIR }}
+      CLEANUP_LEVEL: ${{ inputs.cleanup_level || 'standard' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pre-cleanup status
+        id: pre_status
+        run: |
+          echo "## Pre-Cleanup Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cleanup Level**: $CLEANUP_LEVEL" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Virtual Machines" >> $GITHUB_STEP_SUMMARY
+          sudo virsh list --all | tee vms-before.txt
+          cat vms-before.txt >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Networks" >> $GITHUB_STEP_SUMMARY
+          sudo virsh net-list --all | tee networks-before.txt
+          cat networks-before.txt >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Disk Space" >> $GITHUB_STEP_SUMMARY
+          df -h $WORKING_DIR | tee disk-before.txt
+          cat disk-before.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: Standard cleanup
+        if: always()
+        run: |
+          echo "## Running Standard Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Clean up Enclave test infrastructure using make clean
+          if [ -d "$DEV_SCRIPTS_PATH" ]; then
+            echo "Running: make clean" >> $GITHUB_STEP_SUMMARY
+            make clean || true
+            echo "✅ Standard cleanup complete" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ DEV_SCRIPTS_PATH not found: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Deep cleanup
+        if: env.CLEANUP_LEVEL == 'deep' || env.CLEANUP_LEVEL == 'full'
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Running Deep Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Destroy any remaining CI VMs (all CI runs)
+          for vm in $(sudo virsh list --all --name | grep "eci-\|enclave-ci-\|enclave-test" || true); do
+            echo "Destroying VM: $vm" >> $GITHUB_STEP_SUMMARY
+            sudo virsh destroy "$vm" 2>/dev/null || true
+            sudo virsh undefine "$vm" --remove-all-storage 2>/dev/null || true
+          done
+
+          # Remove any CI networks (all CI runs)
+          for net in $(sudo virsh net-list --all --name | grep "eci-\|enclave-ci-\|enclave-test" || true); do
+            echo "Removing network: $net" >> $GITHUB_STEP_SUMMARY
+            sudo virsh net-destroy "$net" 2>/dev/null || true
+            sudo virsh net-undefine "$net" 2>/dev/null || true
+          done
+
+          # Clean up working directory artifacts
+          if [ -d "$WORKING_DIR" ]; then
+            echo "Cleaning working directory: $WORKING_DIR" >> $GITHUB_STEP_SUMMARY
+            rm -f "$WORKING_DIR/environment.json" || true
+            rm -rf "$WORKING_DIR/enclave-test-*" || true
+          fi
+
+          echo "✅ Deep cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Full cleanup
+        if: env.CLEANUP_LEVEL == 'full'
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Running Full Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Stop any running sushy-tools containers
+          echo "Stopping sushy-tools containers..." >> $GITHUB_STEP_SUMMARY
+          sudo podman ps -a | grep sushy-tools | awk '{print $1}' | xargs -r sudo podman stop || true
+          sudo podman ps -a | grep sushy-tools | awk '{print $1}' | xargs -r sudo podman rm || true
+
+          # Clean up libvirt pools (if any were created)
+          # Match all cluster-specific pools:
+          # - dev-scripts pools: eci-XXXXXXXX, nc-YYYYMMDD, nd-YYYYMMDD
+          # - Landing Zone pools (new): eci-*-lz, nc-*-lz, nd-*-lz
+          # - Landing Zone pools (legacy): eci-*_pool, nc-*_pool, nd-*_pool
+          for pool in $(sudo virsh pool-list --all --name | grep -E "^(eci-|nc-|nd-)([a-f0-9]{8}|[0-9]{8})(-lz|_pool)?$" || true); do
+            echo "Removing pool: $pool" >> $GITHUB_STEP_SUMMARY
+            sudo virsh pool-destroy "$pool" 2>/dev/null || true
+            sudo virsh pool-undefine "$pool" 2>/dev/null || true
+          done
+
+          # Clean up any dangling virtual network interfaces
+          for iface in $(ip link show | grep -o "virbr[0-9]*" || true); do
+            if ! sudo virsh net-list --all | grep -q "$iface"; then
+              echo "Removing dangling interface: $iface" >> $GITHUB_STEP_SUMMARY
+              sudo ip link delete "$iface" 2>/dev/null || true
+            fi
+          done
+
+          echo "✅ Full cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Post-cleanup status
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Post-Cleanup Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Virtual Machines" >> $GITHUB_STEP_SUMMARY
+          sudo virsh list --all | tee vms-after.txt
+          cat vms-after.txt >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Networks" >> $GITHUB_STEP_SUMMARY
+          sudo virsh net-list --all | tee networks-after.txt
+          cat networks-after.txt >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Disk Space" >> $GITHUB_STEP_SUMMARY
+          df -h $WORKING_DIR | tee disk-after.txt
+          cat disk-after.txt >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Level**: $CLEANUP_LEVEL" >> $GITHUB_STEP_SUMMARY
+
+          # Count VMs before and after
+          VMS_BEFORE=$(grep -cE "eci-|enclave-ci-|enclave-test" vms-before.txt || echo "0")
+          VMS_AFTER=$(grep -cE "eci-|enclave-ci-|enclave-test" vms-after.txt || echo "0")
+          echo "- **VMs Cleaned**: $((VMS_BEFORE - VMS_AFTER))" >> $GITHUB_STEP_SUMMARY
+
+          # Count networks before and after
+          NETS_BEFORE=$(grep -cE "eci-|enclave-ci-|enclave-test" networks-before.txt || echo "0")
+          NETS_AFTER=$(grep -cE "eci-|enclave-ci-|enclave-test" networks-after.txt || echo "0")
+          echo "- **Networks Cleaned**: $((NETS_BEFORE - NETS_AFTER))" >> $GITHUB_STEP_SUMMARY
+
+          echo "- **Result**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
