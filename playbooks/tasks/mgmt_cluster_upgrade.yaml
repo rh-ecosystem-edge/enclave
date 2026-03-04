@@ -14,6 +14,14 @@
 - name: Determine if upgrade is required
   ansible.builtin.set_fact:
     upgrade_required: "{{ mgmt_openshift_version is ansible.builtin.version(cluster_version, '>') }}"
+    downgrade_requested: "{{ mgmt_openshift_version is ansible.builtin.version(cluster_version, '<') }}"
+
+- name: Fail when requested version is lower than current cluster version
+  when: downgrade_requested
+  ansible.builtin.fail:
+    msg: >-
+      Requested version {{ mgmt_openshift_version }} is lower than current cluster version {{ cluster_version }}.
+      Downgrades are not supported.
 
 - name: Get mirrored versions
   when: upgrade_required
