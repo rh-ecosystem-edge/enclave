@@ -17,24 +17,13 @@
     state: directory
     mode: '0777'
 
-- name: Create minimal Clair config for export
-  ansible.builtin.copy:
-    dest: "{{ workingDir }}/data/clair/config.yaml"
-    content: |
-      http_listen_addr: :8080
-      introspection_addr: :8081
-      indexer:
-        connstring: ""
-        scanlock_retry: 10
-        layer_scan_concurrency: 5
-      matcher:
-        connstring: ""
-        max_conn_pool: 100
-      notifier:
-        connstring: ""
-        delivery_interval: 1m
+- name: Check if Clair updates file exists
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/data/clair/updates.json.gz"
+  register: clair_updates_stat_file
 
 - name: Export vulnerability data on Landing Zone
+  when: not clair_updates_stat_file.stat.exists
   containers.podman.podman_container:
     name: clair-exporter
     image: "{{ clair_pod.spec.containers[0].image | regex_replace('^registry\\.redhat\\.io', quayHostname + ':8443') }}"
@@ -44,7 +33,7 @@
     volumes:
       - "{{ workingDir }}/data/clair:/data:Z"
     entrypoint: "/usr/bin/clairctl"
-    command: "--config /data/config.yaml export-updaters /data/updates.json.gz"
+    command: "--config /data/minimal_config.yaml export-updaters --strict /data/updates.json.gz"
     detach: false
 
 - name: Ensure directory /var/www/html/clair/
