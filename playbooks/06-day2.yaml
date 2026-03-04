@@ -35,6 +35,8 @@
         file: ../operators/advanced-cluster-management/acm_cis.yaml
         apply:
           tags: acm-cis
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: acm-cis
 
     - name: Configure Quay in disconnected environments
@@ -51,6 +53,8 @@
         file: ../operators/quay-operator/clair_disconnected.yaml
         apply:
           tags: clair-disconnected
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: clair-disconnected
 
     - name: Mirrored catalogsource configuration ACM policy
@@ -62,6 +66,8 @@
         file: tasks/catalogsource.yaml
         apply:
           tags: acm-policy-catalogsources
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       loop: "{{ openshift_versions }}"
       loop_control:
         loop_var: openshift_version
@@ -72,6 +78,8 @@
         file: tasks/model_config.yaml
         apply:
           tags: model-config
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: model-config
 
     - name: Kubevirt - VMaaS
@@ -79,4 +87,6 @@
         file: tasks/vmaas_validation.yaml
         apply:
           tags: vmaas
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: vmaas
