@@ -13,5 +13,11 @@
       loop_control:
         loop_var: operator
 
+    - name: Include specific tasks for the operators
+      ansible.builtin.include_tasks: "../../operators/{{ operator.name }}/tasks.yaml"
+      loop: "{{ [storage_operators[blockStorageBackend]] + operators }}"
+      loop_control:
+        loop_var: operator
+
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
