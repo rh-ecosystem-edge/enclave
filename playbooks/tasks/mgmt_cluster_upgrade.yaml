@@ -28,10 +28,11 @@
   ansible.builtin.set_fact:
     mirrored_versions: "{{ openshift_versions | map(attribute='version') | list }}"
 
-- name: Determine if version is mirrored (upgrade condition)
-  when: upgrade_required
-  ansible.builtin.set_fact:
-    upgrade_condition_version_mirrored: "{{ mgmt_openshift_version in mirrored_versions }}"
+- name: Fail when requested version is not mirrored
+  when: mgmt_openshift_version not in mirrored_versions
+  ansible.builtin.fail:
+    msg: >-
+      Requested version {{ mgmt_openshift_version }} is not mirrored: {{ mirrored_versions }}.
 
 - name: Get available upgrades
   when: upgrade_required
@@ -89,8 +90,7 @@
   ansible.builtin.set_fact:
     perform_upgrade: >
       {{
-       upgrade_condition_version_mirrored
-        and upgrade_condition_version_available
+        upgrade_condition_version_available
         and upgrade_condition_co_healthy
         and upgrade_condition_co_upgradeable
       }}
