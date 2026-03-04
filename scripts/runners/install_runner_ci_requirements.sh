@@ -351,8 +351,7 @@ EOF
         fi
     fi
 
-    # Create systemd override directory for runner services
-    SYSTEMD_OVERRIDE_DIR="/etc/systemd/system"
+    # Create systemd environment file for runner services
     info "  Creating systemd environment file for runner services..."
 
     # Create environment file that will be used by runner services
