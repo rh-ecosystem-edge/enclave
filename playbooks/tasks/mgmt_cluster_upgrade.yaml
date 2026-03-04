@@ -28,7 +28,7 @@
 - name: Get available upgrades
   when: upgrade_required
   ansible.builtin.set_fact:
-    available_versions: "{{ cv_info.resources[0].status.availableUpdates | map(attribute='version') | list }}"
+    available_versions: "{{ (cv_info.resources[0].status.availableUpdates | default([])) | map(attribute='version') | list }}"
 
 - name: Determine if version is available (upgrade condition)
   when:
@@ -77,15 +77,20 @@
       }}
 
 - name: Determine if need to perform upgrade (aggregate upgrade conditions)
+  when: upgrade_required
   ansible.builtin.set_fact:
     perform_upgrade: >
       {{
-        upgrade_required
-        and upgrade_condition_version_mirrored
+       upgrade_condition_version_mirrored
         and upgrade_condition_version_available
         and upgrade_condition_co_healthy
         and upgrade_condition_co_upgradeable
       }}
+
+- name: Set perform_upgrade to false when upgrade not required
+  when: not upgrade_required
+  ansible.builtin.set_fact:
+    perform_upgrade: false
 
 - name: Trigger cluster upgrade
   when: perform_upgrade
