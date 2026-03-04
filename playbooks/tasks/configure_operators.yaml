@@ -20,6 +20,7 @@
     - name: "Update operator versions"
       ansible.builtin.shell: |
         python ../scripts/operator_update.py "{{ [storage_operators[blockStorageBackend]] + operators }}" "False"
+      register: operator_update_result
 
     - name: Print the output
       ansible.builtin.debug:
