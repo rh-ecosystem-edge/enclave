@@ -86,7 +86,11 @@
       ansible.builtin.include_tasks:
         file: tasks/vmaas_validation.yaml
         apply:
-          tags: vmaas
+          tags:
+            - vmaas
+            - aap_archive_service
           environment:
             KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-      tags: vmaas
+      tags:
+        - vmaas
+        - aap_archive_service

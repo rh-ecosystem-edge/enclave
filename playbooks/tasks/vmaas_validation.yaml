@@ -33,10 +33,17 @@
     not __aap_license_stat.stat.exists | bool
 
 - name: "Deploy VMaaS"
-  ansible.builtin.include_tasks:
-    file: vmaas.yaml
-    apply:
-      tags: vmaas
+  block:
+    - name: "Deploy AAP configuration archive service in the LZ"
+      ansible.builtin.include_tasks:
+        file: aap_archive_service.yaml
+        apply:
+          tags: aap_archive_service
+    - name: "Deploy VMaaS"
+      ansible.builtin.include_tasks:
+        file: vmaas.yaml
+        apply:
+          tags: vmaas
   when:
     - vmaas_clusters | length > 0
     - __aap_license_stat.stat.exists is defined
