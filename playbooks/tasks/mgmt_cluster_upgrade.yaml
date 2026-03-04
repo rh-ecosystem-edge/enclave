@@ -4,6 +4,9 @@
     kind: ClusterVersion
     name: version
   register: cv_info
+  until:
+    - cv_info.resources is defined
+    - cv_info.resources | length > 0
   retries: 120
   delay: 10
 
@@ -125,6 +128,9 @@
     cv_info is defined and
     cv_info.resources is defined and
     cv_info.resources | length > 0 and
+    cv_info.resources[0].status is defined and
+    cv_info.resources[0].status.history is defined and
+    cv_info.resources[0].status.history | length > 0 and
     cv_info.resources[0].status.history[0].state == 'Completed' and
     cv_info.resources[0].status.history[0].version == mgmt_openshift_version
   retries: 120
