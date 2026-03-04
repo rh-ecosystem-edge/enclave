@@ -134,10 +134,10 @@ printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
   | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
 /g' -e 's/\\"/"/g')"
 
-#echo -p "Deploying Partner OverLay .. " -n1 -s
-#    ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}
-#echo -e "\e[38;5;10m Done...\033[0m"; date
-#
+echo -p "Deploying Partner OverLay .. " -n1 -s
+    ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}
+echo -e "\e[38;5;10m Done...\033[0m"; date
+
 #echo -p "Service Validation and HealthCheck ..TBD " -n1 -s  | tee -a ${log}
 #echo -e "\e[38;5;10m Done...\033[0m"; date
 
