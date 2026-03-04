@@ -18,6 +18,7 @@ stringData:
   OSAC_AAP_TOKEN: "{{ osac_aap_token }}"
   OSAC_AAP_PROVISION_TEMPLATE: "{{ osac_aap_provision_template | default('osac-create-compute-instance') }}"
   OSAC_AAP_DEPROVISION_TEMPLATE: "{{ osac_aap_deprovision_template | default('osac-delete-compute-instance') }}"
+  OSAC_AAP_INSECURE_SKIP_VERIFY: "{{ osac_aap_insecure_skip_verify | default('false') }}"
 {% if osac_aap_status_poll_interval is defined %}
   OSAC_AAP_STATUS_POLL_INTERVAL: "{{ osac_aap_status_poll_interval }}"
 {% endif %}
