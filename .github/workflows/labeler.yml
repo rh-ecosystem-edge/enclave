@@ -1,4 +1,4 @@
-name: Auto Label
+name: 🏷️
 
 on:
   pull_request_target:
@@ -10,31 +10,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Area labels based on file paths
-  area-labels:
-    name: Area Labels
+  label:
+    name: 🏷️
     runs-on: [self-hosted, pr-validation]
     permissions:
       contents: read
       pull-requests: write
+    # Never fail or block PRs
+    continue-on-error: true
 
     steps:
-      - uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5.0.2
+      # Area labels based on file paths
+      - name: Area labels
+        uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5.0.2
+        continue-on-error: true
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           configuration-path: .github/labeler.yml
           sync-labels: true
 
-  # Size labels based on lines changed
-  size-labels:
-    name: Size Labels
-    runs-on: [self-hosted, pr-validation]
-    permissions:
-      contents: read
-      pull-requests: write
-
-    steps:
-      - uses: codelytv/pr-size-labeler@4ec67706cd878fbc1c8db0a5dcd28b6bb412e85a # v1.10.3
+      # Size labels based on lines changed
+      - name: Size labels
+        uses: codelytv/pr-size-labeler@4ec67706cd878fbc1c8db0a5dcd28b6bb412e85a # v1.10.3
+        continue-on-error: true
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           xs_label: 'size/XS'
