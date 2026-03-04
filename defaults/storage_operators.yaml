@@ -8,6 +8,7 @@ storage_operators:  # Install operator depending blockStorageBackend variable
     source: cs-redhat-operator-index-v4-20
   lvms:
     name: lvms-operator
+    version: 4.20.0
     defaultChannel: stable-4.20
     channels:
     - name: stable-4.20
