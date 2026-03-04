@@ -29,7 +29,9 @@
     mirrored_versions: "{{ openshift_versions | map(attribute='version') | list }}"
 
 - name: Fail when requested version is not mirrored
-  when: mgmt_openshift_version not in mirrored_versions
+  when:
+    - upgrade_required
+    - mgmt_openshift_version not in mirrored_versions
   ansible.builtin.fail:
     msg: >-
       Requested version {{ mgmt_openshift_version }} is not mirrored: {{ mirrored_versions }}.
@@ -120,6 +122,9 @@
     name: version
   register: cv_info
   until: >
+    cv_info is defined and
+    cv_info.resources is defined and
+    cv_info.resources | length > 0 and
     cv_info.resources[0].status.history[0].state == 'Completed' and
     cv_info.resources[0].status.history[0].version == mgmt_openshift_version
   retries: 120
