@@ -1,0 +1,87 @@
+name: Notify Slack
+description: Sends workflow status notifications to Slack
+
+inputs:
+  status:
+    description: 'Workflow status: success or failure'
+    required: true
+  workflow-name:
+    description: 'Workflow display name (e.g., "Nightly E2E - Connected")'
+    required: true
+  cluster-name:
+    description: 'Cluster name'
+    required: true
+  slack-webhook-urls:
+    description: 'Space-separated list of Slack webhook URLs'
+    required: true
+  workflow-url:
+    description: 'GitHub workflow run URL'
+    required: true
+  branch-name:
+    description: 'Git branch name'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Send Slack notification
+      shell: bash
+      run: |
+        if [ "${{ inputs.status }}" = "success" ]; then
+          ICON=":green_jenkins_circle:"
+          STATUS_TEXT="PASSED"
+          COLOR="#36a64f"
+        else
+          ICON=":red_jenkins_circle:"
+          STATUS_TEXT="FAILED"
+          COLOR="#ff0000"
+        fi
+
+        PAYLOAD=$(cat <<EOF
+        {
+          "text": "${ICON} ${{ inputs.workflow-name }} ${STATUS_TEXT}",
+          "attachments": [
+            {
+              "color": "${COLOR}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${ICON} ${{ inputs.workflow-name }} - ${STATUS_TEXT}",
+                    "emoji": true
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Cluster:*\n${{ inputs.cluster-name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Branch:*\n${{ inputs.branch-name }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Workflow:*\n<${{ inputs.workflow-url }}|View Run>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${STATUS_TEXT}"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+        EOF
+        )
+
+        # Send to all webhook URLs
+        for WEBHOOK_URL in ${{ inputs.slack-webhook-urls }}; do
+          echo "Sending notification to Slack..."
+          curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
+        done
