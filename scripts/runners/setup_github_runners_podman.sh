@@ -174,8 +174,6 @@ success "Docker command works (via podman)"
 heading "Step 7: Configuring github-runner User"
 
 if id github-runner &>/dev/null; then
-    RUNNER_UID=$(id -u github-runner)
-
     info "Enabling linger for github-runner..."
     loginctl enable-linger github-runner 2>/dev/null || true
 
