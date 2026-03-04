@@ -33,7 +33,7 @@
     volumes:
       - "{{ workingDir }}/data/clair:/data:Z"
     entrypoint: "/usr/bin/clairctl"
-    command: "--config /data/minimal_config.yaml export-updaters --strict /data/updates.json.gz"
+    command: "--config /data/minimal_config.yaml export-updaters /data/updates.json.gz"
     detach: false
 
 - name: Ensure directory /var/www/html/clair/
