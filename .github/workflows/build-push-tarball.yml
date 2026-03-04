@@ -1,0 +1,168 @@
+name: Build and Push Tarball
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  build-push-tarball:
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+      options: --user root
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine tag
+        id: meta
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add version file
+        run: |
+          echo -n "${{ steps.meta.outputs.tag }}" > .version
+
+      - name: Install ORAS
+        uses: oras-project/setup-oras@v1
+        with:
+          version: 1.2.0
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USER }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Build tarball
+        run: |
+          tar --exclude='.git' --exclude='.gitignore' --exclude='.github' \
+            -czvf /tmp/enclave.tar.gz .
+          mv /tmp/enclave.tar.gz .
+          ls -lh enclave.tar.gz
+
+      - name: Validate tarball
+        run: |
+          # Check size
+          SIZE=$(stat -c%s enclave.tar.gz)
+          echo "Tarball size: $(numfmt --to=iec-i --suffix=B $SIZE)"
+          if [ $SIZE -gt 1073741824 ]; then
+            echo "Error: Tarball exceeds 1GB"
+            exit 1
+          fi
+
+          # Verify tarball integrity and content
+          echo "Validating tarball content..."
+          tar -tzf enclave.tar.gz > /tmp/tarball-contents.txt
+
+          # Check for required files/directories (accounting for ./ prefix in tar output)
+          REQUIRED_FILES=(
+            ".version"
+            "Makefile"
+          )
+
+          REQUIRED_DIRS=(
+            "playbooks"
+            "operators"
+            "configs"
+          )
+
+          # Check required files
+          for file in "${REQUIRED_FILES[@]}"; do
+            if ! grep -q "^\./${file}$" /tmp/tarball-contents.txt; then
+              echo "Error: Required file '${file}' not found in tarball"
+              echo "Tarball contents preview:"
+              head -20 /tmp/tarball-contents.txt
+              exit 1
+            fi
+            echo "  ✓ Found ${file}"
+          done
+
+          # Check required directories (only if they exist in source)
+          for dir in "${REQUIRED_DIRS[@]}"; do
+            if [ -d "$dir" ]; then
+              if ! grep -q "^\./${dir}/" /tmp/tarball-contents.txt; then
+                echo "Error: Required directory '${dir}/' not found in tarball"
+                echo "Tarball contents preview:"
+                head -20 /tmp/tarball-contents.txt
+                exit 1
+              fi
+              echo "  ✓ Found ${dir}/"
+            fi
+          done
+
+          # Check that excluded paths are not present
+          EXCLUDED_PATHS=(
+            ".git/"
+            ".github/"
+          )
+
+          for path in "${EXCLUDED_PATHS[@]}"; do
+            if grep -q "^\./${path}" /tmp/tarball-contents.txt; then
+              echo "Error: Excluded path '${path}' found in tarball"
+              exit 1
+            fi
+            echo "  ✓ ${path} correctly excluded"
+          done
+
+          # Validate file counts for critical directories (only check directories that exist)
+          echo "Validating file counts..."
+
+          for dir in "${REQUIRED_DIRS[@]}"; do
+            if [ -d "$dir" ]; then
+              # Count files in source directory
+              SOURCE_COUNT=$(find "$dir" -type f | wc -l)
+
+              # Count files in tarball for this directory (accounting for ./ prefix)
+              TARBALL_COUNT=$(grep "^\./${dir}/" /tmp/tarball-contents.txt | grep -v '/$' | wc -l)
+
+              echo "  ${dir}/: source=${SOURCE_COUNT}, tarball=${TARBALL_COUNT}"
+
+              if [ "$SOURCE_COUNT" -ne "$TARBALL_COUNT" ]; then
+                echo "Error: File count mismatch in ${dir}/"
+                echo "  Expected: ${SOURCE_COUNT} files"
+                echo "  Found in tarball: ${TARBALL_COUNT} files"
+                exit 1
+              fi
+            fi
+          done
+
+          echo "✓ Tarball validation passed"
+
+      - name: Upload tarball artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: enclave-tarball-${{ steps.meta.outputs.tag }}
+          path: enclave.tar.gz
+          retention-days: 7
+
+      - name: Push tarball to Quay
+        run: |
+          set -euo pipefail
+          oras push quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }} enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+          if [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            oras push quay.io/edge-infrastructure/enclave:latest enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+          fi
+
+      - name: Clean up
+        if: always()
+        run: |
+          rm -f enclave.tar.gz .version

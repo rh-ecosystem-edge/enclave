@@ -1,0 +1,47 @@
+name: Setup Cluster Name
+description: Generates a unique cluster name for the deployment
+
+inputs:
+  naming-strategy:
+    description: 'Naming strategy: "hash" (e2e/infra) or "date" (nightly)'
+    required: true
+  prefix:
+    description: 'Cluster name prefix (eci for e2e/infra, nc/nd for nightly)'
+    required: true
+  run-id:
+    description: 'GitHub run ID for hash-based naming'
+    required: false
+    default: ''
+
+outputs:
+  cluster-name:
+    description: 'Generated cluster name'
+    value: ${{ steps.generate.outputs.cluster-name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Generate cluster name
+      id: generate
+      shell: bash
+      run: |
+        if [ "${{ inputs.naming-strategy }}" = "hash" ]; then
+          # Hash-based naming for e2e/infra runs
+          # Cluster name: prefix-XXXXXXXX (e.g., eci-a1b2c3d4)
+          SHORT_ID=$(echo "${{ inputs.run-id }}" | sha256sum | cut -c1-8)
+          CLUSTER_NAME="${{ inputs.prefix }}-${SHORT_ID}"
+          echo "Generated cluster name: ${CLUSTER_NAME}"
+        elif [ "${{ inputs.naming-strategy }}" = "date" ]; then
+          # Date-based naming for nightly runs
+          # Cluster name: prefix-YYYYMMDD (e.g., nc-20260303)
+          DATE_STAMP=$(date +%Y%m%d)
+          CLUSTER_NAME="${{ inputs.prefix }}-${DATE_STAMP}"
+          echo "Generated cluster name: ${CLUSTER_NAME} (nightly)"
+        else
+          echo "ERROR: Invalid naming-strategy: ${{ inputs.naming-strategy }}"
+          exit 1
+        fi
+
+        # Set as output and environment variable
+        echo "cluster-name=${CLUSTER_NAME}" >> $GITHUB_OUTPUT
+        echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV

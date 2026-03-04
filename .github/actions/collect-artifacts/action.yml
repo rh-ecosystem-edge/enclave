@@ -1,0 +1,30 @@
+name: Collect Artifacts
+description: Collects CI artifacts (logs, configs, diagnostics) for troubleshooting
+
+inputs:
+  artifact-type:
+    description: 'Type of artifacts to collect (deployment, infrastructure, etc.)'
+    required: false
+    default: 'deployment'
+  output-directory:
+    description: 'Directory to store collected artifacts'
+    required: false
+    default: 'artifacts'
+
+runs:
+  using: composite
+  steps:
+    - name: Collect artifacts
+      shell: bash
+      run: |
+        echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        # Run artifact collection script
+        ./scripts/collect_ci_artifacts.sh ${{ inputs.artifact-type }} ${{ inputs.output-directory }} 2>&1 | tee artifact-collection.log
+
+        # Add summary if available
+        if [ -f ${{ inputs.output-directory }}/collection-summary.txt ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          cat ${{ inputs.output-directory }}/collection-summary.txt >> $GITHUB_STEP_SUMMARY
+        fi

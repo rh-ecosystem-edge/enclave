@@ -1,0 +1,439 @@
+name: E2E Deployment
+
+# This workflow performs end-to-end deployment testing from scratch:
+# make clean && make environment && make provision-landing-zone && make install-enclave && make deploy-cluster
+#
+# Trigger methods:
+# 1. Automatic: Runs on every pull request (opened, updated, reopened)
+# 2. Manual: Go to Actions tab -> "E2E Deployment" -> Run workflow
+#
+# All deployments:
+# - Always start with clean infrastructure (no reuse)
+# - Deploy complete stack from scratch for full validation
+#
+# Automatic PR runs:
+# - Deployment mode: connected (faster feedback)
+# - Cleanup after: always (keep CI clean)
+#
+# Manual trigger options:
+# - Choose deployment mode: connected (fast) or disconnected (full mirror)
+# - Choose whether to cleanup after deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_mode:
+        description: 'Deployment mode (connected or disconnected)'
+        required: true
+        default: 'connected'
+        type: choice
+        options:
+          - connected
+          - disconnected
+      cleanup_after:
+        description: 'Cleanup infrastructure after deployment'
+        required: true
+        default: true
+        type: boolean
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Allow parallel execution with unique cluster names per run
+# Each job gets isolated VMs, networks, and resources
+concurrency:
+  group: enclave-ci-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  check-e2e-needed:
+    name: Check if E2E should run
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 5
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check if E2E-relevant files changed
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            e2e:
+              - 'playbooks/**'
+              - 'scripts/**'
+              - 'Makefile'
+              - 'config/**'
+              - 'defaults/**'
+              - 'schemas/**'
+              - 'templates/**'
+              - 'operators/**'
+              - 'files/**'
+              - '.github/workflows/e2e-deployment.yml'
+              - 'ansible.cfg'
+              - 'requirements.yml'
+              - 'ansible_collections.txt'
+              - 'ansible_pip_requirements.txt'
+              - 'bootstrap.sh'
+              - 'validations.sh'
+              - 'setup_*.sh'
+
+      - name: Make decision
+        id: decision
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "▶️  Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+          elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✓ E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "ℹ️  Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
+            echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+
+  e2e-deployment:
+    name: E2E Deployment Test
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 210  # 3.5 hours
+    needs: check-e2e-needed
+    if: needs.check-e2e-needed.outputs.should_run == 'true'
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      # Use manual input if available, otherwise default to 'connected' for PR runs
+      ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
+      # Use manual input if available, otherwise default to 'true' for PR runs
+      CLEANUP_AFTER: ${{ github.event.inputs.cleanup_after || 'true' }}
+      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: eci
+          run-id: ${{ github.run_id }}
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: E2E Deployment Pre-flight Checks
+          check-pull-secret: 'true'
+          check-system-resources: 'true'
+          check-libvirt: 'true'
+
+      - name: Clean existing infrastructure
+        id: clean
+        run: |
+          echo "## Cleaning Existing Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Removing any existing VMs and networks..." >> $GITHUB_STEP_SUMMARY
+
+          make clean
+
+          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup infrastructure
+        uses: ./.github/actions/setup-infrastructure
+
+      - name: Phase 1 - Prepare binaries and content
+        id: deploy_prepare
+        run: |
+          echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-prepare
+
+          echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2 - Mirror registry setup
+        if: env.ENCLAVE_DEPLOYMENT_MODE != 'connected'
+        id: deploy_mirror
+        run: |
+          echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Setting up local mirror registry (disconnected mode)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-mirror
+
+          echo "✅ Phase 2 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 3 - Deploy OpenShift cluster
+        id: deploy_install
+        run: |
+          echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift cluster (mode: $ENCLAVE_DEPLOYMENT_MODE)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-install
+
+          echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 4 - Post-install configuration
+        id: deploy_post_install
+        run: |
+          echo "## Phase 4: Post-Install Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring cluster (secrets, certificates, API health)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-post-install
+
+          echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 5 - Install operators
+        id: deploy_operators
+        run: |
+          echo "## Phase 5: Operators" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing and configuring operators..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-operators
+
+          echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 6 - Day-2 operations
+        id: deploy_day2
+        run: |
+          echo "## Phase 6: Day-2 Operations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring advanced features and policies..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-day2
+
+          echo "✅ Phase 6 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 7 - Configure hardware discovery
+        id: deploy_discovery
+        run: |
+          echo "## Phase 7: Hardware Discovery" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring hardware discovery infrastructure..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-discovery
+
+          echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify cluster deployment
+        id: verify_cluster
+        run: |
+          set +e  # Don't exit on error, handle errors explicitly
+
+          echo "## Verifying Cluster Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Get Landing Zone IP using helper script
+          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+
+          if [ -z "$LZ_IP" ]; then
+            echo "❌ Cannot find Landing Zone IP" >> $GITHUB_STEP_SUMMARY
+            echo "ERROR: Cannot find Landing Zone IP"
+            echo "Environment file: $ENV_FILE"
+            cat "$ENV_FILE" 2>/dev/null || echo "Environment file not found"
+            echo ""
+            echo "Trying virsh domifaddr:"
+            sudo virsh domifaddr "${ENCLAVE_CLUSTER_NAME}_landingzone_0" 2>&1 || true
+            exit 1
+          fi
+          echo "✅ Landing Zone IP: $LZ_IP" >> $GITHUB_STEP_SUMMARY
+
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          # Check if kubeconfig exists
+          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/ocp-cluster/auth/kubeconfig" 2>&1; then
+            echo "❌ Kubeconfig not found on Landing Zone" >> $GITHUB_STEP_SUMMARY
+            echo "ERROR: Kubeconfig not found at /home/cloud-user/ocp-cluster/auth/kubeconfig"
+            ssh $SSH_OPTS cloud-user@$LZ_IP "ls -la /home/cloud-user/ocp-cluster/auth/ 2>&1 || echo 'ocp-cluster/auth directory not found'"
+            exit 1
+          fi
+          echo "✅ Kubeconfig found" >> $GITHUB_STEP_SUMMARY
+
+          # Verify nodes are ready
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cluster Nodes" >> $GITHUB_STEP_SUMMARY
+          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes" 2>&1 | tee nodes.txt; then
+            echo "❌ Failed to get cluster nodes" >> $GITHUB_STEP_SUMMARY
+            echo "ERROR: Failed to run 'oc get nodes'"
+            echo "Command output:"
+            cat nodes.txt
+            echo ""
+            echo "Checking oc binary and PATH:"
+            ssh $SSH_OPTS cloud-user@$LZ_IP "which oc && oc version || echo 'oc command not found or failed'"
+            exit 1
+          fi
+          cat nodes.txt >> $GITHUB_STEP_SUMMARY
+
+          # Count ready nodes
+          READY_NODES=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes --no-headers 2>/dev/null | grep -c Ready" || echo "0")
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Ready nodes: $READY_NODES" >> $GITHUB_STEP_SUMMARY
+
+          # Verify cluster operators
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cluster Operators" >> $GITHUB_STEP_SUMMARY
+          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co" 2>&1 | tee operators.txt; then
+            echo "❌ Failed to get cluster operators" >> $GITHUB_STEP_SUMMARY
+            echo "ERROR: Failed to run 'oc get co'"
+            echo "Command output:"
+            cat operators.txt
+            exit 1
+          fi
+          cat operators.txt >> $GITHUB_STEP_SUMMARY
+
+          # Check for degraded operators
+          echo "" >> $GITHUB_STEP_SUMMARY
+          DEGRADED=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co -o json 2>/dev/null | jq -r '.items[] | select(.status.conditions[] | select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'" || echo "")
+
+          if [ -n "$DEGRADED" ]; then
+            echo "⚠️ Warning: Some cluster operators are degraded:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$DEGRADED" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ All cluster operators are healthy" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Get cluster version
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cluster Version" >> $GITHUB_STEP_SUMMARY
+          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get clusterversion" 2>&1 >> $GITHUB_STEP_SUMMARY; then
+            echo "⚠️ Could not get cluster version" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Cluster verification complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
+
+      - name: Collect full diagnostics on failure
+        if: failure()
+        run: |
+          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Use centralized artifact collection script with full level
+          ./scripts/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log
+
+          # Also run must-gather if cluster is accessible
+          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+          if [ -n "$LZ_IP" ]; then
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/must-gather/gather.sh" 2>/dev/null; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
+
+              mkdir -p artifacts/must-gather
+              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+                "cd /home/cloud-user/enclave/must-gather && \
+                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../config/global.yaml 2>&1" || true)
+              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
+
+              # Copy must-gather archives
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/must-gather/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/must-gather/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+
+              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
+                echo "✅ Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-artifacts-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Cleanup infrastructure
+        if: always() && (github.event.inputs.cleanup_after == 'true' || github.event.inputs.cleanup_after == true || github.event_name == 'pull_request')
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+          make clean 2>&1 | tee cleanup.log
+
+          # Check for any warnings in cleanup output
+          if grep -q "WARNING:" cleanup.log; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            grep "WARNING:" cleanup.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Verify cleanup
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Resource Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # List all VMs to check for stragglers
+          ALL_VMS=$(sudo virsh list --all --name 2>/dev/null | grep -E 'eci-|enclave-' || true)
+          if [ -n "$ALL_VMS" ]; then
+            echo "⚠️ Found VMs still present:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$ALL_VMS" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No VMs found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # List all networks to check for stragglers
+          ALL_NETS=$(sudo virsh net-list --all --name 2>/dev/null | grep -E 'eci-|enclave-' || true)
+          if [ -n "$ALL_NETS" ]; then
+            echo "⚠️ Found networks still present:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$ALL_NETS" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No networks found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Check for environment files
+          ENV_FILES=$(ls -1 "${WORKING_DIR}"/environment*.json 2>/dev/null || true)
+          if [ -n "$ENV_FILES" ]; then
+            echo "⚠️ Found environment files still present:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "$ENV_FILES" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No environment files found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: $ENCLAVE_DEPLOYMENT_MODE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

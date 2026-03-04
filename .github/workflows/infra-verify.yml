@@ -1,0 +1,128 @@
+name: Infrastructure Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_strategy:
+        description: 'Cleanup strategy after run'
+        required: true
+        default: 'on_failure'
+        type: choice
+        options:
+          - always
+          - on_failure
+          - never
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Allow parallel execution with unique cluster names per run
+# Each job gets isolated VMs, networks, and resources
+concurrency:
+  group: enclave-ci-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  infra-verify:
+    name: Infrastructure Verification
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 120
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      # For PR runs: always cleanup to avoid leaving infrastructure
+      # For manual runs: use input parameter (default: on_failure)
+      CLEANUP_STRATEGY: ${{ github.event_name == 'pull_request' && 'always' || inputs.cleanup_strategy || 'on_failure' }}
+      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: eci
+          run-id: ${{ github.run_id }}
+
+      - name: Workflow information
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "## Workflow Information" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Strategy**: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "- **PR Number**: #${{ github.event.pull_request.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **PR Title**: $PR_TITLE" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: Infrastructure Verification Pre-flight Checks
+          check-system-resources: 'true'
+          check-libvirt: 'true'
+
+      - name: Setup infrastructure
+        uses: ./.github/actions/setup-infrastructure
+        with:
+          skip-install-enclave: 'true'
+
+      - name: Install Enclave Lab (Connected Mode)
+        id: install_enclave
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Running in connected mode for faster testing..." >> $GITHUB_STEP_SUMMARY
+
+          ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: infra
+          output-directory: ci-artifacts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infra-verify-artifacts
+          path: ci-artifacts/
+          retention-days: 7
+
+      - name: Cleanup infrastructure
+        if: |
+          always() &&
+          (env.CLEANUP_STRATEGY == 'always' ||
+           (failure() && env.CLEANUP_STRATEGY == 'on_failure'))
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Cleanup strategy: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+
+          make clean || true
+          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Workflow summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cleanup Strategy**: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
+          echo "- **Result**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "ℹ️ This PR run will **always cleanup** infrastructure after completion" >> $GITHUB_STEP_SUMMARY
+          fi

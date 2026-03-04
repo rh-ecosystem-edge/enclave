@@ -1,0 +1,295 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Prevent concurrent runs for the same PR
+concurrency:
+  group: pr-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Shell script validation
+  shellcheck:
+    name: Shell Script Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run shellcheck
+        run: |
+          set -o pipefail
+          echo "## Shell Script Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-shell 2>&1 | tee shellcheck.log; then
+            echo "### ✅ Shell script validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 shellcheck.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Shell script validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the shellcheck issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 shellcheck.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload shellcheck log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shellcheck-log
+          path: shellcheck.log
+          retention-days: 7
+
+  # Job 2: YAML validation
+  yamllint:
+    name: YAML Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run yamllint
+        run: |
+          set -o pipefail
+          echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-yaml 2>&1 | tee yamllint.log; then
+            echo "### ✅ YAML validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 yamllint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ YAML validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the YAML formatting issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 yamllint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload yamllint log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yamllint-log
+          path: yamllint.log
+          retention-days: 7
+
+  # Job 3: JSON schema validation
+  json-schema:
+    name: JSON Schema Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run JSON schema validation
+        run: |
+          set -o pipefail
+          echo "## JSON Schema Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-json-schema 2>&1 | tee json-schema.log; then
+            echo "### ✅ JSON schema validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 json-schema.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ JSON schema validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the schema validation issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 json-schema.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload JSON schema log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: json-schema-log
+          path: json-schema.log
+          retention-days: 7
+
+  # Job 4: Ansible playbook validation
+  ansible-lint:
+    name: Ansible Playbook Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ansible-lint
+        run: |
+          set -o pipefail
+          echo "## Ansible Playbook Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-ansible 2>&1 | tee ansible-lint.log; then
+            echo "### ✅ Ansible playbook validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 ansible-lint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Ansible playbook validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the ansible-lint issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 ansible-lint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload ansible-lint log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ansible-lint-log
+          path: ansible-lint.log
+          retention-days: 7
+
+  # Job 5: Ansible playbook tags validation
+  ansible-tags:
+    name: Ansible Tags Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tag validation
+        run: |
+          set -o pipefail
+          echo "## Ansible Tags Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-tags 2>&1 | tee tags.log; then
+            echo "### ✅ Ansible tags validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All critical playbook tags work correctly:" >> $GITHUB_STEP_SUMMARY
+            echo "- download-content, download-control-binaries" >> $GITHUB_STEP_SUMMARY
+            echo "- mirror-registry" >> $GITHUB_STEP_SUMMARY
+            echo "- configure-abi, hardware, wait-deployment" >> $GITHUB_STEP_SUMMARY
+            echo "- operators, post-install-config, model-config" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Ansible tags validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more playbook tags are broken:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 tags.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload tags log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tags-log
+          path: tags.log
+          retention-days: 7
+
+  # Job 6: Makefile validation
+  makefile:
+    name: Makefile Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Makefile validation
+        run: |
+          set -o pipefail
+          echo "## Makefile Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-makefile 2>&1 | tee makefile.log; then
+            echo "### ✅ Makefile validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 makefile.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Makefile validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the Makefile syntax issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 makefile.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload Makefile log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: makefile-log
+          path: makefile.log
+          retention-days: 7
