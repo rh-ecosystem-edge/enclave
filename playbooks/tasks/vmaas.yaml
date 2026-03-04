@@ -1,7 +1,7 @@
 ---
 - name: "Create ACM Addons for VMaaS cluster"
   environment:
-    KUBECONFIG: "{{ rootDir }}/ocp-cluster/auth/kubeconfig"
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('ansible.builtin.template', '../templates/acm-addons.yaml.j2') | from_yaml }}"
