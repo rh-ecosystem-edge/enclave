@@ -1,4 +1,4 @@
-name: 🏷️
+name: 🏷️ / Labeler
 
 on:
   pull_request_target:
@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   label:
-    name: 🏷️
+    name: 🏷️ / Labeler
     runs-on: [self-hosted, pr-validation]
     permissions:
       contents: read
