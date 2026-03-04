@@ -3,7 +3,7 @@
 #
 # This script:
 # 1. Copies Enclave Lab repository to Landing Zone VM
-# 2. Generates config/global.yaml and config/certificates.yaml configuration
+# 2. Generates config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml configuration
 #    from infrastructure
 # 3. Installs any missing dependencies
 # 4. Verifies installation
@@ -223,16 +223,17 @@ EOSSH
 
 success "Dependencies installed"
 
-# Step 5: Generate config/global.yaml and config/certificates.yaml configuration
-info "Step 5: Generating Enclave Lab configuration (config/global.yaml and config/certificates.yaml)..."
+# Step 5: Generate config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml configuration
+info "Step 5: Generating Enclave Lab configuration (config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml)..."
 
-# Generate config/global.yaml and config/certificates.yaml using helper script
+# Generate config files using helper script
 "${ENCLAVE_DIR}/scripts/generate_enclave_vars.sh"
 
 # Copy vars files to Landing Zone
 ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config"
 scp $SSH_OPTS "${WORKING_DIR}/config/global.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/global.yaml"
 scp $SSH_OPTS "${WORKING_DIR}/config/certificates.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/certificates.yaml"
+scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/cloud_infra.yaml"
 
 success "Configuration generated and copied to Landing Zone"
 
@@ -361,6 +362,7 @@ info "Enclave Lab Installation Summary:"
 info "  Enclave Lab Directory: $LZ_ENCLAVE_DIR"
 info "  Configuration: $LZ_ENCLAVE_DIR/config/global.yaml"
 info "  Certificates: $LZ_ENCLAVE_DIR/config/certificates.yaml"
+info "  Cloud Infra: $LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
 info "  Working Directory: $LZ_ROOT_DIR"
 echo ""
 
@@ -375,7 +377,7 @@ echo ""
 info "Next steps:"
 info "  1. SSH to Landing Zone: ssh $LZ_SSH"
 info "  2. Review configuration: cat $LZ_ENCLAVE_DIR/config/global.yaml"
-info "  3. Edit config/global.yaml and config/certificates.yaml as needed (pull secret, SSL certs, etc.)"
+info "  3. Edit config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml as needed"
 info "  4. Run Enclave Lab: cd $LZ_ENCLAVE_DIR && ansible-playbook playbooks/main.yaml"
 echo ""
 info "To verify installation:"

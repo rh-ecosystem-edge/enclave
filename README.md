@@ -15,8 +15,10 @@ Check [Topo.png](docs/Topo.png) for expected hardware setup and [ArchMap.png](do
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
+cp config/cloud_infra.example.yaml config/cloud_infra.yaml
 vim config/global.yaml        # Fill in your cluster, network, and hardware settings
 vim config/certificates.yaml  # Fill in your SSL certificates
+vim config/cloud_infra.yaml   # Fill in your discovery hosts (or leave discovery_hosts: [])
 ```
 
 2. Run the bootstrap script:
@@ -347,6 +349,7 @@ ssh cloud-user@<landing-zone-ip>
 ls -la /home/cloud-user/enclave
 cat /home/cloud-user/enclave/config/global.yaml
 cat /home/cloud-user/enclave/config/certificates.yaml
+cat /home/cloud-user/enclave/config/cloud_infra.yaml
 ```
 
 #### Test Only Cluster Deployment

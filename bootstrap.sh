@@ -2,27 +2,78 @@
 set -o pipefail
 set -e
 
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --global-vars FILE    Path to global vars file (default: config/global.yaml)"
+    echo "  --certs-vars FILE     Path to certificates vars file (default: config/certificates.yaml)"
+    echo "  -h, --help            Show this help message"
+    exit "${1:-0}"
+}
+
+global_vars=config/global.yaml
+certs_vars=config/certificates.yaml
+cloud_infra_vars=config/cloud_infra.yaml
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --global-vars)
+            global_vars="$2"
+            shift 2
+            ;;
+        --certs-vars)
+            certs_vars="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option '$1'"
+            usage 1
+            ;;
+    esac
+done
+
+echo " "
+echo " ██████╗░███████╗██████╗░  ██╗░░██╗░█████╗░████████╗"
+echo " ██╔══██╗██╔════╝██╔══██╗  ██║░░██║██╔══██╗╚══██╔══╝"
+echo " ██████╔╝█████╗░░██║░░██║  ███████║███████║░░░██║░░░"
+echo " ██╔══██╗██╔══╝░░██║░░██║  ██╔══██║██╔══██║░░░██║░░░"
+echo " ██║░░██║███████╗██████╔╝  ██║░░██║██║░░██║░░░██║░░░"
+echo " ╚═╝░░╚═╝╚══════╝╚═════╝░  ╚═╝░░╚═╝╚═╝░░╚═╝░░░╚═╝░░░"
+echo " "
+echo "This script is designed to be re-run on demand "
+echo "NOTE: Every run will destroy the entire cloud  "
+echo "      Some functions will reuse local caches   "
+echo ""
+echo "Config files:"
+echo "  Global vars:  $global_vars"
+echo "  Certificates: $certs_vars"
+echo "  Cloud infra:  $cloud_infra_vars"
+echo ""
+
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $global_vars \
         | jq -r $1
 }
 
-global_vars=${1:-config/global.yaml}
-certs_vars=${2:-config/certificates.yaml}
-
 if [ ! -f "$global_vars" ]; then
     echo "Error: $global_vars not found."
-    if [ -z "$1" ]; then
-        echo "Copy config/global.example.yaml to $global_vars and fill in your values."
-    fi
+    echo "Copy config/global.example.yaml to $global_vars and fill in your values."
     exit 1
 fi
 
 if [ ! -f "$certs_vars" ]; then
     echo "Error: $certs_vars not found."
-    if [ -z "$2" ]; then
-        echo "Copy config/certificates.example.yaml to $certs_vars and fill in your values."
-    fi
+    echo "Copy config/certificates.example.yaml to $certs_vars and fill in your values."
+    exit 1
+fi
+
+if [ ! -f "$cloud_infra_vars" ]; then
+    echo "Error: $cloud_infra_vars not found."
+    echo "Copy config/cloud_infra.example.yaml to $cloud_infra_vars and fill in your values."
     exit 1
 fi
 
@@ -35,19 +86,6 @@ log="$logdir/${DSTAMP}"
 _cleanup(){
     rm -fr "${lck}"
 }
-
-
-echo " "
-echo " ██████╗░███████╗██████╗░  ██╗░░██╗░█████╗░████████╗"
-echo " ██╔══██╗██╔════╝██╔══██╗  ██║░░██║██╔══██╗╚══██╔══╝"
-echo " ██████╔╝█████╗░░██║░░██║  ███████║███████║░░░██║░░░"
-echo " ██╔══██╗██╔══╝░░██║░░██║  ██╔══██║██╔══██║░░░██║░░░"
-echo " ██║░░██║███████╗██████╔╝  ██║░░██║██║░░██║░░░██║░░░"
-echo " ╚═╝░░╚═╝╚══════╝╚═════╝░  ╚═╝░░╚═╝╚═╝░░╚═╝░░░╚═╝░░░"
-echo " "
-echo "This script is designed to be re-run on demand "
-echo "NOTE: Every run will destroy the entire cloud  "
-echo "      Some functions will reuse local caches   "
 
 read -rp "Press Enter to start .. " -n1 -s
 
@@ -72,7 +110,7 @@ date > "$log"
 
 echo -p "Check Config .. " -n1 -s | tee -a ${log}
 FList="ansible.cfg  bootstrap.sh  playbooks/main.yaml  playbooks/  \
-        setup_ansible.sh  setup_env.sh $global_vars $certs_vars"
+        setup_ansible.sh  setup_env.sh $global_vars $certs_vars $cloud_infra_vars"
 for x in $FList; do
     if [ -e $x ]; then
         echo "file check passed ..." $x   | tee -a ${log}
@@ -90,7 +128,7 @@ echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Validating Config .. " -n1 -s  | tee -a ${log}
     ansible-playbook playbooks/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
-    bash ./validations.sh $global_vars $certs_vars 2>&1 | tee -a ${log}
+    bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Downloading Deps Content .. " -n1 -s

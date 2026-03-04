@@ -1,7 +1,38 @@
 #!/bin/bash
 
-global_vars=${1:-config/global.yaml}
-certs_vars=${2:-config/certificates.yaml}
+usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --global-vars FILE    Path to global vars file (default: config/global.yaml)"
+    echo "  --certs-vars FILE     Path to certificates vars file (default: config/certificates.yaml)"
+    echo "  -h, --help            Show this help message"
+    exit "${1:-0}"
+}
+
+global_vars=config/global.yaml
+certs_vars=config/certificates.yaml
+cloud_infra_vars=config/cloud_infra.yaml
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --global-vars)
+            global_vars="$2"
+            shift 2
+            ;;
+        --certs-vars)
+            certs_vars="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            ;;
+        *)
+            echo "Error: Unknown option '$1'"
+            usage 1
+            ;;
+    esac
+done
 
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $vars_rendered \
@@ -128,7 +159,7 @@ validation_section "syntax"
 # Render a vars.yaml file. This allows variable interpolation in vars.yaml
 vars_rendered=$(mktemp)
 trap 'rm -f "$vars_rendered"' exit
-if ! vars_rendering=$(ansible localhost -e "@$global_vars" -e "@$certs_vars" -m copy -a "content={{ hostvars['localhost'] | to_yaml }} dest=${vars_rendered}" 2>&1); then
+if ! vars_rendering=$(ansible localhost -e "@$global_vars" -e "@$certs_vars" -e "@$cloud_infra_vars" -m copy -a "content={{ hostvars['localhost'] | to_yaml }} dest=${vars_rendered}" 2>&1); then
     validation fail vars_yaml "Configuration files could not be parsed" "$vars_rendering"
 fi
 validation pass vars_yaml "Configuration syntax OK"

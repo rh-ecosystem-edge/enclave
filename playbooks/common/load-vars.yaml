@@ -9,6 +9,9 @@
 - name: Include certificate vars
   ansible.builtin.include_vars: ../../config/certificates.yaml
 
+- name: Include cloud infra vars
+  ansible.builtin.include_vars: ../../config/cloud_infra.yaml
+
 - name: Include common configuration
   ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
   loop:
