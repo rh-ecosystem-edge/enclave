@@ -118,74 +118,19 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Generate unique cluster name
-        id: cluster_name
-        run: |
-          # Generate short hash from run_id to stay within 15-char bridge name limit
-          # Cluster name: eci-XXXXXXXX (12 chars)
-          # Networks: eci-XXXXXXXX-b/c (14 chars) - fits in 15 char limit
-          SHORT_ID=$(echo "${{ github.run_id }}" | sha256sum | cut -c1-8)
-          CLUSTER_NAME="eci-${SHORT_ID}"
-          echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV
-          echo "Generated cluster name: ${CLUSTER_NAME}"
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: eci
+          run-id: ${{ github.run_id }}
 
       - name: Pre-flight checks
-        id: preflight
-        shell: bash {0}
-        run: |
-          set +e  # Don't exit on first error, collect all failures
-          FAILED=0
-
-          echo "## E2E Deployment Pre-flight Checks" | tee -a $GITHUB_STEP_SUMMARY
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-
-          # Check required environment variables
-          echo "### Environment Variables" | tee -a $GITHUB_STEP_SUMMARY
-          if [ -z "$DEV_SCRIPTS_PATH" ]; then
-            echo "❌ DEV_SCRIPTS_PATH not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -z "$WORKING_DIR" ]; then
-            echo "❌ WORKING_DIR not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ WORKING_DIR: $WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -z "$PULL_SECRET" ]; then
-            echo "❌ PULL_SECRET not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ PULL_SECRET: configured" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "✅ Deployment mode: $ENCLAVE_DEPLOYMENT_MODE" | tee -a $GITHUB_STEP_SUMMARY
-
-          # Check system resources
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "### System Resources" | tee -a $GITHUB_STEP_SUMMARY
-          TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
-          echo "✅ Total RAM: ${TOTAL_RAM}GB" | tee -a $GITHUB_STEP_SUMMARY
-
-          if [ -n "$WORKING_DIR" ]; then
-            AVAILABLE_DISK=$(df -h $WORKING_DIR 2>/dev/null | awk 'NR==2{print $4}')
-            if [ -n "$AVAILABLE_DISK" ]; then
-              echo "✅ Available disk space: $AVAILABLE_DISK" | tee -a $GITHUB_STEP_SUMMARY
-            fi
-          fi
-
-          if [ $FAILED -eq 0 ]; then
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "✅ All pre-flight checks passed" | tee -a $GITHUB_STEP_SUMMARY
-          else
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "❌ Pre-flight checks failed" | tee -a $GITHUB_STEP_SUMMARY
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "**Action Required**: Configure repository variables and secrets in Settings → Secrets and variables → Actions" | tee -a $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: E2E Deployment Pre-flight Checks
+          check-pull-secret: 'true'
+          check-system-resources: 'true'
+          check-libvirt: 'true'
 
       - name: Clean existing infrastructure
         id: clean
@@ -198,38 +143,8 @@ jobs:
 
           echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
 
-      - name: Create infrastructure
-        id: create_infra
-        run: |
-          echo "## Creating Test Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-
-          make environment
-
-          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
-
-      - name: Provision Landing Zone
-        id: provision_lz
-        run: |
-          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing CentOS Stream 10 on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-
-          make provision-landing-zone
-
-          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
-
-      - name: Install Enclave Lab
-        id: install_enclave
-        run: |
-          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Mode: $ENCLAVE_DEPLOYMENT_MODE" >> $GITHUB_STEP_SUMMARY
-
-          make install-enclave
-
-          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+      - name: Setup infrastructure
+        uses: ./.github/actions/setup-infrastructure
 
       - name: Phase 1 - Prepare binaries and content
         id: deploy_prepare
@@ -400,18 +315,10 @@ jobs:
 
       - name: Collect artifacts
         if: always()
-        run: |
-          echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Use centralized artifact collection script
-          ./scripts/collect_ci_artifacts.sh deployment artifacts 2>&1 | tee artifact-collection.log
-
-          # Append summary to GitHub Step Summary
-          if [ -f artifacts/collection-summary.txt ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat artifacts/collection-summary.txt >> $GITHUB_STEP_SUMMARY
-          fi
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
 
       - name: Collect full diagnostics on failure
         if: failure()

@@ -30,65 +30,28 @@ jobs:
       OPENSHIFT_CI: "true"
 
     steps:
-      - name: Generate cluster name with date
-        id: cluster_name
-        run: |
-          # Use date-based cluster name for easy identification
-          # Keep it short to fit bridge name limit (15 chars): nd-YYYYMMDD = 11 chars, nd-YYYYMMDD-c = 13 chars
-          DATE_STAMP=$(date +%Y%m%d)
-          CLUSTER_NAME="nd-${DATE_STAMP}"
-          echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV
-          echo "Generated cluster name: ${CLUSTER_NAME} (nightly disconnected)"
-
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Pre-flight checks
-        id: preflight
-        shell: bash {0}
+      - name: Generate cluster name with date
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: date
+          prefix: nd
+
+      - name: Workflow information
         run: |
-          set +e  # Don't exit on first error, collect all failures
-          FAILED=0
+          echo "## Nightly E2E Deployment - Disconnected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
 
-          echo "## Nightly E2E Deployment - Disconnected Mode" | tee -a $GITHUB_STEP_SUMMARY
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" | tee -a $GITHUB_STEP_SUMMARY
-          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" | tee -a $GITHUB_STEP_SUMMARY
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-
-          # Check required environment variables
-          echo "### Environment Variables" | tee -a $GITHUB_STEP_SUMMARY
-          if [ -z "$DEV_SCRIPTS_PATH" ]; then
-            echo "❌ DEV_SCRIPTS_PATH not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -z "$WORKING_DIR" ]; then
-            echo "❌ WORKING_DIR not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ WORKING_DIR: $WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -z "$PULL_SECRET" ]; then
-            echo "❌ PULL_SECRET not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ PULL_SECRET configured" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ $FAILED -eq 0 ]; then
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "✅ All pre-flight checks passed" | tee -a $GITHUB_STEP_SUMMARY
-          else
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "❌ Pre-flight checks failed" | tee -a $GITHUB_STEP_SUMMARY
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "**Action Required**: Configure repository variables and secrets in Settings → Secrets and variables → Actions" | tee -a $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: Nightly E2E Deployment - Disconnected Mode
+          check-pull-secret: 'true'
 
       - name: Clean infrastructure
         id: clean
@@ -101,38 +64,8 @@ jobs:
 
           echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
 
-      - name: Create infrastructure
-        id: create_infra
-        run: |
-          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Creating VMs and networks..." >> $GITHUB_STEP_SUMMARY
-
-          make environment
-
-          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
-
-      - name: Provision Landing Zone
-        id: provision_lz
-        run: |
-          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-
-          make provision-landing-zone
-
-          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
-
-      - name: Install Enclave Lab
-        id: install_enclave
-        run: |
-          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Copying code and installing dependencies on Landing Zone..." >> $GITHUB_STEP_SUMMARY
-
-          make install-enclave
-
-          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+      - name: Setup infrastructure
+        uses: ./.github/actions/setup-infrastructure
 
       - name: Deploy OpenShift cluster
         id: deploy_cluster
@@ -190,18 +123,10 @@ jobs:
 
       - name: Collect artifacts
         if: always()
-        run: |
-          echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Use centralized artifact collection script
-          ./scripts/collect_ci_artifacts.sh deployment artifacts 2>&1 | tee artifact-collection.log
-
-          # Append summary to GitHub Step Summary
-          if [ -f artifacts/collection-summary.txt ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            cat artifacts/collection-summary.txt >> $GITHUB_STEP_SUMMARY
-          fi
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
 
       - name: Upload artifacts
         if: always()
@@ -234,101 +159,13 @@ jobs:
           echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: Notify Slack on success
-        if: success()
-        run: |
-          PAYLOAD=$(cat <<'EOF'
-          {
-            "text": ":green_jenkins_circle: Nightly E2E Test - Disconnected Mode PASSED",
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": ":green_jenkins_circle: Nightly E2E - Disconnected Mode Success",
-                  "emoji": true
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Cluster:*\n${{ env.ENCLAVE_CLUSTER_NAME }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Type:*\nFull Air-gapped"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ github.ref_name }}"
-                  }
-                ]
-              }
-            ]
-          }
-          EOF
-          )
-
-          # Send to all webhook URLs (space-separated in secret)
-          for WEBHOOK_URL in ${{ secrets.SLACK_WEBHOOK_URLS }}; do
-            curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
-          done
-
-      - name: Notify Slack on failure
-        if: failure()
-        run: |
-          PAYLOAD=$(cat <<'EOF'
-          {
-            "text": ":red_jenkins_circle: Nightly E2E Test - Disconnected Mode FAILED",
-            "blocks": [
-              {
-                "type": "header",
-                "text": {
-                  "type": "plain_text",
-                  "text": ":red_jenkins_circle: Nightly E2E - Disconnected Mode Failed",
-                  "emoji": true
-                }
-              },
-              {
-                "type": "section",
-                "fields": [
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Cluster:*\n${{ env.ENCLAVE_CLUSTER_NAME }}"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Type:*\nFull Air-gapped"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Workflow:*\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>"
-                  },
-                  {
-                    "type": "mrkdwn",
-                    "text": "*Branch:*\n${{ github.ref_name }}"
-                  }
-                ]
-              },
-              {
-                "type": "section",
-                "text": {
-                  "type": "mrkdwn",
-                  "text": "⚠️ *Action Required:* Disconnected deployment validation failed - check workflow logs"
-                }
-              }
-            ]
-          }
-          EOF
-          )
-
-          # Send to all webhook URLs (space-separated in secret)
-          for WEBHOOK_URL in ${{ secrets.SLACK_WEBHOOK_URLS }}; do
-            curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
-          done
+      - name: Notify Slack
+        if: always()
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: Nightly E2E - Disconnected
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}

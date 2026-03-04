@@ -38,19 +38,15 @@ jobs:
       OPENSHIFT_CI: "true"
 
     steps:
-      - name: Generate unique cluster name
-        id: cluster_name
-        run: |
-          # Generate short hash from run_id to stay within 15-char bridge name limit
-          # Cluster name: eci-XXXXXXXX (12 chars)
-          # Networks: eci-XXXXXXXX-b/c (14 chars) - fits in 15 char limit
-          SHORT_ID=$(echo "${{ github.run_id }}" | sha256sum | cut -c1-8)
-          CLUSTER_NAME="eci-${SHORT_ID}"
-          echo "ENCLAVE_CLUSTER_NAME=${CLUSTER_NAME}" >> $GITHUB_ENV
-          echo "Generated cluster name: ${CLUSTER_NAME}"
-
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: eci
+          run-id: ${{ github.run_id }}
 
       - name: Workflow information
         env:
@@ -67,84 +63,16 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Pre-flight checks
-        id: preflight
-        shell: bash {0}
-        run: |
-          set +e  # Don't exit on first error, collect all failures
-          FAILED=0
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: Infrastructure Verification Pre-flight Checks
+          check-system-resources: 'true'
+          check-libvirt: 'true'
 
-          echo "## Infrastructure Verification Pre-flight Checks" | tee -a $GITHUB_STEP_SUMMARY
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-
-          # Check required environment variables
-          echo "### Environment Variables" | tee -a $GITHUB_STEP_SUMMARY
-          if [ -z "$DEV_SCRIPTS_PATH" ]; then
-            echo "❌ DEV_SCRIPTS_PATH not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          if [ -z "$WORKING_DIR" ]; then
-            echo "❌ WORKING_DIR not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ WORKING_DIR: $WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          # Check system resources
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "### System Resources" | tee -a $GITHUB_STEP_SUMMARY
-          TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
-          echo "✅ Total RAM: ${TOTAL_RAM}GB" | tee -a $GITHUB_STEP_SUMMARY
-
-          if [ -n "$WORKING_DIR" ]; then
-            AVAILABLE_DISK=$(df -h $WORKING_DIR 2>/dev/null | awk 'NR==2{print $4}')
-            if [ -n "$AVAILABLE_DISK" ]; then
-              echo "✅ Available disk space: $AVAILABLE_DISK" | tee -a $GITHUB_STEP_SUMMARY
-            fi
-          fi
-
-          # Check libvirt access
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "### Libvirt Access" | tee -a $GITHUB_STEP_SUMMARY
-          if sudo virsh list --all > /dev/null 2>&1; then
-            echo "✅ Libvirt access verified" | tee -a $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Cannot access libvirt" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          fi
-
-          if [ $FAILED -eq 0 ]; then
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "✅ All pre-flight checks passed" | tee -a $GITHUB_STEP_SUMMARY
-          else
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "❌ Pre-flight checks failed" | tee -a $GITHUB_STEP_SUMMARY
-            echo "" | tee -a $GITHUB_STEP_SUMMARY
-            echo "**Action Required**: Configure repository variables in Settings → Secrets and variables → Actions → Variables:" | tee -a $GITHUB_STEP_SUMMARY
-            echo "- DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
-            echo "- WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-      - name: Create test infrastructure
-        id: create_infra
-        run: |
-          echo "## Creating Test Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-
-          make environment
-
-      - name: Provision Landing Zone
-        id: provision_lz
-        run: |
-          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing CentOS Stream 10 on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-
-          make provision-landing-zone
+      - name: Setup infrastructure
+        uses: ./.github/actions/setup-infrastructure
+        with:
+          skip-install-enclave: 'true'
 
       - name: Install Enclave Lab (Connected Mode)
         id: install_enclave
@@ -157,64 +85,10 @@ jobs:
 
       - name: Collect artifacts
         if: always()
-        run: |
-          echo "## Collecting Artifacts" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          mkdir -p ci-artifacts
-
-          # Copy environment.json if it exists
-          if [ -f "$WORKING_DIR/environment.json" ]; then
-            cp "$WORKING_DIR/environment.json" ci-artifacts/
-            echo "✅ Collected environment.json" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Collect VM status
-          sudo virsh list --all > ci-artifacts/vm-status.txt 2>&1 || true
-          echo "✅ Collected VM status" >> $GITHUB_STEP_SUMMARY
-
-          # Collect network status
-          sudo virsh net-list --all > ci-artifacts/network-status.txt 2>&1 || true
-          echo "✅ Collected network status" >> $GITHUB_STEP_SUMMARY
-
-          # Collect installation logs from Landing Zone if accessible
-          if [ -f "$WORKING_DIR/environment.json" ]; then
-            LZ_IP=$(jq -r '.vms.landing_zone.networks.bmc.ip // empty' "$WORKING_DIR/environment.json" 2>/dev/null || true)
-            if [ -n "$LZ_IP" ]; then
-              SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-              # Collect Enclave installation log (not deployment.log - that's for OpenShift deployment)
-              if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/installation.log" 2>/dev/null; then
-                scp $SSH_OPTS cloud-user@$LZ_IP:/home/cloud-user/enclave/installation.log ci-artifacts/ 2>/dev/null || true
-                if [ -f ci-artifacts/installation.log ]; then
-                  echo "✅ Collected Enclave installation log" >> $GITHUB_STEP_SUMMARY
-                fi
-              fi
-
-              # NOTE: config/global.yaml is NOT collected directly due to credential exposure risk
-              # A sanitized version is included in the must-gather tarball below
-
-              # Run gather.sh on LZ and copy logs archive to ci-artifacts/must-gather
-              # Note: gather.sh may not exist in infra-only runs
-              if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/must-gather/gather.sh" 2>/dev/null; then
-                mkdir -p ci-artifacts/must-gather
-                GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave/must-gather && GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh ../config/global.yaml 2>&1" || echo "gather.sh failed or not found")
-                if [ -n "$GATHER_OUT" ]; then
-                  echo "$GATHER_OUT" > ci-artifacts/must-gather/gather-output.txt
-                fi
-
-                # Copy logs archive to ci-artifacts/must-gather
-                scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/must-gather/lz-logs-*.tar.gz" ci-artifacts/must-gather/ 2>/dev/null || true
-                if ls ci-artifacts/must-gather/lz-logs-*.tar.gz 1>/dev/null 2>&1; then
-                  echo "✅ Collected LZ logs archive" >> $GITHUB_STEP_SUMMARY
-                else
-                  echo "ℹ️ No must-gather archive (normal for infra-only runs)" >> $GITHUB_STEP_SUMMARY
-                fi
-              else
-                echo "ℹ️ Skipping must-gather (normal for infra-only runs)" >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          fi
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: infra
+          output-directory: ci-artifacts
 
       - name: Upload artifacts
         if: always()
