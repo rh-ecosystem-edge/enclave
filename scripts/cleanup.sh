@@ -162,13 +162,15 @@ if [ -n "${WORKING_DIR:-}" ]; then
     fi
 fi
 
-# Clean up volume files from cluster-specific pool directory
+# Clean up volume files for this cluster
+# Volume files are in flat structure: /opt/dev-scripts/pool/eci-XXXXXXXX_*.qcow2
+# NOT in subdirectory /opt/dev-scripts/pool/eci-XXXXXXXX/
 if [ -n "${WORKING_DIR:-}" ]; then
-    POOL_DIR="${WORKING_DIR}/pool/${CLUSTER_NAME}"
+    POOL_DIR="${WORKING_DIR}/pool"
     if [ -d "$POOL_DIR" ]; then
         info "Cleaning up volume files for cluster: ${CLUSTER_NAME}"
 
-        # Find and remove all volume files for this cluster
+        # Find and remove all volume files for this cluster (in flat pool directory)
         VOLUME_FILES=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}_*.qcow2" \) 2>/dev/null || true)
 
         if [ -n "$VOLUME_FILES" ]; then
@@ -181,13 +183,22 @@ if [ -n "${WORKING_DIR:-}" ]; then
                 sudo rm -f "$vol_file" || warning "    Failed to remove $vol_file"
             done <<< "$VOLUME_FILES"
 
-            # Refresh the cluster-specific pool to update libvirt's volume list
-            # Try both new naming (-lz) and legacy naming (_pool)
-            info "  Refreshing libvirt storage pool..."
-            sudo virsh pool-refresh "${CLUSTER_NAME}-lz" &>/dev/null || \
+            # Refresh the storage pools to update libvirt's volume list
+            # The pool might be cluster-specific or shared (oooq_pool)
+            info "  Refreshing libvirt storage pools..."
+            sudo virsh pool-refresh "${CLUSTER_NAME}" &>/dev/null || true
+            sudo virsh pool-refresh "${CLUSTER_NAME}-lz" &>/dev/null || true
             sudo virsh pool-refresh "${CLUSTER_NAME}_pool" &>/dev/null || true
+            sudo virsh pool-refresh "oooq_pool" &>/dev/null || true
         else
             info "  No volume files found for cleanup"
+        fi
+
+        # Remove cluster-specific subdirectory if it exists and is empty
+        # (some configurations might use subdirectories)
+        CLUSTER_POOL_SUBDIR="${POOL_DIR}/${CLUSTER_NAME}"
+        if [ -d "$CLUSTER_POOL_SUBDIR" ]; then
+            rmdir "$CLUSTER_POOL_SUBDIR" 2>/dev/null && info "  Removed empty pool subdirectory: $CLUSTER_POOL_SUBDIR" || true
         fi
     fi
 fi
@@ -299,20 +310,27 @@ if [ -n "${WORKING_DIR:-}" ]; then
     fi
 fi
 
-# Check for leftover volume files and pool directory
+# Check for leftover volume files in flat pool directory
 if [ -n "${WORKING_DIR:-}" ]; then
-    POOL_DIR="${WORKING_DIR}/pool/${CLUSTER_NAME}"
+    POOL_DIR="${WORKING_DIR}/pool"
     if [ -d "$POOL_DIR" ]; then
-        warning "Found leftover pool directory: $POOL_DIR"
         LEFTOVER_VOLS=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}_*.qcow2" \) 2>/dev/null || true)
         if [ -n "$LEFTOVER_VOLS" ]; then
-            echo "  Leftover volume files:"
+            warning "Found leftover volume files in pool:"
             echo "$LEFTOVER_VOLS" | while read -r vol; do
                 [ -n "$vol" ] && echo "    $(basename "$vol")"
             done
+        else
+            success "No leftover volume files found"
+        fi
+
+        # Also check for cluster-specific subdirectory (might exist in some configs)
+        CLUSTER_POOL_SUBDIR="${POOL_DIR}/${CLUSTER_NAME}"
+        if [ -d "$CLUSTER_POOL_SUBDIR" ]; then
+            warning "Found leftover pool subdirectory: $CLUSTER_POOL_SUBDIR"
         fi
     else
-        success "No leftover pool directory found"
+        success "Pool directory does not exist"
     fi
 fi
 
