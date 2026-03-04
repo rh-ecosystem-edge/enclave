@@ -90,3 +90,11 @@
           environment:
             KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: vmaas
+
+    - name: Management cluster upgrade
+      ansible.builtin.include_tasks:
+        file: tasks/mgmt_cluster_upgrade.yaml
+        apply:
+          tags: mgmt-cluster-upgrade
+      tags:
+        - mgmt-cluster-upgrade
