@@ -29,6 +29,13 @@ def wait_for_resource_status(
             capture_output=True,
             text=True,
         )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            if "not found" not in stderr.lower():
+                raise RuntimeError(
+                    f"Failed to read {kind}/{name} in namespace {namespace}: {stderr}"
+                )
+
         current_state = parse_jsonpath_value(result.stdout or "")
         if current_state == desired_state:
             print(
@@ -43,16 +50,17 @@ def wait_for_resource_status(
 
 
 def semver_key(v_string):
-    # Separate the numeric part from the tag (e.g., '1.2.0-rc1' -> ['1.2.0', 'rc1'])
-    parts = v_string.split("-", 1)
-    main_version = tuple(map(int, parts[0].split(".")))
+    main, sep, prerelease = v_string.partition("-")
+    main_version = tuple(map(int, main.split(".")))
 
-    if len(parts) == 1:
-        # No suffix: Use a high-value marker so 1.2.0 > 1.2.0-rc1
-        return (main_version, (float("inf"),))
-    else:
-        # Has suffix: Return the numeric part and the string tag
-        return (main_version, (0, parts[1]))
+    if not sep:
+        # Release versions sort after prerelease versions with same core.
+        return (main_version, ((2, 0),))
+
+    parsed = []
+    for token in prerelease.split("."):
+        parsed.append((0, int(token)) if token.isdigit() else (1, token))
+    return (main_version, tuple(parsed))
 
 
 def approve_install_plans(
@@ -83,8 +91,14 @@ def approve_install_plans(
             continue
         version_ok = True
         for csv in install_plan_spec_csv_names:
-            csv_op_name, csv_version = csv.split(".v")
+            csv_op_name, csv_version = csv.rsplit(".v", 1)
             desired_op_version = approved_op_version_map.get(csv_op_name)
+            if desired_op_version is None:
+                version_ok = False
+                print(
+                    f"Install plan {install_plan_name} includes unmanaged CSV {csv_op_name}. Skipping."
+                )
+                break
             version_ok = semver_key(csv_version) <= semver_key(desired_op_version)
             if not version_ok:
                 print(
