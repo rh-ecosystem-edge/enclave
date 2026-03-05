@@ -49,7 +49,10 @@
       rules:
         - apiGroups: [""]
           resources: ["pods"]
-          verbs: ["get", "list", "exec"]
+          verbs: ["get", "list"]
+        - apiGroups: [""]
+          resources: ["pods/exec"]
+          verbs: ["create"]
 
 - name: Create Clair Import RoleBinding
   kubernetes.core.k8s:
