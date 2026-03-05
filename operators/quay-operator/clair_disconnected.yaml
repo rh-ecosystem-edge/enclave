@@ -1,16 +1,3 @@
-- name: Get Clair Pod object from quay-enterprise
-  kubernetes.core.k8s_info:
-    kind: Pod
-    namespace: quay-enterprise
-    label_selectors:
-      - quay-component=clair-app
-  register: clair_pod_list
-
-- name: Set Pod fact and verify existence
-  ansible.builtin.set_fact:
-    clair_pod: "{{ clair_pod_list.resources[0] }}"
-  failed_when: clair_pod_list.resources | length == 0
-
 - name: Create local export directory
   ansible.builtin.file:
     path: "{{ workingDir }}/data/clair"
@@ -35,17 +22,8 @@
         delivery_interval: 1m
 
 - name: Export vulnerability data on Landing Zone
-  containers.podman.podman_container:
-    name: clair-exporter
-    image: "{{ clair_pod.spec.containers[0].image | regex_replace('^registry\\.redhat\\.io', quayHostname + ':8443') }}"
-    authfile: "{{ workingDir }}/config/pull-secret.quay.json"
-    tls_verify: no
-    rm: yes
-    volumes:
-      - "{{ workingDir }}/data/clair:/data:Z"
-    entrypoint: "/usr/bin/clairctl"
-    command: "--config /data/config.yaml export-updaters /data/updates.json.gz"
-    detach: false
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/clairctl --config {{ workingDir }}/data/clair/config.yaml export-updaters {{ workingDir }}/data/clair/updates.json.gz
 
 - name: Ensure directory /var/www/html/clair/
   become: true
