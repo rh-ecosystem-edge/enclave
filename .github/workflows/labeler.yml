@@ -30,19 +30,18 @@ jobs:
           sync-labels: true
 
       # Size labels based on lines changed
-      # Using pascalgn/size-label-action (JavaScript) instead of codelytv/pr-size-labeler (Docker)
-      # because Docker container actions don't work well with podman on self-hosted runners
       - name: Size labels
-        uses: pascalgn/size-label-action@637b50d9ea6c2f84fc28ef5a9adbfac142f36670 # v0.5.4
+        uses: codelytv/pr-size-labeler@4ec67706cd878fbc1c8db0a5dcd28b6bb412e85a # v1.10.3
         continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          sizes: >
-            {
-              "0": "size/XS",
-              "10": "size/S",
-              "100": "size/M",
-              "500": "size/L",
-              "1000": "size/XL"
-            }
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/XS'
+          xs_max_size: '9'
+          s_label: 'size/S'
+          s_max_size: '99'
+          m_label: 'size/M'
+          m_max_size: '499'
+          l_label: 'size/L'
+          l_max_size: '999'
+          xl_label: 'size/XL'
+          fail_if_xl: 'false'
