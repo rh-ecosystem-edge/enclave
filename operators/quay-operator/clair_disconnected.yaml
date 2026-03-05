@@ -37,25 +37,34 @@
     src: "{{ workingDir }}/data/clair/updates.json.gz"
     dest: "/var/www/html/clair/updates.json.gz"
 
-- name: Get Clair Pod object from quay-enterprise
-  kubernetes.core.k8s_info:
-    kind: Pod
-    namespace: quay-enterprise
-    label_selectors:
-      - quay-component=clair-app
-  register: clair_pod_list
+- name: Create Clair Import Role
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: clair-import
+        namespace: quay-enterprise
+      rules:
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list", "exec"]
 
-- name: Set Pod fact and verify existence
-  ansible.builtin.set_fact:
-    clair_pod: "{{ clair_pod_list.resources[0] }}"
-  failed_when: clair_pod_list.resources | length == 0
-
-- name: Execute Import inside the Clair Pod
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc exec -n quay-enterprise {{ clair_pod.metadata.name }} -- \
-    /bin/sh -c "
-      set -e
-      curl -L -o /tmp/updates.json.gz http://{{ quayHostname }}/clair/updates.json.gz
-      /usr/bin/clairctl --config /clair/config.yaml import-updaters /tmp/updates.json.gz
-    "
-  register: import_output
+- name: Create Clair Import RoleBinding
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: clair-import
+        namespace: quay-enterprise
+      subjects:
+        - kind: ServiceAccount
+          name: clair-import
+          namespace: openshift-pipelines
+      roleRef:
+        kind: Role
+        name: clair-import
+        apiGroup: rbac.authorization.k8s.io
