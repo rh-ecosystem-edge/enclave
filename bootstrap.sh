@@ -153,7 +153,7 @@ printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
 
 echo -p "Deploying Partner OverLay .. " -n1 -s
     if [ -f ./partner-install/start.sh ]; then
-        ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}
+        bash ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}
     else
         echo "Partner OverLay not found, skipping"
     fi
