@@ -148,14 +148,23 @@
       delay: 5
       until: __r_create_aap_osac_sa is success
 
-    - name: "Create osac-sa ClusterRoleBinding in AAP namespace"
+    - name: "Create osac ClusterRole"
       kubernetes.core.k8s:
         state: present
-        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-clusterrolebinding.yaml.j2') | from_yaml }}"
-      register: __r_create_aap_osac_clusterrolebinding
+        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-clusterrole.yaml.j2') | from_yaml }}"
+      register: __r_create_aap_osac_clusterrole
       retries: 10
       delay: 5
-      until: __r_create_aap_osac_clusterrolebinding is success
+      until: __r_create_aap_osac_clusterrole is success
+
+    - name: "Create osac-rolebinding RoleBinding in AAP namespace"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-rolebinding.yaml.j2') | from_yaml }}"
+      register: __r_create_aap_osac_rolebinding
+      retries: 10
+      delay: 5
+      until: __r_create_aap_osac_rolebinding is success
 
     - name: "Create AnsibleAutomationPlatform resource"
       kubernetes.core.k8s:
