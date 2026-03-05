@@ -341,6 +341,14 @@ if [ "$BOOT_COMPLETE" = true ]; then
         info "✓ BMC network already configured: enp1s0 (${BMC_IP}/${BMC_PREFIX})"
     fi
 
+    # Add mirror -> LZ cluster IP to virsh network DNS so master VMs can resolve mirror.<domain>
+    info "Adding DNS entry: mirror -> ${CLUSTER_IP} (Landing Zone) on network ${CLUSTER_NETWORK_NAME}..."
+    if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host "<host ip='${CLUSTER_IP}'><hostname>mirror</hostname></host>" --live --config 2>/dev/null; then
+        warning "Could not add mirror DNS entry (network may not support live update)"
+    else
+        info "✓ DNS entry added: mirror -> ${CLUSTER_IP}"
+    fi
+
     echo ""
     info "========================================="
     info "Landing Zone VM Provisioned Successfully"

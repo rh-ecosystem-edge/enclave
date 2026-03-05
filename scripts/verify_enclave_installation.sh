@@ -254,10 +254,10 @@ fi
 
 # Test 8: Pull secret
 info "Test 8: Checking pull secret..."
-if ssh $SSH_OPTS "$LZ_SSH" "test -f ~/.config/pull-secret.json"; then
-    success "Pull secret exists at ~/.config/pull-secret.json"
+if ssh $SSH_OPTS "$LZ_SSH" "test -f ~/config/pull-secret.json"; then
+    success "Pull secret exists at ~/config/pull-secret.json"
 else
-    warning "Pull secret not found at ~/.config/pull-secret.json"
+    warning "Pull secret not found at ~/config/pull-secret.json"
     info "  You will need to provide a valid OpenShift pull secret before running Enclave Lab"
 fi
 
@@ -331,7 +331,7 @@ info "  SSH Access: ssh $LZ_SSH"
 echo ""
 info "Before running Enclave Lab:"
 info "  1. Review configuration vars: ssh $LZ_SSH 'cat $LZ_ENCLAVE_DIR/config/global.yaml'"
-info "  2. Update pull secret: ssh $LZ_SSH 'vi ~/.config/pull-secret.json'"
+info "  2. Update pull secret: ssh $LZ_SSH 'vi ~/config/pull-secret.json'"
 info "  3. Adjust any other settings in config/global.yaml and config/certificates.yaml as needed"
 echo ""
 info "To run Enclave Lab:"

@@ -112,9 +112,9 @@ operators:
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
-    defaultChannel: stable-2.5-cluster-scoped
+    defaultChannel: stable-2.6-cluster-scoped
     channels:
-    - name: stable-2.5-cluster-scoped
+    - name: stable-2.6-cluster-scoped
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
     disableTargetNamespace: true

@@ -164,6 +164,8 @@ quayPassword: SuperPrivate123!
 # Option 1: External S3/RadosGW storage (RECOMMENDED for production)
 # Option 2: Local storage (NOT recommended for production)
 quayBackend: LocalStorage
+quayBackendLocalStorageConfiguration:
+  storage_path: /datastorage/registry
 
 # ============================================================================
 # Storage Backend
@@ -189,7 +191,7 @@ lvmsConfig: {}
 # Pull secret will be read from pullSecretPath
 pullSecret:
   auths: {}
-pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
+pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 
 # SSH public key path for cluster nodes
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
@@ -289,7 +291,7 @@ info "Generated configuration uses:"
 info "  - Worker IPs: ${WORKER_IP_START}-${WORKER_IP_END} (will be assigned during deployment)"
 info "  - Storage: LVMS with /dev/vda root disk"
 info "  - Registry: LocalStorage"
-info "  - Pull secret: Will use ~/.config/pull-secret.json on Landing Zone"
+info "  - Pull secret: Will use ~/config/pull-secret.json on Landing Zone"
 info "  - SSL certificates: Empty (self-signed will be generated)"
 echo ""
 info "Review config/global.yaml and config/certificates.yaml and adjust if needed before running Enclave Lab"

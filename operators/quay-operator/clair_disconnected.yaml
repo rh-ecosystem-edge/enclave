@@ -1,4 +1,6 @@
 - name: Get Clair Pod object from quay-enterprise
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: quay-enterprise
@@ -60,6 +62,8 @@
     dest: "/var/www/html/clair/updates.json.gz"
 
 - name: Get Clair Pod object from quay-enterprise
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: quay-enterprise
@@ -73,6 +77,8 @@
   failed_when: clair_pod_list.resources | length == 0
 
 - name: Execute Import inside the Clair Pod
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   ansible.builtin.shell: |
     {{ workingDir }}/bin/oc exec -n quay-enterprise {{ clair_pod.metadata.name }} -- \
     /bin/sh -c "

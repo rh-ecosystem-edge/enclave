@@ -59,6 +59,16 @@ echo "Creating dev-scripts configuration at: $CONFIG_FILE"
 ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}"
 ENCLAVE_NUM_LANDINGZONE="${ENCLAVE_NUM_LANDINGZONE:-1}"
 
+# VM extra disk size: 200G for disconnected (mirroring), 60G for connected
+DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
+if [ "$DEPLOYMENT_MODE" = "connected" ]; then
+    VM_EXTRADISKS_SIZE_VAL="60G"
+    MASTER_MEMORY_VAL=24576    # 24 GB for connected
+else
+    VM_EXTRADISKS_SIZE_VAL="180G"
+    MASTER_MEMORY_VAL=32768    # 32 GB for disconnected
+fi
+
 # Create configuration file
 cat > "$CONFIG_FILE" <<EOF
 #!/bin/bash
@@ -92,21 +102,21 @@ export NUM_EXTRA_WORKERS=0
 # =============================================================================
 
 # Master VMs need resources for OpenShift control plane nodes
-export MASTER_MEMORY=24576    # 24 GB RAM
-export MASTER_DISK=120        # 120 GB disk
-export MASTER_VCPU=12         # 12 vCPUs
+export MASTER_MEMORY=${MASTER_MEMORY_VAL}   # 24 GB (connected) or 32 GB (disconnected)
+export MASTER_DISK=120  # 120 GB disk
+export MASTER_VCPU=12   # 12 vCPUs
 
 # Extra disks for storage (used by LVMS for PersistentVolumes)
 export VM_EXTRADISKS=true
 export VM_EXTRADISKS_LIST="vdb"
-export VM_EXTRADISKS_SIZE="60G"
+export VM_EXTRADISKS_SIZE="${VM_EXTRADISKS_SIZE_VAL}"
 
 # =============================================================================
 # Landing Zone VM Specs
 # =============================================================================
 
 # Landing Zone VM runs Enclave Lab and deployment tools
-export LANDINGZONE_MEMORY=8192    # 8 GB RAM
+export LANDINGZONE_MEMORY=12288   # 12 GB RAM
 export LANDINGZONE_DISK=60        # 60 GB disk
 export LANDINGZONE_VCPU=4         # 4 vCPUs
 
@@ -146,6 +156,9 @@ export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 
 # Cluster domain (for DNS)
 export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
+
+# Base domain (so dev-scripts uses .lab not test.metalkube.org for CLUSTER_DOMAIN)
+export BASE_DOMAIN="lab"
 
 # Working directory (where VMs and configs are stored)
 export WORKING_DIR="/opt/dev-scripts"
