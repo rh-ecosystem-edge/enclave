@@ -10,7 +10,7 @@ rendezvousIP:  {{ rendezvousIP }}
 # If defaultNtpServers are defined, add it to the configuration
 {% if defaultNtpServers | default("") | length > 0  %}
 additionalNTPSources:
-{{ defaultNtpServers | to_nice_yaml }}  
+{{ defaultNtpServers | to_nice_yaml }}
 {% endif %}
 
 # And we add the network configuration of each host, in nmstate format

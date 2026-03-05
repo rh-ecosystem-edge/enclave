@@ -1,3 +1,9 @@
+- name: validate defaults/deployment.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/deployment.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/deployment.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
 - name: validate defaults/catalogs.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/catalogs.yaml') | from_yaml | to_json }}"

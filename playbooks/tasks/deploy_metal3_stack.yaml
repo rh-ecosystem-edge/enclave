@@ -3,7 +3,7 @@
 
 - name: Get ironic image from OpenShift release
   ansible.builtin.command: >
-    {{ workingDir }}/bin/oc adm release info --registry-config={{ workingDir }}/config/pull-secret.json --image-for ironic
+    {{ workingDir }}/bin/oc adm release info --registry-config={{ pullSecretPath }} --image-for ironic
     quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
   register: r_ironic_image
   changed_when: false
@@ -66,7 +66,7 @@
     name: ironic
     pod: metal3-ironic
     image: "{{ metal3_ironic_image }}"
-    authfile: "{{ workingDir }}/config/pull-secret.json"
+    authfile: "{{ pullSecretPath }}"
     restart_policy: always
     user: "1002:1003"
     cap_drop:
@@ -97,7 +97,7 @@
     name: httpd
     pod: metal3-ironic
     image: "{{ metal3_ironic_image }}"
-    authfile: "{{ workingDir }}/config/pull-secret.json"
+    authfile: "{{ pullSecretPath }}"
     restart_policy: always
     user: "1002:1003"
     cap_drop:

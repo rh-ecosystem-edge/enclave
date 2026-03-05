@@ -1,0 +1,32 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  disconnected:
+    type: boolean
+    description: >-
+      Whether the deployment is disconnected (air-gapped). Default: true.
+      Set to false for connected deployments.
+  diskEncryption:
+    type: boolean
+    description: >-
+      Whether to enable disk encryption using TPM v2. Default: false.
+      Set to true to encrypt the installation partition on all nodes.
+  ocMirrorLogLevel:
+    type: string
+    enum: [trace, debug, info, error]
+    description: >-
+      Log level for oc-mirror. Default: info.
+  pullSecretPath:
+    type: string
+    description: >-
+      Path to the pull secret JSON file. Default: {{ workingDir }}/config/pull-secret.json.
+
+required:
+  - disconnected
+  - diskEncryption
+  - ocMirrorLogLevel
+  - pullSecretPath
