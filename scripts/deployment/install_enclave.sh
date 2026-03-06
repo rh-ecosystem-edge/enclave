@@ -64,7 +64,7 @@ if [ ! -f "$ENVIRONMENT_JSON" ]; then
     ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
 fi
 
-ENCLAVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENCLAVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Extract cluster network prefix for dynamic IP detection
 CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
@@ -227,7 +227,7 @@ success "Dependencies installed"
 info "Step 5: Generating Enclave Lab configuration (config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml)..."
 
 # Generate config files using helper script
-"${ENCLAVE_DIR}/scripts/generate_enclave_vars.sh"
+"${ENCLAVE_DIR}/scripts/infrastructure/generate_enclave_vars.sh"
 
 # Copy vars files to Landing Zone
 ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config"

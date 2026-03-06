@@ -138,7 +138,7 @@ done
 info "Running dev-scripts cleanup..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if "${SCRIPT_DIR}/with_libvirt_lock.sh" sh -c "cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean"; then
+if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" sh -c "cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean"; then
     success "dev-scripts cleanup completed successfully"
 else
     warning "dev-scripts cleanup reported failure, but continuing..."
@@ -371,7 +371,7 @@ done
 
 # Release allocated subnet
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -f "${SCRIPT_DIR}/allocate_subnet.sh" ]; then
+if [ -f "${SCRIPT_DIR}/../setup/allocate_subnet.sh" ]; then
     info "Releasing allocated subnet for cluster: ${CLUSTER_NAME}"
 
     # Export variables for subprocess
@@ -379,7 +379,7 @@ if [ -f "${SCRIPT_DIR}/allocate_subnet.sh" ]; then
     BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
     export WORKING_DIR="${BASE_DIR}"
 
-    "${SCRIPT_DIR}/allocate_subnet.sh" release || warning "Failed to release subnet (may not have been allocated)"
+    "${SCRIPT_DIR}/../setup/allocate_subnet.sh" release || warning "Failed to release subnet (may not have been allocated)"
 fi
 
 success "=========================================="

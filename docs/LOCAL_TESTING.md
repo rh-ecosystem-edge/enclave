@@ -149,13 +149,13 @@ make preflight-checks
 **Options:**
 ```bash
 # With all checks
-./scripts/preflight_checks.sh \
+./scripts/setup/preflight_checks.sh \
   --check-pull-secret \
   --check-system-resources \
   --check-libvirt
 
 # Custom title
-./scripts/preflight_checks.sh --title "My Custom Checks"
+./scripts/setup/preflight_checks.sh --title "My Custom Checks"
 ```
 
 ### 2. Generate Cluster Name
@@ -169,10 +169,10 @@ make generate-cluster-name
 **Strategies:**
 ```bash
 # Hash-based (default) - uses timestamp + PID
-./scripts/generate_cluster_name.sh --strategy hash --prefix eci
+./scripts/setup/generate_cluster_name.sh --strategy hash --prefix eci
 
 # Date-based - for nightly runs
-./scripts/generate_cluster_name.sh --strategy date --prefix nc
+./scripts/setup/generate_cluster_name.sh --strategy date --prefix nc
 ```
 
 ### 3. Setup Working Directory
@@ -429,20 +429,20 @@ curl -k https://100.64.X.1:8000/redfish/v1/Systems
 virsh list | grep landingzone
 
 # Get IP address
-./scripts/get_landing_zone_ip.sh
+./scripts/utils/get_landing_zone_ip.sh
 
 # SSH connectivity
-ssh cloud-user@$(./scripts/get_landing_zone_ip.sh) hostname
+ssh cloud-user@$(./scripts/utils/get_landing_zone_ip.sh) hostname
 
 # BMC network connectivity
-ssh cloud-user@$(./scripts/get_landing_zone_ip.sh) \
+ssh cloud-user@$(./scripts/utils/get_landing_zone_ip.sh) \
   "curl -k https://100.64.X.1:8000/redfish/v1/Systems"
 ```
 
 ### Check Enclave Installation
 
 ```bash
-LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
 
 # Directory structure
 ssh cloud-user@$LZ_IP "ls -la /home/cloud-user/enclave"
@@ -460,7 +460,7 @@ ssh cloud-user@$LZ_IP "systemctl status httpd"
 ### Check Cluster
 
 ```bash
-LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Kubeconfig exists
@@ -544,7 +544,7 @@ virsh console ${ENCLAVE_CLUSTER_NAME}_landingzone_0  # Ctrl+] to exit
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
 
 # Ping test
 ping -c 3 $LZ_IP
@@ -560,7 +560,7 @@ virsh console ${ENCLAVE_CLUSTER_NAME}_landingzone_0
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
 
 # Check deployment logs
 ssh cloud-user@$LZ_IP "tail -f /home/cloud-user/enclave/deployment.log"
@@ -578,7 +578,7 @@ ssh cloud-user@$LZ_IP "journalctl -xef"
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Get degraded operators
@@ -712,7 +712,7 @@ make clean
 make -n ci-flow-connected     # Dry run (show commands)
 
 # For scripts
-bash -x ./scripts/provision_landing_zone.sh
+bash -x ./scripts/infrastructure/provision_landing_zone.sh
 
 # For Ansible (on Landing Zone)
 ssh cloud-user@$LZ_IP
@@ -766,10 +766,10 @@ If scripts are updated, use them directly:
 
 ```bash
 # Instead of: make verify-cluster
-./scripts/verify_cluster.sh
+./scripts/verification/verify_cluster.sh
 
 # With custom arguments
-./scripts/preflight_checks.sh --check-all --title "Custom Checks"
+./scripts/setup/preflight_checks.sh --check-all --title "Custom Checks"
 ```
 
 ### Parallel Testing

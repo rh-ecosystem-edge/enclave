@@ -183,7 +183,7 @@ jobs:
           make verify-cluster
 
           # Additional verification for disconnected mode - check mirror registry
-          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
           echo "" >> $GITHUB_STEP_SUMMARY

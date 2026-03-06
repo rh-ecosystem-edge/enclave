@@ -60,7 +60,7 @@ output ""
 
 # Get Landing Zone IP using helper script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LZ_IP=$("${SCRIPT_DIR}/get_landing_zone_ip.sh")
+LZ_IP=$("${SCRIPT_DIR}/../utils/get_landing_zone_ip.sh")
 
 if [ -z "$LZ_IP" ]; then
     output "❌ Cannot find Landing Zone IP"
