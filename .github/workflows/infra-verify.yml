@@ -2,16 +2,6 @@ name: Infrastructure Verification
 
 on:
   workflow_dispatch:
-    inputs:
-      cleanup_strategy:
-        description: 'Cleanup strategy after run'
-        required: true
-        default: 'on_failure'
-        type: choice
-        options:
-          - always
-          - on_failure
-          - never
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -29,11 +19,8 @@ jobs:
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
-      # For PR runs: always cleanup to avoid leaving infrastructure
-      # For manual runs: use input parameter (default: on_failure)
-      CLEANUP_STRATEGY: ${{ github.event_name == 'pull_request' && 'always' || inputs.cleanup_strategy || 'on_failure' }}
       # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
       OPENSHIFT_CI: "true"
 
@@ -47,6 +34,15 @@ jobs:
           naming-strategy: hash
           prefix: eci
           run-id: ${{ github.run_id }}
+
+      - name: Setup cluster-specific working directory
+        run: |
+          make setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+          # Create directory for step logs
+          mkdir -p step-logs
+          echo "STEP_LOGS_DIR=$PWD/step-logs" >> $GITHUB_ENV
 
       - name: Workflow information
         env:
@@ -69,10 +65,42 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Setup infrastructure
-        uses: ./.github/actions/setup-infrastructure
-        with:
-          skip-install-enclave: 'true'
+      - name: Allocate unique subnet for cluster
+        id: allocate_subnet
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Save allocation log
+        if: always() && steps.allocate_subnet.outcome != 'skipped'
+        run: |
+          echo "Subnet allocation completed with status: ${{ steps.allocate_subnet.outcome }}" > step-logs/01-allocate-subnet.log
+
+      - name: Create infrastructure
+        id: create_infra
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
+          make environment
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Save infrastructure log
+        if: always() && steps.create_infra.outcome != 'skipped'
+        run: |
+          echo "Infrastructure setup completed with status: ${{ steps.create_infra.outcome }}" > step-logs/02-setup-infrastructure.log
+
+      - name: Provision Landing Zone
+        id: provision_lz
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make provision-landing-zone
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab (Connected Mode)
         id: install_enclave
@@ -81,7 +109,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Running in connected mode for faster testing..." >> $GITHUB_STEP_SUMMARY
 
-          ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
+          ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave 2>&1 | tee step-logs/03-install-enclave.log
+
+      - name: Collect step logs
+        if: always()
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: make collect-step-logs
 
       - name: Collect artifacts
         if: always()
@@ -95,18 +129,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: infra-verify-artifacts
-          path: ci-artifacts/
+          path: |
+            ci-artifacts/
+            step-logs/
           retention-days: 7
 
       - name: Cleanup infrastructure
-        if: |
-          always() &&
-          (env.CLEANUP_STRATEGY == 'always' ||
-           (failure() && env.CLEANUP_STRATEGY == 'on_failure'))
+        if: always()
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Cleanup strategy: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
 
           make clean || true
           echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
@@ -120,9 +152,4 @@ jobs:
           echo "## Workflow Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cleanup Strategy**: $CLEANUP_STRATEGY" >> $GITHUB_STEP_SUMMARY
           echo "- **Result**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "ℹ️ This PR run will **always cleanup** infrastructure after completion" >> $GITHUB_STEP_SUMMARY
-          fi

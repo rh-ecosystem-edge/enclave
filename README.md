@@ -153,6 +153,29 @@ make verify                          # Verify infrastructure setup
 make clean                           # Clean up all infrastructure
 ```
 
+#### Verification Targets
+```bash
+make verify-cluster                  # Verify OpenShift cluster deployment
+make verify-cleanup                  # Verify infrastructure cleanup
+```
+
+#### Helper Targets
+```bash
+make generate-cluster-name           # Generate unique cluster name (auto-called)
+make setup-working-dir               # Setup cluster-specific working directory
+make collect-step-logs               # Collect logs from dev-scripts and cluster
+make preflight-checks                # Run pre-flight environment checks
+make collect-artifacts-basic         # Collect basic artifacts
+make collect-artifacts-deployment    # Collect deployment artifacts
+make collect-artifacts-full          # Collect all artifacts
+```
+
+#### Local CI Testing Targets
+```bash
+make ci-flow-connected               # Run full CI flow locally (connected mode)
+make ci-flow-disconnected            # Run full CI flow locally (disconnected mode)
+```
+
 #### Deploy Individual Phases (for granular control)
 ```bash
 make deploy-cluster-prepare          # Phase 1: Download binaries
@@ -171,6 +194,48 @@ make deploy-cluster-discovery        # Phase 7: Configure hardware discovery
 # ALWAYS run this before committing
 make validate
 ```
+
+#### Run Full CI Flow Locally
+
+You can run the complete CI workflow locally to test changes before pushing:
+
+**Automatic cluster name generation:**
+```bash
+export DEV_SCRIPTS_PATH=/path/to/dev-scripts
+export BASE_WORKING_DIR=/opt/clusters
+
+# Connected mode (faster for development)
+make ci-flow-connected
+
+# Disconnected mode (full validation)
+make ci-flow-disconnected
+```
+
+**With custom cluster name:**
+```bash
+export ENCLAVE_CLUSTER_NAME=my-test-cluster
+export DEV_SCRIPTS_PATH=/path/to/dev-scripts
+export BASE_WORKING_DIR=/opt/clusters
+
+make ci-flow-connected
+```
+
+The `ci-flow-*` targets automatically:
+1. Run preflight checks
+2. Setup working directory (with auto-generated cluster name if needed)
+3. Create infrastructure
+4. Provision Landing Zone
+5. Install Enclave Lab
+6. Deploy cluster
+7. Verify cluster deployment
+
+**Benefits:**
+- Test the same flow that runs in GitHub Actions
+- Debug issues locally before CI runs
+- Faster iteration than waiting for CI
+- Full control over environment
+
+See [Local CI Testing Guide](docs/LOCAL_TESTING.md) for detailed usage.
 
 #### Test Infrastructure Creation
 ```bash
@@ -389,7 +454,7 @@ virsh list --all | grep enclave-test | awk '{print $2}' | xargs -I {} virsh unde
 
 ## Continuous Integration
 
-Enclave Lab uses GitHub Actions for automated testing and validation with four main workflows.
+Enclave Lab uses GitHub Actions for automated testing and validation with four main workflows. All CI workflows use the same Makefile targets that you can run locally, ensuring consistency between local testing and CI.
 
 ### Available Workflows
 

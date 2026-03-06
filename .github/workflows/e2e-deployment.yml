@@ -47,7 +47,7 @@ concurrency:
 jobs:
   check-e2e-needed:
     name: Check if E2E should run
-    runs-on: [self-hosted, enclave-small]
+    runs-on: [self-hosted, pr-validation]
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
@@ -104,7 +104,7 @@ jobs:
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       # Use manual input if available, otherwise default to 'connected' for PR runs
       ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
@@ -124,6 +124,11 @@ jobs:
           prefix: eci
           run-id: ${{ github.run_id }}
 
+      - name: Setup cluster-specific working directory
+        run: |
+          make setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
       - name: Pre-flight checks
         uses: ./.github/actions/preflight-checks
         with:
@@ -132,19 +137,39 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Clean existing infrastructure
-        id: clean
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
         run: |
-          echo "## Cleaning Existing Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Removing any existing VMs and networks..." >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
-          make clean
+          make environment
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
-          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+      - name: Provision Landing Zone
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make provision-landing-zone
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
-      - name: Setup infrastructure
-        uses: ./.github/actions/setup-infrastructure
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          make install-enclave
+          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 1 - Prepare binaries and content
         id: deploy_prepare
@@ -226,92 +251,7 @@ jobs:
 
       - name: Verify cluster deployment
         id: verify_cluster
-        run: |
-          set +e  # Don't exit on error, handle errors explicitly
-
-          echo "## Verifying Cluster Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Get Landing Zone IP using helper script
-          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
-
-          if [ -z "$LZ_IP" ]; then
-            echo "❌ Cannot find Landing Zone IP" >> $GITHUB_STEP_SUMMARY
-            echo "ERROR: Cannot find Landing Zone IP"
-            echo "Environment file: $ENV_FILE"
-            cat "$ENV_FILE" 2>/dev/null || echo "Environment file not found"
-            echo ""
-            echo "Trying virsh domifaddr:"
-            sudo virsh domifaddr "${ENCLAVE_CLUSTER_NAME}_landingzone_0" 2>&1 || true
-            exit 1
-          fi
-          echo "✅ Landing Zone IP: $LZ_IP" >> $GITHUB_STEP_SUMMARY
-
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-          # Check if kubeconfig exists
-          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/ocp-cluster/auth/kubeconfig" 2>&1; then
-            echo "❌ Kubeconfig not found on Landing Zone" >> $GITHUB_STEP_SUMMARY
-            echo "ERROR: Kubeconfig not found at /home/cloud-user/ocp-cluster/auth/kubeconfig"
-            ssh $SSH_OPTS cloud-user@$LZ_IP "ls -la /home/cloud-user/ocp-cluster/auth/ 2>&1 || echo 'ocp-cluster/auth directory not found'"
-            exit 1
-          fi
-          echo "✅ Kubeconfig found" >> $GITHUB_STEP_SUMMARY
-
-          # Verify nodes are ready
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Cluster Nodes" >> $GITHUB_STEP_SUMMARY
-          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes" 2>&1 | tee nodes.txt; then
-            echo "❌ Failed to get cluster nodes" >> $GITHUB_STEP_SUMMARY
-            echo "ERROR: Failed to run 'oc get nodes'"
-            echo "Command output:"
-            cat nodes.txt
-            echo ""
-            echo "Checking oc binary and PATH:"
-            ssh $SSH_OPTS cloud-user@$LZ_IP "which oc && oc version || echo 'oc command not found or failed'"
-            exit 1
-          fi
-          cat nodes.txt >> $GITHUB_STEP_SUMMARY
-
-          # Count ready nodes
-          READY_NODES=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes --no-headers 2>/dev/null | grep -c Ready" || echo "0")
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Ready nodes: $READY_NODES" >> $GITHUB_STEP_SUMMARY
-
-          # Verify cluster operators
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Cluster Operators" >> $GITHUB_STEP_SUMMARY
-          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co" 2>&1 | tee operators.txt; then
-            echo "❌ Failed to get cluster operators" >> $GITHUB_STEP_SUMMARY
-            echo "ERROR: Failed to run 'oc get co'"
-            echo "Command output:"
-            cat operators.txt
-            exit 1
-          fi
-          cat operators.txt >> $GITHUB_STEP_SUMMARY
-
-          # Check for degraded operators
-          echo "" >> $GITHUB_STEP_SUMMARY
-          DEGRADED=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co -o json 2>/dev/null | jq -r '.items[] | select(.status.conditions[] | select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'" || echo "")
-
-          if [ -n "$DEGRADED" ]; then
-            echo "⚠️ Warning: Some cluster operators are degraded:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$DEGRADED" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ All cluster operators are healthy" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Get cluster version
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Cluster Version" >> $GITHUB_STEP_SUMMARY
-          if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get clusterversion" 2>&1 >> $GITHUB_STEP_SUMMARY; then
-            echo "⚠️ Could not get cluster version" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Cluster verification complete" >> $GITHUB_STEP_SUMMARY
+        run: make verify-cluster
 
       - name: Collect artifacts
         if: always()
@@ -388,43 +328,7 @@ jobs:
 
       - name: Verify cleanup
         if: always()
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Resource Check" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # List all VMs to check for stragglers
-          ALL_VMS=$(sudo virsh list --all --name 2>/dev/null | grep -E 'eci-|enclave-' || true)
-          if [ -n "$ALL_VMS" ]; then
-            echo "⚠️ Found VMs still present:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$ALL_VMS" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ No VMs found" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # List all networks to check for stragglers
-          ALL_NETS=$(sudo virsh net-list --all --name 2>/dev/null | grep -E 'eci-|enclave-' || true)
-          if [ -n "$ALL_NETS" ]; then
-            echo "⚠️ Found networks still present:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$ALL_NETS" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ No networks found" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          # Check for environment files
-          ENV_FILES=$(ls -1 "${WORKING_DIR}"/environment*.json 2>/dev/null || true)
-          if [ -n "$ENV_FILES" ]; then
-            echo "⚠️ Found environment files still present:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            echo "$ENV_FILES" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ No environment files found" >> $GITHUB_STEP_SUMMARY
-          fi
+        run: make verify-cleanup
 
       - name: Summary
         if: always()

@@ -27,79 +27,26 @@ runs:
   using: composite
   steps:
     - name: Run preflight checks
-      shell: bash {0}
+      shell: bash
       run: |
-        set +e  # Don't exit on first error, collect all failures
-        FAILED=0
-
-        echo "## ${{ inputs.title }}" | tee -a $GITHUB_STEP_SUMMARY
-        echo "" | tee -a $GITHUB_STEP_SUMMARY
-
-        # Check required environment variables
-        echo "### Environment Variables" | tee -a $GITHUB_STEP_SUMMARY
-
-        if [ -z "$DEV_SCRIPTS_PATH" ]; then
-          echo "❌ DEV_SCRIPTS_PATH not set" | tee -a $GITHUB_STEP_SUMMARY
-          FAILED=1
-        else
-          echo "✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH" | tee -a $GITHUB_STEP_SUMMARY
-        fi
-
-        if [ -z "$WORKING_DIR" ]; then
-          echo "❌ WORKING_DIR not set" | tee -a $GITHUB_STEP_SUMMARY
-          FAILED=1
-        else
-          echo "✅ WORKING_DIR: $WORKING_DIR" | tee -a $GITHUB_STEP_SUMMARY
-        fi
+        # Build arguments for the script based on inputs
+        ARGS="--title '${{ inputs.title }}'"
 
         if [ "${{ inputs.check-pull-secret }}" = "true" ]; then
-          if [ -z "$PULL_SECRET" ]; then
-            echo "❌ PULL_SECRET not set" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          else
-            echo "✅ PULL_SECRET: configured" | tee -a $GITHUB_STEP_SUMMARY
-          fi
+          ARGS="$ARGS --check-pull-secret"
+        fi
+
+        if [ "${{ inputs.check-system-resources }}" = "true" ]; then
+          ARGS="$ARGS --check-system-resources"
+        fi
+
+        if [ "${{ inputs.check-libvirt }}" = "true" ]; then
+          ARGS="$ARGS --check-libvirt"
         fi
 
         if [ -n "${{ inputs.deployment-mode }}" ]; then
-          echo "✅ Deployment mode: ${{ inputs.deployment-mode }}" | tee -a $GITHUB_STEP_SUMMARY
+          ARGS="$ARGS --deployment-mode '${{ inputs.deployment-mode }}'"
         fi
 
-        # Check system resources if requested
-        if [ "${{ inputs.check-system-resources }}" = "true" ]; then
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "### System Resources" | tee -a $GITHUB_STEP_SUMMARY
-          TOTAL_RAM=$(free -g | awk '/^Mem:/{print $2}')
-          echo "✅ Total RAM: ${TOTAL_RAM}GB" | tee -a $GITHUB_STEP_SUMMARY
-
-          if [ -n "$WORKING_DIR" ]; then
-            AVAILABLE_DISK=$(df -h $WORKING_DIR 2>/dev/null | awk 'NR==2{print $4}')
-            if [ -n "$AVAILABLE_DISK" ]; then
-              echo "✅ Available disk space: $AVAILABLE_DISK" | tee -a $GITHUB_STEP_SUMMARY
-            fi
-          fi
-        fi
-
-        # Check libvirt access if requested
-        if [ "${{ inputs.check-libvirt }}" = "true" ]; then
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "### Libvirt Access" | tee -a $GITHUB_STEP_SUMMARY
-          if sudo virsh list --all > /dev/null 2>&1; then
-            echo "✅ Libvirt access verified" | tee -a $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Cannot access libvirt" | tee -a $GITHUB_STEP_SUMMARY
-            FAILED=1
-          fi
-        fi
-
-        # Final status
-        if [ $FAILED -eq 0 ]; then
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "✅ All pre-flight checks passed" | tee -a $GITHUB_STEP_SUMMARY
-        else
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "❌ Pre-flight checks failed" | tee -a $GITHUB_STEP_SUMMARY
-          echo "" | tee -a $GITHUB_STEP_SUMMARY
-          echo "**Action Required**: Configure repository variables and secrets in Settings → Secrets and variables → Actions" | tee -a $GITHUB_STEP_SUMMARY
-          exit 1
-        fi
+        # Call the preflight checks script
+        eval "./scripts/preflight_checks.sh $ARGS"

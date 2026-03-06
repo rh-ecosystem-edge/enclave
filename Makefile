@@ -19,7 +19,7 @@
 #   make verify                           - Verify infrastructure is working
 #   make clean                            - Clean up infrastructure
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery verify clean
+.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
 
 # Configuration
 DEV_SCRIPTS_PATH ?=
@@ -62,6 +62,23 @@ help:
 	@echo "  make verify                           - Verify infrastructure setup"
 	@echo "  make clean                            - Clean up infrastructure"
 	@echo ""
+	@echo "CI Verification targets:"
+	@echo "  make verify-cluster                   - Verify OpenShift cluster deployment"
+	@echo "  make verify-cleanup                   - Verify infrastructure cleanup"
+	@echo ""
+	@echo "CI Helper targets:"
+	@echo "  make generate-cluster-name            - Generate unique cluster name (auto-called by setup-working-dir)"
+	@echo "  make setup-working-dir                - Setup cluster-specific working directory"
+	@echo "  make collect-step-logs                - Collect logs from dev-scripts and cluster"
+	@echo "  make preflight-checks                 - Run pre-flight environment checks"
+	@echo "  make collect-artifacts-basic          - Collect basic artifacts"
+	@echo "  make collect-artifacts-deployment     - Collect deployment artifacts"
+	@echo "  make collect-artifacts-full           - Collect all artifacts"
+	@echo ""
+	@echo "Local CI Testing targets:"
+	@echo "  make ci-flow-connected                - Run full CI flow locally (connected mode)"
+	@echo "  make ci-flow-disconnected             - Run full CI flow locally (disconnected mode)"
+	@echo ""
 	@echo "Deploy individual phases (for granular control):"
 	@echo "  make deploy-cluster-prepare           - Phase 1: Download binaries and content"
 	@echo "  make deploy-cluster-mirror            - Phase 2: Mirror registry setup (disconnected)"
@@ -80,16 +97,26 @@ help:
 	@echo "Current values:"
 	@echo "  DEV_SCRIPTS_PATH=$(DEV_SCRIPTS_PATH)"
 	@echo "  WORKING_DIR=$(WORKING_DIR)"
+	@echo "  BASE_WORKING_DIR=$(BASE_WORKING_DIR)"
+	@if [ -n "$(ENCLAVE_CLUSTER_NAME)" ]; then \
+		echo "  ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME)"; \
+	else \
+		echo "  ENCLAVE_CLUSTER_NAME=(will be auto-generated)"; \
+	fi
 	@echo ""
 	@echo "Example workflow (full deployment):"
 	@echo "  make validate                # Validate code quality"
 	@echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
+	@echo "  export BASE_WORKING_DIR=/opt/clusters"
 	@echo "  export CI_TOKEN=your-token"
 	@echo ""
-	@echo "  make environment                # Step 1: Create infrastructure"
+	@echo "  make environment                # Step 1: Create infrastructure (auto-generates cluster name)"
 	@echo "  make provision-landing-zone     # Step 2: Install OS on Landing Zone"
 	@echo "  make install-enclave            # Step 3: Install Enclave Lab"
 	@echo "  make deploy-cluster             # Step 4: Deploy OpenShift (all phases)"
+	@echo ""
+	@echo "  Or run the complete flow in one command:"
+	@echo "  make ci-flow-connected          # Runs all steps above automatically"
 	@echo ""
 	@echo "Example workflow (granular deployment):"
 	@echo "  # After install-enclave, deploy individual phases:"
@@ -190,6 +217,9 @@ environment:
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
 	@./scripts/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
+	@echo ""
+	@echo "Step 3a: Verifying networks were created..."
+	@./scripts/verify_networks.sh
 	@echo ""
 	@echo "Step 4: Starting BMC emulation (sushy-tools)..."
 	@./scripts/start_sushy_tools.sh
@@ -316,3 +346,55 @@ verify:
 # Clean up infrastructure
 clean:
 	@./scripts/cleanup.sh
+
+# Verification targets
+verify-cluster:
+	@./scripts/verify_cluster.sh
+
+verify-cleanup:
+	@./scripts/verify_cleanup.sh
+
+# Helper targets
+generate-cluster-name:
+	@./scripts/generate_cluster_name.sh
+
+setup-working-dir:
+	@./scripts/setup_working_dir.sh
+
+collect-step-logs:
+	@./scripts/collect_step_logs.sh step-logs
+
+preflight-checks:
+	@./scripts/preflight_checks.sh
+
+# Artifact collection wrappers (use existing script)
+collect-artifacts-basic:
+	@./scripts/collect_ci_artifacts.sh basic artifacts
+
+collect-artifacts-deployment:
+	@./scripts/collect_ci_artifacts.sh deployment artifacts
+
+collect-artifacts-full:
+	@./scripts/collect_ci_artifacts.sh full artifacts
+
+# Full CI flow for local testing
+ci-flow-connected:
+	@echo "=========================================="
+	@echo "Running full CI flow (connected mode)"
+	@echo "=========================================="
+	@echo ""
+	@$(MAKE) preflight-checks
+	@$(MAKE) setup-working-dir
+	@$(MAKE) environment
+	@$(MAKE) provision-landing-zone
+	@$(MAKE) install-enclave
+	@$(MAKE) deploy-cluster
+	@$(MAKE) verify-cluster
+	@echo ""
+	@echo "=========================================="
+	@echo "✅ CI flow complete!"
+	@echo "=========================================="
+
+ci-flow-disconnected:
+	@echo "Running full CI flow (disconnected mode)"
+	@ENCLAVE_DEPLOYMENT_MODE=disconnected $(MAKE) ci-flow-connected

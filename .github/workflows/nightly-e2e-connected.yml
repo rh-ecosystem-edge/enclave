@@ -23,7 +23,7 @@ jobs:
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
-      WORKING_DIR: ${{ vars.WORKING_DIR }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
       CLEANUP_AFTER: 'true'
@@ -39,6 +39,14 @@ jobs:
           naming-strategy: date
           prefix: nc
 
+      - name: Setup cluster-specific working directory
+        run: |
+          CLUSTER_WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+          echo "Creating cluster-specific working directory: $CLUSTER_WORKING_DIR"
+          mkdir -p "$CLUSTER_WORKING_DIR"
+          echo "WORKING_DIR=$CLUSTER_WORKING_DIR" >> $GITHUB_ENV
+          echo "Cluster working directory: $CLUSTER_WORKING_DIR"
+
       - name: Workflow information
         run: |
           echo "## Nightly E2E Deployment - Connected Mode" >> $GITHUB_STEP_SUMMARY
@@ -52,6 +60,9 @@ jobs:
         with:
           title: Nightly E2E Deployment - Connected Mode
           check-pull-secret: 'true'
+
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
 
       - name: Clean infrastructure
         id: clean
@@ -82,30 +93,7 @@ jobs:
       - name: Verify cluster deployment
         if: success()
         id: verify_cluster
-        run: |
-          set +e
-
-          echo "## Verifying Cluster Deployment" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Get Landing Zone IP using helper script
-          LZ_IP=$(./scripts/get_landing_zone_ip.sh)
-
-          if [ -z "$LZ_IP" ]; then
-            echo "❌ Cannot find Landing Zone IP" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-          echo "✅ Landing Zone IP: $LZ_IP" >> $GITHUB_STEP_SUMMARY
-
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-          # Get cluster operators status
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Cluster Operators" >> $GITHUB_STEP_SUMMARY
-          ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co" >> $GITHUB_STEP_SUMMARY || true
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Cluster verification complete" >> $GITHUB_STEP_SUMMARY
+        run: make verify-cluster
 
       - name: Collect artifacts
         if: always()
