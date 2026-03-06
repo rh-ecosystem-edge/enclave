@@ -83,6 +83,10 @@ BMC_IP=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}
 BMC_GATEWAY=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
 CLUSTER_GATEWAY=$(echo "$CLUSTER_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
 
+# Calculate cluster-specific BMC port (e.g., subnet 3 -> port 8003)
+SUBNET_ID=$(echo "$BMC_NETWORK" | awk -F. '{print $3}')
+BMC_PORT="$((8000 + SUBNET_ID))"
+
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -q"
 
 info "========================================="
@@ -168,7 +172,7 @@ fi
 
 # Test 6: Verify sushy-tools (BMC emulator) accessibility
 info "Test 6: Testing sushy-tools (BMC emulator) accessibility..."
-SUSHY_ENDPOINT="https://${BMC_GATEWAY}:8000/redfish/v1/Systems"
+SUSHY_ENDPOINT="https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
 
 # First check from the host (where sushy-tools should be running)
 if curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 "$SUSHY_ENDPOINT" 2>/dev/null | grep -q "200"; then

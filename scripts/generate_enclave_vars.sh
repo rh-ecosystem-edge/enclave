@@ -47,7 +47,7 @@ fi
 source "$CONFIG_FILE"
 
 # Configuration
-WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Try cluster-specific environment file first, fall back to legacy location

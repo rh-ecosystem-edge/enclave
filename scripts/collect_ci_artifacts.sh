@@ -314,16 +314,24 @@ collect_devscripts_config() {
             local cluster_env="$WORKING_DIR/environment-${ENCLAVE_CLUSTER_NAME}.json"
             if [ -f "$cluster_env" ]; then
                 cp "$cluster_env" "${OUTPUT_DIR}/dev-scripts/environment.json" 2>/dev/null || true
+                info "Collected environment file: $cluster_env"
+            else
+                warn "Cluster environment file not found: $cluster_env"
             fi
         fi
         # Fallback: collect most recent environment.json
         if [ ! -f "${OUTPUT_DIR}/dev-scripts/environment.json" ]; then
             local latest_env
             latest_env=$(find "$WORKING_DIR" -maxdepth 1 -name "environment*.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-            if [ -n "$latest_env" ]; then
+            if [ -n "$latest_env" ] && [ -f "$latest_env" ]; then
                 cp "$latest_env" "${OUTPUT_DIR}/dev-scripts/environment.json" 2>/dev/null || true
+                info "Collected most recent environment file: $latest_env"
+            else
+                warn "No environment files found in $WORKING_DIR"
             fi
         fi
+    else
+        warn "WORKING_DIR not set or does not exist: ${WORKING_DIR:-not set}"
     fi
 }
 
@@ -332,11 +340,27 @@ collect_bmc_status() {
 
     # Determine BMC endpoint from environment.json
     local bmc_endpoint=""
-    if [ -n "${WORKING_DIR:-}" ]; then
-        local env_file
+    local env_file=""
+
+    # Try to find environment.json in multiple locations
+    if [ -n "${ENCLAVE_CLUSTER_NAME:-}" ] && [ -n "${WORKING_DIR:-}" ]; then
+        # New structure: cluster-specific working directory
+        local cluster_env="$WORKING_DIR/environment-${ENCLAVE_CLUSTER_NAME}.json"
+        if [ -f "$cluster_env" ]; then
+            env_file="$cluster_env"
+        fi
+    fi
+
+    # Fallback: search in WORKING_DIR
+    if [ -z "$env_file" ] && [ -n "${WORKING_DIR:-}" ]; then
         env_file=$(find "$WORKING_DIR" -maxdepth 1 -name "environment*.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-        if [ -f "$env_file" ]; then
-            bmc_endpoint=$(jq -r '.bmc_emulation.sushy_tools.endpoint // empty' "$env_file" 2>/dev/null || true)
+    fi
+
+    # Extract BMC endpoint if we found the file
+    if [ -n "$env_file" ] && [ -f "$env_file" ]; then
+        bmc_endpoint=$(jq -r '.bmc_emulation.sushy_tools.endpoint // empty' "$env_file" 2>/dev/null || true)
+        if [ -n "$bmc_endpoint" ]; then
+            info "Found BMC endpoint from $env_file: $bmc_endpoint"
         fi
     fi
 
@@ -350,6 +374,9 @@ collect_bmc_status() {
         echo "=== Sushy-tools Service Status ==="
         sudo systemctl status sushy-emulator --no-pager 2>&1 || echo "sushy-emulator service not found"
         echo ""
+        echo "=== Sushy-tools Containers ==="
+        sudo podman ps -a --filter "name=sushy-tools" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}" 2>&1 || echo "No sushy-tools containers found"
+        echo ""
         echo "=== Sushy-tools Processes ==="
         ps aux | grep -i sushy | grep -v grep || echo "No sushy processes found"
         echo ""
@@ -360,8 +387,19 @@ collect_bmc_status() {
             curl -k -m 5 "${bmc_endpoint}/redfish/v1/Systems" 2>&1 || echo "BMC endpoint not accessible"
         fi
         echo ""
-        echo "=== Sushy Logs ==="
-        sudo journalctl -u sushy-emulator -n 100 --no-pager 2>&1 || echo "No sushy logs"
+        echo "=== Sushy Service Logs ==="
+        sudo journalctl -u sushy-emulator -n 100 --no-pager 2>&1 || echo "No sushy service logs"
+        echo ""
+        echo "=== Sushy Container Logs ==="
+        # Collect logs from all sushy-tools containers (cluster-specific naming)
+        for container in $(sudo podman ps -a --filter "name=sushy-tools" --format "{{.Names}}" 2>/dev/null); do
+            echo "--- Container: $container ---"
+            sudo podman logs "$container" 2>&1 || echo "Could not get logs for $container"
+            echo ""
+        done
+        if ! sudo podman ps -a --filter "name=sushy-tools" --format "{{.Names}}" 2>/dev/null | grep -q .; then
+            echo "No sushy-tools containers found"
+        fi
     } > "${OUTPUT_DIR}/dev-scripts/bmc-status.txt" 2>&1
 }
 

@@ -6,8 +6,25 @@
 
 set -euo pipefail
 
-# Configuration - read from dev-scripts config if available
-WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+# Determine working directory
+# For new workflow: Use BASE_WORKING_DIR + cluster name if WORKING_DIR not set
+if [ -z "${WORKING_DIR:-}" ]; then
+    ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+    if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
+        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+    else
+        echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME"
+        exit 1
+    fi
+fi
+
+# Verify WORKING_DIR exists
+if [ ! -d "$WORKING_DIR" ]; then
+    echo "ERROR: WORKING_DIR does not exist: $WORKING_DIR"
+    echo "This should have been created by the workflow. Check the setup steps."
+    exit 1
+fi
+
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 DEV_SCRIPTS_CONFIG="${DEV_SCRIPTS_PATH:-}/config_${ENCLAVE_CLUSTER_NAME}.sh"
 
@@ -26,11 +43,24 @@ SYMLINK_FILE="${WORKING_DIR}/environment.json"
 PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
 EXTERNAL_SUBNET_V4="${EXTERNAL_SUBNET_V4:-192.168.2.0/24}"
 
-# Calculate gateway IPs (first IP in network)
+# Calculate gateway IPs and port (first IP in network, cluster-specific port)
 BMC_GATEWAY=$(echo "$PROVISIONING_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
-BMC_ENDPOINT="http://${BMC_GATEWAY}:8000"
+# Extract subnet ID and use as port offset (e.g., subnet 3 -> port 8003)
+SUBNET_ID=$(echo "$PROVISIONING_NETWORK" | awk -F. '{print $3}')
+BMC_PORT="$((8000 + SUBNET_ID))"
+BMC_ENDPOINT="https://${BMC_GATEWAY}:${BMC_PORT}"
 
+echo "=========================================="
 echo "Generating environment metadata..."
+echo "=========================================="
+echo "Debug information:"
+echo "  WORKING_DIR (env): ${WORKING_DIR}"
+echo "  ENCLAVE_CLUSTER_NAME (env): ${ENCLAVE_CLUSTER_NAME}"
+echo "  Cluster Name (computed): ${CLUSTER_NAME}"
+echo "  Output File: ${OUTPUT_FILE}"
+echo "  Directory exists: $([ -d "$WORKING_DIR" ] && echo 'YES' || echo 'NO')"
+echo "  Directory writable: $([ -w "$WORKING_DIR" ] && echo 'YES' || echo 'NO')"
+echo ""
 
 # Helper function to get VM IP address
 get_vm_ip() {
@@ -121,6 +151,13 @@ cat > "$OUTPUT_FILE" <<EOF
   "vms": {
     "masters": [
 EOF
+
+# Verify file was created
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "ERROR: Failed to create environment file: $OUTPUT_FILE"
+    echo "Check that WORKING_DIR exists and is writable: ${WORKING_DIR}"
+    exit 1
+fi
 
 # Add master VMs
 MASTER_COUNT=3
@@ -233,6 +270,23 @@ cat >> "$OUTPUT_FILE" <<EOF
 EOF
 
 echo "✓ Environment metadata saved to: $OUTPUT_FILE"
+
+# Verify file was created and has content
+if [ ! -f "$OUTPUT_FILE" ]; then
+    echo "ERROR: Output file does not exist after write: $OUTPUT_FILE"
+    echo "This indicates a write permission or disk space issue"
+    ls -la "$WORKING_DIR" || true
+    exit 1
+fi
+
+FILE_SIZE=$(stat -f%z "$OUTPUT_FILE" 2>/dev/null || stat -c%s "$OUTPUT_FILE" 2>/dev/null || echo "0")
+if [ "$FILE_SIZE" -lt 100 ]; then
+    echo "ERROR: Output file exists but appears empty or corrupted: $OUTPUT_FILE (size: $FILE_SIZE bytes)"
+    cat "$OUTPUT_FILE" || true
+    exit 1
+fi
+
+echo "✓ Environment file verified: $(ls -lh "$OUTPUT_FILE")"
 
 # Create symlink so environment.json always points at current cluster (CI and default name)
 if [ -n "${SYMLINK_FILE:-}" ]; then
