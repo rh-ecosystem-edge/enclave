@@ -9,6 +9,12 @@ on:
     - cron: '0 3 * * *'
   workflow_dispatch:
     # Allow manual triggering for testing
+    inputs:
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
 
 # Prevent concurrent nightly runs
 concurrency:
@@ -153,7 +159,7 @@ jobs:
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify Slack
-        if: always()
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
         uses: ./.github/actions/notify-slack
         with:
           status: ${{ job.status }}
