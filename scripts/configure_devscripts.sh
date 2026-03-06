@@ -24,26 +24,30 @@ if [ -z "${ENCLAVE_BMC_NETWORK:-}" ] || [ -z "${ENCLAVE_CLUSTER_NETWORK:-}" ]; t
     # Get script directory
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    # Allocate unique subnet ID atomically (uses file locking)
+    # Allocate unique subnet atomically (uses file locking)
     echo "Allocating unique subnet for cluster ${ENCLAVE_CLUSTER_NAME}..."
 
     # Export variables for subprocess
     export ENCLAVE_CLUSTER_NAME
-    export WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+    # Use BASE_WORKING_DIR for shared allocation file across all clusters
+    # Fall back to WORKING_DIR if BASE_WORKING_DIR is not set (backwards compatibility)
+    ALLOCATION_WORKING_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
+    export WORKING_DIR="${ALLOCATION_WORKING_DIR:?WORKING_DIR or BASE_WORKING_DIR environment variable is required}"
 
-    SUBNET_ID=$("${SCRIPT_DIR}/allocate_subnet.sh" allocate)
+    # Get subnet allocation with network configuration
+    # Script outputs environment variable assignments
+    ALLOCATION_OUTPUT=$("${SCRIPT_DIR}/allocate_subnet.sh" allocate)
 
-    if [ -z "$SUBNET_ID" ]; then
+    if [ -z "$ALLOCATION_OUTPUT" ]; then
         echo "ERROR: Failed to allocate subnet"
         exit 1
     fi
 
-    # Generate network configuration with allocated subnet
-    ENCLAVE_BMC_NETWORK="${ENCLAVE_BMC_NETWORK:-100.64.${SUBNET_ID}.0/24}"
-    ENCLAVE_CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK:-192.168.${SUBNET_ID}.0/24}"
+    # Source the environment variables from the script output
+    eval "$ALLOCATION_OUTPUT"
 
     echo "✓ Allocated unique subnets for cluster ${ENCLAVE_CLUSTER_NAME}:"
-    echo "  Subnet ID: ${SUBNET_ID}"
+    echo "  Subnet ID: ${ENCLAVE_SUBNET_ID}"
     echo "  BMC Network: ${ENCLAVE_BMC_NETWORK}"
     echo "  Cluster Network: ${ENCLAVE_CLUSTER_NETWORK}"
 else
@@ -51,6 +55,10 @@ else
     echo "  BMC Network: ${ENCLAVE_BMC_NETWORK}"
     echo "  Cluster Network: ${ENCLAVE_CLUSTER_NETWORK}"
 fi
+
+# Calculate BMC port from subnet ID (e.g., subnet 3 -> port 8003)
+SUBNET_ID=$(echo "$ENCLAVE_BMC_NETWORK" | awk -F. '{print $3}')
+BMC_PORT="$((8000 + SUBNET_ID))"
 
 # Use unique config file per cluster for parallel execution safety
 CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
@@ -148,7 +156,23 @@ export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
 
 # Working directory (where VMs and configs are stored)
-export WORKING_DIR="/opt/dev-scripts"
+# Must be set explicitly for dev-scripts to use cluster-specific paths
+# If not set in environment, construct from BASE_WORKING_DIR + cluster name
+if [ -z "${WORKING_DIR:-}" ]; then
+    if [ -n "${BASE_WORKING_DIR:-}" ]; then
+        export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+    else
+        # Fallback to dev-scripts default (single cluster only)
+        export WORKING_DIR="/opt/dev-scripts"
+    fi
+fi
+# Ensure dev-scripts uses this WORKING_DIR
+export WORKING_DIR
+
+# Storage pool configuration - use cluster name for isolation in parallel execution
+# LIBVIRT_VOLUME_POOL controls which pool VMs reference for disk images
+# This prevents VMs from looking for "oooq_pool" and ensures they use the cluster-specific pool
+export LIBVIRT_VOLUME_POOL="${ENCLAVE_CLUSTER_NAME}"
 
 # =============================================================================
 # BMC Configuration
@@ -192,7 +216,7 @@ echo "  Cluster Name: \$CLUSTER_NAME"
 echo "  Working Dir: \$WORKING_DIR"
 echo "  VMs: \$NUM_MASTERS masters + \$NUM_LANDINGZONE Landing Zone"
 echo "  Networks: \$PROVISIONING_NETWORK_NAME (\$PROVISIONING_NETWORK), \$BAREMETAL_NETWORK_NAME (\$EXTERNAL_SUBNET_V4)"
-echo "  BMC Emulation: sushy-tools on first IP of BMC network, port 8000"
+echo "  BMC Emulation: sushy-tools on first IP of BMC network, port ${BMC_PORT}"
 EOF
 
 # Make configuration file executable

@@ -48,12 +48,14 @@ source "$CONFIG_FILE"
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
 LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
 CLOUD_IMAGE_URL="https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2"
 CLOUD_IMAGE_NAME="centos-stream-10-cloud.qcow2"
-POOL_NAME="${CLUSTER_NAME}-lz"
-POOL_PATH="${WORKING_DIR}/pool/${CLUSTER_NAME}"
+# Use cluster-specific storage pool for isolation in parallel execution
+# Each cluster gets its own pool in its dedicated working directory
+POOL_NAME="${CLUSTER_NAME}"
+POOL_PATH="${WORKING_DIR}/pool"
 
 # Network configuration (from dev-scripts config)
 BMC_NETWORK="${PROVISIONING_NETWORK}"
@@ -95,7 +97,7 @@ sudo chown $USER:$USER "$LZ_WORKING_DIR"
 # Download CentOS Stream 10 cloud image
 if [ ! -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" ]; then
     info "Downloading CentOS Stream 10 cloud image..."
-    wget -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
+    wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
     info "✓ Cloud image downloaded"
 else
     info "Cloud image already exists, skipping download"
@@ -168,38 +170,108 @@ if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
     info "✓ Existing VM removed"
 fi
 
-# Create cluster-specific libvirt storage pool if it doesn't exist
+# Find or create storage pool for cluster-specific path
+# dev-scripts may create a pool (possibly named oooq_pool) pointing to our cluster path
+# We'll use whatever pool exists for our path, or create one if needed
 if ! sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
-    info "Creating libvirt storage pool: $POOL_NAME"
+    info "Pool '$POOL_NAME' not found, checking if any pool uses path $POOL_PATH..."
 
-    # Create pool directory if it doesn't exist
-    if [ ! -d "$POOL_PATH" ]; then
+    # Check if any pool already points to our cluster-specific path
+    EXISTING_POOL=$(sudo virsh pool-list --all --name | while read pool; do
+        if [ -n "$pool" ]; then
+            POOL_PATH_CHECK=$(sudo virsh pool-dumpxml "$pool" 2>/dev/null | grep -oP '(?<=<path>).*(?=</path>)' || echo "")
+            if [ "$POOL_PATH_CHECK" = "$POOL_PATH" ]; then
+                echo "$pool"
+                break
+            fi
+        fi
+    done)
+
+    if [ -n "$EXISTING_POOL" ]; then
+        # A pool exists for our path - use it regardless of name
+        info "Found existing pool '$EXISTING_POOL' using path $POOL_PATH, will use it"
+        POOL_NAME="$EXISTING_POOL"
+
+        # Ensure the pool is active - start it or ignore if already active
+        set +e  # Temporarily disable exit on error
+        START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
+        START_EXIT_CODE=$?
+        set -e  # Re-enable exit on error
+
+        if [ $START_EXIT_CODE -eq 0 ]; then
+            info "✓ Pool '$POOL_NAME' started"
+        elif echo "$START_OUTPUT" | grep -q "already active"; then
+            info "✓ Pool '$POOL_NAME' is already active"
+        else
+            error "Failed to start pool '$POOL_NAME': $START_OUTPUT"
+            exit 1
+        fi
+
+        sudo virsh pool-autostart "$POOL_NAME" 2>/dev/null || true
+        sudo virsh pool-refresh "$POOL_NAME" 2>/dev/null || true
+    else
+        # No pool exists for our path - create one
+        info "No pool found for path $POOL_PATH, creating pool '$POOL_NAME'..."
+
+        # Create the pool directory if it doesn't exist
         sudo mkdir -p "$POOL_PATH"
-    fi
 
-    # Define the pool
-    sudo virsh pool-define /dev/stdin <<EOF
+        # Define and start the pool
+        sudo virsh pool-define /dev/stdin <<EOF
 <pool type='dir'>
   <name>$POOL_NAME</name>
   <target>
     <path>$POOL_PATH</path>
+    <permissions>
+      <mode>0755</mode>
+      <owner>-1</owner>
+      <group>-1</group>
+    </permissions>
   </target>
 </pool>
 EOF
 
-    # Start and autostart the pool
-    sudo virsh pool-start "$POOL_NAME"
-    sudo virsh pool-autostart "$POOL_NAME"
-    info "✓ Created storage pool: $POOL_NAME at $POOL_PATH"
+        sudo virsh pool-start "$POOL_NAME"
+        sudo virsh pool-autostart "$POOL_NAME"
+        info "✓ Storage pool '$POOL_NAME' created and started"
+    fi
 else
     info "Using existing storage pool: $POOL_NAME"
+    # Ensure the pool is started (it might be inactive)
+    set +e  # Temporarily disable exit on error
+    START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
+    START_EXIT_CODE=$?
+    set -e  # Re-enable exit on error
 
-    # Check if pool is active, start it if not
-    if ! sudo virsh pool-info "$POOL_NAME" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
-        info "Storage pool is inactive, starting it..."
-        sudo virsh pool-start "$POOL_NAME"
-        info "✓ Storage pool started"
+    if [ $START_EXIT_CODE -eq 0 ]; then
+        info "✓ Pool '$POOL_NAME' started"
+    elif echo "$START_OUTPUT" | grep -q "already active"; then
+        info "✓ Pool '$POOL_NAME' is already active"
+    else
+        error "Failed to start pool '$POOL_NAME': $START_OUTPUT"
+        exit 1
     fi
+
+    sudo virsh pool-autostart "$POOL_NAME" 2>/dev/null || true
+fi
+
+# Refresh the pool so libvirt sees all volumes (important for sushy-tools)
+info "Refreshing storage pool '$POOL_NAME'..."
+sudo virsh pool-refresh "$POOL_NAME"
+
+# Ensure pool is active after refresh
+set +e  # Temporarily disable exit on error
+FINAL_START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
+FINAL_START_EXIT_CODE=$?
+set -e  # Re-enable exit on error
+
+if [ $FINAL_START_EXIT_CODE -eq 0 ]; then
+    info "✓ Pool '$POOL_NAME' started"
+elif echo "$FINAL_START_OUTPUT" | grep -q "already active"; then
+    info "✓ Pool '$POOL_NAME' is active and ready"
+else
+    error "Failed to ensure pool is active: $FINAL_START_OUTPUT"
+    exit 1
 fi
 
 # Get pool path and prepare disk
@@ -315,21 +387,35 @@ if [ "$BOOT_COMPLETE" = true ]; then
     if [ -z "$BMC_CHECK" ]; then
         info "  Configuring enp1s0 with IP ${BMC_IP}/${BMC_PREFIX}..."
 
-        # Configure BMC interface using nmcli
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con add type ethernet ifname enp1s0 con-name bmc ipv4.addresses ${BMC_IP}/${BMC_PREFIX} ipv4.method manual" 2>/dev/null || {
+        # Delete any existing cloud-init or DHCP connections on enp1s0
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con show | grep enp1s0 | awk '{print \$1}' | xargs -r -I{} sudo nmcli con delete {} 2>/dev/null || true"
+
+        # Configure BMC interface using nmcli with static IP
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con add type ethernet ifname enp1s0 con-name bmc \
+            ipv4.addresses ${BMC_IP}/${BMC_PREFIX} \
+            ipv4.method manual \
+            connection.autoconnect yes \
+            connection.autoconnect-priority 100" 2>/dev/null || {
             # Connection may already exist, modify it
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con mod bmc ipv4.addresses ${BMC_IP}/${BMC_PREFIX} ipv4.method manual" 2>/dev/null || true
+            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con mod bmc \
+                ipv4.addresses ${BMC_IP}/${BMC_PREFIX} \
+                ipv4.method manual \
+                connection.autoconnect yes \
+                connection.autoconnect-priority 100" 2>/dev/null || true
         }
 
-        # Activate the connection
+        # Ensure interface is up and activate the connection
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip link set enp1s0 up"
         ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con up bmc" 2>/dev/null || {
-            # Fallback to manual IP configuration
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip addr add ${BMC_IP}/${BMC_PREFIX} dev enp1s0 2>/dev/null || true"
+            # Fallback to manual IP configuration if nmcli fails
+            warning "  nmcli failed, using manual IP configuration"
+            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip addr flush dev enp1s0"
+            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip addr add ${BMC_IP}/${BMC_PREFIX} dev enp1s0"
             ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip link set enp1s0 up"
         }
 
-        # Wait a moment for interface to come up
-        sleep 2
+        # Wait for interface to stabilize
+        sleep 3
 
         # Verify configuration
         if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0 | grep -q '${BMC_IP}'" 2>/dev/null; then
@@ -339,6 +425,271 @@ if [ "$BOOT_COMPLETE" = true ]; then
         fi
     else
         info "✓ BMC network already configured: enp1s0 (${BMC_IP}/${BMC_PREFIX})"
+    fi
+
+    # Verify BMC gateway connectivity (critical for Ironic to work)
+    info "Verifying BMC gateway connectivity..."
+    BMC_GATEWAY=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
+    SUBNET_ID=$(echo "$BMC_NETWORK" | awk -F. '{print $3}')
+    BMC_PORT="$((8000 + SUBNET_ID))"
+
+    # Before attempting ping, collect diagnostic information
+    info "Collecting network diagnostics..."
+
+    # Define bridge name early for use in diagnostics
+    BRIDGE_NAME="${CLUSTER_NAME}-p"
+
+    # Check for IP/network conflicts on host
+    BMC_SUBNET=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3}')
+
+    info "  Checking for IP conflicts on host:"
+    CONFLICTING_IPS=$(ip addr show | grep "inet ${BMC_SUBNET}\." | grep -v "${BRIDGE_NAME}" || true)
+    if [ -n "$CONFLICTING_IPS" ]; then
+        warning "    ⚠ Found other interfaces using ${BMC_SUBNET}.0/24:"
+        echo "$CONFLICTING_IPS" | while IFS= read -r line; do
+            warning "      $line"
+        done
+    else
+        info "    ✓ No IP conflicts on other interfaces"
+    fi
+
+    # Check for existing libvirt networks using this subnet
+    info "  Checking for conflicting libvirt networks:"
+    CONFLICTING_NETS=$(sudo virsh net-list --all | grep -v "$BRIDGE_NAME" | awk 'NR>2 {print $1}' | while read net; do
+        if sudo virsh net-dumpxml "$net" 2>/dev/null | grep -q "${BMC_SUBNET}\."; then
+            echo "$net"
+        fi
+    done)
+    if [ -n "$CONFLICTING_NETS" ]; then
+        warning "    ⚠ Found libvirt networks using ${BMC_SUBNET}.0/24:"
+        echo "$CONFLICTING_NETS" | while IFS= read -r net; do
+            NET_IP=$(sudo virsh net-dumpxml "$net" 2>/dev/null | grep -oP '(?<=<ip address=")[^"]*' || echo "unknown")
+            warning "      Network '$net' has IP: $NET_IP"
+        done
+    else
+        info "    ✓ No conflicting libvirt networks"
+    fi
+
+    # Check bridge on host
+    info "  Bridge ${BRIDGE_NAME} status on host:"
+    if sudo ip addr show "$BRIDGE_NAME" 2>/dev/null | grep -q "inet ${BMC_GATEWAY}/"; then
+        info "    ✓ Bridge has IP ${BMC_GATEWAY}"
+    else
+        warning "    ✗ Bridge does NOT have expected IP ${BMC_GATEWAY}"
+        sudo ip addr show "$BRIDGE_NAME" 2>/dev/null | grep "inet " || true
+    fi
+
+    # Check if host can ping the bridge IP
+    if ping -c 1 -W 2 ${BMC_GATEWAY} >/dev/null 2>&1; then
+        info "    ✓ Host can ping bridge IP ${BMC_GATEWAY}"
+    else
+        warning "    ✗ Host CANNOT ping bridge IP ${BMC_GATEWAY}"
+    fi
+
+    # Check VM interface configuration
+    info "  VM interface enp1s0:"
+    ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0" 2>&1 | grep "inet " | while IFS= read -r line; do
+        info "    $line"
+    done
+
+    # Check VM routing table
+    info "  VM routing table:"
+    ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip route show" 2>&1 | grep -E "${BMC_NETWORK%/*}" | while IFS= read -r line; do
+        info "    $line"
+    done
+
+    # Check bridge interface membership
+    info "  Bridge ${BRIDGE_NAME} members:"
+    sudo bridge link show | grep "$BRIDGE_NAME" | while IFS= read -r line; do
+        info "    $line"
+    done
+
+    # Check if VM's vnet interface is attached
+    VM_NAME="${CLUSTER_NAME}_landingzone_0"
+    LZ_VNET_BMC=$(sudo virsh domiflist "$VM_NAME" 2>/dev/null | grep "$BRIDGE_NAME" | awk '{print $1}')
+    if [ -n "$LZ_VNET_BMC" ]; then
+        info "    VM BMC vnet interface: $LZ_VNET_BMC"
+        if sudo bridge link show | grep -q "$LZ_VNET_BMC"; then
+            info "    ✓ $LZ_VNET_BMC is attached to bridge"
+        else
+            warning "    ✗ $LZ_VNET_BMC is NOT attached to bridge"
+        fi
+    else
+        warning "    ✗ Could not find VM's vnet interface for BMC network"
+    fi
+
+    # Check bridge forwarding settings
+    info "  Bridge forwarding settings:"
+    BRIDGE_FWD=$(cat /sys/class/net/${BRIDGE_NAME}/bridge/stp_state 2>/dev/null || echo "unknown")
+    info "    STP state: $BRIDGE_FWD"
+
+    # Check if bridge has proxy_arp enabled
+    PROXY_ARP=$(cat /proc/sys/net/ipv4/conf/${BRIDGE_NAME}/proxy_arp 2>/dev/null || echo "unknown")
+    info "    proxy_arp: $PROXY_ARP"
+
+    # Check firewall zones and ARP filtering
+    info "  Firewall configuration:"
+    if sudo firewall-cmd --state >/dev/null 2>&1; then
+        BMC_ZONE=$(sudo firewall-cmd --get-zone-of-interface="$BRIDGE_NAME" 2>/dev/null || echo "none")
+        info "    Bridge zone: $BMC_ZONE"
+        if [ "$BMC_ZONE" != "none" ]; then
+            if sudo firewall-cmd --zone="$BMC_ZONE" --query-icmp-block=echo-request 2>/dev/null; then
+                warning "    ✗ ICMP echo-request is BLOCKED in zone $BMC_ZONE"
+            else
+                info "    ✓ ICMP echo-request allowed in zone $BMC_ZONE"
+            fi
+        fi
+    else
+        info "    Firewalld not running"
+    fi
+
+    # Check ebtables for ARP filtering (this is the likely culprit)
+    info "  Layer 2 filtering (ebtables):"
+    if command -v ebtables &>/dev/null; then
+        if sudo ebtables -L 2>/dev/null | grep -q "Bridge"; then
+            info "    ebtables rules exist (checking for ARP blocks):"
+            # Use || true to prevent grep failure from exiting script
+            ARP_RULES=$(sudo ebtables -L 2>/dev/null | grep -E "ARP|$BRIDGE_NAME" || true)
+            if [ -n "$ARP_RULES" ]; then
+                echo "$ARP_RULES" | while IFS= read -r line; do
+                    info "      $line"
+                done
+            else
+                info "      No ARP-related rules found"
+            fi
+        else
+            info "    No ebtables rules"
+        fi
+    else
+        info "    ebtables not installed"
+    fi
+
+    # Check nftables for ARP filtering
+    info "  Netfilter bridge filtering:"
+    if sudo nft list tables 2>/dev/null | grep -q "bridge"; then
+        info "    nftables bridge family rules exist:"
+        # Use || true to prevent grep failure from exiting script
+        NFT_ARP_RULES=$(sudo nft list table bridge filter 2>/dev/null | grep -E "arp|ARP" || true)
+        if [ -n "$NFT_ARP_RULES" ]; then
+            echo "$NFT_ARP_RULES" | while IFS= read -r line; do
+                info "      $line"
+            done
+        else
+            info "      No ARP-related nftables rules found"
+        fi
+    else
+        info "    No nftables bridge rules"
+    fi
+
+    # Check br_netfilter settings
+    info "  Bridge netfilter settings:"
+    if [ -f /proc/sys/net/bridge/bridge-nf-call-arptables ]; then
+        BR_NF_ARP=$(cat /proc/sys/net/bridge/bridge-nf-call-arptables)
+        info "    bridge-nf-call-arptables: $BR_NF_ARP"
+        if [ "$BR_NF_ARP" = "1" ]; then
+            warning "    ⚠ ARP packets are being passed to arptables (may be filtered)"
+        fi
+    fi
+
+    # Check if there are any arptables rules
+    if command -v arptables &>/dev/null; then
+        info "  ARP tables:"
+        # Get arptables rules, filtering out headers and empty lines
+        ARPTABLES_RULES=$(sudo arptables -L -n 2>/dev/null | grep -v "^Chain\|^$" || true)
+        if [ -n "$ARPTABLES_RULES" ]; then
+            echo "$ARPTABLES_RULES" | while IFS= read -r line; do
+                info "    $line"
+            done
+        else
+            info "    No arptables rules"
+        fi
+    else
+        info "    arptables not installed"
+    fi
+
+    # Test bidirectional connectivity
+    info "Testing connectivity:"
+    info "  From host to VM's BMC IP (${BMC_IP}):"
+    if ping -c 2 -W 2 ${BMC_IP} >/dev/null 2>&1; then
+        info "    ✓ Host can ping VM's BMC IP ${BMC_IP}"
+    else
+        warning "    ✗ Host CANNOT ping VM's BMC IP ${BMC_IP}"
+        warning "    This suggests ARP is failing in both directions"
+    fi
+
+    # Try enabling proxy_arp as a workaround
+    info "  Attempting to enable proxy_arp on bridge ${BRIDGE_NAME}..."
+    if sudo sysctl -w net.ipv4.conf.${BRIDGE_NAME}.proxy_arp=1 >/dev/null 2>&1; then
+        info "    ✓ proxy_arp enabled"
+        PROXY_ARP_NEW=$(cat /proc/sys/net/ipv4/conf/${BRIDGE_NAME}/proxy_arp 2>/dev/null || echo "unknown")
+        info "    New proxy_arp value: $PROXY_ARP_NEW"
+    else
+        warning "    ✗ Failed to enable proxy_arp"
+    fi
+
+    # Retry ping check
+    MAX_PING_ATTEMPTS=3
+    PING_WAIT_SECONDS=2
+    PING_SUCCESS=false
+
+    info "Attempting to ping BMC gateway ${BMC_GATEWAY} from VM..."
+    for attempt in $(seq 1 $MAX_PING_ATTEMPTS); do
+        if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ping -c 2 -W 2 ${BMC_GATEWAY} >/dev/null 2>&1"; then
+            info "✓ Can ping BMC gateway: ${BMC_GATEWAY} (attempt $attempt)"
+            PING_SUCCESS=true
+            break
+        fi
+
+        if [ $attempt -lt $MAX_PING_ATTEMPTS ]; then
+            info "  Attempt $attempt/$MAX_PING_ATTEMPTS: Cannot ping ${BMC_GATEWAY}, waiting ${PING_WAIT_SECONDS}s..."
+
+            # Check ARP after failed ping
+            info "    Checking ARP table on VM:"
+            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip neigh show ${BMC_GATEWAY}" 2>&1 | while IFS= read -r line; do
+                info "      $line"
+            done
+
+            sleep $PING_WAIT_SECONDS
+        fi
+    done
+
+    if [ "$PING_SUCCESS" = false ]; then
+        error "Cannot ping BMC gateway: ${BMC_GATEWAY} after $MAX_PING_ATTEMPTS attempts"
+        error ""
+        error "Full diagnostic information:"
+        error "  Host bridge ${BRIDGE_NAME}:"
+        sudo ip addr show "$BRIDGE_NAME" 2>&1 | while IFS= read -r line; do
+            error "    $line"
+        done
+        error ""
+        error "  VM interface enp1s0:"
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0" 2>&1 | while IFS= read -r line; do
+            error "    $line"
+        done
+        error ""
+        error "  VM routing table:"
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip route" 2>&1 | while IFS= read -r line; do
+            error "    $line"
+        done
+        error ""
+        error "  VM ARP table:"
+        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip neigh" 2>&1 | while IFS= read -r line; do
+            error "    $line"
+        done
+
+        error ""
+        error "This will cause Ironic deployment to fail"
+        exit 1
+    fi
+
+    # Test sushy-tools endpoint
+    if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems 2>/dev/null | grep -q 200"; then
+        info "✓ Can reach sushy-tools at https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
+    else
+        error "Cannot reach sushy-tools endpoint at https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
+        error "This will cause Ironic deployment to fail"
+        error "Check that sushy-tools container is running: sudo podman ps | grep sushy-tools"
+        exit 1
     fi
 
     echo ""

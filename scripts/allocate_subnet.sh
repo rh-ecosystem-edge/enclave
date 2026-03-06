@@ -23,7 +23,7 @@ error() {
 }
 
 # Configuration
-WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
 ALLOCATION_FILE="${WORKING_DIR}/subnet-allocations.json"
 LOCK_FILE="${WORKING_DIR}/subnet-allocations.lock"
 
@@ -70,19 +70,49 @@ cleanup_stale_allocations() {
     mv "$temp_file" "$ALLOCATION_FILE"
 }
 
+# Check if subnet has IP conflicts on the host
+subnet_has_ip_conflict() {
+    local subnet_id=$1
+    local bmc_gateway="100.64.${subnet_id}.1"
+    local cluster_gateway="192.168.${subnet_id}.1"
+
+    # Check if BMC gateway IP exists on any interface
+    if ip addr show 2>/dev/null | grep -q "inet ${bmc_gateway}/"; then
+        info "  Subnet $subnet_id: BMC gateway IP ${bmc_gateway} already in use (skipping)"
+        return 0  # Has conflict
+    fi
+
+    # Check if cluster gateway IP exists on any interface
+    if ip addr show 2>/dev/null | grep -q "inet ${cluster_gateway}/"; then
+        info "  Subnet $subnet_id: Cluster gateway IP ${cluster_gateway} already in use (skipping)"
+        return 0  # Has conflict
+    fi
+
+    return 1  # No conflict
+}
+
 # Find first available subnet ID
 find_available_subnet() {
     local allocated_subnets
     allocated_subnets=$(jq -r '.[] | .subnet_id' "$ALLOCATION_FILE" 2>/dev/null || echo "")
 
     for subnet_id in $(seq $MIN_SUBNET $MAX_SUBNET); do
-        if ! echo "$allocated_subnets" | grep -q "^${subnet_id}$"; then
-            echo "$subnet_id"
-            return 0
+        # Skip if already allocated in the allocation file
+        if echo "$allocated_subnets" | grep -q "^${subnet_id}$"; then
+            continue
         fi
+
+        # Skip if subnet has IP conflicts on the host (leftover bridges, etc.)
+        if subnet_has_ip_conflict "$subnet_id"; then
+            continue
+        fi
+
+        # Found available subnet with no conflicts
+        echo "$subnet_id"
+        return 0
     done
 
-    error "No available subnets (all ${MIN_SUBNET}-${MAX_SUBNET} are allocated)"
+    error "No available subnets (all ${MIN_SUBNET}-${MAX_SUBNET} are allocated or have IP conflicts)"
     return 1
 }
 
@@ -108,37 +138,42 @@ allocate_subnet() {
 
     if [ -n "$EXISTING_SUBNET" ]; then
         info "Cluster already has subnet allocated: $EXISTING_SUBNET"
-        echo "$EXISTING_SUBNET"
-        flock -u 200
-        return 0
+        SUBNET_ID="$EXISTING_SUBNET"
+    else
+        # Find available subnet
+        SUBNET_ID=$(find_available_subnet)
+        if [ -z "$SUBNET_ID" ]; then
+            flock -u 200
+            error "No available subnets"
+            exit 1
+        fi
+
+        # Allocate subnet
+        TIMESTAMP=$(date +%s)
+        PID=$$
+
+        jq --arg cluster "$CLUSTER_NAME" \
+           --arg subnet "$SUBNET_ID" \
+           --arg timestamp "$TIMESTAMP" \
+           --arg pid "$PID" \
+           '.[$cluster] = {subnet_id: ($subnet | tonumber), timestamp: ($timestamp | tonumber), pid: ($pid | tonumber)}' \
+           "$ALLOCATION_FILE" > "${ALLOCATION_FILE}.tmp"
+
+        mv "${ALLOCATION_FILE}.tmp" "$ALLOCATION_FILE"
+
+        info "Allocated subnet $SUBNET_ID for cluster $CLUSTER_NAME"
     fi
-
-    # Find available subnet
-    SUBNET_ID=$(find_available_subnet)
-    if [ -z "$SUBNET_ID" ]; then
-        flock -u 200
-        error "No available subnets"
-        exit 1
-    fi
-
-    # Allocate subnet
-    TIMESTAMP=$(date +%s)
-    PID=$$
-
-    jq --arg cluster "$CLUSTER_NAME" \
-       --arg subnet "$SUBNET_ID" \
-       --arg timestamp "$TIMESTAMP" \
-       --arg pid "$PID" \
-       '.[$cluster] = {subnet_id: ($subnet | tonumber), timestamp: ($timestamp | tonumber), pid: ($pid | tonumber)}' \
-       "$ALLOCATION_FILE" > "${ALLOCATION_FILE}.tmp"
-
-    mv "${ALLOCATION_FILE}.tmp" "$ALLOCATION_FILE"
-
-    info "Allocated subnet $SUBNET_ID for cluster $CLUSTER_NAME"
-    echo "$SUBNET_ID"
 
     # Release lock
     flock -u 200
+
+    # Output environment variable assignments for sourcing
+    # This centralizes the network address calculation logic in one place
+    cat <<EOF
+export ENCLAVE_SUBNET_ID=$SUBNET_ID
+export ENCLAVE_BMC_NETWORK=100.64.${SUBNET_ID}.0/24
+export ENCLAVE_CLUSTER_NETWORK=192.168.${SUBNET_ID}.0/24
+EOF
 }
 
 # Release subnet allocation

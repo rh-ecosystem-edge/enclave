@@ -29,10 +29,25 @@ success() {
     echo -e "${GREEN}✓${NC} $1"
 }
 
-# Check if sushy-tools is already running
-if sudo podman ps | grep -q sushy-tools; then
-    success "sushy-tools is already running"
-    sudo podman ps | grep sushy-tools
+# Get cluster name from environment or dev-scripts config
+ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+DEV_SCRIPTS_CONFIG="${DEV_SCRIPTS_PATH:-}/config_${ENCLAVE_CLUSTER_NAME}.sh"
+
+# Source dev-scripts config if it exists to get CLUSTER_NAME
+if [ -f "$DEV_SCRIPTS_CONFIG" ]; then
+    # shellcheck source=/dev/null
+    source "$DEV_SCRIPTS_CONFIG"
+fi
+
+CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
+
+# Use cluster-specific container name for parallel execution isolation
+CONTAINER_NAME="sushy-tools-${CLUSTER_NAME}"
+
+# Check if sushy-tools is already running for this cluster
+if sudo podman ps | grep -q "$CONTAINER_NAME"; then
+    success "sushy-tools is already running for cluster $CLUSTER_NAME"
+    sudo podman ps | grep "$CONTAINER_NAME"
     exit 0
 fi
 
@@ -40,7 +55,18 @@ info "Starting sushy-tools BMC emulator..."
 
 # Configuration
 SUSHY_TOOLS_IMAGE="${SUSHY_TOOLS_IMAGE:-quay.io/metal3-io/sushy-tools}"
-WORKING_DIR="${WORKING_DIR:-/opt/dev-scripts}"
+
+# Determine working directory
+# For new workflow: Use BASE_WORKING_DIR + cluster name if WORKING_DIR not set
+if [ -z "${WORKING_DIR:-}" ]; then
+    if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
+        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+    else
+        echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME"
+        exit 1
+    fi
+fi
+
 SUSHY_DIR="${WORKING_DIR}/virtualbmc/sushy-tools"
 
 # Get BMC network gateway for dynamic configuration
@@ -53,9 +79,88 @@ if [ -n "${DEV_SCRIPTS_PATH:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
     fi
 fi
 
-# Calculate BMC gateway from PROVISIONING_NETWORK
+# Calculate BMC gateway and port from PROVISIONING_NETWORK
 PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
 BMC_GATEWAY=$(echo "$PROVISIONING_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
+
+# Extract subnet ID from BMC network (e.g., 100.64.3.0/24 -> 3)
+# Use as port offset to avoid conflicts in parallel execution
+SUBNET_ID=$(echo "$PROVISIONING_NETWORK" | awk -F. '{print $3}')
+BMC_PORT="$((8000 + SUBNET_ID))"  # e.g., subnet 3 -> port 8003, subnet 10 -> port 8010
+
+# Wait for bridge to have IP assigned
+wait_for_bridge_ip() {
+    local bridge_name="${CLUSTER_NAME}-p"
+    local expected_ip="$BMC_GATEWAY"
+    local max_attempts=30
+    local wait_seconds=2
+    local attempt=1
+
+    info "Waiting for bridge ${bridge_name} to have IP ${expected_ip}..."
+
+    while [ $attempt -le $max_attempts ]; do
+        # Check if bridge exists and has the expected IP
+        if ip addr show "$bridge_name" 2>/dev/null | grep -q "inet ${expected_ip}/"; then
+            success "Bridge ${bridge_name} has IP ${expected_ip}"
+            return 0
+        fi
+
+        if [ $attempt -eq $max_attempts ]; then
+            error "Timeout waiting for bridge ${bridge_name} to have IP ${expected_ip} (waited $((max_attempts * wait_seconds)) seconds)"
+            error ""
+            error "Bridge diagnostics:"
+
+            # Check if bridge exists
+            if ip link show "$bridge_name" >/dev/null 2>&1; then
+                error "  Bridge exists but IP not assigned:"
+                ip addr show "$bridge_name" 2>&1 | while IFS= read -r line; do
+                    error "    $line"
+                done
+
+                # Check libvirt network status
+                if sudo virsh net-info "$bridge_name" >/dev/null 2>&1; then
+                    error ""
+                    error "  Libvirt network status:"
+                    sudo virsh net-info "$bridge_name" 2>&1 | while IFS= read -r line; do
+                        error "    $line"
+                    done
+                else
+                    error "  Libvirt network '${bridge_name}' not found"
+                fi
+            else
+                error "  Bridge ${bridge_name} does not exist at all!"
+                error "  This means dev-scripts failed to create the network."
+            fi
+
+            return 1
+        fi
+
+        info "  Attempt $attempt/$max_attempts: Bridge not ready yet, waiting ${wait_seconds}s..."
+
+        # Show bridge state every 10 attempts for debugging
+        if [ $((attempt % 10)) -eq 0 ]; then
+            info "    Bridge state at attempt $attempt:"
+            if ip link show "$bridge_name" >/dev/null 2>&1; then
+                ip addr show "$bridge_name" 2>&1 | grep "inet " | while IFS= read -r line; do
+                    info "      $line"
+                done
+                if ! ip addr show "$bridge_name" 2>&1 | grep -q "inet "; then
+                    info "      Bridge exists but has no IP assigned yet"
+                fi
+            else
+                info "      Bridge does not exist yet"
+            fi
+        fi
+
+        sleep $wait_seconds
+        attempt=$((attempt + 1))
+    done
+
+    return 1
+}
+
+# Wait for bridge to be ready before starting sushy-tools
+wait_for_bridge_ip
 
 # Create sushy-tools directory if it doesn't exist
 if [ ! -d "$SUSHY_DIR" ]; then
@@ -79,7 +184,8 @@ fi
 
 # Create sushy-tools configuration
 info "Creating sushy-tools configuration..."
-sudo tee "${SUSHY_DIR}/conf.py" > /dev/null <<'EOF'
+# Use cluster-specific BMC IP and port for parallel execution isolation
+sudo tee "${SUSHY_DIR}/conf.py" > /dev/null <<EOF
 # Sushy-tools emulator configuration for Enclave Lab
 
 # Use libvirt as the backend
@@ -88,9 +194,9 @@ SUSHY_EMULATOR_LIBVIRT_URI = "qemu:///system"
 # Use MAC address as system identifier instead of UUID
 SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID = True
 
-# Listen on all IPv4 addresses
-SUSHY_EMULATOR_LISTEN_IP = "0.0.0.0"
-SUSHY_EMULATOR_LISTEN_PORT = 8000
+# Bind to cluster-specific BMC IP and port for parallel execution isolation
+SUSHY_EMULATOR_LISTEN_IP = "${BMC_GATEWAY}"
+SUSHY_EMULATOR_LISTEN_PORT = ${BMC_PORT}
 
 # Use HTTPS with self-signed certificate
 SUSHY_EMULATOR_SSL_CERT = "/root/sushy/sushy.crt"
@@ -111,41 +217,74 @@ success "sushy-tools configuration created"
 info "Pulling sushy-tools image: $SUSHY_TOOLS_IMAGE"
 sudo podman pull "$SUSHY_TOOLS_IMAGE"
 
-# Start sushy-tools container
-info "Starting sushy-tools container..."
+# Start sushy-tools container with cluster-specific name, IP binding, and port
+info "Starting sushy-tools container for cluster $CLUSTER_NAME..."
+info "  Container: $CONTAINER_NAME"
+info "  Binding to: ${BMC_GATEWAY}:${BMC_PORT}"
 sudo podman run -d \
     --net host \
     --privileged \
-    --name sushy-tools \
-    -v "$SUSHY_DIR:/root/sushy" \
-    -v "/root/.ssh:/root/ssh" \
-    -v "/var/run/libvirt:/var/run/libvirt" \
-    "${SUSHY_TOOLS_IMAGE}"
+    --name "$CONTAINER_NAME" \
+    -v "$SUSHY_DIR:/root/sushy:z" \
+    -v "/root/.ssh:/root/.ssh:ro,z" \
+    -v "/var/run/libvirt:/var/run/libvirt:z" \
+    "${SUSHY_TOOLS_IMAGE}" \
+    sushy-emulator --config /root/sushy/conf.py
 
-# Wait for sushy-tools to be ready
-info "Waiting for sushy-tools to be ready..."
-sleep 3
+# Open firewall port for sushy-tools
+info "Configuring firewall to allow sushy-tools traffic..."
+# Allow incoming traffic on the BMC port from the BMC network
+if sudo firewall-cmd --state >/dev/null 2>&1; then
+    # Get the zone for the BMC bridge interface
+    BMC_BRIDGE="${CLUSTER_NAME}-p"
+    BMC_ZONE=$(sudo firewall-cmd --get-zone-of-interface="$BMC_BRIDGE" 2>/dev/null || echo "")
 
-# Verify it's running
-if sudo podman ps | grep -q sushy-tools; then
-    success "sushy-tools is now running"
-
-    # Test endpoint (using HTTPS with -k for self-signed cert)
-    if curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 "https://${BMC_GATEWAY}:8000/redfish/v1/Systems" 2>/dev/null | grep -q "200"; then
-        success "Redfish endpoint is accessible at https://${BMC_GATEWAY}:8000/redfish/v1/Systems"
+    if [ -n "$BMC_ZONE" ]; then
+        info "  Adding port ${BMC_PORT}/tcp to zone: $BMC_ZONE (bridge: $BMC_BRIDGE)"
+        # Add to runtime configuration (immediate)
+        sudo firewall-cmd --zone="$BMC_ZONE" --add-port="${BMC_PORT}/tcp" >/dev/null 2>&1 || true
+        # Add to permanent configuration (survives reboot)
+        sudo firewall-cmd --zone="$BMC_ZONE" --add-port="${BMC_PORT}/tcp" --permanent >/dev/null 2>&1 || true
     else
-        warning "sushy-tools is running but endpoint not accessible yet (may need a few more seconds)"
+        # Fallback: add to libvirt zone (common for libvirt bridges)
+        info "  Adding port ${BMC_PORT}/tcp to libvirt zone (BMC bridge not in a zone yet)"
+        sudo firewall-cmd --zone=libvirt --add-port="${BMC_PORT}/tcp" >/dev/null 2>&1 || true
+        sudo firewall-cmd --zone=libvirt --add-port="${BMC_PORT}/tcp" --permanent >/dev/null 2>&1 || true
     fi
+    info "  ✓ Firewall configured for port ${BMC_PORT}/tcp"
 else
-    error "Failed to start sushy-tools"
+    warning "Firewalld not running, skipping firewall configuration"
+fi
+
+# Verify sushy-tools endpoint is responding
+info "Verifying sushy-tools endpoint accessibility..."
+MAX_WAIT=30
+COUNTER=0
+ENDPOINT_READY=false
+
+while [ $COUNTER -lt $MAX_WAIT ]; do
+    if curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 2 "https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems" 2>/dev/null | grep -q "200"; then
+        ENDPOINT_READY=true
+        info "✓ Sushy-tools endpoint is responding (${COUNTER}s)"
+        break
+    fi
+    sleep 1
+    COUNTER=$((COUNTER + 1))
+done
+
+if [ "$ENDPOINT_READY" = false ]; then
+    error "Sushy-tools endpoint is not responding after ${MAX_WAIT}s"
+    error "Endpoint: https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
+    error "Check container logs: sudo podman logs $CONTAINER_NAME"
+    exit 1
 fi
 
 info ""
-info "sushy-tools BMC emulation started successfully!"
-info "  Endpoint: https://${BMC_GATEWAY}:8000/redfish/v1/Systems (HTTPS with self-signed cert)"
-info "  Container: sushy-tools"
+success "sushy-tools BMC emulation started successfully for cluster ${CLUSTER_NAME}!"
+info "  Endpoint: https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems (HTTPS with self-signed cert)"
+info "  Container: $CONTAINER_NAME"
 info ""
-info "To stop: sudo podman stop sushy-tools"
-info "To restart: sudo podman restart sushy-tools"
-info "To view logs: sudo podman logs sushy-tools"
+info "To stop: sudo podman stop $CONTAINER_NAME"
+info "To restart: sudo podman restart $CONTAINER_NAME"
+info "To view logs: sudo podman logs $CONTAINER_NAME"
 info ""

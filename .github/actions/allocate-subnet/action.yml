@@ -1,0 +1,50 @@
+name: Allocate Subnet
+description: Allocate unique subnet for cluster to avoid IP conflicts in parallel CI runs
+
+outputs:
+  subnet-id:
+    description: 'Allocated subnet ID (2-254)'
+    value: ${{ steps.allocate.outputs.subnet-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Allocate unique subnet for cluster
+      id: allocate
+      shell: bash
+      run: |
+        echo "## Subnet Allocation" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Allocating unique subnet for cluster: ${ENCLAVE_CLUSTER_NAME}" >> $GITHUB_STEP_SUMMARY
+
+        # Allocate subnet and get network configuration
+        # Use BASE_WORKING_DIR for shared allocation file across all clusters
+        # Script outputs environment variable assignments with all network details
+        ALLOCATION_OUTPUT=$(WORKING_DIR="${BASE_WORKING_DIR}" bash scripts/allocate_subnet.sh allocate)
+
+        if [ -z "$ALLOCATION_OUTPUT" ]; then
+          echo "❌ Failed to allocate subnet"
+          echo "❌ Failed to allocate subnet" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+
+        # Source the environment variables from the script output
+        eval "$ALLOCATION_OUTPUT"
+
+        # Export to GitHub environment and outputs
+        echo "subnet-id=$ENCLAVE_SUBNET_ID" >> $GITHUB_OUTPUT
+        echo "ENCLAVE_SUBNET_ID=$ENCLAVE_SUBNET_ID" >> $GITHUB_ENV
+        echo "ENCLAVE_BMC_NETWORK=$ENCLAVE_BMC_NETWORK" >> $GITHUB_ENV
+        echo "ENCLAVE_CLUSTER_NETWORK=$ENCLAVE_CLUSTER_NETWORK" >> $GITHUB_ENV
+
+        # Output to console
+        echo "✅ Subnet allocated: ID $ENCLAVE_SUBNET_ID"
+        echo "  - BMC Network: $ENCLAVE_BMC_NETWORK"
+        echo "  - Cluster Network: $ENCLAVE_CLUSTER_NETWORK"
+
+        # Output to summary
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Subnet allocated: **ID $ENCLAVE_SUBNET_ID**" >> $GITHUB_STEP_SUMMARY
+        echo "- BMC Network: \`$ENCLAVE_BMC_NETWORK\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Cluster Network: \`$ENCLAVE_CLUSTER_NETWORK\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
