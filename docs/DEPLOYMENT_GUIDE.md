@@ -730,9 +730,35 @@ For diagnostic log collection, see the [Log Collection Tool](../lz-gather-logs/R
 
 ## Discovering New Nodes
 
-After the initial cluster deployment, you can discover and add new bare metal nodes to the cluster using the discovery process. This is useful for adding compute nodes or additional infrastructure nodes.
+After the initial cluster deployment, you can discover and add new bare metal nodes to the cluster.
 
-### Prerequisites
+### Recommended Approach: Red Hat Advanced Cluster Management (ACM)
+
+**Red Hat ACM is the recommended way to manage host discovery and bare metal infrastructure.** ACM provides a comprehensive interface for managing the complete lifecycle of bare metal hosts, including:
+
+- Adding new hosts to the cluster
+- Removing hosts from the cluster
+- Modifying host configurations
+- Monitoring host status and health
+- Managing host scaling operations
+
+For detailed information on managing bare metal hosts with ACM, refer to the official documentation:
+- [Managing bare metal hosts using Red Hat ACM](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.15/html/clusters/cluster_mce_overview#cim-intro)
+
+### Alternative: Enclave Configuration (One-Time Convenience)
+
+As a convenience for initial setup, you can configure hosts in the Enclave configuration (`config/global.yaml`) and use the discovery playbook to boot them. **However, this is intended as a one-time operation.**
+
+**Important:** If you need to perform any of the following operations, you must use Red Hat ACM instead of the Enclave configuration:
+- Add more nodes after initial deployment
+- Remove nodes from the cluster
+- Change node configurations
+- Scale up or down the cluster
+- Perform day-2 operations on bare metal hosts
+
+The Enclave configuration method is provided only for initial convenience and is not suitable for ongoing infrastructure management.
+
+### Prerequisites for Enclave Configuration Method
 
 - The management cluster must be fully deployed and operational
 - You must have access to the cluster's kubeconfig file
@@ -778,7 +804,9 @@ Each node in `discovery_hosts` requires:
 | `redfishUser` | Redfish username | `admin` |
 | `redfishPassword` | Redfish password | `Password` |
 
-### Running Discovery
+### Running Discovery (One-Time Setup Only)
+
+> **⚠️ Warning:** This method is intended for initial setup only. For any subsequent host management operations, use Red Hat ACM instead.
 
 1. **Edit the configuration** in `config/global.yaml`:
    ```bash

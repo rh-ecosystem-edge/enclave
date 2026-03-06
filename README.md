@@ -120,6 +120,8 @@ Comprehensive documentation is available in the `docs/` folder:
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)**: Complete guide on what gets deployed, prerequisites, and deployment workflow
 - **[Configuration Reference](docs/CONFIGURATION_REFERENCE.md)**: Detailed explanation of all configuration variables with examples
 
+> **Note on Host Discovery Management:** While Phase 7 allows you to configure hardware discovery through the Enclave configuration as a one-time convenience, **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations** in production. For adding, removing, or modifying nodes after initial deployment, use ACM. See the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#discovering-new-nodes) for details.
+
 ## Local Development & Testing
 
 ### Prerequisites

@@ -499,6 +499,12 @@ curl -k -u user:pass https://<redfish-ip>/redfish/v1/Systems/1/EthernetInterface
 
 ## Discovery Hosts Configuration
 
+> **⚠️ Important: Use Red Hat ACM for Production Host Management**
+>
+> **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations.** The discovery hosts configuration in this file is provided as a convenience for initial one-time setup only.
+>
+> For ongoing operations such as adding nodes, removing nodes, changing configurations, or scaling the cluster, use Red Hat ACM instead. See the [Managing bare metal hosts documentation](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.12/html/clusters/cluster_mce_overview#managing-bare-metal-hosts-console) for details.
+
 The discovery hosts configuration is defined in `config/global.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
 
 ### Discovery Hosts Settings
