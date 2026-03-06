@@ -5,6 +5,18 @@ type: object
 
 additionalProperties: false
 properties:
+  certified_operator_catalog:
+    type: string
+    description: Certified Operator Catalog address
+  certified_operator_catalog_version:
+    type: string
+    description: Certified Operator Catalog version
+  rh_operator_catalog:
+    type: string
+    description: Red Hat Operator Catalog address
+  rh_operator_catalog_version:
+    type: string
+    description: Red Hat Operator Catalog version
   mirror_rh_operator_catalog:
     type: string
     description: Mirror Red Hat Operator Catalog name
