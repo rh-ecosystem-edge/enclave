@@ -8,46 +8,28 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-error() {
-    echo -e "${RED}ERROR:${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-# Check required environment variables
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    error "DEV_SCRIPTS_PATH environment variable is not set"
-    exit 1
-fi
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
+require_command "jq"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
-CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "dev-scripts configuration not found: $CONFIG_FILE"
-    error "Expected config file for cluster: $ENCLAVE_CLUSTER_NAME"
-    exit 1
-fi
-
-# shellcheck source=/dev/null
-source "$CONFIG_FILE"
+load_devscripts_config
 
 # Configuration
-WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
+ensure_working_dir
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Try cluster-specific environment file first, fall back to legacy location
@@ -63,17 +45,7 @@ CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
 info "Generating Enclave Lab configuration from infrastructure metadata..."
 
 # Check if environment.json exists
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    error "Environment metadata not found: $ENVIRONMENT_JSON"
-    error "Run 'make environment' first to create infrastructure"
-    exit 1
-fi
-
-# Check if jq is installed
-if ! command -v jq &>/dev/null; then
-    error "jq is required but not installed. Install it with: sudo dnf install jq"
-    exit 1
-fi
+require_file "$ENVIRONMENT_JSON" "Environment metadata not found: $ENVIRONMENT_JSON - Run 'make environment' first to create infrastructure"
 
 # Extract information from environment.json
 BMC_CIDR=$(jq -r '.networks.bmc.cidr' "$ENVIRONMENT_JSON")

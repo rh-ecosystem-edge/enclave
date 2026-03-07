@@ -14,11 +14,12 @@
 
 set -euo pipefail
 
-# Colors for terminal output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Required variables
 : "${ENCLAVE_CLUSTER_NAME:?ENCLAVE_CLUSTER_NAME must be set}"
@@ -32,22 +33,6 @@ if [ -z "${WORKING_DIR:-}" ]; then
         exit 1
     fi
 fi
-
-# Detect GitHub Actions environment
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-    USE_GITHUB=true
-else
-    USE_GITHUB=false
-fi
-
-# Output helper that works both locally and in CI
-output() {
-    local msg="$1"
-    echo -e "$msg"
-    if [ "$USE_GITHUB" = true ]; then
-        echo "$msg" >> "$GITHUB_STEP_SUMMARY"
-    fi
-}
 
 # Error tracking
 VERIFICATION_FAILED=0

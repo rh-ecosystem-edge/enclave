@@ -6,11 +6,12 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Configuration
 DEV_SCRIPTS_PATH="${DEV_SCRIPTS_PATH:-}"
@@ -20,21 +21,8 @@ MIN_DISK_GB=200
 # Track validation status
 VALIDATION_FAILED=0
 
-# Helper functions
-error() {
-    echo -e "${RED}✗ $1${NC}"
-    VALIDATION_FAILED=1
-}
-
-success() {
-    echo -e "${GREEN}✓ $1${NC}"
-}
-
-warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
-}
-
-info() {
+# Custom helper for indented output
+info_indent() {
     echo "  $1"
 }
 
@@ -92,14 +80,14 @@ if [ -d "$DEV_SCRIPTS_PATH" ]; then
         success "dev-scripts has infra_only target"
     else
         error "dev-scripts Makefile missing 'infra_only' target"
-        info "Please ensure you have dev-scripts with infra_only support"
-        info "Clone or update dev-scripts:"
-        info "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
+        info_indent "Please ensure you have dev-scripts with infra_only support"
+        info_indent "Clone or update dev-scripts:"
+        info_indent "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
     fi
 else
     error "dev-scripts not found at $DEV_SCRIPTS_PATH"
-    info "Clone dev-scripts:"
-    info "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
+    info_indent "Clone dev-scripts:"
+    info_indent "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
 fi
 echo ""
 
@@ -121,17 +109,17 @@ if virsh version &> /dev/null; then
 
     # Additional info: show which service model is in use
     if systemctl list-unit-files | grep -q "virtqemud.socket"; then
-        info "Using modular libvirt (virtqemud.socket)"
+        info_indent "Using modular libvirt (virtqemud.socket)"
     elif systemctl is-active --quiet libvirtd 2>/dev/null; then
-        info "Using monolithic libvirt (libvirtd.service)"
+        info_indent "Using monolithic libvirt (libvirtd.service)"
     fi
 else
     error "libvirt is not functional (virsh commands fail)"
-    info "Start libvirt services:"
+    info_indent "Start libvirt services:"
     if systemctl list-unit-files | grep -q "virtqemud.socket"; then
-        info "  sudo systemctl enable --now virtqemud.socket"
+        info_indent "  sudo systemctl enable --now virtqemud.socket"
     else
-        info "  sudo systemctl enable --now libvirtd"
+        info_indent "  sudo systemctl enable --now libvirtd"
     fi
 fi
 echo ""
@@ -142,9 +130,9 @@ if groups | grep -q libvirt; then
     success "User is in libvirt group"
 else
     error "User is not in libvirt group"
-    info "Add user to libvirt group:"
-    info "  sudo usermod -a -G libvirt \$USER"
-    info "  newgrp libvirt  # or logout and login again"
+    info_indent "Add user to libvirt group:"
+    info_indent "  sudo usermod -a -G libvirt \$USER"
+    info_indent "  newgrp libvirt  # or logout and login again"
 fi
 
 # Check passwordless sudo
@@ -152,8 +140,8 @@ if sudo -n true 2>/dev/null; then
     success "Passwordless sudo is configured"
 else
     warning "Passwordless sudo not configured (may require password during setup)"
-    info "To enable passwordless sudo:"
-    info "  echo \"\$USER  ALL=(ALL) NOPASSWD: ALL\" | sudo tee /etc/sudoers.d/\$USER"
+    info_indent "To enable passwordless sudo:"
+    info_indent "  echo \"\$USER  ALL=(ALL) NOPASSWD: ALL\" | sudo tee /etc/sudoers.d/\$USER"
 fi
 echo ""
 
@@ -167,8 +155,8 @@ if [ "$TOTAL_RAM_GB" -ge "$MIN_RAM_GB" ]; then
     success "Sufficient RAM: ${TOTAL_RAM_GB}GB (minimum: ${MIN_RAM_GB}GB)"
 else
     warning "Low RAM: ${TOTAL_RAM_GB}GB (recommended: ${MIN_RAM_GB}GB+)"
-    info "Environment requires ~48GB RAM (3 masters x 16GB + Landing Zone 8GB)"
-    info "You may need to reduce VM specs in configuration"
+    info_indent "Environment requires ~48GB RAM (3 masters x 16GB + Landing Zone 8GB)"
+    info_indent "You may need to reduce VM specs in configuration"
 fi
 
 # Check disk space on /opt (where WORKING_DIR is)
@@ -178,7 +166,7 @@ if [ -d "/opt" ]; then
         success "Sufficient disk space on /opt: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
     else
         warning "Low disk space on /opt: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+)"
-        info "Environment requires ~200GB (3 masters x 120GB + Landing Zone 60GB)"
+        info_indent "Environment requires ~200GB (3 masters x 120GB + Landing Zone 60GB)"
     fi
 else
     warning "/opt directory does not exist (will be created)"
@@ -190,7 +178,7 @@ echo "6. Checking network configuration..."
 if ip link show virbr0 &> /dev/null; then
     success "Default libvirt network (virbr0) exists"
 else
-    info "Default libvirt network not found (will be created by dev-scripts)"
+    info_indent "Default libvirt network not found (will be created by dev-scripts)"
 fi
 
 # Check if firewalld is running (required by dev-scripts)
@@ -199,11 +187,11 @@ if command -v firewalld &> /dev/null; then
         success "firewalld is running"
     else
         warning "firewalld is installed but not running"
-        info "dev-scripts will start it automatically"
+        info_indent "dev-scripts will start it automatically"
     fi
 else
     warning "firewalld is not installed"
-    info "dev-scripts requires firewalld for network setup"
+    info_indent "dev-scripts requires firewalld for network setup"
 fi
 echo ""
 

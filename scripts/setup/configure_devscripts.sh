@@ -6,14 +6,16 @@
 
 set -euo pipefail
 
-# Configuration file location
-if [ -z "$DEV_SCRIPTS_PATH" ]; then
-    echo "ERROR: DEV_SCRIPTS_PATH environment variable is not set"
-    echo ""
-    echo "Please set DEV_SCRIPTS_PATH before running this script:"
-    echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
-    exit 1
-fi
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
+
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
 
 # Cluster name (must be set before generating networks)
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
@@ -31,8 +33,12 @@ if [ -z "${ENCLAVE_BMC_NETWORK:-}" ] || [ -z "${ENCLAVE_CLUSTER_NETWORK:-}" ]; t
     export ENCLAVE_CLUSTER_NAME
     # Use BASE_WORKING_DIR for shared allocation file across all clusters
     # Fall back to WORKING_DIR if BASE_WORKING_DIR is not set (backwards compatibility)
-    ALLOCATION_WORKING_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
-    export WORKING_DIR="${ALLOCATION_WORKING_DIR:?WORKING_DIR or BASE_WORKING_DIR environment variable is required}"
+    ALLOCATION_WORKING_DIR="${BASE_WORKING_DIR:-${WORKING_DIR:-}}"
+    if [ -z "$ALLOCATION_WORKING_DIR" ]; then
+        echo "ERROR: WORKING_DIR or BASE_WORKING_DIR environment variable is required"
+        exit 1
+    fi
+    export WORKING_DIR="$ALLOCATION_WORKING_DIR"
 
     # Get subnet allocation with network configuration
     # Script outputs environment variable assignments
@@ -56,9 +62,8 @@ else
     echo "  Cluster Network: ${ENCLAVE_CLUSTER_NETWORK}"
 fi
 
-# Calculate BMC port from subnet ID (e.g., subnet 3 -> port 8003)
-SUBNET_ID=$(echo "$ENCLAVE_BMC_NETWORK" | awk -F. '{print $3}')
-BMC_PORT="$((8000 + SUBNET_ID))"
+# Calculate BMC port from subnet ID
+BMC_PORT="$((8000 + ENCLAVE_SUBNET_ID))"
 
 # Use unique config file per cluster for parallel execution safety
 CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"

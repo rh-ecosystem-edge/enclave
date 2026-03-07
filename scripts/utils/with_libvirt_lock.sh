@@ -18,15 +18,16 @@ LOCK_FILE="${LIBVIRT_LOCK_FILE:-/var/lock/libvirt-runner.lock}"
 LOCK_TIMEOUT="${LIBVIRT_LOCK_TIMEOUT:-600}"  # 10 minutes
 LOCK_FD=200
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
+# Source shared utilities (suppress stdout to avoid interfering with lock messages)
+source "${ENCLAVE_DIR}/scripts/lib/output.sh" >/dev/null 2>&1
+
+# Custom wrapper functions with [LOCK] prefix for this script
 info() {
-    echo -e "${BLUE}[LOCK]${NC} $1" >&2
+    echo -e "${GREEN}[LOCK]${NC} $1" >&2
 }
 
 success() {

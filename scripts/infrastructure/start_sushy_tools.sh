@@ -6,38 +6,21 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
-
-error() {
-    echo -e "${RED}ERROR:${NC} $1" >&2
-    exit 1
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 # Get cluster name from environment or dev-scripts config
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-DEV_SCRIPTS_CONFIG="${DEV_SCRIPTS_PATH:-}/config_${ENCLAVE_CLUSTER_NAME}.sh"
 
-# Source dev-scripts config if it exists to get CLUSTER_NAME
-if [ -f "$DEV_SCRIPTS_CONFIG" ]; then
-    # shellcheck source=/dev/null
-    source "$DEV_SCRIPTS_CONFIG"
-fi
+# Try to load dev-scripts config (non-fatal)
+try_load_devscripts_config
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
 
@@ -56,37 +39,15 @@ info "Starting sushy-tools BMC emulator..."
 # Configuration
 SUSHY_TOOLS_IMAGE="${SUSHY_TOOLS_IMAGE:-quay.io/metal3-io/sushy-tools}"
 
-# Determine working directory
-# For new workflow: Use BASE_WORKING_DIR + cluster name if WORKING_DIR not set
-if [ -z "${WORKING_DIR:-}" ]; then
-    if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
-    else
-        echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME"
-        exit 1
-    fi
-fi
+# Ensure working directory is set
+ensure_working_dir
 
 SUSHY_DIR="${WORKING_DIR}/virtualbmc/sushy-tools"
 
-# Get BMC network gateway for dynamic configuration
-# Try to source dev-scripts config if available
-if [ -n "${DEV_SCRIPTS_PATH:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
-    CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
-    if [ -f "$CONFIG_FILE" ]; then
-        # shellcheck source=/dev/null
-        source "$CONFIG_FILE"
-    fi
-fi
-
 # Calculate BMC gateway and port from PROVISIONING_NETWORK
 PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
-BMC_GATEWAY=$(echo "$PROVISIONING_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
-
-# Extract subnet ID from BMC network (e.g., 100.64.3.0/24 -> 3)
-# Use as port offset to avoid conflicts in parallel execution
-SUBNET_ID=$(echo "$PROVISIONING_NETWORK" | awk -F. '{print $3}')
-BMC_PORT="$((8000 + SUBNET_ID))"  # e.g., subnet 3 -> port 8003, subnet 10 -> port 8010
+BMC_GATEWAY=$(get_network_gateway "$PROVISIONING_NETWORK")
+BMC_PORT=$(calculate_bmc_port "$PROVISIONING_NETWORK")
 
 # Wait for bridge to have IP assigned
 wait_for_bridge_ip() {

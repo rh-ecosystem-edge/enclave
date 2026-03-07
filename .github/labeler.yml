@@ -5,7 +5,8 @@ deployment:
     - any-glob-to-any-file:
       - 'playbooks/0[1-7]-*.yaml'
       - 'playbooks/main.yaml'
-      - 'scripts/generate_*.sh'
+      - 'scripts/deployment/**/*'
+      - 'scripts/infrastructure/generate_*.sh'
       - 'Makefile'
       - 'defaults/**/*'
       - 'config/**/*'
@@ -19,10 +20,9 @@ ci-cd:
 infrastructure:
   - changed-files:
     - any-glob-to-any-file:
-      - 'scripts/create_*.sh'
-      - 'scripts/configure_*.sh'
-      - 'scripts/provision_*.sh'
-      - 'scripts/cleanup.sh'
+      - 'scripts/infrastructure/**/*'
+      - 'scripts/setup/**/*'
+      - 'scripts/cleanup/**/*'
       - 'playbooks/tasks/create_*.yaml'
       - 'playbooks/tasks/configure_*.yaml'
       - 'playbooks/tasks/provision_*.yaml'
@@ -31,6 +31,7 @@ validation:
   - changed-files:
     - any-glob-to-any-file:
       - 'schemas/**/*'
+      - 'scripts/verification/**/*'
       - 'validations.sh'
       - 'playbooks/tasks/validate_*.yaml'
 
@@ -41,3 +42,14 @@ operators:
       - 'playbooks/05-operators.yaml'
       - 'playbooks/tasks/*operator*.yaml'
       - 'playbooks/tasks/deploy_operator*.yaml'
+
+utilities:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'scripts/lib/**/*'
+      - 'scripts/utils/**/*'
+
+diagnostics:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'scripts/diagnostics/**/*'

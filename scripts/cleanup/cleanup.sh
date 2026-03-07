@@ -4,28 +4,13 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-# Helper functions
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-error() {
-    echo -e "${RED}ERROR:${NC} $1" >&2
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 
 # Get cluster name and paths from environment
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
@@ -35,17 +20,9 @@ info "=========================================="
 info "Cleaning up infrastructure for: ${CLUSTER_NAME}"
 info "=========================================="
 
-# Check if DEV_SCRIPTS_PATH is set
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    error "DEV_SCRIPTS_PATH not set"
-    error "Cannot run cleanup without knowing dev-scripts location"
-    exit 1
-fi
-
-if [ ! -d "${DEV_SCRIPTS_PATH}" ]; then
-    error "DEV_SCRIPTS_PATH directory does not exist: ${DEV_SCRIPTS_PATH}"
-    exit 1
-fi
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
+require_dir "${DEV_SCRIPTS_PATH}"
 
 CONFIG_FILE="${DEV_SCRIPTS_PATH}/${CONFIG_NAME}"
 

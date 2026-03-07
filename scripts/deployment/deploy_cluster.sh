@@ -6,69 +6,41 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
-error() {
-    echo -e "${RED}ERROR:${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-# Check required environment variables
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    error "DEV_SCRIPTS_PATH environment variable is not set"
-    exit 1
-fi
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
-CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "dev-scripts configuration not found: $CONFIG_FILE"
-    error "Expected config file for cluster: $ENCLAVE_CLUSTER_NAME"
-    exit 1
-fi
-
-# shellcheck source=/dev/null
-source "$CONFIG_FILE"
+load_devscripts_config
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 
-# Extract cluster network prefix for dynamic IP detection
+# Get Landing Zone IP using network utility
 CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_NET_PREFIX=$(echo "$CLUSTER_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3}')
-ESCAPED_CLUSTER_PREFIX=$(echo "$CLUSTER_NET_PREFIX" | sed 's/\./\\./g')
-
-# Get Landing Zone IP - dynamic subnet detection
-CLUSTER_IP=$(sudo virsh domifaddr "$LZ_VM_NAME" 2>/dev/null | grep -E "${ESCAPED_CLUSTER_PREFIX}\." | awk '{print $4}' | cut -d'/' -f1 | head -1)
+CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
     exit 1
 fi
 
-SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -q"
-LZ_USER="cloud-user"
-LZ_SSH="${LZ_USER}@${CLUSTER_IP}"
-LZ_ENCLAVE_DIR="/home/${LZ_USER}/enclave"
+# Setup SSH configuration
+setup_ssh_config "$CLUSTER_IP"
 
 # Deployment mode: connected or disconnected (default: disconnected)
 DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
@@ -86,7 +58,7 @@ info ""
 
 # Verify SSH connectivity
 info "Verifying Landing Zone connectivity..."
-if ! ssh $SSH_OPTS "$LZ_SSH" "echo 'SSH test successful'" &>/dev/null; then
+if ! ssh_test_connection; then
     error "Cannot connect to Landing Zone at $CLUSTER_IP"
     exit 1
 fi
@@ -94,13 +66,13 @@ success "Landing Zone accessible"
 
 # Verify Enclave Lab is installed
 info "Verifying Enclave Lab installation..."
-if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/playbooks/main.yaml"; then
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/playbooks/main.yaml"; then
     error "Enclave Lab not found at $LZ_ENCLAVE_DIR"
     error "Run 'make install-enclave' first"
     exit 1
 fi
 
-if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/config/global.yaml"; then
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
     error "config/global.yaml not found at $LZ_ENCLAVE_DIR"
     error "Run 'make install-enclave' first"
     exit 1
@@ -110,9 +82,9 @@ success "Enclave Lab installation verified"
 # Show configuration summary
 info ""
 info "Deployment Configuration:"
-CLUSTER_NAME_VAR=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^clusterName:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null)
-BASE_DOMAIN=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^baseDomain:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null)
-NODE_COUNT=$(ssh $SSH_OPTS "$LZ_SSH" "grep -c '^  - name:' $LZ_ENCLAVE_DIR/config/global.yaml 2>/dev/null || true")
+CLUSTER_NAME_VAR=$(ssh_exec "grep '^clusterName:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null)
+BASE_DOMAIN=$(ssh_exec "grep '^baseDomain:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null)
+NODE_COUNT=$(ssh_exec "grep -c '^  - name:' $LZ_ENCLAVE_DIR/config/global.yaml 2>/dev/null || true")
 
 info "  Cluster: ${CLUSTER_NAME_VAR}.${BASE_DOMAIN}"
 info "  Cluster Nodes: ${NODE_COUNT}"
@@ -200,13 +172,14 @@ if [ -n "$VARS_FILE" ]; then
 fi
 
 # Create the extra vars file on Landing Zone
-ssh $SSH_OPTS "$LZ_SSH" "mkdir -p $LZ_ENCLAVE_DIR/config"
-# shellcheck disable=SC2087  # We want client-side expansion of $EXTRA_VARS_CONTENT
+ssh_exec "mkdir -p $LZ_ENCLAVE_DIR/config"
+# shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/config/extra_vars.yaml" <<EOF
 $EXTRA_VARS_CONTENT
 EOF
 
 # Run ansible-playbook with the extra vars file
+# shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml 2>&1 | tee deployment.log'"
 
 DEPLOYMENT_EXIT_CODE=$?
