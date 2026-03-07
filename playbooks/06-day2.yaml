@@ -94,7 +94,6 @@
       tags:
         - vmaas
         - aap_archive_service
-      tags: vmaas
 
     - name: Management cluster upgrade
       ansible.builtin.include_tasks:
