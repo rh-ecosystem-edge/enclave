@@ -6,11 +6,6 @@
     - name: Load common variables
       ansible.builtin.include_tasks: common/load-vars.yaml
 
-    - name: Set discovery_hosts default
-      ansible.builtin.set_fact:
-        discovery_hosts: []
-      when: discovery_hosts is not defined
-
     - name: Deploy Metal3 common resources
       ansible.builtin.include_tasks: "../playbooks/tasks/deploy_metal3_common.yaml"
 

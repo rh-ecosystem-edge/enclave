@@ -6,7 +6,7 @@ nmstate:
 
 osac_operator:
   image: ghcr.io/osac-project/osac-operator
-  tag: sha-bba9d8c
+  tag: sha-cf3ef87
 
 aap_bootstrap_job:
   image: ghcr.io/osac-project/osac-aap

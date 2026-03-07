@@ -1,0 +1,23 @@
+##############################################################################
+# CLOUD INFRASTRUCTURE CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'cloud_infra.yaml' and fill in your values
+##############################################################################
+
+# ============================================================================
+# Discovery Hosts Configuration
+# ============================================================================
+# Discovery hosts for cloud infrastructure (CaaS)
+# These are worker nodes that will be discovered and added to the cluster
+# Set to an empty list if no discovery hosts are needed:
+# discovery_hosts: []
+#
+# Or add hosts to discover:
+discovery_hosts:
+  - name: YOUR_NODE_NAME              # Example: node01
+    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
+    ipAddress: YOUR_IP_ADDRESS        # Should be in machineNetwork
+    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
+    rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: YOUR_REDFISH_USER
+    redfishPassword: YOUR_REDFISH_PASSWORD
+  # Add more hosts as needed

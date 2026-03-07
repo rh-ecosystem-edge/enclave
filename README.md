@@ -15,8 +15,10 @@ Check [Topo.png](docs/Topo.png) for expected hardware setup and [ArchMap.png](do
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
+cp config/cloud_infra.example.yaml config/cloud_infra.yaml
 vim config/global.yaml        # Fill in your cluster, network, and hardware settings
 vim config/certificates.yaml  # Fill in your SSL certificates
+vim config/cloud_infra.yaml   # Fill in your discovery hosts (or leave discovery_hosts: [])
 ```
 
 2. Run the bootstrap script:
@@ -119,6 +121,8 @@ Comprehensive documentation is available in the `docs/` folder:
 
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)**: Complete guide on what gets deployed, prerequisites, and deployment workflow
 - **[Configuration Reference](docs/CONFIGURATION_REFERENCE.md)**: Detailed explanation of all configuration variables with examples
+
+> **Note on Host Discovery Management:** While Phase 7 allows you to configure hardware discovery through the Enclave configuration as a one-time convenience, **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations** in production. For adding, removing, or modifying nodes after initial deployment, use ACM. See the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#discovering-new-nodes) for details.
 
 ## Local Development & Testing
 
@@ -345,6 +349,7 @@ ssh cloud-user@<landing-zone-ip>
 ls -la /home/cloud-user/enclave
 cat /home/cloud-user/enclave/config/global.yaml
 cat /home/cloud-user/enclave/config/certificates.yaml
+cat /home/cloud-user/enclave/config/cloud_infra.yaml
 ```
 
 #### Test Only Cluster Deployment

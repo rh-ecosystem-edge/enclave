@@ -189,6 +189,7 @@
     status_code: [200]
   register: node_state
   until: node_state.json.provision_state in ["active", "deploy failed"]
+  failed_when: node_state.json.provision_state == "deploy failed"
   retries: 60
   delay: 10
   when: current_provision_state == "available"

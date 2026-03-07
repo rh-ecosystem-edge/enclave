@@ -1,0 +1,40 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: osac
+rules:
+  - apiGroups:
+    - "osac.openshift.io"
+    resources:
+    - "tenants"
+    verbs:
+    - "get"
+    - "list"
+    - "watch"
+
+  - apiGroups:
+    - "osac.openshift.io"
+    resources:
+    - "computeinstances"
+    verbs:
+    - "get"
+    - "list"
+    - "watch"
+    - "create"
+    - "update"
+    - "patch"
+    - "delete"
+
+  - apiGroups:
+    - ""
+    resources:
+    - "secrets"
+    verbs:
+    - "get"
+    - "list"
+    - "watch"
+    - "create"
+    - "update"
+    - "patch"
+    - "delete"

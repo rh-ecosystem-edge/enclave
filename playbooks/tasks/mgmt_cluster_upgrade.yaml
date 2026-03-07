@@ -1,0 +1,137 @@
+- name: Get current cluster version information
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+  register: cv_info
+  until:
+    - cv_info.resources is defined
+    - cv_info.resources | length > 0
+  retries: 120
+  delay: 10
+
+- name: Get current desired cluster version
+  ansible.builtin.set_fact:
+    cluster_version: "{{ cv_info.resources[0].status.desired.version }}"
+
+- name: Determine if upgrade is required
+  ansible.builtin.set_fact:
+    upgrade_required: "{{ mgmt_openshift_version is ansible.builtin.version(cluster_version, '>') }}"
+    downgrade_requested: "{{ mgmt_openshift_version is ansible.builtin.version(cluster_version, '<') }}"
+
+- name: Fail when requested version is lower than current cluster version
+  when: downgrade_requested
+  ansible.builtin.fail:
+    msg: >-
+      Requested version {{ mgmt_openshift_version }} is lower than current cluster version {{ cluster_version }}.
+      Downgrades are not supported.
+
+- name: Get mirrored versions
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    mirrored_versions: "{{ openshift_versions | map(attribute='version') | list }}"
+
+- name: Fail when requested version is not mirrored
+  when:
+    - upgrade_required
+    - mgmt_openshift_version not in mirrored_versions
+  ansible.builtin.fail:
+    msg: >-
+      Requested version {{ mgmt_openshift_version }} is not mirrored: {{ mirrored_versions }}.
+
+- name: Get available upgrades
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    available_versions: "{{ (cv_info.resources[0].status.availableUpdates | default([])) | map(attribute='version') | list }}"
+
+- name: Determine if version is available (upgrade condition)
+  when:
+    - upgrade_required
+  ansible.builtin.set_fact:
+    upgrade_condition_version_available: "{{ mgmt_openshift_version in available_versions }}"
+
+- name: Get cluster operators
+  when: upgrade_required
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ClusterOperator
+  register: cluster_operators
+
+- name: Get cluster operators status conditions
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    cluster_operators_status_conditions: >
+      {{
+        cluster_operators.resources | 
+        selectattr('status.conditions', 'defined') | 
+        map(attribute='status.conditions') | 
+        flatten
+      }}
+
+- name: Determine if cluster operators are healthy (upgrade condition)
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    upgrade_condition_co_healthy: >
+      {{
+        cluster_operators_status_conditions | 
+        selectattr('type', 'equalto', 'Degraded') | 
+        selectattr('status', 'equalto', 'True') | 
+        list | length == 0
+      }}
+
+- name: Determine if cluster operators are upgradeable (upgrade condition)
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    upgrade_condition_co_upgradeable: >
+      {{
+        cluster_operators_status_conditions | 
+        selectattr('type', 'equalto', 'Upgradeable') | 
+        selectattr('status', 'equalto', 'False') | 
+        list | length == 0
+      }}
+
+- name: Determine if need to perform upgrade (aggregate upgrade conditions)
+  when: upgrade_required
+  ansible.builtin.set_fact:
+    perform_upgrade: >
+      {{
+        upgrade_condition_version_available
+        and upgrade_condition_co_healthy
+        and upgrade_condition_co_upgradeable
+      }}
+
+- name: Set perform_upgrade to false when upgrade not required
+  when: not upgrade_required
+  ansible.builtin.set_fact:
+    perform_upgrade: false
+
+- name: Trigger cluster upgrade
+  when: perform_upgrade
+  kubernetes.core.k8s:
+    state: patched
+    api_version: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+    definition:
+      spec:
+        desiredUpdate:
+          version: "{{ mgmt_openshift_version }}"
+          force: false
+
+- name: Wait for cluster upgrade to complete
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+  register: cv_info
+  until: >
+    cv_info is defined and
+    cv_info.resources is defined and
+    cv_info.resources | length > 0 and
+    cv_info.resources[0].status is defined and
+    cv_info.resources[0].status.history is defined and
+    cv_info.resources[0].status.history | length > 0 and
+    cv_info.resources[0].status.history[0].state == 'Completed' and
+    cv_info.resources[0].status.history[0].version == mgmt_openshift_version
+  retries: 120
+  delay: 60

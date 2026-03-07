@@ -3,7 +3,7 @@
 #
 # This script verifies that:
 # - Enclave Lab repository is copied to Landing Zone
-# - Configuration files config/global.yaml and config/certificates.yaml exist and are valid
+# - Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist and are valid
 # - Required dependencies are installed
 # - Directory structure is correct
 
@@ -115,10 +115,11 @@ else
     exit 1
 fi
 
-# Test 3: Configuration files config/global.yaml and config/certificates.yaml exist
+# Test 3: Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist
 info "Test 3: Checking vars configuration..."
 GLOBAL_YAML="$LZ_ENCLAVE_DIR/config/global.yaml"
 CERTS_YAML="$LZ_ENCLAVE_DIR/config/certificates.yaml"
+CLOUD_INFRA_YAML="$LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
 
 if ssh $SSH_OPTS "$LZ_SSH" "test -f $GLOBAL_YAML"; then
     success "config/global.yaml configuration file exists"
@@ -167,6 +168,20 @@ if ssh $SSH_OPTS "$LZ_SSH" "test -f $CERTS_YAML"; then
     fi
 else
     fail "config/certificates.yaml not found"
+    info "Run 'make install-enclave' to generate configuration"
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
+    success "config/cloud_infra.yaml configuration file exists"
+
+    # Validate YAML syntax
+    if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import yaml; yaml.safe_load(open(\"$CLOUD_INFRA_YAML\"))'" 2>/dev/null; then
+        success "  config/cloud_infra.yaml has valid YAML syntax"
+    else
+        warning "  config/cloud_infra.yaml may have syntax errors"
+    fi
+else
+    fail "config/cloud_infra.yaml not found"
     info "Run 'make install-enclave' to generate configuration"
 fi
 
@@ -327,17 +342,18 @@ info "Installation Details:"
 info "  Location: $LZ_SSH:$LZ_ENCLAVE_DIR"
 info "  Configuration vars: $LZ_ENCLAVE_DIR/config/global.yaml"
 info "  Certificates vars: $LZ_ENCLAVE_DIR/config/certificates.yaml"
+info "  Cloud infra vars:  $LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
 info "  SSH Access: ssh $LZ_SSH"
 echo ""
 info "Before running Enclave Lab:"
 info "  1. Review configuration vars: ssh $LZ_SSH 'cat $LZ_ENCLAVE_DIR/config/global.yaml'"
 info "  2. Update pull secret: ssh $LZ_SSH 'vi ~/.config/pull-secret.json'"
-info "  3. Adjust any other settings in config/global.yaml and config/certificates.yaml as needed"
+info "  3. Adjust any other settings in config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml as needed"
 echo ""
 info "To run Enclave Lab:"
 info "  ssh $LZ_SSH"
 info "  cd $LZ_ENCLAVE_DIR"
-info "  ansible-playbook -e@config/global.yaml playbooks/main.yaml"
+info "  ansible-playbook -e@config/global.yaml -e@config/certificates.yaml -e@config/cloud_infra.yaml playbooks/main.yaml"
 echo ""
 
 # Exit with failure if any tests failed

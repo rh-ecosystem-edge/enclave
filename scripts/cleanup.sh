@@ -162,7 +162,7 @@ if [ -n "${WORKING_DIR:-}" ]; then
     # If we have a cluster-specific directory, remove it entirely
     if [ -n "$CLUSTER_DIR" ] && [ -d "$CLUSTER_DIR" ]; then
         info "Removing cluster-specific working directory: $CLUSTER_DIR"
-        rm -rf "$CLUSTER_DIR" || warning "Failed to remove cluster directory"
+        sudo rm -rf "$CLUSTER_DIR" || warning "Failed to remove cluster directory"
     else
         # Old structure - clean up individual files
         # Remove cluster-specific environment file
