@@ -56,8 +56,10 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
-- name: "Ensure Subscription exists"
-  when: r_sub_check.resources | length == 0
+- name: "Ensure Subscription exists (Manual)"
+  when:
+    - r_sub_check.resources | length == 0
+    - operator.namespace != "openshift-operators"
   kubernetes.core.k8s:
     state: present
     definition:
@@ -67,7 +69,31 @@
         name: "{{ operator.name }}"
         namespace: "{{ operator.namespace }}"
       spec:
-        installPlanApproval: Automatic
+        installPlanApproval: "Manual"
+        channel: "{{ operator.defaultChannel }}"
+        name: "{{ operator.name }}"
+        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        sourceNamespace: openshift-marketplace
+        startingCSV: "{{ operator.csvName | default(operator.name) }}.v{{ operator.version }}"
+  register: r_sub_exists
+  retries: 6
+  delay: 5
+  until: r_sub_exists is success
+
+- name: "Ensure Subscription exists (Automatic)"
+  when:
+    - r_sub_check.resources | length == 0
+    - operator.namespace == "openshift-operators"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        installPlanApproval: "Automatic"
         channel: "{{ operator.defaultChannel }}"
         name: "{{ operator.name }}"
         source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
@@ -78,7 +104,9 @@
   until: r_sub_exists is success
 
 - name: "Get Installed CSV ({{ operator.name }})"
-  when: r_sub_check.resources | length == 0
+  when:
+    - r_sub_check.resources | length == 0
+    - operator.namespace == "openshift-operators"
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -92,7 +120,9 @@
   - r_subscription.resources[0].status.currentCSV | length > 0
 
 - name: "Wait until CSV is installed"
-  when: r_sub_check.resources | length == 0
+  when:
+    - r_sub_check.resources | length == 0
+    - operator.namespace == "openshift-operators"
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion

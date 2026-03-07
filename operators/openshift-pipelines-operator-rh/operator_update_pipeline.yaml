@@ -1,0 +1,130 @@
+---
+- name: Get OpenShift CLI image from OpenShift release
+  ansible.builtin.command: >
+    {{ rootDir }}/bin/oc adm release info --registry-config={{ rootDir }}/config/pull-secret.json --image-for cli
+    quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
+  register: r_oc_cli_image
+  changed_when: false
+
+- name: Set image facts
+  ansible.builtin.set_fact:
+    oc_cli_image: "{{ r_oc_cli_image.stdout }}"
+
+- name: Create Operator Update ServiceAccount
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: operator-update
+        namespace: openshift-pipelines
+
+- name: Create Operator Update ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: operator-update
+      rules:
+        - apiGroups: ["operators.coreos.com"]
+          resources: ["clusterserviceversions", "installplans"]
+          verbs: ["get", "list", "patch", "update", "watch"]
+
+- name: Create Operator Update ClusterRoleBinding
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: operator-update
+      subjects:
+        - kind: ServiceAccount
+          name: operator-update
+          namespace: openshift-pipelines
+      roleRef:
+        kind: ClusterRole
+        name: operator-update
+        apiGroup: rbac.authorization.k8s.io
+
+- name: Create Operator Update Task
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: tekton.dev/v1
+      kind: Task
+      metadata:
+        name: operator-update
+        namespace: openshift-pipelines
+      spec:
+        params:
+          - name: dry-run
+            description: "If true, only identifies pending updates"
+            type: string
+            default: "false"
+        results:
+          - name: exit-code
+            description: "Success of operator version update (exit code)"
+          - name: status-report
+            description: "Report of operator version updates"
+        workspaces:
+          - name: shared-data
+        steps:
+          - name: generate-script
+            image: "{{ oc_cli_image }}"
+            workingDir: $(workspaces.shared-data.path)
+            script: |
+                #!/bin/bash
+
+                cat <<EOF > operator_update.py
+                {{ lookup('ansible.builtin.file', '../scripts/operator_update.py') }}
+                EOF
+          - name: operator-update
+            image: "{{ oc_cli_image }}"
+            workingDir: $(workspaces.shared-data.path)
+            script: |
+                #!/bin/bash
+
+                python ./operator_update.py "{{ [storage_operators[blockStorageBackend]] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                rc=$?
+                echo -n "${rc}" > "$(results.exit-code.path)"
+                exit "${rc}"
+
+- name: Create Operator Update Pipeline
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: tekton.dev/v1
+      kind: Pipeline
+      metadata:
+        name: operator-update
+        namespace: openshift-pipelines
+      spec:
+        params:
+          - name: dry-run
+            type: string
+            description: "If true, only identifies pending updates"
+            default: "false"
+        results:
+          - name: exit-code
+            description: "Success of operator version update (exit code)"
+            value: $(tasks.operator-update.results.exit-code)
+          - name: status-report
+            description: "Report of operator version updates"
+            value: $(tasks.operator-update.results.status-report)
+        workspaces:
+          - name: shared-data
+        tasks:
+          - name: operator-update
+            workspaces:
+              - name: shared-data
+                workspace: shared-data
+            taskRef:
+              name: operator-update
+            params:
+              - name: dry-run
+                value: $(params.dry-run)
+            timeout: "2h"
