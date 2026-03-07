@@ -47,11 +47,8 @@ jobs:
 
       - name: Setup cluster-specific working directory
         run: |
-          CLUSTER_WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
-          echo "Creating cluster-specific working directory: $CLUSTER_WORKING_DIR"
-          mkdir -p "$CLUSTER_WORKING_DIR"
-          echo "WORKING_DIR=$CLUSTER_WORKING_DIR" >> $GITHUB_ENV
-          echo "Cluster working directory: $CLUSTER_WORKING_DIR"
+          make setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
       - name: Workflow information
         run: |
@@ -70,40 +67,113 @@ jobs:
       - name: Allocate unique subnet for cluster
         uses: ./.github/actions/allocate-subnet
 
-      - name: Clean infrastructure
-        id: clean
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
         run: |
-          echo "## Cleanup" >> $GITHUB_STEP_SUMMARY
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Cleaning up any leftover infrastructure..." >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
-          make clean
+          make environment
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
-          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Setup infrastructure
-        uses: ./.github/actions/setup-infrastructure
-
-      - name: Deploy OpenShift cluster
-        id: deploy_cluster
+      - name: Provision Landing Zone
         run: |
-          echo "## Deploying OpenShift Cluster (Disconnected Mode)" >> $GITHUB_STEP_SUMMARY
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Starting full air-gapped deployment with mirror registry..." >> $GITHUB_STEP_SUMMARY
-          echo "Expected duration: ~120 minutes" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make provision-landing-zone
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Phases:" >> $GITHUB_STEP_SUMMARY
-          echo "1. Prepare - Download binaries (~5 min)" >> $GITHUB_STEP_SUMMARY
-          echo "2. Mirror - Set up Quay and mirror images (~20 min, ~130GB)" >> $GITHUB_STEP_SUMMARY
-          echo "3. Deploy - Install OpenShift cluster (~50 min)" >> $GITHUB_STEP_SUMMARY
-          echo "4. Post-install - Configure cluster (~5 min)" >> $GITHUB_STEP_SUMMARY
-          echo "5. Operators - Install operators (~20 min)" >> $GITHUB_STEP_SUMMARY
-          echo "6. Day-2 - Advanced features (~10 min)" >> $GITHUB_STEP_SUMMARY
-          echo "7. Discovery - Hardware discovery setup (~10 min)" >> $GITHUB_STEP_SUMMARY
+          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          make install-enclave
+          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster
+      - name: Phase 1 - Prepare binaries and content
+        id: deploy_prepare
+        run: |
+          echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
 
-          echo "✅ Cluster deployment complete" >> $GITHUB_STEP_SUMMARY
+          make deploy-cluster-prepare
+
+          echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2 - Mirror registry setup
+        id: deploy_mirror
+        run: |
+          echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Setting up local mirror registry (disconnected mode)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-mirror
+
+          echo "✅ Phase 2 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 3 - Deploy OpenShift cluster
+        id: deploy_install
+        run: |
+          echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift cluster (mode: disconnected)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-install
+
+          echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 4 - Post-install configuration
+        id: deploy_post_install
+        run: |
+          echo "## Phase 4: Post-Install Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring cluster (secrets, certificates, API health)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-post-install
+
+          echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 5 - Install operators
+        id: deploy_operators
+        run: |
+          echo "## Phase 5: Operators" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing and configuring operators..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-operators
+
+          echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 6 - Day-2 operations
+        id: deploy_day2
+        run: |
+          echo "## Phase 6: Day-2 Operations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring advanced features and policies..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-day2
+
+          echo "✅ Phase 6 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 7 - Configure hardware discovery
+        id: deploy_discovery
+        run: |
+          echo "## Phase 7: Hardware Discovery" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring hardware discovery infrastructure..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-discovery
+
+          echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify cluster deployment
         if: success()
