@@ -1,4 +1,21 @@
 ---
+- name: "Create ACM Addons for VMaaS cluster"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', '../templates/acm-addons.yaml.j2') | from_yaml }}"
+  vars:
+    acm_addons:
+      - "config-policy-controller"
+      - "governance-policy-framework"
+      - "cert-policy-controller"
+      - "application-manager"
+    cluster_ns: "{{ vmaas_clusters[0] }}"
+  loop: "{{ acm_addons }}"
+  loop_control:
+    loop_var: addon
+
 - name: ACM policy for VMaaS
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
@@ -70,10 +87,10 @@
   vars:
     aap_name: "osac-aap"
     aap_ns: "ansible-aap"
-    aap_controller_name: "{{ aap_name }}-controller"
+    aap_controller_name: "{{ aap_name }}"
     aap_token_description: "OSAC Operator Token"
     aap_token_overwrite: false
-    aap_api_path: "/api/v2"
+    aap_api_path: "/api/controller/v2"
     aap_api_user: "admin"
     aap_api_validate_certs: false
   block:
@@ -108,6 +125,46 @@
       retries: 10
       delay: 5
       until: __r_create_aap_config is success
+
+    # Required by OSAC although is empty, it must be present
+    # vm and cluster share the same secret
+    - name: "Create cluster-fulfillment-ig secret"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "cluster-fulfillment-ig"
+            namespace: "{{ aap_ns }}"
+          type: Opaque
+
+    - name: "Create osac-sa Service Account in AAP namespace"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-sa.yaml.j2') | from_yaml }}"
+      register: __r_create_aap_osac_sa
+      retries: 10
+      delay: 5
+      until: __r_create_aap_osac_sa is success
+
+    - name: "Create osac ClusterRole"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-clusterrole.yaml.j2') | from_yaml }}"
+      register: __r_create_aap_osac_clusterrole
+      retries: 10
+      delay: 5
+      until: __r_create_aap_osac_clusterrole is success
+
+    - name: "Create osac-rolebinding RoleBinding in AAP namespace"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', '../templates/aap-osac-rolebinding.yaml.j2') | from_yaml }}"
+      register: __r_create_aap_osac_rolebinding
+      retries: 10
+      delay: 5
+      until: __r_create_aap_osac_rolebinding is success
 
     - name: "Create AnsibleAutomationPlatform resource"
       kubernetes.core.k8s:
