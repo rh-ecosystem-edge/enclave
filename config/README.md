@@ -9,10 +9,12 @@ This directory contains the configuration files needed for your enclave deployme
    cd config/
    cp global.example.yaml global.yaml
    cp certificates.example.yaml certificates.yaml
+   cp cloud_infra.example.yaml cloud_infra.yaml
    ```
 
 2. **Fill in `global.yaml` with your environment details**
 3. **Fill in `certificates.yaml` with your SSL certificates**
+4. **Fill in `cloud_infra.yaml` with your discovery hosts (or leave `discovery_hosts: []` if not needed)**
 
 ## Configuration Files
 
@@ -22,8 +24,11 @@ Contains all cluster and infrastructure configuration.
 ### `certificates.yaml` (required)
 Contains SSL certificates for the cluster.
 
+### `cloud_infra.yaml` (required)
+Contains cloud infrastructure configuration, including the list of worker nodes to be discovered and added to the cluster. Set `discovery_hosts: []` if no discovery hosts are needed.
+
 ## Security
-- **Never commit `global.yaml` or `certificates.yaml` to version control**
+- **Never commit `global.yaml`, `certificates.yaml` or `cloud_infra.yaml` to version control**
 - These files contain sensitive credentials and private keys
 - The `.gitignore` is configured to exclude them
 

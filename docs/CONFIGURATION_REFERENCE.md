@@ -10,6 +10,7 @@ Configuration is split across multiple files for better organization and maintai
 |------|-------------|
 | `config/global.yaml` | Main configuration file with cluster, network, hardware, registry, and pull secret settings |
 | `config/certificates.yaml` | SSL certificates for the API server and Ingress |
+| `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
 | `defaults/operators.yaml` | General cluster operators configuration |
 | `defaults/platforms.yaml` | Available OpenShift versions |
 | `defaults/storage_operators.yaml` | Storage operators (ODF, LVMS) configuration |
@@ -26,6 +27,7 @@ Copy the example files to get started:
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
+cp config/cloud_infra.example.yaml config/cloud_infra.yaml
 ```
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime via `playbooks/common/load-vars.yaml`.
@@ -505,7 +507,7 @@ curl -k -u user:pass https://<redfish-ip>/redfish/v1/Systems/1/EthernetInterface
 >
 > For ongoing operations such as adding nodes, removing nodes, changing configurations, or scaling the cluster, use Red Hat ACM instead. See the [Managing bare metal hosts documentation](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.12/html/clusters/cluster_mce_overview#managing-bare-metal-hosts-console) for details.
 
-The discovery hosts configuration is defined in `config/global.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
+The discovery hosts configuration is defined in `config/cloud_infra.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
 
 ### Discovery Hosts Settings
 
@@ -1246,7 +1248,7 @@ sslCACertificate: |
 
 1. **Restrict file permissions**:
    ```bash
-   chmod 600 config/global.yaml config/certificates.yaml
+   chmod 600 config/global.yaml config/certificates.yaml config/cloud_infra.yaml
    ```
 
 2. **Use strong passwords** for:

@@ -585,8 +585,10 @@ Certificates are stored in `config/certificates.yaml` and must be provided in PE
    ```bash
    cp config/global.example.yaml config/global.yaml
    cp config/certificates.example.yaml config/certificates.yaml
+   cp config/cloud_infra.example.yaml config/cloud_infra.yaml
    vim config/global.yaml       # Edit cluster, network, hardware and registry settings
    vim config/certificates.yaml # Add SSL certificates
+   vim config/cloud_infra.yaml  # Add discovery hosts (leave discovery_hosts: [] if none)
    ```
 
 3. **Run bootstrap**:
@@ -747,7 +749,7 @@ For detailed information on managing bare metal hosts with ACM, refer to the off
 
 ### Alternative: Enclave Configuration (One-Time Convenience)
 
-As a convenience for initial setup, you can configure hosts in the Enclave configuration (`config/global.yaml`) and use the discovery playbook to boot them. **However, this is intended as a one-time operation.**
+As a convenience for initial setup, you can configure hosts in the Enclave configuration (`config/cloud_infra.yaml`) and use the discovery playbook to boot them. **However, this is intended as a one-time operation.**
 
 **Important:** If you need to perform any of the following operations, you must use Red Hat ACM instead of the Enclave configuration:
 - Add more nodes after initial deployment
@@ -767,7 +769,13 @@ The Enclave configuration method is provided only for initial convenience and is
 
 ### Configuration
 
-Add or edit the `discovery_hosts` section in `config/global.yaml` with the details of the nodes you want to discover:
+If you have not created `config/cloud_infra.yaml` yet, copy the example file first:
+
+```bash
+cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+```
+
+Then add or edit the `discovery_hosts` section with the details of the nodes you want to discover:
 
 ```yaml
 # Discovery hosts for cloud infrastructure (CaaS)
@@ -808,21 +816,21 @@ Each node in `discovery_hosts` requires:
 
 > **⚠️ Warning:** This method is intended for initial setup only. For any subsequent host management operations, use Red Hat ACM instead.
 
-1. **Edit the configuration** in `config/global.yaml`:
+1. **Edit the configuration** in `config/cloud_infra.yaml`:
    ```bash
-   vim config/global.yaml
+   vim config/cloud_infra.yaml
    # Add or update the discovery_hosts section
    ```
 
 2. **Run the discovery playbook**:
    ```bash
-   ansible-playbook -e @config/global.yaml playbooks/05-configure-discovery.yaml
+   ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/07-configure-discovery.yaml
    ```
 
    Or if you're on the Landing Zone and Enclave is installed:
    ```bash
-   cd /home/enclave
-   ansible-playbook -e @config/global.yaml playbooks/05-configure-discovery.yaml
+   cd /home/cloud-user/enclave
+   ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/07-configure-discovery.yaml
    ```
 
 ### What the Discovery Process Does
@@ -838,7 +846,7 @@ The discovery process performs the following steps:
    - BMC connection details
    - bootMACAddress field set to the node's MAC address
    - Reference to the InfraEnv for the discovery ISO
-8. **Monitors for Host discovery**:
+7. **Monitors for Host discovery**:
    - Each host boots from the discovery ISO and registers as an Agent
 
 ### Discovery ISO and Metal3 Provisioning

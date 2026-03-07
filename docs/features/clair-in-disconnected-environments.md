@@ -8,7 +8,7 @@ This feature enables image scanning using Clair in a disconnected environment by
     1. Update `defaults/operators.yaml` quay-operator channel to `stable-3.15`.
     1. Execute the mirror phase:
         ```sh
-        $ ansible-playbook -e @config/global.yaml playbooks/02-mirror.yaml
+        $ ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/02-mirror.yaml
         ```
     1. Uninstall the existing instance:
         ```sh
@@ -45,7 +45,7 @@ This feature enables image scanning using Clair in a disconnected environment by
 
 1. Execute the post-install phase (or just run the operators task directly):
     ```sh
-    $ ansible-playbook -e @config/global.yaml playbooks/04-post-install.yaml
+    $ ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/04-post-install.yaml
     # Or run operators task directly:
-    $ ansible-playbook -e @config/global.yaml playbooks/tasks/configure_operators.yaml
+    $ ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/tasks/configure_operators.yaml
     ```

@@ -175,3 +175,32 @@ PYTHON_SCRIPT
 
     log_info "  OK Collected configuration (sanitized)"
 fi
+
+CLOUD_INFRA_FILE="${ENCLAVE_DIR}/config/cloud_infra.yaml"
+if [ -f "${CLOUD_INFRA_FILE}" ]; then
+    python3 <<PYTHON_SCRIPT > "${COLLECTION_DIR}/config/cloud_infra.yaml" 2>/dev/null || true
+import sys
+import yaml
+
+with open('${CLOUD_INFRA_FILE}', 'r') as f:
+    data = yaml.safe_load(f)
+
+if 'discovery_hosts' in data and isinstance(data['discovery_hosts'], list):
+    for host in data['discovery_hosts']:
+        if isinstance(host, dict):
+            if 'redfishPassword' in host:
+                host['redfishPassword'] = 'REDACTED'
+            if 'password' in host:
+                host['password'] = 'REDACTED'
+
+yaml.dump(data, sys.stdout, default_flow_style=False, sort_keys=False)
+PYTHON_SCRIPT
+
+    if [ ! -s "${COLLECTION_DIR}/config/cloud_infra.yaml" ]; then
+        log_warning "Python sanitization failed for cloud_infra.yaml, using sed fallback"
+        sed -e 's/\(redfishPassword:\).*/\1 REDACTED/' \
+            "${CLOUD_INFRA_FILE}" > "${COLLECTION_DIR}/config/cloud_infra.yaml" 2>/dev/null || true
+    fi
+
+    log_info "  OK Collected cloud infra configuration (sanitized)"
+fi

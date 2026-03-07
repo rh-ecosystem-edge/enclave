@@ -717,7 +717,7 @@ bash -x ./scripts/provision_landing_zone.sh
 # For Ansible (on Landing Zone)
 ssh cloud-user@$LZ_IP
 cd /home/cloud-user/enclave
-ansible-playbook -vvv -e@config/global.yaml playbooks/main.yaml
+ansible-playbook -vvv -e@config/global.yaml -e@config/certificates.yaml -e@config/cloud_infra.yaml playbooks/main.yaml
 ```
 
 **Collect logs for troubleshooting:**

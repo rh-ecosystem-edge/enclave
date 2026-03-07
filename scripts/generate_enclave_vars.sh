@@ -1,10 +1,10 @@
 #!/bin/bash
-# Generate Enclave Lab config/global.yaml and config/certificates.yaml from
-# infrastructure metadata
+# Generate Enclave Lab config/global.yaml, config/certificates.yaml and
+# config/cloud_infra.yaml from infrastructure metadata
 #
 # This script reads environment.json (created in Task 1) and generates
-# config/global.yaml and config/certificates.yaml configuration files for Enclave
-# Lab deployment.
+# config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml
+# configuration files for Enclave Lab deployment.
 
 set -euo pipefail
 
@@ -58,6 +58,7 @@ fi
 
 GLOBAL_VARS_OUTPUT="${WORKING_DIR}/config/global.yaml"
 CERTS_VARS_OUTPUT="${WORKING_DIR}/config/certificates.yaml"
+CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
 
 info "Generating Enclave Lab configuration from infrastructure metadata..."
 
@@ -195,12 +196,6 @@ pullSecretPath: "{{ workingDir }}/.config/pull-secret.json"
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
 
 # ============================================================================
-# Discovery Hosts Configuration
-# ============================================================================
-# Add hosts here if you want to use the discovery feature
-discovery_hosts: []
-
-# ============================================================================
 # Cluster Hosts Configuration (Agent Hosts)
 # ============================================================================
 agent_hosts:
@@ -248,9 +243,8 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
 EOF
 done
 
-
 # Generate config/certificates.yaml file
-cat > "$CERTS_VARS_OUTPUT" <<'EOF'
+cat > "$CERTS_VARS_OUTPUT" <<EOF
 ---
 # SSL Certificates Configuration
 # Auto-generated from infrastructure metadata
@@ -269,12 +263,28 @@ sslIngressCertificateFullChain: ""
 sslCACertificate: ""
 EOF
 
+# Generate config/cloud_infra.yaml file
+cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
+---
+# Cloud Infrastructure Configuration
+# Auto-generated from infrastructure metadata
+# Generated: $(date -Iseconds)
 
-info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT and $CERTS_VARS_OUTPUT"
+# ============================================================================
+# Discovery Hosts Configuration
+# ============================================================================
+# Discovery hosts for cloud infrastructure (CaaS)
+# These are worker nodes that will be discovered and added to the cluster
+# Set to an empty list if no discovery hosts are needed:
+discovery_hosts: []
+EOF
+
+info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
 echo ""
 info "Configuration summary:"
 info "  Global vars file: $GLOBAL_VARS_OUTPUT"
 info "  Certificates vars file: $CERTS_VARS_OUTPUT"
+info "  Cloud infra vars file: $CLOUD_INFRA_VARS_OUTPUT"
 info "  Cluster: $CLUSTER_NAME.$BASE_DOMAIN"
 info "  Network: $CLUSTER_CIDR"
 info "  Masters: $MASTER_COUNT nodes"
@@ -292,5 +302,6 @@ info "  - Registry: LocalStorage"
 info "  - Pull secret: Will use ~/.config/pull-secret.json on Landing Zone"
 info "  - SSL certificates: Empty (self-signed will be generated)"
 echo ""
-info "Review config/global.yaml and config/certificates.yaml and adjust if needed before running Enclave Lab"
+info "Review config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml"
+info "and adjust if needed before running Enclave Lab"
 echo ""
