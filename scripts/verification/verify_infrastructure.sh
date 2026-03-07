@@ -9,51 +9,29 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 
-error() {
-    echo -e "${RED}ERROR:${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
+# Custom fail function for this script
 fail() {
     echo -e "${RED}✗${NC} $1"
 }
 
-# Check required environment variables
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    error "DEV_SCRIPTS_PATH environment variable is not set"
-    exit 1
-fi
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
-CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "dev-scripts configuration not found: $CONFIG_FILE"
-    error "Expected config file for cluster: $ENCLAVE_CLUSTER_NAME"
-    exit 1
-fi
-
-# shellcheck source=/dev/null
-source "$CONFIG_FILE"
+load_devscripts_config
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
@@ -170,7 +148,7 @@ fi
 # Test 4: Check BMC emulation (sushy-tools)
 info "Test 4: Checking BMC emulation (sushy-tools)..."
 BMC_NETWORK="${PROVISIONING_NETWORK}"
-BMC_GATEWAY=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
+BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
 SUSHY_ENDPOINT="http://${BMC_GATEWAY}:8000/redfish/v1/Systems"
 
 if curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 "$SUSHY_ENDPOINT" 2>/dev/null | grep -q "200"; then

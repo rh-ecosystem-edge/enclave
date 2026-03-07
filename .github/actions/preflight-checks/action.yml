@@ -29,24 +29,24 @@ runs:
     - name: Run preflight checks
       shell: bash
       run: |
-        # Build arguments for the script based on inputs
-        ARGS="--title '${{ inputs.title }}'"
+        # Build arguments for the script based on inputs (using array for safety)
+        ARGS=(--title "${{ inputs.title }}")
 
         if [ "${{ inputs.check-pull-secret }}" = "true" ]; then
-          ARGS="$ARGS --check-pull-secret"
+          ARGS+=(--check-pull-secret)
         fi
 
         if [ "${{ inputs.check-system-resources }}" = "true" ]; then
-          ARGS="$ARGS --check-system-resources"
+          ARGS+=(--check-system-resources)
         fi
 
         if [ "${{ inputs.check-libvirt }}" = "true" ]; then
-          ARGS="$ARGS --check-libvirt"
+          ARGS+=(--check-libvirt)
         fi
 
         if [ -n "${{ inputs.deployment-mode }}" ]; then
-          ARGS="$ARGS --deployment-mode '${{ inputs.deployment-mode }}'"
+          ARGS+=(--deployment-mode "${{ inputs.deployment-mode }}")
         fi
 
         # Call the preflight checks script
-        eval "./scripts/preflight_checks.sh $ARGS"
+        ./scripts/setup/preflight_checks.sh "${ARGS[@]}"

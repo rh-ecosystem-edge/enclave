@@ -28,16 +28,18 @@ LEVEL="$1"
 OUTPUT_DIR="$2"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Track collection warnings/errors
 COLLECTION_WARNINGS=0
 COLLECTION_ERRORS=0
 
+# Custom wrapper functions with [INFO]/[WARN]/[ERROR] prefixes for this script
 info() {
     echo -e "${GREEN}[INFO]${NC} $1"
 }

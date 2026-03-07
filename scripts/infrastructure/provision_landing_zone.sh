@@ -6,49 +6,30 @@
 
 set -euo pipefail
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${GREEN}INFO:${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-error() {
-    echo -e "${RED}ERROR:${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}WARNING:${NC} $1"
-}
-
-# Check required environment variables
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    error "DEV_SCRIPTS_PATH environment variable is not set"
-    exit 1
-fi
+# Validate required environment variables
+require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration to get network and cluster info
-CONFIG_FILE="${DEV_SCRIPTS_PATH}/config_${ENCLAVE_CLUSTER_NAME}.sh"
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "dev-scripts configuration not found: $CONFIG_FILE"
-    error "Expected config file for cluster: $ENCLAVE_CLUSTER_NAME"
-    error "Please run 'make environment' first to create infrastructure"
-    exit 1
-fi
-
-# shellcheck source=/dev/null
-source "$CONFIG_FILE"
+load_devscripts_config
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
+ensure_working_dir
 LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
 CLOUD_IMAGE_URL="https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2"
 CLOUD_IMAGE_NAME="centos-stream-10-cloud.qcow2"
@@ -67,8 +48,8 @@ CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-cluster}"
 BMC_IP=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}')
 BMC_PREFIX=$(echo "$BMC_NETWORK" | sed 's|.*/||')
 
-# Extract cluster network prefix for dynamic IP detection (e.g., "192.168.4" from "192.168.4.0/24")
-CLUSTER_NET_PREFIX=$(echo "$CLUSTER_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3}')
+# Extract cluster network prefix for dynamic IP detection
+CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")
 CLUSTER_IP="${CLUSTER_NET_PREFIX}.2"  # Initial guess, will be updated from DHCP
 
 # SSH key
@@ -331,9 +312,7 @@ VM_IP=""
 while [ $COUNTER -lt $MAX_WAIT ]; do
     # Try to get VM IP from libvirt (use dynamic network prefix from allocated subnet)
     if [ -z "$VM_IP" ]; then
-        # Escape dots for grep regex (e.g., "192\.168\.4\.")
-        ESCAPED_PREFIX=$(echo "$CLUSTER_NET_PREFIX" | sed 's/\./\\./g')
-        VM_IP=$(sudo virsh domifaddr "$LZ_VM_NAME" 2>/dev/null | grep -E "${ESCAPED_PREFIX}\." | awk '{print $4}' | cut -d'/' -f1 | head -1 || true)
+        VM_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
         if [ -n "$VM_IP" ]; then
             info "  VM got IP address: $VM_IP (${COUNTER}s)"
             CLUSTER_IP="$VM_IP"  # Update with actual IP from DHCP
@@ -429,9 +408,8 @@ if [ "$BOOT_COMPLETE" = true ]; then
 
     # Verify BMC gateway connectivity (critical for Ironic to work)
     info "Verifying BMC gateway connectivity..."
-    BMC_GATEWAY=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
-    SUBNET_ID=$(echo "$BMC_NETWORK" | awk -F. '{print $3}')
-    BMC_PORT="$((8000 + SUBNET_ID))"
+    BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
+    BMC_PORT=$(calculate_bmc_port "$BMC_NETWORK")
 
     # Before attempting ping, collect diagnostic information
     info "Collecting network diagnostics..."

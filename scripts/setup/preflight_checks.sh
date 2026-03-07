@@ -21,27 +21,12 @@
 
 set +e  # Don't exit on first error, collect all failures
 
-# Colors for terminal output
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-# Detect GitHub Actions environment
-if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-    USE_GITHUB=true
-else
-    USE_GITHUB=false
-fi
-
-# Output helper that works both locally and in CI
-output() {
-    local msg="$1"
-    echo -e "$msg"
-    if [ "$USE_GITHUB" = true ]; then
-        # Strip ANSI color codes for GitHub summary
-        echo "$msg" | sed 's/\x1b\[[0-9;]*m//g' >> "$GITHUB_STEP_SUMMARY"
-    fi
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Parse command-line arguments
 TITLE="Pre-flight Checks"

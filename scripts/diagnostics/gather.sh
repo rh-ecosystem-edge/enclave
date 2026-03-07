@@ -58,7 +58,18 @@ getValue() {
         | jq -r "$1"
 }
 
+# shellcheck disable=SC2034  # Used by sourced scripts (gather_lz.sh, gather_cluster.sh)
 workingDir=$(getValue .workingDir)
+
+# Validate workingDir before using it
+if [[ -z "${workingDir}" || "${workingDir}" == "null" ]]; then
+    echo "ERROR: Missing required 'workingDir' in ${GLOBAL_VARS_FILE}" >&2
+    exit 1
+fi
+if [[ ! -d "${workingDir}" ]]; then
+    echo "ERROR: Configured workingDir does not exist: ${workingDir}" >&2
+    exit 1
+fi
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 # Include GitHub Actions run ID in names when running in CI

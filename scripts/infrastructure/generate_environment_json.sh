@@ -6,33 +6,21 @@
 
 set -euo pipefail
 
-# Determine working directory
-# For new workflow: Use BASE_WORKING_DIR + cluster name if WORKING_DIR not set
-if [ -z "${WORKING_DIR:-}" ]; then
-    ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-    if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
-    else
-        echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME"
-        exit 1
-    fi
-fi
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-# Verify WORKING_DIR exists
-if [ ! -d "$WORKING_DIR" ]; then
-    echo "ERROR: WORKING_DIR does not exist: $WORKING_DIR"
-    echo "This should have been created by the workflow. Check the setup steps."
-    exit 1
-fi
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 
+# Ensure working directory is set
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-DEV_SCRIPTS_CONFIG="${DEV_SCRIPTS_PATH:-}/config_${ENCLAVE_CLUSTER_NAME}.sh"
+ensure_working_dir
 
-# Source dev-scripts config if it exists to get actual values
-if [ -f "$DEV_SCRIPTS_CONFIG" ]; then
-    # shellcheck source=/dev/null
-    source "$DEV_SCRIPTS_CONFIG"
-fi
+# Try to load dev-scripts config (non-fatal)
+try_load_devscripts_config
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
 OUTPUT_FILE="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
@@ -43,11 +31,9 @@ SYMLINK_FILE="${WORKING_DIR}/environment.json"
 PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
 EXTERNAL_SUBNET_V4="${EXTERNAL_SUBNET_V4:-192.168.2.0/24}"
 
-# Calculate gateway IPs and port (first IP in network, cluster-specific port)
-BMC_GATEWAY=$(echo "$PROVISIONING_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
-# Extract subnet ID and use as port offset (e.g., subnet 3 -> port 8003)
-SUBNET_ID=$(echo "$PROVISIONING_NETWORK" | awk -F. '{print $3}')
-BMC_PORT="$((8000 + SUBNET_ID))"
+# Calculate gateway IPs and port
+BMC_GATEWAY=$(get_network_gateway "$PROVISIONING_NETWORK")
+BMC_PORT=$(calculate_bmc_port "$PROVISIONING_NETWORK")
 BMC_ENDPOINT="https://${BMC_GATEWAY}:${BMC_PORT}"
 
 echo "=========================================="

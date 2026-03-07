@@ -2,15 +2,17 @@
 
 Diagnostic log collection tool for the Landing Zone (Bastion) host.
 
+**Location**: `scripts/diagnostics/`
+
 ## Quick Start
 
 ```bash
-cd ~/enclave/lz-gather-logs
+cd ~/enclave/scripts/diagnostics
 ./gather.sh
 ```
 
 The script will:
-- Read configuration from `../config/global.yaml` (default location)
+- Read configuration from `../../config/global.yaml` (default location)
 - Use `workingDir` from global.yaml for all log paths
 - Create two archives:
   - **LZ logs:** `lz-logs-YYYYMMDD-HHMMSS.tar.gz` (ansible, install, oc-mirror, registry, host, config)
@@ -46,12 +48,12 @@ The script will:
 
 **Arguments**
 
-- **GLOBAL_VARS_FILE** — Optional path to `global.yaml`. Default: `../config/global.yaml`.
+- **GLOBAL_VARS_FILE** — Optional path to `global.yaml`. Default: `../../config/global.yaml`.
 
 **Examples**
 
 ```bash
-# Default: use ../config/global.yaml, LZ + cluster collection only
+# Default: use ../../config/global.yaml, LZ + cluster collection only
 ./gather.sh
 
 # Use a custom global vars file
@@ -162,7 +164,7 @@ tar -xzf lz-logs-YYYYMMDD-HHMMSS.tar.gz --to-stdout '*/manifest.json' | jq .
 ## Demo
 
 **Run full must-gather (default OpenShift + operator plugins):**
-![must-gather-full.png](../docs/images/must-gather-full.png)
+![must-gather-full.png](../../docs/images/must-gather-full.png)
 
 **Collection complete output:**
-![must-gather-output.png](../docs/images/must-gather-output.png)
+![must-gather-output.png](../../docs/images/must-gather-output.png)

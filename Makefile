@@ -28,9 +28,6 @@ WORKING_DIR ?= /opt/dev-scripts
 # Cluster name for parallel execution isolation (can be overridden)
 ENCLAVE_CLUSTER_NAME ?= enclave-test
 ENVIRONMENT_JSON := $(WORKING_DIR)/environment-$(ENCLAVE_CLUSTER_NAME).json
-
-# Cluster name for parallel execution isolation (can be overridden)
-ENCLAVE_CLUSTER_NAME ?= enclave-test
 CONFIG_NAME := config_$(ENCLAVE_CLUSTER_NAME).sh
 
 # Default target
@@ -136,25 +133,25 @@ help:
 
 # Validation targets
 validate:
-	@./scripts/validate.sh all
+	@./scripts/verification/validate.sh all
 
 validate-shell:
-	@./scripts/validate.sh shell
+	@./scripts/verification/validate.sh shell
 
 validate-yaml:
-	@./scripts/validate.sh yaml
+	@./scripts/verification/validate.sh yaml
 
 validate-json-schema:
-	@./scripts/validate.sh json-schema
+	@./scripts/verification/validate.sh json-schema
 
 validate-ansible:
-	@./scripts/validate.sh ansible
+	@./scripts/verification/validate.sh ansible
 
 validate-tags:
-	@./scripts/validate.sh tags
+	@./scripts/verification/validate.sh tags
 
 validate-makefile:
-	@./scripts/validate.sh makefile
+	@./scripts/verification/validate.sh makefile
 
 # CI Image targets
 CI_IMAGE_NAME ?= quay.io/eerez/enclave-lab-ci
@@ -209,23 +206,23 @@ environment:
 	@echo "=========================================="
 	@echo ""
 	@echo "Step 1: Validating prerequisites..."
-	@./scripts/validate_prerequisites.sh
+	@./scripts/setup/validate_prerequisites.sh
 	@echo ""
 	@echo "Step 2: Configuring dev-scripts environment..."
-	@./scripts/configure_devscripts.sh
+	@./scripts/setup/configure_devscripts.sh
 	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
-	@./scripts/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
+	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
 	@echo ""
 	@echo "Step 3a: Verifying networks were created..."
-	@./scripts/verify_networks.sh
+	@./scripts/infrastructure/verify_networks.sh
 	@echo ""
 	@echo "Step 4: Starting BMC emulation (sushy-tools)..."
-	@./scripts/start_sushy_tools.sh
+	@./scripts/infrastructure/start_sushy_tools.sh
 	@echo ""
 	@echo "Step 5: Generating environment metadata..."
-	@./scripts/generate_environment_json.sh
+	@./scripts/infrastructure/generate_environment_json.sh
 	@echo ""
 	@echo "Step 6: Verifying infrastructure..."
 	@$(MAKE) verify
@@ -240,7 +237,7 @@ provision-landing-zone:
 	@echo "Provisioning Landing Zone VM"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/provision_landing_zone.sh
+	@./scripts/infrastructure/provision_landing_zone.sh
 	@echo ""
 	@echo "Verifying Landing Zone VM..."
 	@$(MAKE) verify-landing-zone
@@ -255,7 +252,7 @@ verify-landing-zone:
 	@echo "Verifying Landing Zone VM"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/verify_landing_zone.sh
+	@./scripts/verification/verify_landing_zone.sh
 
 # Install Enclave Lab on Landing Zone VM
 install-enclave:
@@ -263,7 +260,7 @@ install-enclave:
 	@echo "Installing Enclave Lab on Landing Zone"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/install_enclave.sh
+	@./scripts/deployment/install_enclave.sh
 	@echo ""
 	@echo "Verifying Enclave Lab installation..."
 	@$(MAKE) verify-enclave-installation
@@ -278,7 +275,7 @@ verify-enclave-installation:
 	@echo "Verifying Enclave Lab Installation"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/verify_enclave_installation.sh
+	@./scripts/verification/verify_enclave_installation.sh
 
 # Deploy OpenShift cluster using Enclave Lab (all phases)
 deploy-cluster:
@@ -286,7 +283,7 @@ deploy-cluster:
 	@echo "Deploying OpenShift Cluster with Enclave Lab"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_cluster.sh
+	@./scripts/deployment/deploy_cluster.sh
 
 # Deploy individual phases (for granular control in CI)
 deploy-cluster-prepare:
@@ -294,88 +291,88 @@ deploy-cluster-prepare:
 	@echo "Phase 1: Prepare - Download binaries and content"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 01-prepare.yaml
+	@./scripts/deployment/deploy_phase.sh 01-prepare.yaml
 
 deploy-cluster-mirror:
 	@echo "=========================================="
 	@echo "Phase 2: Mirror - Set up local registry (disconnected only)"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 02-mirror.yaml
+	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml
 
 deploy-cluster-install:
 	@echo "=========================================="
 	@echo "Phase 3: Deploy - Deploy OpenShift cluster"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 03-deploy.yaml
+	@./scripts/deployment/deploy_phase.sh 03-deploy.yaml
 
 deploy-cluster-post-install:
 	@echo "=========================================="
 	@echo "Phase 4: Post-Install - Cluster configuration"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 04-post-install.yaml
+	@./scripts/deployment/deploy_phase.sh 04-post-install.yaml
 
 deploy-cluster-operators:
 	@echo "=========================================="
 	@echo "Phase 5: Operators - Install and configure operators"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 05-operators.yaml
+	@./scripts/deployment/deploy_phase.sh 05-operators.yaml
 
 deploy-cluster-day2:
 	@echo "=========================================="
 	@echo "Phase 6: Day-2 - Advanced features and policies"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 06-day2.yaml
+	@./scripts/deployment/deploy_phase.sh 06-day2.yaml
 
 deploy-cluster-discovery:
 	@echo "=========================================="
 	@echo "Phase 7: Configure Discovery - Hardware discovery (optional)"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deploy_phase.sh 07-configure-discovery.yaml
+	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
 
 # Verify infrastructure
 verify:
 	@echo "Verifying infrastructure..."
-	@./scripts/verify_infrastructure.sh
+	@./scripts/verification/verify_infrastructure.sh
 
 # Clean up infrastructure
 clean:
-	@./scripts/cleanup.sh
+	@./scripts/cleanup/cleanup.sh
 
 # Verification targets
 verify-cluster:
-	@./scripts/verify_cluster.sh
+	@./scripts/verification/verify_cluster.sh
 
 verify-cleanup:
-	@./scripts/verify_cleanup.sh
+	@./scripts/cleanup/verify_cleanup.sh
 
 # Helper targets
 generate-cluster-name:
-	@./scripts/generate_cluster_name.sh
+	@./scripts/setup/generate_cluster_name.sh
 
 setup-working-dir:
-	@./scripts/setup_working_dir.sh
+	@./scripts/setup/setup_working_dir.sh
 
 collect-step-logs:
-	@./scripts/collect_step_logs.sh step-logs
+	@./scripts/verification/collect_step_logs.sh step-logs
 
 preflight-checks:
-	@./scripts/preflight_checks.sh
+	@./scripts/setup/preflight_checks.sh
 
 # Artifact collection wrappers (use existing script)
 collect-artifacts-basic:
-	@./scripts/collect_ci_artifacts.sh basic artifacts
+	@./scripts/verification/collect_ci_artifacts.sh basic artifacts
 
 collect-artifacts-deployment:
-	@./scripts/collect_ci_artifacts.sh deployment artifacts
+	@./scripts/verification/collect_ci_artifacts.sh deployment artifacts
 
 collect-artifacts-full:
-	@./scripts/collect_ci_artifacts.sh full artifacts
+	@./scripts/verification/collect_ci_artifacts.sh full artifacts
 
 # Full CI flow for local testing
 ci-flow-connected:

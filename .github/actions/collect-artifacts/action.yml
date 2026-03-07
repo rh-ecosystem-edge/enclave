@@ -21,7 +21,7 @@ runs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run artifact collection script
-        ./scripts/collect_ci_artifacts.sh ${{ inputs.artifact-type }} ${{ inputs.output-directory }} 2>&1 | tee artifact-collection.log
+        ./scripts/verification/collect_ci_artifacts.sh ${{ inputs.artifact-type }} ${{ inputs.output-directory }} 2>&1 | tee artifact-collection.log
 
         # Add summary if available
         if [ -f ${{ inputs.output-directory }}/collection-summary.txt ]; then

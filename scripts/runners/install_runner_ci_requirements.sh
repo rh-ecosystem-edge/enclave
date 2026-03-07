@@ -4,28 +4,12 @@
 
 set -euo pipefail
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-info() {
-    echo -e "${BLUE}INFO:${NC} $1"
-}
-
-success() {
-    echo -e "${GREEN}✅${NC} $1"
-}
-
-error() {
-    echo -e "${RED}❌${NC} $1"
-}
-
-warning() {
-    echo -e "${YELLOW}⚠️${NC} $1"
-}
+# Source shared utilities
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Check if running as github-runner user or root
 if [ "$USER" != "github-runner" ] && [ "$USER" != "root" ]; then

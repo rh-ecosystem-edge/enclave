@@ -49,7 +49,7 @@ make validate
 Common fixes:
 ```bash
 # Fix shell script issues
-shellcheck scripts/*.sh
+shellcheck scripts/**/*.sh
 
 # Fix YAML formatting
 yamllint .

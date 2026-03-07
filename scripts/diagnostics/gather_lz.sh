@@ -17,6 +17,7 @@ fi
 # 2. Gather OpenShift installation logs
 log_info " Gathering OpenShift installation logs..."
 mkdir -p "${COLLECTION_DIR}/openshift-install"
+# shellcheck disable=SC2154  # workingDir is set by parent script (gather.sh)
 if [ -f "${workingDir}/ocp-cluster/.openshift_install.log" ]; then
     cp "${workingDir}/ocp-cluster/.openshift_install.log" "${COLLECTION_DIR}/openshift-install/" 2>/dev/null && \
         log_info "  OK Collected OpenShift installation log" || \
