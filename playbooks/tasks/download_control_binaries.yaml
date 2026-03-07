@@ -61,3 +61,10 @@
     src: "{{ workingDir }}/dist/oc-mirror.tar.gz"
     dest: "{{ workingDir }}/bin/"
     remote_src: true
+
+- name: Download clairctl
+  ansible.builtin.get_url:
+    url: "{{ control_binaries.clairctl.url }}"
+    dest: "{{ workingDir }}/bin/clairctl"
+    checksum: "{{ control_binaries.clairctl.checksum }}"
+    mode: "0750"
