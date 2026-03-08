@@ -10,6 +10,9 @@ definitions:
       name:
         type: string
         description: Operator package name as it appears in the catalog.
+      version:
+        type: string
+        description: Operator version.
       defaultChannel:
         type: string
         description: Default update channel for the operator.
@@ -31,6 +34,9 @@ definitions:
       source:
         type: string
         description: Catalog source name (from oc-mirror configuration).
+      csvName:
+        type: string
+        description: ClusterServiceVersion name for the operator.
       disableTargetNamespace:
         type: boolean
         description: configure operator to watch a specific namespace or to watch the entire cluster
