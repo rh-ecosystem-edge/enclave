@@ -199,12 +199,33 @@ jobs:
 
       - name: Upload artifacts
         if: always()
+        id: upload_artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nightly-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}
           path: artifacts/
           retention-days: 7
           if-no-files-found: warn
+
+      - name: Get artifact download URL
+        if: always()
+        id: artifact_url
+        run: |
+          # Wait a moment for artifact to be registered
+          sleep 2
+
+          # Get the artifact ID for this run
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+            --jq '.artifacts[] | select(.name == "nightly-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
+            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          else
+            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
         if: always()
@@ -244,9 +265,21 @@ jobs:
             ["verify_cluster"]="Verify cluster deployment"
           )
 
-          # Check each step outcome from the JSON context
-          FAILED_STEP="Unknown"
-          for step_id in "${!step_names[@]}"; do
+          # Ordered list of step IDs to check (ensures deterministic order)
+          step_order=(
+            deploy_prepare
+            deploy_mirror
+            deploy_install
+            deploy_post_install
+            deploy_operators
+            deploy_day2
+            deploy_discovery
+            verify_cluster
+          )
+
+          # Check each step outcome in order from the JSON context
+          FAILED_STEP=""
+          for step_id in "${step_order[@]}"; do
             outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
             if [ "$outcome" == "failure" ]; then
               FAILED_STEP="${step_names[$step_id]}"
@@ -254,7 +287,10 @@ jobs:
             fi
           done
 
-          echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+          # Only output if we found a failed step
+          if [ -n "$FAILED_STEP" ]; then
+            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+          fi
 
       - name: Notify Slack
         if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
@@ -267,4 +303,4 @@ jobs:
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch-name: ${{ github.ref_name }}
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
-          artifact-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts
+          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}

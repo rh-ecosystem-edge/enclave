@@ -34,327 +34,92 @@ runs:
   steps:
     - name: Send Slack notification
       shell: bash
+      env:
+        INPUT_STATUS: ${{ inputs.status }}
+        INPUT_WORKFLOW_NAME: ${{ inputs.workflow-name }}
+        INPUT_CLUSTER_NAME: ${{ inputs.cluster-name }}
+        INPUT_BRANCH_NAME: ${{ inputs.branch-name }}
+        INPUT_WORKFLOW_URL: ${{ inputs.workflow-url }}
+        INPUT_FAILED_STEP: ${{ inputs.failed-step }}
+        INPUT_ARTIFACT_URL: ${{ inputs.artifact-url }}
+        INPUT_SLACK_WEBHOOKS: ${{ inputs.slack-webhook-urls }}
       run: |
-        if [ "${{ inputs.status }}" = "success" ]; then
+        # Set status-specific values
+        if [ "$INPUT_STATUS" = "success" ]; then
           ICON=":green_jenkins_circle:"
           STATUS_TEXT="PASSED"
           COLOR="#36a64f"
-          MESSAGE_TEXT="${ICON} ${{ inputs.workflow-name }} ${STATUS_TEXT}"
         else
           ICON=":red_jenkins_circle:"
           STATUS_TEXT="FAILED"
           COLOR="#ff0000"
-          if [ -n "${{ inputs.failed-step }}" ]; then
-            MESSAGE_TEXT="${ICON} ${{ inputs.workflow-name }} ${STATUS_TEXT} at ${{ inputs.failed-step }}"
-          else
-            MESSAGE_TEXT="${ICON} ${{ inputs.workflow-name }} ${STATUS_TEXT}"
-          fi
         fi
 
-        # Build the Slack payload using a heredoc to avoid shell interpretation issues
-        if [ "${{ inputs.status }}" = "success" ]; then
-          # Success message
-          if [ -n "${{ inputs.artifact-url }}" ]; then
-            # With artifacts
-            PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status:*\nSTATUS_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Artifacts:*\n<ARTIFACT_URL_PLACEHOLDER|Download>"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-            )
-          else
-            # Without artifacts
-            PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status:*\nSTATUS_PLACEHOLDER"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-            )
-          fi
+        # Build message text
+        if [ "$INPUT_STATUS" = "success" ]; then
+          MESSAGE_TEXT="${ICON} ${INPUT_WORKFLOW_NAME} ${STATUS_TEXT}"
         else
-          # Failure message
-          if [ -n "${{ inputs.failed-step }}" ]; then
-            # With failed step info
-            if [ -n "${{ inputs.artifact-url }}" ]; then
-              # With artifacts
-              PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Failed at:*\nFAILED_STEP_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Artifacts:*\n<ARTIFACT_URL_PLACEHOLDER|Download>"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-              )
-            else
-              # Without artifacts
-              PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Failed at:*\nFAILED_STEP_PLACEHOLDER"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-              )
-            fi
+          if [ -n "$INPUT_FAILED_STEP" ]; then
+            MESSAGE_TEXT="${ICON} ${INPUT_WORKFLOW_NAME} ${STATUS_TEXT} at ${INPUT_FAILED_STEP}"
           else
-            # Without failed step info
-            if [ -n "${{ inputs.artifact-url }}" ]; then
-              # With artifacts
-              PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status:*\nSTATUS_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Artifacts:*\n<ARTIFACT_URL_PLACEHOLDER|Download>"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-              )
-            else
-              # Without artifacts
-              PAYLOAD=$(cat <<'EOFPAYLOAD'
-        {
-          "text": "MESSAGE_TEXT_PLACEHOLDER",
-          "attachments": [
-            {
-              "color": "COLOR_PLACEHOLDER",
-              "blocks": [
-                {
-                  "type": "header",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "MESSAGE_TEXT_PLACEHOLDER",
-                    "emoji": true
-                  }
-                },
-                {
-                  "type": "section",
-                  "fields": [
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Cluster:*\nCLUSTER_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Branch:*\nBRANCH_PLACEHOLDER"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Workflow:*\n<WORKFLOW_URL_PLACEHOLDER|View Run>"
-                    },
-                    {
-                      "type": "mrkdwn",
-                      "text": "*Status:*\nSTATUS_PLACEHOLDER"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-        EOFPAYLOAD
-              )
-            fi
+            MESSAGE_TEXT="${ICON} ${INPUT_WORKFLOW_NAME} ${STATUS_TEXT}"
           fi
         fi
 
-        # Replace placeholders with actual values using sed
-        PAYLOAD=$(echo "$PAYLOAD" | sed \
-          -e "s|MESSAGE_TEXT_PLACEHOLDER|${MESSAGE_TEXT}|g" \
-          -e "s|COLOR_PLACEHOLDER|${COLOR}|g" \
-          -e "s|CLUSTER_PLACEHOLDER|${{ inputs.cluster-name }}|g" \
-          -e "s|BRANCH_PLACEHOLDER|${{ inputs.branch-name }}|g" \
-          -e "s|WORKFLOW_URL_PLACEHOLDER|${{ inputs.workflow-url }}|g" \
-          -e "s|STATUS_PLACEHOLDER|${STATUS_TEXT}|g" \
-          -e "s|FAILED_STEP_PLACEHOLDER|${{ inputs.failed-step }}|g" \
-          -e "s|ARTIFACT_URL_PLACEHOLDER|${{ inputs.artifact-url }}|g")
+        # Build fields array using jq for safe JSON construction
+        FIELDS=$(jq -n \
+          --arg cluster "$INPUT_CLUSTER_NAME" \
+          --arg branch "$INPUT_BRANCH_NAME" \
+          --arg workflow_url "$INPUT_WORKFLOW_URL" \
+          --arg status "$STATUS_TEXT" \
+          --arg failed_step "$INPUT_FAILED_STEP" \
+          --arg artifact_url "$INPUT_ARTIFACT_URL" \
+          '[
+            {"type": "mrkdwn", "text": ("*Cluster:*\n" + $cluster)},
+            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch)},
+            {"type": "mrkdwn", "text": ("*Workflow:*\n<" + $workflow_url + "|View Run>")},
+            (if ($failed_step != "") then
+              {"type": "mrkdwn", "text": ("*Failed at:*\n" + $failed_step)}
+            else
+              {"type": "mrkdwn", "text": ("*Status:*\n" + $status)}
+            end),
+            (if ($artifact_url != "") then
+              {"type": "mrkdwn", "text": ("*Artifacts:*\n<" + $artifact_url + "|Download>")}
+            else
+              empty
+            end)
+          ]')
+
+        # Build complete Slack payload using jq
+        PAYLOAD=$(jq -n \
+          --arg text "$MESSAGE_TEXT" \
+          --arg color "$COLOR" \
+          --argjson fields "$FIELDS" \
+          '{
+            "text": $text,
+            "attachments": [
+              {
+                "color": $color,
+                "blocks": [
+                  {
+                    "type": "header",
+                    "text": {
+                      "type": "plain_text",
+                      "text": $text,
+                      "emoji": true
+                    }
+                  },
+                  {
+                    "type": "section",
+                    "fields": $fields
+                  }
+                ]
+              }
+            ]
+          }')
 
         # Send to all webhook URLs
-        for WEBHOOK_URL in ${{ inputs.slack-webhook-urls }}; do
+        for WEBHOOK_URL in $INPUT_SLACK_WEBHOOKS; do
           echo "Sending notification to Slack..."
           curl -X POST -H 'Content-type: application/json' --data "$PAYLOAD" "$WEBHOOK_URL"
         done
