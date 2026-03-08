@@ -207,6 +207,33 @@ jobs:
           echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+      - name: Determine failed step
+        if: failure()
+        id: failed_step
+        run: |
+          # Map of step IDs to human-readable names
+          declare -A step_names=(
+            ["deploy_prepare"]="Phase 1: Prepare binaries and content"
+            ["deploy_install"]="Phase 2: Deploy OpenShift cluster"
+            ["deploy_post_install"]="Phase 3: Post-install configuration"
+            ["deploy_operators"]="Phase 4: Install operators"
+            ["deploy_day2"]="Phase 5: Day-2 operations"
+            ["deploy_discovery"]="Phase 6: Configure hardware discovery"
+            ["verify_cluster"]="Verify cluster deployment"
+          )
+
+          # Check each step outcome from the JSON context
+          FAILED_STEP="Unknown"
+          for step_id in "${!step_names[@]}"; do
+            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            if [ "$outcome" == "failure" ]; then
+              FAILED_STEP="${step_names[$step_id]}"
+              break
+            fi
+          done
+
+          echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+
       - name: Notify Slack
         if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
         uses: ./.github/actions/notify-slack
@@ -217,3 +244,5 @@ jobs:
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch-name: ${{ github.ref_name }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+          artifact-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts
