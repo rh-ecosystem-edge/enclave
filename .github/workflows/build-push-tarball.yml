@@ -53,7 +53,7 @@ jobs:
 
       - name: Build tarball
         run: |
-          tar --exclude='.git' --exclude='.gitignore' --exclude='.github' \
+          tar --exclude='.git' --exclude='.gitignore' --exclude='.github' --exclude='scripts' \
             -czvf /tmp/enclave.tar.gz .
           mv /tmp/enclave.tar.gz .
           ls -lh enclave.tar.gz
