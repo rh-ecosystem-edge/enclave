@@ -80,7 +80,7 @@
                 #!/bin/bash
 
                 cat <<EOF > operator_update.py
-                {{ lookup('ansible.builtin.file', '../scripts/operator_update.py') }}
+                {{ lookup('ansible.builtin.file', '../hack/operator_update.py') }}
                 EOF
           - name: operator-update
             image: "{{ oc_cli_image }}"

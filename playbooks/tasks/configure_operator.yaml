@@ -124,7 +124,7 @@
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.shell: |
-    python ../scripts/operator_update.py "{{ [operator] }}" "False"
+    python ../hack/operator_update.py "{{ [operator] }}" "False"
   register: operator_update_result
 
 - name: Print the output
