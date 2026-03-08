@@ -1,7 +1,7 @@
 ---
 - name: Get OpenShift CLI image from OpenShift release
   ansible.builtin.command: >
-    {{ workingDir }}/bin/oc adm release info --registry-config={{ workingDir }}/config/pull-secret.json --image-for cli
+    {{ workingDir }}/bin/oc adm release info --registry-config={{ pullSecretPath }} --image-for cli
     quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
   register: r_oc_cli_image
   changed_when: false
