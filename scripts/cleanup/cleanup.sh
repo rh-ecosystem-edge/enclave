@@ -26,6 +26,18 @@ require_dir "${DEV_SCRIPTS_PATH}"
 
 CONFIG_FILE="${DEV_SCRIPTS_PATH}/${CONFIG_NAME}"
 
+# Reconstruct WORKING_DIR if not set (needed for cleanup)
+# During setup, WORKING_DIR is exported to environment, but during cleanup it may not be available
+if [ -z "${WORKING_DIR:-}" ]; then
+    if [ -n "${BASE_WORKING_DIR:-}" ]; then
+        # New structure: BASE_WORKING_DIR/clusters/CLUSTER_NAME
+        export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+        info "Reconstructed WORKING_DIR from BASE_WORKING_DIR: ${WORKING_DIR}"
+    else
+        warning "Neither WORKING_DIR nor BASE_WORKING_DIR is set - some cleanup may be skipped"
+    fi
+fi
+
 # Ensure config file exists for cleanup
 if [ ! -f "$CONFIG_FILE" ]; then
     warning "Config file not found: $CONFIG_FILE"
@@ -47,7 +59,17 @@ EOF
     info "Created minimal config at: $CONFIG_FILE"
 fi
 
-# Clean up libvirt networks first (more reliable than dev-scripts cleanup)
+# Run dev-scripts cleanup (with lock to prevent conflicts with parallel runners)
+# Must run dev-scripts first - it needs networks to exist for proper VM cleanup
+info "Running dev-scripts cleanup..."
+
+if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" sh -c "cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean"; then
+    success "dev-scripts cleanup completed successfully"
+else
+    warning "dev-scripts cleanup reported failure, but continuing..."
+fi
+
+# Clean up libvirt networks (after dev-scripts completes)
 info "Cleaning up libvirt networks for cluster: ${CLUSTER_NAME}..."
 for net in $(sudo virsh net-list --all --name 2>/dev/null | grep "^${CLUSTER_NAME}-" || true); do
     info "  Found network: $net"
@@ -111,36 +133,21 @@ for bridge in $ORPHANED_BRIDGES; do
     fi
 done
 
-# Run dev-scripts cleanup (with lock to prevent conflicts with parallel runners)
-info "Running dev-scripts cleanup..."
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" sh -c "cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean"; then
-    success "dev-scripts cleanup completed successfully"
-else
-    warning "dev-scripts cleanup reported failure, but continuing..."
-fi
-
-# Clean up cluster-specific working directory and files
+# Determine cluster directory (will be removed later, after pools are cleaned up)
 # Support both new structure (BASE_WORKING_DIR/clusters/CLUSTER_NAME) and old structure (WORKING_DIR)
+CLUSTER_DIR_TO_REMOVE=""
 if [ -n "${WORKING_DIR:-}" ]; then
     # Determine the actual cluster directory
     # If WORKING_DIR ends with /clusters/${CLUSTER_NAME}, use it directly
     # Otherwise, check if BASE_WORKING_DIR is set and use that structure
     if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-        CLUSTER_DIR="${WORKING_DIR}"
+        CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
     elif [ -n "${BASE_WORKING_DIR:-}" ]; then
-        CLUSTER_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
-    else
-        # Old structure - files in WORKING_DIR directly
-        CLUSTER_DIR=""
+        CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
     fi
 
-    # If we have a cluster-specific directory, remove it entirely
-    if [ -n "$CLUSTER_DIR" ] && [ -d "$CLUSTER_DIR" ]; then
-        info "Removing cluster-specific working directory: $CLUSTER_DIR"
-        sudo rm -rf "$CLUSTER_DIR" || warning "Failed to remove cluster directory"
-    else
+    # For old structure, clean up individual files (new structure will remove entire dir later)
+    if [ -z "$CLUSTER_DIR_TO_REMOVE" ]; then
         # Old structure - clean up individual files
         # Remove cluster-specific environment file
         ENV_FILE="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
@@ -176,18 +183,36 @@ if [ -n "${WORKING_DIR:-}" ]; then
         fi
 
         # Also remove orphaned private-mirror files from previous clusters
-        # These accumulate in HOME directory from parallel CI runs
+        # These accumulate in HOME directory from failed CI runs
+        # Only remove files from clusters that no longer have active VMs (to avoid parallel run conflicts)
         info "Checking for orphaned private-mirror files in HOME..."
         ORPHANED_MIRRORS=$(find "${HOME}" -maxdepth 1 -name "private-mirror-eci-*.json" 2>/dev/null || true)
         if [ -n "$ORPHANED_MIRRORS" ]; then
-            ORPHAN_COUNT=$(echo "$ORPHANED_MIRRORS" | wc -l)
-            info "  Found $ORPHAN_COUNT orphaned private-mirror files, removing..."
-            echo "$ORPHANED_MIRRORS" | while IFS= read -r mirror_file; do
-                if [ -f "$mirror_file" ]; then
-                    rm -f "$mirror_file"
+            ORPHANED_COUNT=0
+            # Use here-string to avoid subshell and preserve ORPHANED_COUNT
+            while IFS= read -r mirror_file; do
+                if [ -z "$mirror_file" ] || [ ! -f "$mirror_file" ]; then
+                    continue
                 fi
-            done
-            success "Removed orphaned private-mirror files"
+
+                # Extract cluster ID from filename: private-mirror-eci-XXXXXXXX.json -> eci-XXXXXXXX
+                ORPHAN_CLUSTER=$(basename "$mirror_file" | sed 's/private-mirror-\(eci-[^.]*\)\.json/\1/')
+
+                # Check if this cluster has any active VMs
+                if sudo virsh list --all 2>/dev/null | grep -q "$ORPHAN_CLUSTER"; then
+                    # Cluster still has VMs - skip (might be from parallel run)
+                    continue
+                fi
+
+                # No VMs found - safe to remove
+                info "  Removing orphaned file from completed cluster: $(basename "$mirror_file")"
+                rm -f "$mirror_file"
+                ORPHANED_COUNT=$((ORPHANED_COUNT + 1))
+            done <<< "$ORPHANED_MIRRORS"
+
+            if [ $ORPHANED_COUNT -gt 0 ]; then
+                success "Removed $ORPHANED_COUNT orphaned private-mirror files"
+            fi
         fi
     fi
 fi
@@ -252,7 +277,8 @@ if [ -n "${WORKING_DIR:-}" ]; then
         info "Cleaning up volume files for cluster: ${CLUSTER_NAME}"
 
         # Find and remove all volume files for this cluster
-        VOLUME_FILES=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}_*.qcow2" \) 2>/dev/null || true)
+        # Support both underscore and hyphen patterns (e.g., nc-20260308_master_0.qcow2 and nc-20260308-master-0.qcow2)
+        VOLUME_FILES=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}-*.img" -o -name "${CLUSTER_NAME}_*.qcow2" -o -name "${CLUSTER_NAME}-*.qcow2" \) 2>/dev/null || true)
 
         if [ -n "$VOLUME_FILES" ]; then
             VOLUME_COUNT=$(echo "$VOLUME_FILES" | wc -l)
@@ -297,6 +323,7 @@ POOLS_TO_CLEAN=()
 
 # Add standard pool names we might have created
 # Dev-scripts may append -1, -lz, or _pool suffixes
+# Note: Shared pools like oooq_pool are only added after path verification below
 for POOL_NAME in "${CLUSTER_NAME}" "${CLUSTER_NAME}-1" "${CLUSTER_NAME}-lz" "${CLUSTER_NAME}_pool"; do
     if sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
         POOLS_TO_CLEAN+=("$POOL_NAME")
@@ -312,7 +339,7 @@ if [ ${#CLUSTER_POOL_PATHS[@]} -gt 0 ]; then
                 if [ "$POOL_PATH_CHECK" = "$cluster_path" ]; then
                     # Check if not already in the list
                     if [[ ! " ${POOLS_TO_CLEAN[*]} " =~ \ $pool\  ]]; then
-                        info "Found pool '$pool' pointing to cluster path $cluster_path, will clean it up"
+                        info "Found pool '$pool' pointing to cluster path: $cluster_path"
                         POOLS_TO_CLEAN+=("$pool")
                     fi
                     break
@@ -346,8 +373,14 @@ for POOL_NAME in "${POOLS_TO_CLEAN[@]}"; do
     fi
 done
 
+# Remove cluster-specific working directory (deferred until after pools are cleaned up)
+# This must happen AFTER storage pools are undefined, otherwise the directory removal may fail
+if [ -n "${CLUSTER_DIR_TO_REMOVE:-}" ] && [ -d "$CLUSTER_DIR_TO_REMOVE" ]; then
+    info "Removing cluster-specific working directory: $CLUSTER_DIR_TO_REMOVE"
+    sudo rm -rf "$CLUSTER_DIR_TO_REMOVE" || warning "Failed to remove cluster directory"
+fi
+
 # Release allocated subnet
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "${SCRIPT_DIR}/../setup/allocate_subnet.sh" ]; then
     info "Releasing allocated subnet for cluster: ${CLUSTER_NAME}"
 
@@ -429,7 +462,7 @@ if [ -n "${WORKING_DIR:-}" ]; then
     fi
 
     if [ -d "$POOL_DIR" ]; then
-        LEFTOVER_VOLS=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}_*.qcow2" \) 2>/dev/null || true)
+        LEFTOVER_VOLS=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}-*.img" -o -name "${CLUSTER_NAME}_*.qcow2" -o -name "${CLUSTER_NAME}-*.qcow2" \) 2>/dev/null || true)
         if [ -n "$LEFTOVER_VOLS" ]; then
             warning "Found leftover volume files in pool:"
             echo "$LEFTOVER_VOLS" | while read -r vol; do
