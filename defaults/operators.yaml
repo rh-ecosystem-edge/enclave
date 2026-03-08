@@ -2,6 +2,7 @@
 operators:
 
   - name: quay-operator
+    version: 3.15.2
     defaultChannel: stable-3.15
     channels:
     - name: stable-3.15
@@ -9,6 +10,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: multicluster-engine
+    version: 2.10.1
     defaultChannel: stable-2.10
     channels:
     - name: stable-2.10
@@ -16,6 +18,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: advanced-cluster-management
+    version: 2.15.1
     defaultChannel: release-2.15
     channels:
     - name: release-2.15
@@ -23,11 +26,13 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: cincinnati-operator
+    version: 5.0.3
     defaultChannel: v1
     channels:
     - name: v1
     namespace: openshift-update-service
     source: cs-redhat-operator-index-v4-20
+    csvName: update-service-operator
 
   - name: openshift-gitops-operator
     defaultChannel: gitops-1.19
@@ -49,8 +54,10 @@ operators:
     - name: stable
     namespace: openshift-operators
     source: cs-redhat-operator-index-v4-20
+    csvName: network-observability-operator
 
   - name: cluster-logging
+    version: 6.4.1
     defaultChannel: stable-6.4
     channels:
     - name: stable-6.4
@@ -58,6 +65,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: loki-operator
+    version: 6.4.1
     defaultChannel: stable-6.4
     channels:
     - name: stable-6.4
@@ -66,19 +74,23 @@ operators:
     disableTargetNamespace: true
 
   - name: redhat-oadp-operator
+    version: 1.5.3
     defaultChannel: stable
     channels:
     - name: stable
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-20
+    csvName: oadp-operator
 
   - name: openshift-cert-manager-operator
+    version: 1.18.1
     defaultChannel: stable-v1
     channels:
     - name: stable-v1
     - name: stable-v1.18
     namespace: cert-manager-operator
     source: cs-redhat-operator-index-v4-20
+    csvName: cert-manager-operator
 
   - name: cluster-observability-operator
     defaultChannel: stable
@@ -88,14 +100,17 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: openshift-external-secrets-operator
+    version: 1.0.0
     defaultChannel: stable-v1.0
     channels:
     - name: stable-v1.0
     namespace: external-secrets-operator
     source: cs-redhat-operator-index-v4-20
     disableTargetNamespace: true
+    csvName: external-secrets-operator
 
   - name: compliance-operator
+    version: 1.8.2
     defaultChannel: stable
     channels:
     - name: stable
@@ -103,6 +118,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
+    version: 4.20.0-202601271911
     defaultChannel: stable
     channels:
     - name: stable
@@ -112,9 +128,11 @@ operators:
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
+    version: 2.5.0-0.1768928092
     defaultChannel: stable-2.5-cluster-scoped
     channels:
     - name: stable-2.5-cluster-scoped
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
     disableTargetNamespace: true
+    csvName: aap-operator
