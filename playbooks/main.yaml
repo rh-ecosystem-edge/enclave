@@ -54,3 +54,4 @@
 
 - name: Phase 7 - Configure hardware discovery
   ansible.builtin.import_playbook: 07-configure-discovery.yaml
+
