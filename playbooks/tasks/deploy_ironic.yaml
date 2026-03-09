@@ -106,10 +106,14 @@
       IRONIC_EXPOSE_JSON_RPC: "false"
       OS_JSON_RPC__PORT: "6189"
 
+- name: Generate random ironic pod name
+  ansible.builtin.set_fact:
+    metal3_ironic_pod_name: "metal3-ironic-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
+
 - name: Run ironic container
   containers.podman.podman_container:
     name: ironic
-    pod: metal3-ironic
+    pod: "{{ metal3_ironic_pod_name }}"
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -129,7 +133,7 @@
 - name: Run httpd container
   containers.podman.podman_container:
     name: httpd
-    pod: metal3-ironic
+    pod: "{{ metal3_ironic_pod_name }}"
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -150,7 +154,7 @@
 
 - name: Wait for metal3-ironic pod and containers to be running
   containers.podman.podman_pod_info:
-    name: metal3-ironic
+    name: "{{ metal3_ironic_pod_name }}"
   register: r_pod_ready
   retries: 60
   delay: 5
