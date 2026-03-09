@@ -17,6 +17,10 @@
       data:
         tls.crt: "{{ sslIngressCertificateFullChain | b64encode }}"
         tls.key: "{{ sslIngressCertificateKey | b64encode }}"
+  register: r_tls_secret_ingress
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_tls_secret_ingress is success
 
 - name: Patch default IngressController to use the TLS secret
   environment:
@@ -31,6 +35,10 @@
       spec:
         defaultCertificate:
           name: cluster-ingress-domain
+  register: r_patch_ingress_controller
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_patch_ingress_controller is success
 
 - name: Create TLS secret for API server
   environment:
@@ -47,6 +55,10 @@
       data:
         tls.crt: "{{ sslAPICertificateFullChain | b64encode }}"
         tls.key: "{{ sslAPICertificateKey | b64encode }}"
+  register: r_tls_secret_api
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_tls_secret_api is success
 
 - name: Patch API server with named certificate
   environment:
@@ -64,6 +76,10 @@
                 - "api.{{ clusterName }}.{{ baseDomain }}"
               servingCertificate:
                 name: "api-certs"
+  register: r_patch_api_server
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_patch_api_server is success
 
 - name: Compute fingerprint for new API server certificate
   shell: echo "{{ sslAPICertificateFullChain }}" | openssl x509 -noout -fingerprint

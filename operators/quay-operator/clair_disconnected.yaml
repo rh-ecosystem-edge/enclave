@@ -53,6 +53,10 @@
         - apiGroups: [""]
           resources: ["pods/exec"]
           verbs: ["create"]
+  register: r_clair_import_role
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clair_import_role is success
 
 - name: Create Clair Import RoleBinding
   kubernetes.core.k8s:
@@ -71,3 +75,7 @@
         kind: Role
         name: clair-import
         apiGroup: rbac.authorization.k8s.io
+  register: r_clair_import_rolebinding
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clair_import_rolebinding is success

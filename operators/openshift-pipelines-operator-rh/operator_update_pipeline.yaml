@@ -19,6 +19,10 @@
       metadata:
         name: operator-update
         namespace: openshift-pipelines
+  register: r_operator_update_serviceaccount
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_update_serviceaccount is success
 
 - name: Create Operator Update ClusterRole
   kubernetes.core.k8s:
@@ -32,6 +36,10 @@
         - apiGroups: ["operators.coreos.com"]
           resources: ["clusterserviceversions", "installplans"]
           verbs: ["get", "list", "patch", "update", "watch"]
+  register: r_operator_update_clusterrole
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_update_clusterrole is success
 
 - name: Create Operator Update ClusterRoleBinding
   kubernetes.core.k8s:
@@ -49,6 +57,10 @@
         kind: ClusterRole
         name: operator-update
         apiGroup: rbac.authorization.k8s.io
+  register: r_operator_update_clusterrolebinding
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_update_clusterrolebinding is success
 
 - name: Create Operator Update Task
   kubernetes.core.k8s:
@@ -92,6 +104,10 @@
                 rc=$?
                 echo -n "${rc}" > "$(results.exit-code.path)"
                 exit "${rc}"
+  register: r_operator_update_task
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_update_task is success
 
 - name: Create Operator Update Pipeline
   kubernetes.core.k8s:
@@ -128,3 +144,7 @@
               - name: dry-run
                 value: $(params.dry-run)
             timeout: "2h"
+  register: r_operator_update_pipeline
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_update_pipeline is success
