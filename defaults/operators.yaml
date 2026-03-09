@@ -42,11 +42,13 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: openshift-pipelines-operator-rh
+    version: 1.20.2
     defaultChannel: pipelines-1.20
     channels:
     - name: pipelines-1.20
-    namespace: openshift-operators
+    namespace: openshift-pipelines
     source: cs-redhat-operator-index-v4-20
+    global: true
 
   - name: netobserv-operator
     defaultChannel: stable
