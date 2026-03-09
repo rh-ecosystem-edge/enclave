@@ -99,6 +99,7 @@ operators:
     - name: stable
     namespace: openshift-cluster-observability-operator
     source: cs-redhat-operator-index-v4-20
+    disableTargetNamespace: true
 
   - name: openshift-external-secrets-operator
     version: 1.0.0
