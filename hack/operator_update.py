@@ -143,8 +143,6 @@ def init_ns_op_version_map(
         op_name = op["name"]
         op_version = op["version"]
         op_namespace = op["namespace"]
-        if op_namespace == "openshift-operators":
-            continue
         op_csv_name = op.get("csvName")
         ns_op_version_map.setdefault(op_namespace, {})[
             op_csv_name or op_name
