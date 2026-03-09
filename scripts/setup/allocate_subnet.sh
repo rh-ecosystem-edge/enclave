@@ -12,9 +12,11 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
 # Configuration
-WORKING_DIR="${WORKING_DIR:?WORKING_DIR environment variable is required}"
-ALLOCATION_FILE="${WORKING_DIR}/subnet-allocations.json"
-LOCK_FILE="${WORKING_DIR}/subnet-allocations.lock"
+# Use ALLOCATION_BASE_DIR for shared allocation file (across all clusters)
+# Fall back to WORKING_DIR for backwards compatibility
+ALLOCATION_BASE_DIR="${ALLOCATION_BASE_DIR:-${WORKING_DIR:?WORKING_DIR environment variable is required}}"
+ALLOCATION_FILE="${ALLOCATION_BASE_DIR}/subnet-allocations.json"
+LOCK_FILE="${ALLOCATION_BASE_DIR}/subnet-allocations.lock"
 
 # Subnet range: 2-254 (avoiding 0, 1, and 255)
 MIN_SUBNET=2

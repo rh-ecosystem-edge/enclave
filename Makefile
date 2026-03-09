@@ -211,6 +211,9 @@ environment:
 	@echo "Step 2: Configuring dev-scripts environment..."
 	@./scripts/setup/configure_devscripts.sh
 	@echo ""
+	@echo "Step 2a: Cleaning up any leftover storage pools..."
+	@./scripts/cleanup/cleanup_storage_pools.sh || true
+	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
 	@./scripts/utils/with_libvirt_lock.sh sh -c "export CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) && export WORKING_DIR=$(WORKING_DIR) && cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"

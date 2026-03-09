@@ -36,9 +36,13 @@ jobs:
           prefix: eci
           run-id: ${{ github.run_id }}
 
+      - name: Export cluster name to environment
+        run: |
+          echo "ENCLAVE_CLUSTER_NAME=${{ steps.cluster_name.outputs.cluster-name }}" >> $GITHUB_ENV
+          echo "Cluster name for this workflow: ${{ steps.cluster_name.outputs.cluster-name }}"
+
       - name: Setup cluster-specific working directory
         env:
-          ENCLAVE_CLUSTER_NAME: ${{ steps.cluster_name.outputs.cluster-name }}
           BASE_WORKING_DIR: ${{ env.BASE_WORKING_DIR }}
         run: |
           echo "Using cluster name: ${ENCLAVE_CLUSTER_NAME}"
