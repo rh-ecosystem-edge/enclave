@@ -93,10 +93,11 @@ operators:
     csvName: cert-manager-operator
 
   - name: cluster-observability-operator
+    version: 1.3.1
     defaultChannel: stable
     channels:
     - name: stable
-    namespace: openshift-operators
+    namespace: openshift-cluster-observability-operator
     source: cs-redhat-operator-index-v4-20
 
   - name: openshift-external-secrets-operator
