@@ -83,13 +83,30 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
           echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
-          make environment
-          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
-      - name: Save infrastructure log
-        if: always() && steps.create_infra.outcome != 'skipped'
-        run: |
-          echo "Infrastructure setup completed with status: ${{ steps.create_infra.outcome }}" > step-logs/02-setup-infrastructure.log
+          # Initialize log file with header
+          echo "=== Infrastructure Setup Log ===" > step-logs/02-setup-infrastructure.log
+          echo "Started: $(date)" >> step-logs/02-setup-infrastructure.log
+          echo "" >> step-logs/02-setup-infrastructure.log
+
+          # Run command and capture all output
+          set +e
+          make environment 2>&1 | tee -a step-logs/02-setup-infrastructure.log
+          EXIT_CODE=$?
+          set -e
+
+          # Log completion
+          echo "" >> step-logs/02-setup-infrastructure.log
+          echo "Completed: $(date)" >> step-logs/02-setup-infrastructure.log
+          echo "Exit code: $EXIT_CODE" >> step-logs/02-setup-infrastructure.log
+
+          # Exit with the original code
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "❌ Infrastructure creation failed (exit code: $EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            exit $EXIT_CODE
+          fi
+
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
         id: provision_lz
