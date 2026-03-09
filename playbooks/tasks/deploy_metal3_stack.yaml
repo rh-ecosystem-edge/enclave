@@ -64,7 +64,6 @@
 - name: Run ironic container
   containers.podman.podman_container:
     name: ironic
-    pod: metal3-ironic
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -91,11 +90,16 @@
     command:
       - /bin/runironic
     state: started
+  register: ironic_info
+
+- name: Set ironic container facts
+  ansible.builtin.set_fact:
+    ironic_pod_name: "{{ ironic_info.pod.Name }}"
 
 - name: Run httpd container
   containers.podman.podman_container:
     name: httpd
-    pod: metal3-ironic
+    pod: "{{ ironic_pod_name }}"
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -116,7 +120,7 @@
 
 - name: Wait for metal3-ironic pod and containers to be running
   containers.podman.podman_pod_info:
-    name: metal3-ironic
+    name: "{{ ironic_pod_name }}"
   register: r_pod_ready
   retries: 60
   delay: 5
