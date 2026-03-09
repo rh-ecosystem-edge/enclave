@@ -37,9 +37,9 @@ definitions:
       csvName:
         type: string
         description: ClusterServiceVersion name for the operator.
-      disableTargetNamespace:
+      global:
         type: boolean
-        description: configure operator to watch a specific namespace or to watch the entire cluster
+        description: Configure operator to watch the entire cluster.
     required:
     - name
     - defaultChannel
