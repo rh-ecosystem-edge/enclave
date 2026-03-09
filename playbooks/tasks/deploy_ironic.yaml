@@ -23,9 +23,13 @@
     metal3_ironic_htpasswd: "{{ r_htpasswd.stdout }}"
   no_log: true
 
+- name: Generate random ironic name
+  ansible.builtin.set_fact:
+    metal3_ironic_name: "metal3-ironic-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
+
 - name: Create podman secret for ironic htpasswd
   containers.podman.podman_secret:
-    name: metal3-ironic-htpasswd
+    name: "{{ metal3_ironic_name }}-htpasswd"
     data: "{{ metal3_ironic_htpasswd }}"
     state: present
     force: false
@@ -38,7 +42,7 @@
 - name: Create podman secret for CA bundle
   when: ssl_certs_configured | bool
   containers.podman.podman_secret:
-    name: metal3-ca-bundle
+    name: "{{ metal3_ironic_name }}-ca-bundle"
     data: "{{ sslIngressCertificateFullChain + sslCACertificate | default('') }}"
     state: present
     force: false
@@ -46,22 +50,22 @@
 
 - name: Create ironic-conf volume
   containers.podman.podman_volume:
-    name: metal3-ironic-conf
+    name: "{{ metal3_ironic_name }}-conf"
     state: present
 
 - name: Create ironic-data volume
   containers.podman.podman_volume:
-    name: metal3-ironic-data
+    name: "{{ metal3_ironic_name }}-data"
     state: present
 
 - name: Create ironic-shared volume
   containers.podman.podman_volume:
-    name: metal3-ironic-shared
+    name: "{{ metal3_ironic_name }}-shared"
     state: present
 
 - name: Create metal3-ironic pod
   containers.podman.podman_pod:
-    name: metal3-ironic
+    name: "{{ metal3_ironic_name }}"
     network: host
     share: net,ipc,uts
     state: created
@@ -70,14 +74,14 @@
   when: ssl_certs_configured | bool
   ansible.builtin.set_fact:
     ironic_secrets:
-      - metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400
-      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
+      - "{{ metal3_ironic_name }}-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400"
+      - "{{ metal3_ironic_name }}-htpasswd,type=env,target=IRONIC_HTPASSWD"
 
 - name: Set ironic secrets list (without CA bundle)
   when: not (ssl_certs_configured | bool)
   ansible.builtin.set_fact:
     ironic_secrets:
-      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
+      - "{{ metal3_ironic_name }}-htpasswd,type=env,target=IRONIC_HTPASSWD"
 
 - name: Set ironic environment variables (with CA bundle)
   when: ssl_certs_configured | bool
@@ -106,14 +110,10 @@
       IRONIC_EXPOSE_JSON_RPC: "false"
       OS_JSON_RPC__PORT: "6189"
 
-- name: Generate random ironic pod name
-  ansible.builtin.set_fact:
-    metal3_ironic_pod_name: "metal3-ironic-{{ lookup('password', '/dev/null chars=ascii_lowercase,digits length=8') }}"
-
 - name: Run ironic container
   containers.podman.podman_container:
     name: ironic
-    pod: "{{ metal3_ironic_pod_name }}"
+    pod: "{{ metal3_ironic_name }}"
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -121,9 +121,9 @@
     cap_drop:
       - ALL
     volume:
-      - metal3-ironic-conf:/conf
-      - metal3-ironic-data:/data
-      - metal3-ironic-shared:/shared
+      - "{{ metal3_ironic_name }}-conf:/conf"
+      - "{{ metal3_ironic_name }}-data:/data"
+      - "{{ metal3_ironic_name }}-shared:/shared"
     secrets: "{{ ironic_secrets }}"
     env: "{{ ironic_env }}"
     command:
@@ -133,7 +133,7 @@
 - name: Run httpd container
   containers.podman.podman_container:
     name: httpd
-    pod: "{{ metal3_ironic_pod_name }}"
+    pod: "{{ metal3_ironic_name }}"
     image: "{{ metal3_ironic_image }}"
     authfile: "{{ pullSecretPath }}"
     restart_policy: always
@@ -141,7 +141,7 @@
     cap_drop:
       - ALL
     volume:
-      - metal3-ironic-shared:/shared
+      - "{{ metal3_ironic_name }}-shared:/shared"
     env:
       IRONIC_LISTEN_PORT: "6385"
       HTTP_PORT: "6180"
@@ -154,7 +154,7 @@
 
 - name: Wait for metal3-ironic pod and containers to be running
   containers.podman.podman_pod_info:
-    name: "{{ metal3_ironic_pod_name }}"
+    name: "{{ metal3_ironic_name }}"
   register: r_pod_ready
   retries: 60
   delay: 5
@@ -181,7 +181,7 @@
     method: GET
     status_code: [200, 401]
     user: "{{ metal3_ironic_username }}"
-    password: "{{ metal3_ironic_password }}"
+    password: "{{ metal3_ironic_name }}"
     force_basic_auth: true
   register: r_ironic_api
   retries: 30
@@ -190,7 +190,7 @@
 
 - name: Display metal3-ironic pod status
   containers.podman.podman_pod_info:
-    name: metal3-ironic
+    name: "{{ metal3_ironic_name }}"
   register: r_pod_status
 
 - name: Show pod status
