@@ -92,7 +92,7 @@ jobs:
           # Run command and capture all output
           set +e
           make environment 2>&1 | tee -a step-logs/02-setup-infrastructure.log
-          EXIT_CODE=$?
+          EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
           # Log completion
