@@ -70,7 +70,7 @@
         configBundleSecret: quay-config
         components:
         - kind: horizontalpodautoscaler
-          managed: "{{ true if blockStorageBackend == 'odf' else false }}"
+          managed: true
         - kind: quay
           managed: true
           overrides:
@@ -83,6 +83,27 @@
                 memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
         - kind: objectstorage
           managed: false
+        - kind: postgres
+          managed: true
+          overrides:
+            resources:
+              limits:
+                cpu: 500m
+                memory: 2Gi
+              requests:
+                cpu: 500m
+                memory: 2Gi
+        - kind: clairpostgres
+          managed: true
+          overrides:
+            resources:
+              limits:
+                cpu: 500m
+                memory: 2Gi
+              requests:
+                cpu: 500m
+                memory: 2Gi
+
   retries: 60
   delay: 10
   register: r_quay
