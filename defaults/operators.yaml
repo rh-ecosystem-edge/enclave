@@ -35,11 +35,13 @@ operators:
     csvName: update-service-operator
 
   - name: openshift-gitops-operator
+    version: 1.19.1
     defaultChannel: gitops-1.19
     channels:
     - name: gitops-1.19
-    namespace: openshift-operators
+    namespace: openshift-gitops-operator
     source: cs-redhat-operator-index-v4-20
+    global: true
 
   - name: openshift-pipelines-operator-rh
     defaultChannel: pipelines-1.20
