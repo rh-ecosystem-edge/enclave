@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Generate unique cluster name
+        id: cluster_name
         uses: ./.github/actions/setup-cluster-name
         with:
           naming-strategy: hash
@@ -36,8 +37,12 @@ jobs:
           run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
+        env:
+          ENCLAVE_CLUSTER_NAME: ${{ steps.cluster_name.outputs.cluster-name }}
+          BASE_WORKING_DIR: ${{ env.BASE_WORKING_DIR }}
         run: |
-          make setup-working-dir
+          echo "Using cluster name: ${ENCLAVE_CLUSTER_NAME}"
+          ./scripts/setup/setup_working_dir.sh
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
           # Create directory for step logs
