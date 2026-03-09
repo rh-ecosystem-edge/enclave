@@ -49,11 +49,13 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: netobserv-operator
+    version: 1.10.1
     defaultChannel: stable
     channels:
     - name: stable
-    namespace: openshift-operators
+    namespace: openshift-netobserv-operator
     source: cs-redhat-operator-index-v4-20
+    global: true
     csvName: network-observability-operator
 
   - name: cluster-logging
