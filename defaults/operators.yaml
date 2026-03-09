@@ -71,7 +71,7 @@ operators:
     - name: stable-6.4
     namespace: openshift-operators-redhat
     source: cs-redhat-operator-index-v4-20
-    disableTargetNamespace: true
+    global: true
 
   - name: redhat-oadp-operator
     version: 1.5.3
@@ -106,7 +106,7 @@ operators:
     - name: stable-v1.0
     namespace: external-secrets-operator
     source: cs-redhat-operator-index-v4-20
-    disableTargetNamespace: true
+    global: true
     csvName: external-secrets-operator
 
   - name: compliance-operator
@@ -124,7 +124,7 @@ operators:
     - name: stable
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
-    disableTargetNamespace: true
+    global: true
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
@@ -134,5 +134,5 @@ operators:
     - name: stable-2.5-cluster-scoped
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
-    disableTargetNamespace: true
+    global: true
     csvName: aap-operator

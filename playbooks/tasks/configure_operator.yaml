@@ -10,10 +10,10 @@
   delay: 5
   until: r_namespace_exists is success
 
-- name: "Ensure OperatorGroup exists"
+- name: "Ensure OperatorGroup exists (with target namespace)"
   when:
     - operator.namespace != "openshift-operators"
-    - operator.disableTargetNamespace | default(false) | bool != true
+    - not (operator.global | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -30,10 +30,10 @@
   delay: 5
   until: r_operatorgroup_exists is success
 
-- name: "Ensure OperatorGroup exists (without targetNamespace)"
+- name: "Ensure OperatorGroup exists (global - without target namespace)"
   when:
     - operator.namespace != "openshift-operators"
-    - operator.disableTargetNamespace | default(false) | bool
+    - operator.global | default(false)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -42,7 +42,7 @@
       metadata:
         name: "{{ operator.name }}-og"
         namespace: "{{ operator.namespace }}"
-      spec:
+      spec: {}
   register: r_operatorgroup_exists
   retries: 6
   delay: 5
