@@ -118,7 +118,7 @@
 
 - name: Run LVMS-specific Quay tasks (PVC, QuayRegistry, deployment patch)
   ansible.builtin.include_tasks: quay_lvms.yaml
-  when: blockStorageBackend == 'lvms' and quayBackend == 'LocalStorage'
+  when: blockStorageBackend == 'lvms'
 
 - name: Get router pod IP for Quay route access
   kubernetes.core.k8s_info:
