@@ -21,7 +21,7 @@
         - kind: quay
           managed: true
           overrides:
-            replicas: 1
+            replicas: null
             resources:
               limits:
                 cpu: "4"
