@@ -1,3 +1,38 @@
 ---
-- ansible.builtin.debug: 
-    msg: "Operator configured properly, no further actions"
+- name: Patch CertManager to set resources
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: operator.openshift.io/v1alpha1
+      kind: CertManager
+      metadata:
+        name: cluster
+      spec:
+        cainjectorConfig:
+          overrideReplicas: 2
+          overrideResources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+        controllerConfig:
+          overrideReplicas: 2
+          overrideResources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 200m
+              memory: 128Mi
+        webhookConfig:
+          overrideReplicas: 3
+          overrideResources:
+            limits:
+              cpu: 20m
+              memory: 32Mi
+            requests:
+              cpu: 20m
+              memory: 32Mi
+
