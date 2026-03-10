@@ -64,7 +64,32 @@
     name: metal3-ironic
     network: host
     share: net,ipc,uts
-    state: created
+    state: started
+
+- name: Wait for metal3-ironic pod infrastructure container to be ready
+  block:
+    - name: Get pod info to extract infra container ID
+      containers.podman.podman_pod_info:
+        name: metal3-ironic
+      register: r_pod_infra_check
+      retries: 30
+      delay: 2
+      until:
+        - r_pod_infra_check.pods | length > 0
+        - r_pod_infra_check.pods[0].InfraContainerID is defined
+        - r_pod_infra_check.pods[0].InfraContainerID | length > 0
+      changed_when: false
+
+    - name: Verify infra container is running
+      containers.podman.podman_container_info:
+        name: "{{ r_pod_infra_check.pods[0].InfraContainerID }}"
+      register: r_infra_container_check
+      retries: 10
+      delay: 1
+      until:
+        - r_infra_container_check.containers | length > 0
+        - r_infra_container_check.containers[0].State.Running | default(false)
+      changed_when: false
 
 - name: Set ironic secrets list (with CA bundle)
   when: ssl_certs_configured | bool

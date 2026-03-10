@@ -20,7 +20,7 @@ runs:
         # Allocate subnet and get network configuration
         # Use BASE_WORKING_DIR for shared allocation file across all clusters
         # Script outputs environment variable assignments with all network details
-        ALLOCATION_OUTPUT=$(WORKING_DIR="${BASE_WORKING_DIR}" bash scripts/setup/allocate_subnet.sh allocate)
+        ALLOCATION_OUTPUT=$(ALLOCATION_BASE_DIR="${BASE_WORKING_DIR}" bash scripts/setup/allocate_subnet.sh allocate)
 
         if [ -z "$ALLOCATION_OUTPUT" ]; then
           echo "❌ Failed to allocate subnet"

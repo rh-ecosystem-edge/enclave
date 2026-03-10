@@ -32,13 +32,15 @@ if [ -z "${ENCLAVE_BMC_NETWORK:-}" ] || [ -z "${ENCLAVE_CLUSTER_NETWORK:-}" ]; t
     # Export variables for subprocess
     export ENCLAVE_CLUSTER_NAME
     # Use BASE_WORKING_DIR for shared allocation file across all clusters
-    # Fall back to WORKING_DIR if BASE_WORKING_DIR is not set (backwards compatibility)
-    ALLOCATION_WORKING_DIR="${BASE_WORKING_DIR:-${WORKING_DIR:-}}"
-    if [ -z "$ALLOCATION_WORKING_DIR" ]; then
+    # This is where the subnet-allocations.json file is stored (shared across all clusters)
+    ALLOCATION_BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR:-}}"
+    if [ -z "$ALLOCATION_BASE_DIR" ]; then
         echo "ERROR: WORKING_DIR or BASE_WORKING_DIR environment variable is required"
         exit 1
     fi
-    export WORKING_DIR="$ALLOCATION_WORKING_DIR"
+    # DO NOT overwrite WORKING_DIR - it should already be cluster-specific!
+    # Pass ALLOCATION_BASE_DIR to allocate_subnet.sh for the shared lock file
+    export ALLOCATION_BASE_DIR
 
     # Get subnet allocation with network configuration
     # Script outputs environment variable assignments
@@ -161,18 +163,8 @@ export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
 
 # Working directory (where VMs and configs are stored)
-# Must be set explicitly for dev-scripts to use cluster-specific paths
-# If not set in environment, construct from BASE_WORKING_DIR + cluster name
-if [ -z "${WORKING_DIR:-}" ]; then
-    if [ -n "${BASE_WORKING_DIR:-}" ]; then
-        export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
-    else
-        # Fallback to dev-scripts default (single cluster only)
-        export WORKING_DIR="/opt/dev-scripts"
-    fi
-fi
-# Ensure dev-scripts uses this WORKING_DIR
-export WORKING_DIR
+# Cluster-specific path for parallel execution isolation
+export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
 
 # Storage pool configuration - use cluster name for isolation in parallel execution
 # LIBVIRT_VOLUME_POOL controls which pool VMs reference for disk images

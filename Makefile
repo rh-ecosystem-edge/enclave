@@ -215,16 +215,16 @@ environment:
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
 	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
 	@echo ""
-	@echo "Step 3a: Verifying networks were created..."
+	@echo "Step 4: Verifying networks were created..."
 	@./scripts/infrastructure/verify_networks.sh
 	@echo ""
-	@echo "Step 4: Starting BMC emulation (sushy-tools)..."
+	@echo "Step 5: Starting BMC emulation (sushy-tools)..."
 	@./scripts/infrastructure/start_sushy_tools.sh
 	@echo ""
-	@echo "Step 5: Generating environment metadata..."
+	@echo "Step 6: Generating environment metadata..."
 	@./scripts/infrastructure/generate_environment_json.sh
 	@echo ""
-	@echo "Step 6: Verifying infrastructure..."
+	@echo "Step 7: Verifying infrastructure..."
 	@$(MAKE) verify
 	@echo ""
 	@echo "=========================================="
