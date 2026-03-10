@@ -70,7 +70,7 @@
         namespace: "{{ operator.namespace }}"
       spec:
         installPlanApproval: Automatic
-        channel: "{{ operator.defaultChannel }}"
+        channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
         source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
@@ -93,7 +93,7 @@
         namespace: "{{ operator.namespace }}"
       spec:
         installPlanApproval: Manual
-        channel: "{{ operator.defaultChannel }}"
+        channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
         source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace

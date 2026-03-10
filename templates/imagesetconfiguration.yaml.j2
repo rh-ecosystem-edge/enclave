@@ -14,17 +14,12 @@ mirror:
     - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
       packages:
         - name: gpu-operator-certified
-          defaultChannel: v25.10
-          channels:
-          - name: v25.10
     - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
 {% for operator in operators + model_operators %}
         - name: {{ operator.name }}
-          defaultChannel: {{ operator.defaultChannel }}
-          channels: {{ operator.channels }}
 {% endfor %}
         - name: "{{ storage_operators[blockStorageBackend].name }}"
 {% if blockStorageBackend == "odf" %}

@@ -386,49 +386,37 @@ Operators are configured in `defaults/operators.yaml`:
 operators:
   # Advanced Cluster Management
   - name: advanced-cluster-management
-    defaultChannel: release-2.15
-    channels:
-      - name: release-2.15
+    channel: release-2.15
     namespace: open-cluster-management
     source: cs-redhat-operator-index-v4-19
 
   # OpenShift GitOps (ArgoCD)
   - name: openshift-gitops-operator
-    defaultChannel: latest
-    channels:
-      - name: latest
+    channel: latest
     namespace: openshift-operators
     source: cs-redhat-operator-index-v4-19
 
   # OpenShift Pipelines (Tekton)
   - name: openshift-pipelines-operator-rh
-    defaultChannel: latest
-    channels:
-      - name: latest
+    channel: latest
     namespace: openshift-operators
     source: cs-redhat-operator-index-v4-19
 
   # Network Observability
   - name: netobserv-operator
-    defaultChannel: stable
-    channels:
-      - name: stable
+    channel: stable
     namespace: openshift-operators
     source: cs-redhat-operator-index-v4-19
 
   # Backup and Restore
   - name: redhat-oadp-operator
-    defaultChannel: stable
-    channels:
-      - name: stable
+    channel: stable
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-19
 
   # Certificate Manager
   - name: openshift-cert-manager-operator
-    defaultChannel: stable-v1
-    channels:
-      - name: stable-v1
+    channel: stable-v1
     namespace: cert-manager-operator
     source: cs-redhat-operator-index-v4-19
   [...]
