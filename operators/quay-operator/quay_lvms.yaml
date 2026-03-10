@@ -34,66 +34,69 @@
   register: r_quay_lvms
   until: r_quay_lvms is succeeded
 
-- name: Wait for Quay app deployment to exist (LVMS)
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    namespace: quay-enterprise
-    name: registry-quay-app
-  register: quay_app_deployment
-  retries: 30
-  delay: 10
-  until: quay_app_deployment.resources | length > 0
-
-- name: Set quay container index for LVMS patch (first container is the app)
-  ansible.builtin.set_fact:
-    quay_container_index: 0
-  when: quay_app_deployment.resources | default([]) | length > 0
-
-- name: Check if Quay app deployment already has registry-storage volume (LVMS)
-  ansible.builtin.set_fact:
-    quay_registry_storage_already_patched: "{{ quay_app_deployment.resources[0].spec.template.spec.volumes | selectattr('name', 'equalto', 'registry-storage') | list | length > 0 }}"
-  when: quay_app_deployment.resources | default([]) | length > 0
-
-- name: Create LVMS PVC for Quay Storage
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: PersistentVolumeClaim
-      metadata:
-        name: quay-storage-pvc
+- name: Apply changes when  quayBackend is LocalStorage
+  when: quayBackend == 'LocalStorage'
+  block:
+    - name: Wait for Quay app deployment to exist (LVMS)
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
         namespace: quay-enterprise
-      spec:
-        accessModes:
-          - ReadWriteOnce
-        resources:
-          requests:
-            storage: 300Gi
-        storageClassName: lvms-vg1
+        name: registry-quay-app
+      register: quay_app_deployment
+      retries: 30
+      delay: 10
+      until: quay_app_deployment.resources | length > 0
 
-- name: Patch Quay app deployment to mount registry storage PVC (LVMS)
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  ansible.builtin.shell: |
-    oc patch deployment registry-quay-app -n quay-enterprise --type=json -p='{{ quay_lvms_patch | to_json }}'
-  args:
-    executable: /bin/bash
-  vars:
-    quay_lvms_patch:
-      - op: add
-        path: /spec/template/spec/volumes/-
-        value:
-          name: registry-storage
-          persistentVolumeClaim:
-            claimName: quay-storage-pvc
-      - op: add
-        path: /spec/template/spec/containers/{{ quay_container_index }}/volumeMounts/-
-        value:
-          name: registry-storage
-          mountPath: /datastorage/registry
-  when:
-    - quay_app_deployment.resources | default([]) | length > 0
-    - quay_container_index is defined
-    - not (quay_registry_storage_already_patched | default(false))
-  register: quay_patch_result
+    - name: Set quay container index for LVMS patch (first container is the app)
+      ansible.builtin.set_fact:
+        quay_container_index: 0
+      when: quay_app_deployment.resources | default([]) | length > 0
+
+    - name: Check if Quay app deployment already has registry-storage volume (LVMS)
+      ansible.builtin.set_fact:
+        quay_registry_storage_already_patched: "{{ quay_app_deployment.resources[0].spec.template.spec.volumes | selectattr('name', 'equalto', 'registry-storage') | list | length > 0 }}"
+      when: quay_app_deployment.resources | default([]) | length > 0
+
+    - name: Create LVMS PVC for Quay Storage
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: quay-storage-pvc
+            namespace: quay-enterprise
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 300Gi
+            storageClassName: lvms-vg1
+
+    - name: Patch Quay app deployment to mount registry storage PVC (LVMS)
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      ansible.builtin.shell: |
+        oc patch deployment registry-quay-app -n quay-enterprise --type=json -p='{{ quay_lvms_patch | to_json }}'
+      args:
+        executable: /bin/bash
+      vars:
+        quay_lvms_patch:
+          - op: add
+            path: /spec/template/spec/volumes/-
+            value:
+              name: registry-storage
+              persistentVolumeClaim:
+                claimName: quay-storage-pvc
+          - op: add
+            path: /spec/template/spec/containers/{{ quay_container_index }}/volumeMounts/-
+            value:
+              name: registry-storage
+              mountPath: /datastorage/registry
+      when:
+        - quay_app_deployment.resources | default([]) | length > 0
+        - quay_container_index is defined
+        - not (quay_registry_storage_already_patched | default(false))
+      register: quay_patch_result
