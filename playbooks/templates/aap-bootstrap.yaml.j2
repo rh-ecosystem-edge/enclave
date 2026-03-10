@@ -8,7 +8,7 @@ spec:
     spec:
       initContainers:
       - name: wait-for-aap
-        image: registry.redhat.io/openshift4/ose-cli:latest
+        image: "{{ __r_oc_cli_image.stdout }}"
         command:
           - /bin/bash
           - -c
