@@ -62,6 +62,12 @@ properties:
     additionalProperties: false
     properties:
       odf:
-        $ref: "#/definitions/operator"
+        type: array
+        description: List of operators to install and configure.
+        items:
+          $ref: "#/definitions/operator"
       lvms:
-        $ref: "#/definitions/operator"
+        type: array
+        description: List of operators to install and configure.
+        items:
+          $ref: "#/definitions/operator"

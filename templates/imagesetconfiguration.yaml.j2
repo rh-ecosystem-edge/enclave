@@ -21,12 +21,11 @@ mirror:
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
-{% for operator in operators + model_operators %}
+{% for operator in operators + model_operators + storage_operators[blockStorageBackend] %}
         - name: {{ operator.name }}
           defaultChannel: {{ operator.defaultChannel }}
           channels: {{ operator.channels }}
 {% endfor %}
-        - name: "{{ storage_operators[blockStorageBackend].name }}"
 {% if blockStorageBackend == "odf" %}
         - name: mcg-operator
         - name: odf-csi-addons-operator
