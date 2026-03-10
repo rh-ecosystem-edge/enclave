@@ -23,8 +23,6 @@ mirror:
         - name: kubernetes-nmstate-operator
 {% for operator in operators + model_operators %}
         - name: {{ operator.name }}
-          defaultChannel: {{ operator.defaultChannel }}
-          channels: {{ operator.channels }}
 {% endfor %}
         - name: "{{ storage_operators[blockStorageBackend].name }}"
 {% if blockStorageBackend == "odf" %}
