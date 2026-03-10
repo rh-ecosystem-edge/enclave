@@ -14,17 +14,8 @@ definitions:
         type: string
         description: Operator version.
       channel:
-        type: array
+        type: string
         description: Update channel for the operator.
-        items:
-          type: object
-          additionalProperties: false
-          properties:
-            name:
-              type: string
-              description: Update channel name for the operator.
-          required:
-          - name
       namespace:
         type: string
         description: Target namespace where the operator will be installed.
