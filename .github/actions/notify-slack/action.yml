@@ -70,54 +70,57 @@ runs:
           fi
         fi
 
-        # Build fields array using jq for safe JSON construction
+        # Build compact 2-column fields
         FIELDS=$(jq -n \
           --arg cluster "$INPUT_CLUSTER_NAME" \
           --arg branch "$INPUT_BRANCH_NAME" \
-          --arg commit "$INPUT_COMMIT_SHA" \
-          --arg workflow_url "$INPUT_WORKFLOW_URL" \
-          --arg status "$STATUS_TEXT" \
-          --arg failed_step "$INPUT_FAILED_STEP" \
-          --arg artifact_url "$INPUT_ARTIFACT_URL" \
+          --arg commit "${INPUT_COMMIT_SHA:0:7}" \
           '[
-            {"type": "mrkdwn", "text": ("*Cluster:*\n" + $cluster)},
-            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch + " (Commit: " + $commit + ")")},
-            {"type": "mrkdwn", "text": ("*Workflow:*\n<" + $workflow_url + "|View Run>")},
-            (if ($failed_step != "") then
-              {"type": "mrkdwn", "text": ("*Failed at:*\n" + $failed_step)}
-            else
-              {"type": "mrkdwn", "text": ("*Status:*\n" + $status)}
-            end),
-            (if ($artifact_url != "") then
-              {"type": "mrkdwn", "text": ("*Artifacts:*\n<" + $artifact_url + "|Download>")}
-            else
-              empty
-            end)
+            {"type": "mrkdwn", "text": ("*Cluster:* " + $cluster)},
+            {"type": "mrkdwn", "text": ("*Branch:* " + $branch + " (" + $commit + ")")}
           ]')
 
-        # Build complete Slack payload using jq
+        # Build action buttons
+        if [ -n "$INPUT_ARTIFACT_URL" ]; then
+          ACTIONS=$(jq -n \
+            --arg workflow_url "$INPUT_WORKFLOW_URL" \
+            --arg artifact_url "$INPUT_ARTIFACT_URL" \
+            '{
+              "type": "actions",
+              "elements": [
+                {"type": "button", "text": {"type": "plain_text", "text": "View Run"}, "url": $workflow_url},
+                {"type": "button", "text": {"type": "plain_text", "text": "Artifacts"}, "url": $artifact_url}
+              ]
+            }')
+        else
+          ACTIONS=$(jq -n \
+            --arg workflow_url "$INPUT_WORKFLOW_URL" \
+            '{
+              "type": "actions",
+              "elements": [
+                {"type": "button", "text": {"type": "plain_text", "text": "View Run"}, "url": $workflow_url}
+              ]
+            }')
+        fi
+
+        # Build compact Slack payload
         PAYLOAD=$(jq -n \
           --arg text "$MESSAGE_TEXT" \
           --arg color "$COLOR" \
           --argjson fields "$FIELDS" \
+          --argjson actions "$ACTIONS" \
           '{
             "text": $text,
             "attachments": [
               {
                 "color": $color,
+                "text": $text,
                 "blocks": [
-                  {
-                    "type": "header",
-                    "text": {
-                      "type": "plain_text",
-                      "text": $text,
-                      "emoji": true
-                    }
-                  },
                   {
                     "type": "section",
                     "fields": $fields
-                  }
+                  },
+                  $actions
                 ]
               }
             ]
