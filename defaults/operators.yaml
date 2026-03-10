@@ -16,7 +16,6 @@ operators:
     - name: stable-2.10
     namespace: multicluster-engine
     source: cs-redhat-operator-index-v4-20
-
   - name: advanced-cluster-management
     version: 2.15.1
     defaultChannel: release-2.15
