@@ -71,6 +71,7 @@ jobs:
               - 'templates/**'
               - 'operators/**'
               - 'files/**'
+              - 'hack/**'
               - '.github/workflows/e2e-deployment.yml'
               - 'ansible.cfg'
               - 'requirements.yml'
