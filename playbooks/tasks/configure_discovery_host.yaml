@@ -5,6 +5,10 @@
     validate_certs: false
     state: present
     definition: "{{ lookup('ansible.builtin.template', 'templates/nmstateconfig.yaml.j2') }}"
+  register: r_nmstateconfig
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_nmstateconfig is success
 
 - name: "Create BMC credentials secrets for [{{ discovery_host.name }}]"
   environment:
@@ -13,6 +17,10 @@
     validate_certs: false
     state: present
     definition: "{{ lookup('ansible.builtin.template', 'templates/bmc-secret.yaml.j2') }}"
+  register: r_bmc_credentials_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_bmc_credentials_secret is success
 
 - name: "Check if BareMetalHost [{{ discovery_host.name }}] exists"
   environment:
@@ -34,3 +42,7 @@
     definition: "{{ lookup('ansible.builtin.template', 'templates/baremetalhost.yaml.j2') }}"
   vars:
     bmh_online: "{{ bmh_check.resources[0].spec.online if bmh_check.resources | length > 0 else false }}"
+  register: r_baremetalhost
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_baremetalhost is success

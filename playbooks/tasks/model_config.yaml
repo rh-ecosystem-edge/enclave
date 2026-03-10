@@ -4,6 +4,10 @@
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/00-namespace.yaml') | from_yaml }}"
+  register: r_namespace_model_config
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_namespace_model_config is success
 
 - name: Create ACM Policy for Model configuration
   environment:
@@ -12,7 +16,10 @@
     state: present
     namespace: openshift-acm-policies
     definition: "{{ lookup('ansible.builtin.template', '../../files/model-configuration/10-policy.yaml.j2') | from_yaml }}"
-
+  register: r_acm_policy_model_config
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_config is success
 
 - name: Create ACM PlacementRule for Model configuration
   environment:
@@ -21,6 +28,10 @@
     state: present
     namespace: openshift-acm-policies
     definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/20-placementrule.yaml') | from_yaml }}"
+  register: r_acm_placementrule_model_config
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementrule_model_config is success
 
 - name: Create ACM PlacementBinding for Model configuration
   environment:
@@ -29,3 +40,7 @@
     state: present
     namespace: openshift-acm-policies
     definition: "{{ lookup('ansible.builtin.file', '../../files/model-configuration/30-placementbinding.yaml') | from_yaml }}"
+  register: r_acm_placementbinding_model_config
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementbinding_model_config is success

@@ -277,6 +277,10 @@
             location = "quay.io/argoproj"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/argoproj"
+  register: r_configmap_disconnected
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_configmap_disconnected is success
 
 - name: Create assisted-service-user-config ConfigMap
   kubernetes.core.k8s:
@@ -290,6 +294,10 @@
       data:
         ALLOW_CONVERGED_FLOW: "false"
         PAUSE_PROVISIONED_BMHS: "false"
+  register: r_configmap_assisted_service
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_configmap_assisted_service is success
 
 - name: Create AgentServiceConfig for disconnected environment
   kubernetes.core.k8s:
@@ -323,3 +331,7 @@
           rootFSUrl: "http://{{ quayHostname }}/rhcos-4.20.0-x86_64-live-rootfs.x86_64.img"
           url: "http://{{ quayHostname }}/rhcos-4.20.0-x86_64-live-iso.x86_64.iso"
           version: 9.6.20251023-0
+  register: r_agentserviceconfig
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_agentserviceconfig is success

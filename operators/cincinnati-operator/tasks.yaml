@@ -14,6 +14,10 @@
         graphDataImage: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/graph-image
         releases: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/release-images
         replicas: 2
+  register: r_update_service
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_update_service is success
 
 - name: Create ACM Policy for Update Service
   environment:
@@ -53,6 +57,10 @@
                     name: version
                   spec:
                     upstream: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
+  register: r_acm_policy_update_service
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_update_service is success
 
 - name: Create ACM PlacementRule for Update Service
   environment:
@@ -75,6 +83,10 @@
             - "account"
             - "default"
             - "platform"
+  register: r_acm_placementrule_update_service
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementrule_update_service is success
 
 - name: Create ACM PlacementBinding for Update Service
   environment:
@@ -96,3 +108,7 @@
         - name: update-service
           kind: Policy
           apiGroup: policy.open-cluster-management.io
+  register: r_acm_placementbinding_update_service
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementbinding_update_service is success

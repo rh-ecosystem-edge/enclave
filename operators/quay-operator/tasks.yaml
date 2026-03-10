@@ -56,6 +56,10 @@
                   name2repos_mapping_file: "/data/container-name-repos-map.json"
           matcher:
             disable_updaters: true
+  register: r_quay_config_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_config_secret is success
 
 - name: Ensure QuayRegistry is present
   kubernetes.core.k8s:
@@ -177,6 +181,10 @@
       stringData:
         .dockerconfigjson: "{{ pullSecretNew | to_json }}"
       type: kubernetes.io/dockerconfigjson
+  register: r_patch_cluster_pullsecret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_patch_cluster_pullsecret is success
 
 - name: Create pull-secret file with the combination
   ansible.builtin.copy:
