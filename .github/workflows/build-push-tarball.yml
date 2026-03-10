@@ -39,6 +39,7 @@ jobs:
         uses: actions/setup-python@v5
 
       - name: Download Ansible Collections
+        if: github.event_name != 'pull_request'
         run: |
           pip install ansible-core
           mkdir -p collections
