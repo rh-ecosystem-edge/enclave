@@ -19,6 +19,10 @@
       metadata:
         name: clair-import
         namespace: openshift-pipelines
+  register: r_clair_import_serviceaccount
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clair_import_serviceaccount is success
 
 - name: Create Clair Import Task
   kubernetes.core.k8s:
@@ -54,6 +58,10 @@
                 fi
                 echo "$rc" > "$(results.exit-code.path)"
                 exit "$rc"
+  register: r_clair_import_task
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clair_import_task is success
 
 - name: Create Clair Import Pipeline
   kubernetes.core.k8s:
@@ -75,3 +83,7 @@
           - name: status-report
             value: $(tasks.clair-import.results.status-report)
         timeout: "1h"
+  register: r_clair_import_pipeline
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clair_import_pipeline is success

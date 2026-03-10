@@ -1,0 +1,5 @@
+---
+# Retry settings for kubernetes.core.k8s state: present/absent/patched calls.
+# These are internal defaults and are not meant to be overridden by the user.
+k8s_retries: 6
+k8s_delay: 5

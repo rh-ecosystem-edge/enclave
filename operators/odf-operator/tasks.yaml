@@ -10,6 +10,10 @@
       data:
         external_cluster_details: "{{ odfExternalConfig | b64encode }}"
       type: Opaque
+  register: r_odf_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_odf_secret is success
 
 - name: Ensure StorageCluster is present
   kubernetes.core.k8s:

@@ -302,8 +302,8 @@ sudo virt-install \
 info "✓ Landing Zone VM created and started"
 
 # Wait for VM to boot and get IP via DHCP
-info "Waiting for Landing Zone VM to boot and get IP (this may take 2-3 minutes)..."
-MAX_WAIT=180
+info "Waiting for Landing Zone VM to boot and get IP (this may take 2-5 minutes)..."
+MAX_WAIT=300
 COUNTER=0
 BOOT_COMPLETE=false
 SSH_READY=false

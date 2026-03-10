@@ -6,8 +6,8 @@
     kind: Namespace
     name: "{{ operator.namespace }}"
   register: r_namespace_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
 - name: "Ensure OperatorGroup exists (with target namespace)"
@@ -26,8 +26,8 @@
         targetNamespaces:
           - "{{ operator.namespace }}"
   register: r_operatorgroup_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_operatorgroup_exists is success
 
 - name: "Ensure OperatorGroup exists (global - without target namespace)"
@@ -44,8 +44,8 @@
         namespace: "{{ operator.namespace }}"
       spec: {}
   register: r_operatorgroup_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_operatorgroup_exists is success
 
 - name: "Check if Subscription already exists"
@@ -75,8 +75,8 @@
         source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
   register: r_sub_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_sub_exists is success
 
 - name: "Ensure Subscription exists (Manual)"
@@ -99,8 +99,8 @@
         sourceNamespace: openshift-marketplace
         startingCSV: "{{ operator.csvName | default(operator.name) }}.v{{ operator.version }}"
   register: r_sub_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_sub_exists is success
 
 - name: "Wait for Install Plan ({{ operator.name }})"

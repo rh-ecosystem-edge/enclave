@@ -21,6 +21,6 @@
       spec: "{{ _spec | from_yaml }}"
 
   register: r_lvmcluster_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_lvmcluster_exists is success

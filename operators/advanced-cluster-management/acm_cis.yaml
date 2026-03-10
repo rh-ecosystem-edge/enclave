@@ -29,6 +29,10 @@
   loop: "{{ r_cluster_image_set.resources }}"
   loop_control:
     loop_var: imageset
+  register: r_delete_clusterimageset
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_delete_clusterimageset is success
 
 - name: Create ClusterImageSet
   environment:
@@ -45,3 +49,7 @@
   loop: "{{ openshift_versions }}"
   loop_control:
     loop_var: v
+  register: r_clusterimageset
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_clusterimageset is success

@@ -26,5 +26,6 @@
     - mirror_registry.yaml
     - quay_operator.yaml
     - lvms_operator.yaml
+    - k8s.yaml
   loop_control:
     loop_var: config_file

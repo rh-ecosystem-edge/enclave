@@ -14,8 +14,8 @@
     kind: Namespace
     name: redhat-lz-admin
   register: r_namespace_creds_exists
-  retries: 6
-  delay: 5
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: r_namespace_creds_exists is success
 
 - name: Create quay-credentials Secret
@@ -33,6 +33,10 @@
       stringData:
         username: "{{ quayUser }}"
         password: "{{ quayPassword }}"
+  register: r_quay_credentials_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_credentials_secret is success
 
 - name: Configure custom TLS certificates
   ansible.builtin.include_tasks: configure_certificates.yaml
