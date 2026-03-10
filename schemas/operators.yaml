@@ -13,6 +13,9 @@ definitions:
       version:
         type: string
         description: Operator version.
+      pinVersion:
+        type: boolean
+        description: If true (default when version is set), emit minVersion/maxVersion in ImageSetConfiguration to mirror only this version. Set false when the exact bundle may not exist in the catalog (e.g. build number changes).
       defaultChannel:
         type: string
         description: Default update channel for the operator.

@@ -25,6 +25,10 @@ mirror:
         - name: {{ operator.name }}
           defaultChannel: {{ operator.defaultChannel }}
           channels: {{ operator.channels }}
+{% if operator.version is defined and operator.pinVersion | default(true) %}
+          minVersion: "{{ operator.version }}"
+          maxVersion: "{{ operator.version }}"
+{% endif %}
 {% endfor %}
         - name: "{{ storage_operators[blockStorageBackend].name }}"
 {% if blockStorageBackend == "odf" %}

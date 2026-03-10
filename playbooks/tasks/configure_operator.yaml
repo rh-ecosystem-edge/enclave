@@ -79,10 +79,12 @@
   delay: "{{ k8s_delay }}"
   until: r_sub_exists is success
 
-- name: "Ensure Subscription exists (Manual)"
+- name: "Ensure Subscription exists (Manual, version pinned)"
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - operator.version is defined
+    - operator.pinVersion | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -98,6 +100,30 @@
         source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
         startingCSV: "{{ operator.csvName | default(operator.name) }}.v{{ operator.version }}"
+  register: r_sub_exists
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_sub_exists is success
+
+- name: "Ensure Subscription exists (Manual, channel latest)"
+  when:
+    - r_sub_check.resources | length == 0
+    - operator.namespace != "openshift-operators"
+    - not (operator.version is defined and operator.pinVersion | default(true) | bool)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        installPlanApproval: Manual
+        channel: "{{ operator.defaultChannel }}"
+        name: "{{ operator.name }}"
+        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        sourceNamespace: openshift-marketplace
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
