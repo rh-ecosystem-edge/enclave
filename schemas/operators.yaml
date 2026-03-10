@@ -13,21 +13,9 @@ definitions:
       version:
         type: string
         description: Operator version.
-      defaultChannel:
+      channel:
         type: string
-        description: Default update channel for the operator.
-      channels:
-        type: array
-        description: Update channels for the operator.
-        items:
-          type: object
-          additionalProperties: false
-          properties:
-            name:
-              type: string
-              description: Update channel name for the operator.
-          required:
-          - name
+        description: Update channel for the operator.
       namespace:
         type: string
         description: Target namespace where the operator will be installed.
@@ -42,8 +30,7 @@ definitions:
         description: Configure operator to watch the entire cluster.
     required:
     - name
-    - defaultChannel
-    - channels
+    - channel
 
 additionalProperties: false
 properties:

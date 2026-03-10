@@ -953,9 +953,7 @@ Operator configuration is stored in the `defaults/` directory:
 ```yaml
 operators:
   - name: operator-name
-    defaultChannel: channel-name
-    channels:
-    - name: channel-name
+    channel: channel-name
     namespace: target-namespace
     source: catalog-source-name
     config:  # Optional operator-specific configuration
@@ -979,27 +977,9 @@ name: lvms-operator
 - Must match the package name in the operator catalog
 - Case-sensitive
 
-#### `defaultChannel`
+#### `channel`
 
-**Description**: Default update channel for the operator.
-
-**Type**: String
-
-**Examples**:
-```yaml
-defaultChannel: stable-4.19    # Stable channel for OCP 4.19
-defaultChannel: latest         # Latest available version
-defaultChannel: release-2.15   # Specific release channel
-```
-
-**Notes**:
-- Different operators use different channel naming
-- Check operator documentation for available channels
-- `latest` may not be stable - prefer versioned channels
-
-#### `channels`
-
-**Description**: Available update channels for the operator.
+**Description**: Update channel for the operator.
 
 **Type**: String
 

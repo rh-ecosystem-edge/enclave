@@ -3,60 +3,46 @@ operators:
 
   - name: quay-operator
     version: 3.15.3
-    defaultChannel: stable-3.15
-    channels:
-    - name: stable-3.15
+    channel: stable-3.15
     namespace: quay-enterprise
     source: cs-redhat-operator-index-v4-20
 
   - name: multicluster-engine
     version: 2.10.1
-    defaultChannel: stable-2.10
-    channels:
-    - name: stable-2.10
+    channel: stable-2.10
     namespace: multicluster-engine
     source: cs-redhat-operator-index-v4-20
 
   - name: advanced-cluster-management
     version: 2.15.1
-    defaultChannel: release-2.15
-    channels:
-    - name: release-2.15
+    channel: release-2.15
     namespace: open-cluster-management
     source: cs-redhat-operator-index-v4-20
 
   - name: cincinnati-operator
     version: 5.0.3
-    defaultChannel: v1
-    channels:
-    - name: v1
+    channel: v1
     namespace: openshift-update-service
     source: cs-redhat-operator-index-v4-20
     csvName: update-service-operator
 
   - name: openshift-gitops-operator
     version: 1.19.2
-    defaultChannel: gitops-1.19
-    channels:
-    - name: gitops-1.19
+    channel: gitops-1.19
     namespace: openshift-gitops-operator
     source: cs-redhat-operator-index-v4-20
     global: true
 
   - name: openshift-pipelines-operator-rh
     version: 1.20.3
-    defaultChannel: pipelines-1.20
-    channels:
-    - name: pipelines-1.20
+    channel: pipelines-1.20
     namespace: openshift-pipelines
     source: cs-redhat-operator-index-v4-20
     global: true
 
   - name: netobserv-operator
     version: 1.11.0
-    defaultChannel: stable
-    channels:
-    - name: stable
+    channel: stable
     namespace: openshift-netobserv-operator
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -64,54 +50,41 @@ operators:
 
   - name: cluster-logging
     version: 6.4.2
-    defaultChannel: stable-6.4
-    channels:
-    - name: stable-6.4
+    channel: stable-6.4
     namespace: openshift-logging
     source: cs-redhat-operator-index-v4-20
 
   - name: loki-operator
     version: 6.4.2
-    defaultChannel: stable-6.4
-    channels:
-    - name: stable-6.4
+    channel: stable-6.4
     namespace: openshift-operators-redhat
     source: cs-redhat-operator-index-v4-20
     global: true
 
   - name: redhat-oadp-operator
     version: 1.5.4
-    defaultChannel: stable
-    channels:
-    - name: stable
+    channel: stable
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-20
     csvName: oadp-operator
 
   - name: openshift-cert-manager-operator
     version: 1.18.1
-    defaultChannel: stable-v1
-    channels:
-    - name: stable-v1
-    - name: stable-v1.18
+    channel: stable-v1
     namespace: cert-manager-operator
     source: cs-redhat-operator-index-v4-20
     csvName: cert-manager-operator
 
   - name: cluster-observability-operator
     version: 1.3.1
-    defaultChannel: stable
-    channels:
-    - name: stable
+    channel: stable
     namespace: openshift-cluster-observability-operator
     source: cs-redhat-operator-index-v4-20
     global: true
 
   - name: openshift-external-secrets-operator
     version: 1.0.0
-    defaultChannel: stable-v1.0
-    channels:
-    - name: stable-v1.0
+    channel: stable-v1.0
     namespace: external-secrets-operator
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -119,17 +92,13 @@ operators:
 
   - name: compliance-operator
     version: 1.8.2
-    defaultChannel: stable
-    channels:
-    - name: stable
+    channel: stable
     namespace: openshift-compliance
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
     version: 4.20.0-202602091941
-    defaultChannel: stable
-    channels:
-    - name: stable
+    channel: stable
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -137,9 +106,7 @@ operators:
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
     version: 2.5.0-0.1772612774
-    defaultChannel: stable-2.5-cluster-scoped
-    channels:
-    - name: stable-2.5-cluster-scoped
+    channel: stable-2.5-cluster-scoped
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
     global: true

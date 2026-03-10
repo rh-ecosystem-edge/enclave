@@ -2,16 +2,12 @@ storage_operators:  # Install operator depending blockStorageBackend variable
   odf:
     name: odf-operator
     version: 4.20.7-rhodf
-    defaultChannel: stable-4.20
-    channels:
-    - name: stable-4.20
+    channel: stable-4.20
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
   lvms:
     name: lvms-operator
     version: 4.20.0
-    defaultChannel: stable-4.20
-    channels:
-    - name: stable-4.20
+    channel: stable-4.20
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
