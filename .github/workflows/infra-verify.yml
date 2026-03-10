@@ -166,8 +166,42 @@ jobs:
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          make clean || true
-          echo "✅ Cleanup complete" >> $GITHUB_STEP_SUMMARY
+          # Run cleanup and capture exit code
+          set +e
+          make clean 2>&1 | tee step-logs/03-cleanup.log
+          CLEANUP_EXIT_CODE=$?
+          set -e
+
+          # Report results
+          if [ $CLEANUP_EXIT_CODE -eq 0 ]; then
+            echo "✅ Cleanup completed successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "Check step-logs/03-cleanup.log for details" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Verify cleanup completion
+        if: always()
+        run: |
+          echo "## Cleanup Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for leftover resources
+          LEFTOVER_POOLS=$(sudo virsh pool-list --all --name | grep "^eci-" || true)
+          LEFTOVER_NETWORKS=$(sudo virsh net-list --all --name | grep "^eci-.*-[pe]$" || true)
+          LEFTOVER_VMS=$(sudo virsh list --all --name | grep "^eci-" || true)
+
+          # Report findings
+          if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
+            echo "✅ No leftover resources detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Leftover resources detected:**" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_POOLS" ] && echo "- **Pools**: $(echo $LEFTOVER_POOLS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_NETWORKS" ] && echo "- **Networks**: $(echo $LEFTOVER_NETWORKS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_VMS" ] && echo "- **VMs**: $(echo $LEFTOVER_VMS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These resources should be cleaned up manually or via the cleanup workflow." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Workflow summary
         if: always()

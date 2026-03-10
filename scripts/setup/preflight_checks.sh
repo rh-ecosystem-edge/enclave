@@ -119,9 +119,19 @@ if [ "$CHECK_SYSTEM_RESOURCES" = true ]; then
     # Check disk space on WORKING_DIR if set, otherwise BASE_WORKING_DIR
     CHECK_DIR="${WORKING_DIR:-${BASE_WORKING_DIR}}"
     if [ -n "$CHECK_DIR" ]; then
-        AVAILABLE_DISK=$(df -h "$CHECK_DIR" 2>/dev/null | awk 'NR==2{print $4}')
-        if [ -n "$AVAILABLE_DISK" ]; then
-            output "${GREEN}✅ Available disk space: $AVAILABLE_DISK${NC}"
+        AVAILABLE_DISK_GB=$(df -B 1G --output=avail "$CHECK_DIR" 2>/dev/null | tail -n 1 | xargs)
+        REQUIRED_DISK_GB=80
+
+        if [ -n "$AVAILABLE_DISK_GB" ]; then
+            if [ "$AVAILABLE_DISK_GB" -ge "$REQUIRED_DISK_GB" ]; then
+                output "${GREEN}✅ Available disk space: ${AVAILABLE_DISK_GB}GB (required: ${REQUIRED_DISK_GB}GB)${NC}"
+            else
+                output "${RED}❌ Insufficient disk space: ${AVAILABLE_DISK_GB}GB available, ${REQUIRED_DISK_GB}GB required${NC}"
+                output ""
+                output "**Action required**: Clean up old resources on the test server"
+                output "Run the cleanup workflow with 'full' level: gh workflow run cleanup.yml --field cleanup-level=full"
+                FAILED=1
+            fi
         fi
     fi
 fi
