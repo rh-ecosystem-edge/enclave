@@ -35,6 +35,18 @@ jobs:
             echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Download Ansible Collections
+        run: |
+          pip install ansible-core
+          mkdir -p collections
+          ansible-galaxy collection download --download-path ./collections --requirements-file ansible_collections.txt
+          cat ansible_collections.sha256 | sha256sum -c
+
       - name: Add version file
         run: |
           echo -n "${{ steps.meta.outputs.tag }}" > .version
