@@ -211,23 +211,20 @@ environment:
 	@echo "Step 2: Configuring dev-scripts environment..."
 	@./scripts/setup/configure_devscripts.sh
 	@echo ""
-	@echo "Step 2a: Cleaning up any leftover storage pools..."
-	@./scripts/cleanup/cleanup_storage_pools.sh || true
-	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
-	@./scripts/utils/with_libvirt_lock.sh sh -c "export CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) && export WORKING_DIR=$(WORKING_DIR) && cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
+	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
 	@echo ""
-	@echo "Step 3a: Verifying networks were created..."
+	@echo "Step 4: Verifying networks were created..."
 	@./scripts/infrastructure/verify_networks.sh
 	@echo ""
-	@echo "Step 4: Starting BMC emulation (sushy-tools)..."
+	@echo "Step 5: Starting BMC emulation (sushy-tools)..."
 	@./scripts/infrastructure/start_sushy_tools.sh
 	@echo ""
-	@echo "Step 5: Generating environment metadata..."
+	@echo "Step 6: Generating environment metadata..."
 	@./scripts/infrastructure/generate_environment_json.sh
 	@echo ""
-	@echo "Step 6: Verifying infrastructure..."
+	@echo "Step 7: Verifying infrastructure..."
 	@$(MAKE) verify
 	@echo ""
 	@echo "=========================================="
