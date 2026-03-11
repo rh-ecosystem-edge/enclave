@@ -97,11 +97,12 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
-    version: metallb-operator.v4.20.0-202602261925
+    version: 4.20.0-202602261925
     channel: stable
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
     global: true
+    csvName: metallb-operator
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
