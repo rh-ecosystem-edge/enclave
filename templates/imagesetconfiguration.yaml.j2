@@ -48,6 +48,7 @@ mirror:
     - name: {{ aap_bootstrap_job.image }}:{{ aap_bootstrap_job.tag }}
 
   blockedimages:
+    - name: registry.redhat.io/3scale-tech-preview/authorino-rhel9-operator
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel8
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel9
     - name: registry.redhat.io/rhoai/odh-codeflare-operator-rhel9
