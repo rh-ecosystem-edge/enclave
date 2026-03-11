@@ -1,0 +1,25 @@
+---
+# Phase 6: AI Enablement Operations
+# This phase enables AI functionality
+
+- name: AI Enablement
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Model configurations
+      ansible.builtin.include_tasks:
+        file: tasks/model_config.yaml
+        apply:
+          tags: model-config
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      tags: model-config
