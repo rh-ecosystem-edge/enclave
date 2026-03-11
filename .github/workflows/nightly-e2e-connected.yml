@@ -15,6 +15,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
 
 # Prevent concurrent nightly runs
 concurrency:
@@ -247,7 +252,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always()
+        if: always() && (github.event_name == 'schedule' || inputs.skip-cleanup != true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -255,6 +260,20 @@ jobs:
           make clean
 
           echo "✅ Infrastructure cleaned up" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## ⚠️ Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**⚠️ IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
 
       - name: Summary
         if: always()
