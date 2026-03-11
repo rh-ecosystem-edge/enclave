@@ -62,7 +62,7 @@ operators:
     global: true
 
   - name: redhat-oadp-operator
-    version: 1.5.4
+    version: 1.5.5
     channel: stable
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-20
@@ -97,7 +97,7 @@ operators:
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
-    version: 4.20.0-202602091941
+    version: metallb-operator.v4.20.0-202602261925
     channel: stable
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
