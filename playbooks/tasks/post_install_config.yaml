@@ -51,8 +51,8 @@
     kind: ClusterOperator
     name: kube-apiserver
   register: co_info
-  retries: 100
-  delay: 5
+  retries: 30
+  delay: 30
   until: >
     (
       (
