@@ -21,22 +21,8 @@ runs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run artifact collection script
+        # The script handles its own warning reporting via annotations and GITHUB_STEP_SUMMARY
         ./scripts/verification/collect_ci_artifacts.sh ${{ inputs.artifact-type }} ${{ inputs.output-directory }} 2>&1 | tee artifact-collection.log
-
-        # Extract and highlight warnings from log
-        # Strip ANSI color codes before grepping to match warn() output
-        WARNING_COUNT=$(sed 's/\x1b\[[0-9;]*m//g' artifact-collection.log | grep -c "^\[WARN\]" 2>/dev/null || echo "0")
-        WARNING_COUNT=$(echo "$WARNING_COUNT" | head -1 | tr -d '\n')  # Ensure single value
-        if [ "${WARNING_COUNT:-0}" -gt 0 ]; then
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ⚠️ Warnings During Collection" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Found $WARNING_COUNT warning(s):" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          # Strip ANSI codes to show clean warning messages
-          sed 's/\x1b\[[0-9;]*m//g' artifact-collection.log | grep "^\[WARN\]" | head -20 >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        fi
 
         # Add summary if available
         if [ -f ${{ inputs.output-directory }}/collection-summary.txt ]; then

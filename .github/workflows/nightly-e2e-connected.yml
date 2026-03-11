@@ -183,7 +183,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Use centralized artifact collection script with full level
-          ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log
+          # Make this best-effort so must-gather runs even if artifact collection fails
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "⚠️ Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
 
           # Also run must-gather if cluster is accessible
           LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)

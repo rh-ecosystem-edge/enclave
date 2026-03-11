@@ -34,7 +34,8 @@ if [ -z "${WORKING_DIR:-}" ]; then
         export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
         info "Reconstructed WORKING_DIR from BASE_WORKING_DIR: ${WORKING_DIR}"
     else
-        warning "Neither WORKING_DIR nor BASE_WORKING_DIR is set - some cleanup may be skipped"
+        error "Neither WORKING_DIR nor BASE_WORKING_DIR is set; cannot safely determine cleanup paths"
+        exit 1
     fi
 fi
 
@@ -59,37 +60,44 @@ EOF
     info "Created minimal config at: $CONFIG_FILE"
 fi
 
-# Run dev-scripts cleanup (with lock to prevent conflicts with parallel runners)
+# Run dev-scripts cleanup and network teardown under lock to prevent conflicts with parallel runners
 # Must run dev-scripts first - it needs networks to exist for proper VM cleanup
-info "Running dev-scripts cleanup..."
+# Then immediately clean up networks under the same lock to prevent races
+info "Running dev-scripts cleanup and network teardown (under lock)..."
 
-if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" sh -c "cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean"; then
-    success "dev-scripts cleanup completed successfully"
+if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" bash -c "
+    # Run dev-scripts cleanup
+    cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean
+    CLEANUP_EXIT=\$?
+
+    # Clean up libvirt networks (after dev-scripts completes, but still under lock)
+    echo 'Cleaning up libvirt networks for cluster: ${CLUSTER_NAME}...'
+    for net in \$(sudo virsh net-list --all --name 2>/dev/null | grep '^${CLUSTER_NAME}-' || true); do
+        echo \"  Found network: \$net\"
+
+        # Disable autostart first
+        if sudo virsh net-info \"\$net\" 2>/dev/null | grep -q 'Autostart:.*yes'; then
+            echo \"    Disabling autostart for: \$net\"
+            sudo virsh net-autostart --disable \"\$net\" 2>/dev/null || echo \"    Failed to disable autostart for \$net\"
+        fi
+
+        # Destroy if active
+        if sudo virsh net-info \"\$net\" 2>/dev/null | grep -q 'Active:.*yes'; then
+            echo \"    Destroying active network: \$net\"
+            sudo virsh net-destroy \"\$net\" 2>/dev/null || echo \"    Failed to destroy \$net\"
+        fi
+
+        # Undefine
+        echo \"    Undefining network: \$net\"
+        sudo virsh net-undefine \"\$net\" 2>/dev/null || echo \"    Failed to undefine \$net\"
+    done
+
+    exit \$CLEANUP_EXIT
+"; then
+    success "dev-scripts cleanup and network teardown completed successfully"
 else
     warning "dev-scripts cleanup reported failure, but continuing..."
 fi
-
-# Clean up libvirt networks (after dev-scripts completes)
-info "Cleaning up libvirt networks for cluster: ${CLUSTER_NAME}..."
-for net in $(sudo virsh net-list --all --name 2>/dev/null | grep "^${CLUSTER_NAME}-" || true); do
-    info "  Found network: $net"
-
-    # Disable autostart first
-    if sudo virsh net-info "$net" 2>/dev/null | grep -q "Autostart:.*yes"; then
-        info "    Disabling autostart for: $net"
-        sudo virsh net-autostart --disable "$net" 2>/dev/null || warning "    Failed to disable autostart for $net"
-    fi
-
-    # Destroy if active
-    if sudo virsh net-info "$net" 2>/dev/null | grep -q "Active:.*yes"; then
-        info "    Destroying active network: $net"
-        sudo virsh net-destroy "$net" 2>/dev/null || warning "    Failed to destroy $net"
-    fi
-
-    # Undefine
-    info "    Undefining network: $net"
-    sudo virsh net-undefine "$net" 2>/dev/null || warning "    Failed to undefine $net"
-done
 
 # Clean up orphaned bridge interfaces
 # Support both old naming (-b, -c) and new naming (-p, -e) during transition
@@ -139,10 +147,10 @@ CLUSTER_DIR_TO_REMOVE=""
 if [ -n "${WORKING_DIR:-}" ]; then
     # Determine the actual cluster directory
     # If WORKING_DIR ends with /clusters/${CLUSTER_NAME}, use it directly
-    # Otherwise, check if BASE_WORKING_DIR is set and use that structure
+    # Otherwise, check if BASE_WORKING_DIR is set and that directory actually exists
     if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
         CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
-    elif [ -n "${BASE_WORKING_DIR:-}" ]; then
+    elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
         CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
     fi
 

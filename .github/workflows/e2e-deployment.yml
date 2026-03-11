@@ -314,22 +314,87 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
 
-          make clean 2>&1 | tee cleanup.log
+          # Create cleanup logs directory
+          mkdir -p cleanup-logs
+
+          # Run cleanup and capture output
+          set +e
+          make clean 2>&1 | tee cleanup-logs/cleanup.log
+          CLEANUP_EXIT_CODE=$?
+          set -e
 
           # Check for any warnings in cleanup output
-          if grep -q "WARNING:" cleanup.log; then
+          if grep -q "WARNING:" cleanup-logs/cleanup.log; then
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "⚠️ Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-            grep "WARNING:" cleanup.log >> $GITHUB_STEP_SUMMARY
+            grep "WARNING:" cleanup-logs/cleanup.log >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          else
+          elif [ $CLEANUP_EXIT_CODE -eq 0 ]; then
             echo "✅ Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "Check cleanup-logs/cleanup.log for details" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Collect post-cleanup state
+        if: always()
+        run: |
+          mkdir -p cleanup-state/libvirt cleanup-state/system
+
+          # Capture post-cleanup system state
+          sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
+          sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
+          sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
+          df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
 
       - name: Verify cleanup
         if: always()
-        run: make verify-cleanup
+        run: |
+          echo "## Cleanup Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check for leftover resources
+          LEFTOVER_POOLS=$(sudo virsh pool-list --all --name | grep "^eci-" || true)
+          LEFTOVER_NETWORKS=$(sudo virsh net-list --all --name | grep "^eci-.*-[pe]$" || true)
+          LEFTOVER_VMS=$(sudo virsh list --all --name | grep "^eci-" || true)
+
+          # Save verification results to file (for artifacts)
+          {
+            echo "=== Cleanup Verification Results ==="
+            echo "Timestamp: $(date -u +"%Y%m%d-%H%M%S")"
+            echo ""
+            if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
+              echo "✅ No leftover resources detected"
+            else
+              echo "⚠️ Leftover resources detected:"
+              [ -n "$LEFTOVER_POOLS" ] && echo "- Pools: $LEFTOVER_POOLS"
+              [ -n "$LEFTOVER_NETWORKS" ] && echo "- Networks: $LEFTOVER_NETWORKS"
+              [ -n "$LEFTOVER_VMS" ] && echo "- VMs: $LEFTOVER_VMS"
+            fi
+          } | tee cleanup-logs/verification.txt
+
+          # Also report to step summary
+          if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
+            echo "✅ No leftover resources detected" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Leftover resources detected:**" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_POOLS" ] && echo "- **Pools**: $(echo $LEFTOVER_POOLS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_NETWORKS" ] && echo "- **Networks**: $(echo $LEFTOVER_NETWORKS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_VMS" ] && echo "- **VMs**: $(echo $LEFTOVER_VMS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These resources should be cleaned up manually or via the cleanup workflow." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload post-cleanup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-cleanup-state-${{ github.run_id }}
+          path: |
+            cleanup-logs/
+            cleanup-state/
+          retention-days: 7
 
       - name: Summary
         if: always()

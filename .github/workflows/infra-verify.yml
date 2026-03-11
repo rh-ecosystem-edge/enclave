@@ -180,6 +180,20 @@ jobs:
             echo "Check step-logs/03-cleanup.log for details" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Collect post-cleanup state
+        if: always()
+        run: |
+          mkdir -p cleanup-state/libvirt cleanup-state/system cleanup-logs
+
+          # Copy cleanup log if it exists
+          [ -f step-logs/03-cleanup.log ] && cp step-logs/03-cleanup.log cleanup-logs/ || true
+
+          # Capture post-cleanup system state
+          sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
+          sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
+          sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
+          df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
+
       - name: Verify cleanup completion
         if: always()
         run: |
@@ -191,7 +205,22 @@ jobs:
           LEFTOVER_NETWORKS=$(sudo virsh net-list --all --name | grep "^eci-.*-[pe]$" || true)
           LEFTOVER_VMS=$(sudo virsh list --all --name | grep "^eci-" || true)
 
-          # Report findings
+          # Save verification results to file (for artifacts)
+          {
+            echo "=== Cleanup Verification Results ==="
+            echo "Timestamp: $(date -u +"%Y%m%d-%H%M%S")"
+            echo ""
+            if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
+              echo "✅ No leftover resources detected"
+            else
+              echo "⚠️ Leftover resources detected:"
+              [ -n "$LEFTOVER_POOLS" ] && echo "- Pools: $LEFTOVER_POOLS"
+              [ -n "$LEFTOVER_NETWORKS" ] && echo "- Networks: $LEFTOVER_NETWORKS"
+              [ -n "$LEFTOVER_VMS" ] && echo "- VMs: $LEFTOVER_VMS"
+            fi
+          } | tee cleanup-logs/verification.txt
+
+          # Also report to step summary
           if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
             echo "✅ No leftover resources detected" >> $GITHUB_STEP_SUMMARY
           else
@@ -202,6 +231,16 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "These resources should be cleaned up manually or via the cleanup workflow." >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Upload post-cleanup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-cleanup-state
+          path: |
+            cleanup-logs/
+            cleanup-state/
+          retention-days: 7
 
       - name: Workflow summary
         if: always()
