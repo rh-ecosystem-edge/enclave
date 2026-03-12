@@ -143,7 +143,7 @@ def init_ns_op_version_map(
         op_csv_name = op.get("csvName")
         ns_op_version_map.setdefault(op_namespace, {})[
             op_csv_name or op_name
-        ] = op_version
+        ] = op_version.replace("+", "-")
 
     return ns_op_version_map
 
