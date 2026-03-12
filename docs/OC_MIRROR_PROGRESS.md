@@ -226,11 +226,31 @@ FATAL
 
 ## Integration with CI/CD
 
-The progress monitor works in CI/CD pipelines but output may be buffered. To see real-time updates in GitHub Actions:
+The progress monitor automatically adapts to the environment:
 
-1. **Use line-buffered mode**: Progress updates flush immediately
-2. **Increase update interval**: Use 10-15 second intervals to reduce log volume
-3. **Check workflow logs**: Updates appear in the "Phase 2: Mirror Registry" step
+### Interactive Terminal (SSH to LZ)
+Shows full visual progress with:
+- Animated progress bar
+- Real-time screen updates
+- Color-coded statistics
+- Auto-refresh every 5 seconds
+
+### CI/CD Environment (GitHub Actions, Jenkins, etc.)
+Shows simplified periodic updates every 30 seconds:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Update #5 - Elapsed: 15m - Progress: 32%
+  Total images: 485 | Completed: 156 | Failed: 3 | Skipped: 12
+  Current: registry.redhat.io/openshift4/ose-oauth-proxy
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**How it works**:
+- Detects if running in terminal (`[ -t 1 ]`)
+- Interactive: Runs full progress monitor
+- Non-interactive (CI): Shows periodic summary updates
+- No "hanging" - you see updates every 30 seconds
 
 ## Configuration
 

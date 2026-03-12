@@ -62,9 +62,56 @@
 
     OC_MIRROR_PID=$!
     echo "OC-Mirror started with PID: $OC_MIRROR_PID"
+    echo "Log file: $LOG_FILE"
 
-    # Start progress monitor (blocks until oc-mirror completes)
-    {{ workingDir }}/enclave/scripts/monitoring/oc_mirror_progress.sh "$LOG_FILE" 5 || true
+    # Start progress monitor only if running in interactive terminal
+    if [ -t 1 ]; then
+      echo "Starting interactive progress monitor..."
+      {{ workingDir }}/enclave/scripts/monitoring/oc_mirror_progress.sh "$LOG_FILE" 5 || true
+    else
+      # In CI/non-interactive: show periodic progress updates
+      echo "=== Running in CI mode - showing periodic updates every 30 seconds ==="
+      echo ""
+      START=$(date +%s)
+      UPDATE_COUNT=0
+
+      while kill -0 $OC_MIRROR_PID 2>/dev/null; do
+        sleep 30
+        UPDATE_COUNT=$((UPDATE_COUNT + 1))
+
+        if [ -f "$LOG_FILE" ]; then
+          NOW=$(date +%s)
+          ELAPSED=$((NOW - START))
+          ELAPSED_MIN=$((ELAPSED / 60))
+
+          TOTAL=$(grep -c "mirroring image docker://" "$LOG_FILE" 2>/dev/null || echo "0")
+          COMPLETED=$(grep -c "successfully mirrored" "$LOG_FILE" 2>/dev/null || echo "0")
+          FAILED=$(grep -c "error mirroring image" "$LOG_FILE" 2>/dev/null || echo "0")
+          SKIPPED=$(grep -c "skipping operator bundle" "$LOG_FILE" 2>/dev/null || echo "0")
+
+          CURRENT=$(tail -10 "$LOG_FILE" 2>/dev/null | grep "mirroring image docker://" | tail -1 | sed 's/.*docker:\/\///' | sed 's/ .*//' || echo "initializing...")
+
+          # Calculate percentage
+          if [ "$TOTAL" -gt 0 ]; then
+            PROGRESS=$(( (COMPLETED + SKIPPED) * 100 / TOTAL ))
+          else
+            PROGRESS=0
+          fi
+
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Update #$UPDATE_COUNT - Elapsed: ${ELAPSED_MIN}m - Progress: ${PROGRESS}%"
+          echo "  Total images: $TOTAL | Completed: $COMPLETED | Failed: $FAILED | Skipped: $SKIPPED"
+          echo "  Current: ${CURRENT:0:80}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo ""
+        else
+          echo "[$(date '+%H:%M:%S')] Waiting for oc-mirror to create log file..."
+        fi
+      done
+
+      echo "=== OC-Mirror process completed ==="
+      echo ""
+    fi
 
     # Wait for oc-mirror to complete and get exit status
     wait $OC_MIRROR_PID
