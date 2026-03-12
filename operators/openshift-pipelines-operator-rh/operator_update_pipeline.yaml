@@ -100,7 +100,7 @@
             script: |
                 #!/bin/bash
 
-                python ./operator_update.py "{{ [storage_operators[blockStorageBackend]] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                python ./operator_update.py "{{ storage_operators[blockStorageBackend] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
                 rc=$?
                 echo -n "${rc}" > "$(results.exit-code.path)"
                 exit "${rc}"
