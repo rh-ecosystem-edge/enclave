@@ -39,11 +39,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate cluster name with date
+      - name: Generate cluster name
         uses: ./.github/actions/setup-cluster-name
         with:
-          naming-strategy: date
+          naming-strategy: hash
           prefix: nd
+          run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
         run: |
