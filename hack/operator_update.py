@@ -32,15 +32,15 @@ def wait_for_resource_status(
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
             print(f"Failed to read {kind}/{name} in namespace {namespace}: {stderr}")
-            time.sleep(10)
-            continue
 
-        current_state = parse_jsonpath_value(result.stdout or "")
-        if current_state == desired_state:
-            print(
-                f"{kind}/{name} in namespace {namespace} has reached status.{status_field}={desired_state}."
-            )
-            return
+        else:
+            current_state = parse_jsonpath_value(result.stdout or "")
+            if current_state == desired_state:
+                print(
+                    f"{kind}/{name} in namespace {namespace} has reached status.{status_field}={desired_state}."
+                )
+                return
+
         if time.time() > timeout:
             raise TimeoutError(
                 f"{kind}/{name} in namespace {namespace} did not reach status.{status_field}={desired_state} within {timeout_minutes} minutes (current state: {current_state})"
