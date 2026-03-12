@@ -92,7 +92,7 @@
             - ReadWriteOnce
           resources:
             requests:
-              storage: 300Gi
+              storage: 600Gi
           storageClassName: lvms-vg1
 
   - name: Patch Quay app deployment to mount registry storage PVC (LVMS)

@@ -28,6 +28,9 @@ definitions:
       csvName:
         type: string
         description: ClusterServiceVersion name for the operator.
+      full_channel:
+        type: boolean
+        description: When true, omit subscription startingCSV so OLM uses channel head. Use for operators whose catalog has build-suffix CSVs to avoid subscription pin drift and ConstraintsNotSatisfiable when the exact CSV is not in the mirrored catalog.
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
