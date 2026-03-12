@@ -21,9 +21,9 @@ on:
         type: boolean
         default: false
 
-# Prevent concurrent nightly runs
+# Allow parallel runs with unique concurrency groups per run
 concurrency:
-  group: nightly-disconnected
+  group: nightly-disconnected-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
