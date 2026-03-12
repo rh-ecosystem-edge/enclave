@@ -16,9 +16,9 @@ on:
         type: boolean
         default: false
 
-# Prevent concurrent nightly runs
+# Allow parallel runs with unique concurrency groups per run
 concurrency:
-  group: nightly-connected
+  group: nightly-connected-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -39,11 +39,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate cluster name with date
+      - name: Generate cluster name with hash
         uses: ./.github/actions/setup-cluster-name
         with:
-          naming-strategy: date
+          naming-strategy: hash
           prefix: nc
+          run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
         run: |
