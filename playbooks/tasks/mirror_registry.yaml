@@ -39,10 +39,49 @@
 - name: Change permissions  # FIXME
   command: chmod u+x {{ workingDir }}/bin/oc-mirror
 
-- name: Start oc-mirror process
+- name: Start oc-mirror process with progress monitoring
   ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc-mirror --v2 --log-level {{ ocMirrorLogLevel }} --authfile "{{ pullSecretPath }}" -c {{ workingDir }}/config/imagesetconfiguration.yaml --workspace file://{{ workingDir }}/config/oc-mirror-workspace docker://{{ quayHostname }}:8443 --dest-tls-verify=false --parallel-images 10 --parallel-layers 10 --retry-times 10 --retry-delay 0 > {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log 2>&1
-  retries: 5
-  delay: 10
+    set -euo pipefail
+
+    # Create log file with timestamp
+    LOG_FILE="{{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log"
+
+    # Start oc-mirror in background
+    {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile "{{ pullSecretPath }}" \
+      -c {{ workingDir }}/config/imagesetconfiguration.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
+      docker://{{ quayHostname }}:8443 \
+      --dest-tls-verify=false \
+      --parallel-images 10 \
+      --parallel-layers 10 \
+      --retry-times 10 \
+      --retry-delay 0 \
+      > "$LOG_FILE" 2>&1 &
+
+    OC_MIRROR_PID=$!
+    echo "OC-Mirror started with PID: $OC_MIRROR_PID"
+
+    # Start progress monitor (blocks until oc-mirror completes)
+    {{ workingDir }}/enclave/scripts/monitoring/oc_mirror_progress.sh "$LOG_FILE" 5 || true
+
+    # Wait for oc-mirror to complete and get exit status
+    wait $OC_MIRROR_PID
+    OC_MIRROR_EXIT=$?
+
+    echo ""
+    echo "OC-Mirror completed with exit code: $OC_MIRROR_EXIT"
+
+    # Show final summary
+    if [ -f "$LOG_FILE" ]; then
+      echo ""
+      echo "=== Final Summary ==="
+      grep -E "Total images|Phase|successfully mirrored|error mirroring" "$LOG_FILE" | tail -20 || true
+    fi
+
+    exit $OC_MIRROR_EXIT
+  retries: 3
+  delay: 30
   register: r_oc_mirror
   until: r_oc_mirror is success
