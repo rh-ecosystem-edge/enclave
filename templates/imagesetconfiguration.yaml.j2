@@ -57,9 +57,6 @@ mirror:
     - name: {{ aap_bootstrap_job.image }}:{{ aap_bootstrap_job.tag }}
 
   blockedimages:
-    - name: registry.redhat.io/3scale-tech-preview/authorino-rhel9-operator
-    - name: registry.redhat.io/3scale-tech-preview/authorino-rhel9
-    - name: registry.redhat.io/3scale-tech-preview/authorino-operator-bundle
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel8
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel9
     - name: registry.redhat.io/rhoai/odh-codeflare-operator-rhel9
@@ -146,4 +143,3 @@ mirror:
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-driver-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-launcher-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-runtime-generic-rhel9
-    - name: nvcr.io/nvidia/gpu-feature-discovery
