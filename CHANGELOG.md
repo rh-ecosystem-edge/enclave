@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Operator version pinning.
+- Optional chunk size parameters support for RadosGW storage.
 
 ### Fixed
 
