@@ -121,9 +121,9 @@ operators:
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
-    version: 2.5.0
+    version: 2.5.0+0.1772612774
     channel: stable-2.5-cluster-scoped
-    init_version: 2.5.0
+    init_version: 2.5.0+0.1768928092
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
     global: true
