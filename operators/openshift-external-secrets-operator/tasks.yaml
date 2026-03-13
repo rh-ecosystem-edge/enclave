@@ -1,3 +1,15 @@
 ---
-- ansible.builtin.debug:
-    msg: "Operator configured properly, no further actions"
+- name: Patch Subscription openshift-external-secrets-operator to set resources
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: subscription
+      metadata:
+        name: openshift-external-secrets-operator
+        namespace: external-secrets-operator
+      spec:
+        config:
+          resources:
+            limits:
+              cpu: 100m
