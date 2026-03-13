@@ -1,12 +1,12 @@
 ---
-- name: "Check if the repository tarball exists"
+- name: "Check if the repository archive file exists"
   ansible.builtin.stat:
     path: "{{ aap_archive_dest }}"
-  register: __aap_archive_tarball_exists
+  register: __aap_archive_file_exists
   failed_when: false
   changed_when: false
 
-# If the repository tarball exists, you can force a refresh by setting aap_archive_refresh to true
+# If the repository archive file exists, you can force a refresh by setting aap_archive_refresh to true
 - name: "Package AAP configuration repository and serve via HTTP"
   block:
     - name: "Create temporary directory"
@@ -21,11 +21,11 @@
         dest: "{{ aap_archive_tmp_dir }}"
         version: "{{ aap_config_version }}"
 
-    - name: "Create tarball of the repository"
+    - name: "Create archive file of the repository"
       ansible.builtin.archive:
-        path: "{{ aap_archive_tmp_dir }}"
+        path: "{{ aap_archive_tmp_dir }}/"
         dest: "{{ aap_archive_dest }}"
-        format: gz
+        format: "{{ aap_archive_format }}"
       ignore_errors: "{{ ansible_check_mode }}"
 
     - name: "Set container recreate flag"
@@ -38,8 +38,8 @@
         state: absent
       no_log: true
   when: >
-    __aap_archive_tarball_exists.stat.exists is false or
-    __aap_archive_tarball_exists.stat.exists is not defined or
+    __aap_archive_file_exists.stat.exists is false or
+    __aap_archive_file_exists.stat.exists is not defined or
     aap_archive_refresh | default(false) | bool
 
 - name: "Run container to publish the AAP configuration"
@@ -57,6 +57,6 @@
     cap_drop:
       - ALL
     volumes:
-      - "{{ aap_archive_dest }}:/opt/app-root/src/aap-config-archive.tar.gz:Z"
+      - "{{ aap_archive_dest }}:/opt/app-root/src/{{ aap_archive_filename }}:Z"
     publish:
       - "{{ aap_archive_port }}:8080"
