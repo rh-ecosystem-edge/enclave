@@ -1,0 +1,147 @@
+---
+# OpenShift AI Installation Playbook
+# Can be run as day0 (during deployment) or day2+ (post-deployment)
+#
+# This playbook installs Red Hat OpenShift AI (RHOAI) and supporting operators:
+#   - rhods-operator (OpenShift AI core)
+#   - nfd (Node Feature Discovery)
+#   - servicemeshoperator3 (Service Mesh)
+#   - openshift-cert-manager-operator (Cert Manager)
+#   - Supporting operators (RHCL, LWS, Limitador, Authorino, DNS)
+#
+# Usage:
+#   Day0 (connected): make deploy-openshift-ai
+#   Day0 (disconnected): make deploy-openshift-ai-disconnected
+#   Day2: make day2-openshift-ai
+#
+# Prerequisites:
+#   - OpenShift cluster deployed and accessible
+#   - config/openshift-ai.yaml created (copy from config/openshift-ai.yaml.example)
+#   - For disconnected: OpenShift AI images mirrored to local registry
+
+- name: Install OpenShift AI
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - "{{ workingDir | default(playbook_dir + '/..') }}/defaults/catalogs.yaml"
+  vars:
+    # Load OpenShift AI configuration if it exists
+    openshift_ai_config_file: "{{ workingDir | default(playbook_dir + '/..') }}/config/openshift-ai.yaml"
+    # Load OpenShift AI defaults
+    openshift_ai_defaults_file: "{{ playbook_dir }}/../operators/openshift-ai/defaults/main.yaml"
+
+  tasks:
+    - name: Load OpenShift AI defaults
+      ansible.builtin.include_vars:
+        file: "{{ openshift_ai_defaults_file }}"
+      tags:
+        - always
+
+    - name: Check if OpenShift AI config exists
+      ansible.builtin.stat:
+        path: "{{ openshift_ai_config_file }}"
+      register: r_config_stat
+      tags:
+        - always
+
+    - name: Load OpenShift AI configuration
+      when: r_config_stat.stat.exists
+      ansible.builtin.include_vars:
+        file: "{{ openshift_ai_config_file }}"
+      tags:
+        - always
+
+    - name: Verify prerequisites
+      ansible.builtin.assert:
+        that:
+          - enable_openshift_ai | default(false)
+          - clusterName is defined
+          - workingDir is defined
+        fail_msg: |
+          Prerequisites not met. Check configuration.
+
+          Required:
+            - enable_openshift_ai: true (in config/openshift-ai.yaml)
+            - clusterName defined
+            - workingDir defined
+
+          To create configuration:
+            cp config/openshift-ai.yaml.example config/openshift-ai.yaml
+      tags:
+        - always
+
+    - name: Mirror OpenShift AI images (disconnected only)
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../operators/openshift-ai/mirror.yaml"
+      tags:
+        - openshift-ai
+        - openshift-ai-mirror
+        - mirror
+
+    - name: Install OpenShift AI operators
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../operators/openshift-ai/tasks.yaml"
+      tags:
+        - openshift-ai
+        - openshift-ai-install
+        - install
+
+    - name: Verify OpenShift AI installation
+      ansible.builtin.shell: |
+        echo "=== OpenShift AI Verification ==="
+        echo ""
+        echo "Namespace:"
+        oc get namespace {{ openshift_ai_namespace | default('redhat-ods-operator') }}
+        echo ""
+        echo "Operator Subscription:"
+        oc get subscription rhods-operator -n {{ openshift_ai_namespace | default('redhat-ods-operator') }}
+        echo ""
+        echo "DataScienceCluster:"
+        oc get datasciencecluster default-dsc
+        echo ""
+        echo "Supporting Operators:"
+        oc get subscription nfd -n openshift-nfd || true
+        oc get subscription servicemeshoperator3 -n openshift-operators || true
+        oc get subscription openshift-cert-manager-operator -n cert-manager-operator || true
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_verify_status
+      tags:
+        - openshift-ai
+        - openshift-ai-verify
+        - verify
+
+    - name: OpenShift AI installation complete
+      ansible.builtin.debug:
+        msg:
+          - "========================================="
+          - "OpenShift AI Installation Complete"
+          - "========================================="
+          - ""
+          - "Cluster: {{ clusterName }}"
+          - "Mode: {{ 'Disconnected' if disconnected | default(true) else 'Connected' }}"
+          - ""
+          - "Installed Components:"
+          - "  - Red Hat OpenShift AI (rhods-operator)"
+          - "  - Node Feature Discovery (nfd)"
+          - "  - Service Mesh (servicemeshoperator3)"
+          - "  - Cert Manager (openshift-cert-manager-operator)"
+          - "  - Supporting operators (RHCL, LWS, Limitador, Authorino, DNS)"
+          - ""
+          - "DataScienceCluster: default-dsc"
+          - "  - KServe: Managed (model serving)"
+          - ""
+          - "Next Steps:"
+          - "  1. Deploy NVIDIA GPU support (optional):"
+          - "     make deploy-nvidia"
+          - ""
+          - "  2. Verify installation:"
+          - "     oc get datasciencecluster"
+          - "     oc get pods -n redhat-ods-applications"
+          - ""
+          - "  3. Deploy AI models using KServe"
+          - ""
+          - "========================================="
+      tags:
+        - openshift-ai
+        - openshift-ai-verify
+        - verify

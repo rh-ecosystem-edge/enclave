@@ -4,12 +4,14 @@ This guide explains how to use the GitHub Actions CI/CD workflows for Enclave La
 
 ## Overview
 
-Enclave Lab uses GitHub Actions for automated testing and validation with four main workflows:
+Enclave Lab uses GitHub Actions for automated testing and validation with these main workflows:
 
 1. **PR Validation** - Fast code quality checks on every PR
 2. **Infrastructure Verification** - Test infrastructure setup
-3. **E2E Connected Mode** - Full cluster deployment testing
-4. **Cleanup** - Infrastructure maintenance
+3. **E2E Connected Mode** - Full cluster deployment testing (nightly)
+4. **E2E Disconnected Mode** - Full disconnected deployment testing (nightly)
+5. **E2E OpenShift AI Module** - Test OpenShift AI optional module (weekly)
+6. **Cleanup** - Infrastructure maintenance
 
 ## Workflow 1: PR Validation
 
@@ -265,6 +267,110 @@ Runs automatically every Sunday at 4 AM UTC with standard cleanup.
 
 ---
 
+## Workflow 5: E2E OpenShift AI Module
+
+**Purpose**: Test OpenShift AI module deployment (Tier 2 optional component)
+
+**Trigger**:
+- Manual dispatch (Actions tab)
+- Weekly schedule (Sunday 7 AM UTC)
+
+**Duration**: ~120-180 minutes
+
+**Runs on**: Self-hosted runner (CI machine)
+
+### What It Does
+
+1. ✅ Create infrastructure and deploy base cluster (Tier 1)
+2. ✅ Verify base cluster deployment
+3. ✅ Deploy OpenShift AI module (Tier 2)
+   - Mirror OpenShift AI images (disconnected mode)
+   - Install RHOAI operator and supporting operators
+   - Create DataScienceCluster
+4. ✅ Verify OpenShift AI deployment
+   - Check all AI operators are running
+   - Verify DataScienceCluster is Ready
+   - Validate supporting operators (NFD, Service Mesh, Cert Manager)
+5. ✅ Collect artifacts and cleanup
+
+### How to Use
+
+**Option 1: Manual Dispatch**
+
+1. Go to Actions tab
+2. Select "E2E - OpenShift AI Module"
+3. Click "Run workflow"
+4. Configure options:
+   - **deployment-mode**: `connected` / `disconnected` (default: `disconnected`)
+   - **send-slack-notification**: Enable Slack notifications
+   - **skip-cleanup**: Keep infrastructure for debugging
+
+**Option 2: Scheduled**
+
+Runs automatically every Sunday at 7 AM UTC for weekly regression testing of the OpenShift AI module.
+
+### Deployment Modes
+
+**Connected Mode**:
+- Faster deployment (~2 hours)
+- Images pulled directly from Red Hat registries
+- Good for quick validation
+
+**Disconnected Mode** (default):
+- Full air-gapped simulation (~3 hours)
+- All images mirrored to local registry
+- Tests complete disconnected workflow
+- Recommended for production validation
+
+### What Gets Tested
+
+**Tier 1 (Base Cluster)**:
+- Standard OpenShift deployment
+- Core operators (ACM, MCE, LVMS/ODF)
+- No AI/GPU operators (validates separation)
+
+**Tier 2 (OpenShift AI Module)**:
+- rhods-operator (Red Hat OpenShift AI)
+- nfd (Node Feature Discovery)
+- servicemeshoperator3 (Service Mesh)
+- openshift-cert-manager-operator (Cert Manager)
+- Supporting operators (RHCL, LWS, Limitador, Authorino, DNS)
+- DataScienceCluster creation with KServe
+
+### Verification Checks
+
+The workflow verifies:
+- ✅ All OpenShift AI namespaces created
+- ✅ All operator subscriptions are healthy
+- ✅ DataScienceCluster status is `Ready`
+- ✅ KServe component is `Managed`
+- ✅ Supporting operators are operational
+
+### Artifacts Collected
+
+- `environment.json` - Infrastructure metadata
+- `deployment.log` - Full deployment logs
+- `kubeconfig` - Cluster access configuration
+- `config/openshift-ai.yaml` - AI module configuration
+- `oc-mirror-openshift-ai.log` - Image mirroring logs (disconnected)
+- OpenShift AI verification output
+
+### Viewing Results
+
+1. Go to Actions tab
+2. Click on the workflow run
+3. Check "Summary" for deployment phases status
+4. Download artifacts for detailed logs
+
+### When to Run
+
+- **Before releasing**: Validate OpenShift AI module works
+- **After AI changes**: Test changes to AI operators or policies
+- **Weekly regression**: Automatic runs ensure AI module stability
+- **Debugging**: Manual runs with skip-cleanup for investigation
+
+---
+
 ## Common Workflows
 
 ### Testing a PR
@@ -273,6 +379,7 @@ Runs automatically every Sunday at 4 AM UTC with standard cleanup.
 2. PR Validation runs automatically
 3. If changes are significant, add `test-infra` label
 4. If testing cluster deployment, add `test-e2e` label
+5. If changing OpenShift AI module, manually run "E2E OpenShift AI Module" workflow
 
 ### Debugging Failed Tests
 

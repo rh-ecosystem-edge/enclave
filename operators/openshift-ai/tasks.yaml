@@ -1,0 +1,119 @@
+---
+# OpenShift AI Installation Tasks
+# Can be run as day0 (during deployment) or day2+ (post-deployment)
+
+- name: Verify OpenShift AI support is enabled
+  ansible.builtin.assert:
+    that:
+      - enable_openshift_ai | default(false)
+    fail_msg: "OpenShift AI support is disabled. Set enable_openshift_ai: true in config to proceed."
+    quiet: true
+
+- name: OpenShift AI deployment information
+  ansible.builtin.debug:
+    msg:
+      - "Installing OpenShift AI (Red Hat OpenShift Data Science)"
+      - "Cluster: {{ clusterName }}"
+      - "Mode: {{ 'Disconnected' if disconnected | default(true) else 'Connected' }}"
+
+- name: Apply OpenShift AI ACM policies
+  ansible.builtin.shell: |
+    oc apply -f {{ workingDir }}/operators/openshift-ai/policies/
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_apply_policies
+  tags:
+    - openshift-ai-install
+
+- name: Wait for OpenShift AI namespace creation
+  ansible.builtin.shell: |
+    oc wait --for=jsonpath='{.status.phase}'=Active namespace/{{ openshift_ai_namespace | default('redhat-ods-operator') }} --timeout=5m
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  retries: 3
+  delay: 10
+  register: r_wait_namespace
+  until: r_wait_namespace is succeeded
+  tags:
+    - openshift-ai-install
+
+- name: Wait for OpenShift AI operator deployment
+  ansible.builtin.shell: |
+    oc wait --for=jsonpath='{.status.state}'=AtLatestKnown \
+      subscription/rhods-operator \
+      -n {{ openshift_ai_namespace | default('redhat-ods-operator') }} \
+      --timeout=10m
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  retries: 5
+  delay: 30
+  register: r_wait_operator
+  until: r_wait_operator is succeeded
+  tags:
+    - openshift-ai-install
+
+- name: Wait for NFD operator deployment
+  ansible.builtin.shell: |
+    oc wait --for=jsonpath='{.status.state}'=AtLatestKnown \
+      subscription/nfd \
+      -n openshift-nfd \
+      --timeout=10m
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  retries: 5
+  delay: 30
+  register: r_wait_nfd
+  until: r_wait_nfd is succeeded
+  tags:
+    - openshift-ai-install
+
+- name: Wait for Service Mesh operator deployment
+  ansible.builtin.shell: |
+    oc wait --for=jsonpath='{.status.state}'=AtLatestKnown \
+      subscription/servicemeshoperator3 \
+      -n openshift-operators \
+      --timeout=10m
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  retries: 5
+  delay: 30
+  register: r_wait_servicemesh
+  until: r_wait_servicemesh is succeeded
+  tags:
+    - openshift-ai-install
+
+- name: Wait for DataScienceCluster to be ready
+  ansible.builtin.shell: |
+    oc wait --for=condition=Ready datasciencecluster/default-dsc --timeout=20m
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  retries: 3
+  delay: 60
+  register: r_wait_dsc
+  until: r_wait_dsc is succeeded
+  tags:
+    - openshift-ai-install
+
+- name: Verify OpenShift AI installation
+  ansible.builtin.shell: |
+    oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}'
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_dsc_status
+  tags:
+    - openshift-ai-verify
+
+- name: OpenShift AI installation summary
+  ansible.builtin.debug:
+    msg:
+      - "OpenShift AI installed successfully"
+      - "Cluster: {{ clusterName }}"
+      - "DataScienceCluster status: {{ r_dsc_status.stdout }}"
+      - "Namespace: {{ openshift_ai_namespace | default('redhat-ods-operator') }}"
+      - ""
+      - "Next steps:"
+      - "  - Deploy NVIDIA GPU support: make deploy-nvidia"
+      - "  - Access OpenShift AI console (if dashboard enabled)"
+      - "  - Deploy AI models using KServe"
+  tags:
+    - openshift-ai-verify
