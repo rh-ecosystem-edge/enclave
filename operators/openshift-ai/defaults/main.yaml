@@ -1,0 +1,37 @@
+---
+# OpenShift AI Module Default Configuration
+
+# Enable/disable OpenShift AI support
+enable_openshift_ai: false
+
+# OpenShift AI operator configuration
+openshift_ai_namespace: "redhat-ods-operator"
+openshift_ai_operator_channel: "fast-3.x"
+openshift_ai_operator_version: "3.3.0"
+openshift_ai_operator_min_version: "3.0.0"
+
+# DataScienceCluster configuration
+# Only KServe is enabled by default (minimal AI inference setup)
+openshift_ai_components:
+  codeflare: "Removed"
+  dashboard: "Removed"
+  datasciencepipelines: "Removed"
+  kserve: "Managed"
+  kueue: "Removed"
+  modelmeshserving: "Removed"
+  ray: "Removed"
+  trainingoperator: "Removed"
+  trustyai: "Removed"
+  workbenches: "Removed"
+
+# Supporting operators for OpenShift AI
+# These are required for full AI functionality
+openshift_ai_support_operators:
+  nfd_enabled: true  # Node Feature Discovery - required for GPU detection
+  servicemesh_enabled: true  # Service Mesh - required for KServe
+  cert_manager_enabled: true  # Cert Manager - required for TLS
+  rhcl_enabled: true  # Red Hat Connectivity Link
+  leader_worker_set_enabled: true  # Leader Worker Set - for distributed workloads
+  limitador_enabled: true  # Rate limiting
+  authorino_enabled: true  # Authorization
+  dns_operator_enabled: true  # DNS management

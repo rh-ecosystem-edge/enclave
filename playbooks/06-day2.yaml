@@ -73,14 +73,9 @@
         loop_var: openshift_version
       tags: acm-policy-catalogsources
 
-    - name: Model configurations
-      ansible.builtin.include_tasks:
-        file: tasks/model_config.yaml
-        apply:
-          tags: model-config
-          environment:
-            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-      tags: model-config
+    # Model configurations moved to optional OpenShift AI module
+    # See: operators/openshift-ai/ and playbooks/08-openshift-ai.yaml
+    # To deploy: make deploy-openshift-ai or make day2-openshift-ai
 
     - name: Kubevirt - VMaaS
       ansible.builtin.include_tasks:

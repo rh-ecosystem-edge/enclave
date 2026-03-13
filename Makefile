@@ -85,6 +85,12 @@ help:
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
 	@echo ""
+	@echo "Optional Modules (Tier 2):"
+	@echo "  make deploy-openshift-ai              - Deploy OpenShift AI (connected mode)"
+	@echo "  make deploy-openshift-ai-disconnected - Deploy OpenShift AI (disconnected mode)"
+	@echo "  make day2-openshift-ai                - Deploy OpenShift AI (day 2 operations)"
+	@echo "  make mirror-openshift-ai              - Mirror OpenShift AI images only"
+	@echo ""
 	@echo "Required configuration for CI targets:"
 	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
 	@echo ""
@@ -334,6 +340,57 @@ deploy-cluster-discovery:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
+
+# OpenShift AI Module (Optional - Tier 2)
+# Deploy OpenShift AI and supporting operators
+# Prerequisites: OpenShift cluster deployed
+deploy-openshift-ai:
+	@echo "=========================================="
+	@echo "Deploying OpenShift AI (Connected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "$(WORKING_DIR)/config/openshift-ai.yaml" ]; then \
+		echo "ERROR: config/openshift-ai.yaml not found"; \
+		echo "Copy config/openshift-ai.yaml.example to config/openshift-ai.yaml and customize"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml disconnected=false
+
+deploy-openshift-ai-disconnected:
+	@echo "=========================================="
+	@echo "Deploying OpenShift AI (Disconnected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "$(WORKING_DIR)/config/openshift-ai.yaml" ]; then \
+		echo "ERROR: config/openshift-ai.yaml not found"; \
+		echo "Copy config/openshift-ai.yaml.example to config/openshift-ai.yaml and customize"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml disconnected=true
+
+day2-openshift-ai:
+	@echo "=========================================="
+	@echo "Installing OpenShift AI (Day 2 Operations)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "$(WORKING_DIR)/config/openshift-ai.yaml" ]; then \
+		echo "ERROR: config/openshift-ai.yaml not found"; \
+		echo "Copy config/openshift-ai.yaml.example to config/openshift-ai.yaml and customize"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml
+
+mirror-openshift-ai:
+	@echo "=========================================="
+	@echo "Mirroring OpenShift AI Images"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "$(WORKING_DIR)/config/openshift-ai.yaml" ]; then \
+		echo "ERROR: config/openshift-ai.yaml not found"; \
+		echo "Copy config/openshift-ai.yaml.example to config/openshift-ai.yaml and customize"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml --tags openshift-ai-mirror
 
 # Verify infrastructure
 verify:

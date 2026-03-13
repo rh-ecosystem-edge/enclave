@@ -1,0 +1,12 @@
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: openshift-ai-configuration
+  namespace: openshift-acm-policies
+spec:
+  clusterSelector:
+    matchExpressions:
+    - key: sovcloud.open-cluster-management.io/openshift-ai
+      operator: In
+      values:
+      - "true"
