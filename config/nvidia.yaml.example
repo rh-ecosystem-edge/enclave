@@ -1,0 +1,73 @@
+---
+# NVIDIA GPU Support Configuration
+# Copy to config/nvidia.yaml and customize
+
+# Enable NVIDIA GPU support
+enable_nvidia: true
+
+# NVIDIA support mode
+# - certified: Red Hat certified GPU operator (default, recommended)
+# - community: Community GPU operator from OperatorHub (no Red Hat support)
+# - vendor-managed: No operator; facility provider manages GPUs
+nvidia_support_mode: "certified"
+
+# GPU Operator configuration (certified mode)
+nvidia_gpu_operator_version: "25.10.1"
+nvidia_gpu_operator_channel: "v25.10"
+nvidia_gpu_operator_min_version: "25.10.0"
+nvidia_gpu_operator_namespace: "nvidia-gpu-operator"
+
+# OpenShift AI dependency
+# NVIDIA requires OpenShift AI to be deployed first
+# Set to false only if you have a specific reason to skip this check
+nvidia_require_openshift_ai: true
+
+# User disclaimer
+# Set to false to skip interactive disclaimer prompt (automated deployments)
+# WARNING: By setting this to false, you accept the NVIDIA EULA and all terms
+nvidia_show_disclaimer: true
+
+# NVIDIA driver configuration
+nvidia_driver_enabled: true
+nvidia_driver_use_nvidia_driver_crd: false
+nvidia_driver_auto_upgrade: true
+nvidia_driver_kernel_module_type: "auto"  # Options: auto, nv_peer_mem, nvidia-peermem
+nvidia_driver_max_parallel_upgrades: 1
+nvidia_driver_max_unavailable: "25%"
+
+# NVIDIA licensing
+# NLS (NVIDIA License System) for enterprise GPU features
+nvidia_licensing_nls_enabled: true
+
+# NVIDIA feature enablement
+nvidia_dcgm_enabled: true                       # Data Center GPU Manager
+nvidia_dcgm_exporter_enabled: true              # Prometheus metrics exporter
+nvidia_mig_manager_enabled: true                # Multi-Instance GPU manager
+nvidia_gpu_feature_discovery_enabled: true      # GPU feature discovery
+nvidia_device_plugin_enabled: true              # Kubernetes device plugin
+nvidia_toolkit_enabled: true                    # NVIDIA Container Toolkit
+nvidia_vgpu_manager_enabled: false              # Virtual GPU manager
+nvidia_vgpu_device_manager_enabled: true        # vGPU device manager
+nvidia_sandbox_device_plugin_enabled: true      # Sandbox workload support
+nvidia_vfio_manager_enabled: true               # VFIO (SR-IOV) manager
+nvidia_gds_enabled: false                       # GPUDirect Storage
+nvidia_gdrcopy_enabled: false                   # GPUDirect RDMA Copy
+
+# ClusterPolicy configuration
+nvidia_cluster_policy_name: "gpu-cluster-policy"
+nvidia_default_runtime: "crio"                  # Container runtime
+nvidia_use_ocp_driver_toolkit: true             # Use OpenShift driver toolkit
+nvidia_cdi_enabled: true                        # Container Device Interface
+nvidia_sandbox_workloads_enabled: false         # Sandbox workloads (Kata, etc.)
+nvidia_sandbox_workloads_default: "container"   # Default: container
+nvidia_mig_strategy: "single"                   # MIG strategy: single or mixed
+nvidia_daemonsets_update_strategy: "RollingUpdate"
+nvidia_daemonsets_rolling_update_max_unavailable: "1"
+
+# Advanced: Override specific configurations
+# Uncomment and customize as needed
+# nvidia_driver_repo_config_name: ""
+# nvidia_driver_cert_config_name: ""
+# nvidia_driver_licensing_config_secret: ""
+# nvidia_dcgm_exporter_config_name: ""
+# nvidia_device_plugin_config_name: ""

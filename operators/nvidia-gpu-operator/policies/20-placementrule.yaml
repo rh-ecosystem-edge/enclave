@@ -1,0 +1,12 @@
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: nvidia-gpu-operator
+  namespace: openshift-acm-policies
+spec:
+  clusterSelector:
+    matchExpressions:
+    - key: sovcloud.open-cluster-management.io/nvidia-gpu
+      operator: In
+      values:
+      - "true"

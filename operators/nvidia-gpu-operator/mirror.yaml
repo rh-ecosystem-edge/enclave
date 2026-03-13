@@ -1,0 +1,52 @@
+---
+# NVIDIA GPU Operator Image Mirroring for Disconnected Environments
+# Mirrors NVIDIA GPU operator and driver images to local Quay registry
+
+- name: Generate NVIDIA imagesetconfiguration
+  when: disconnected | default(true)
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/imagesetconfiguration-nvidia.yaml.j2"
+    dest: "{{ workingDir }}/config/imagesetconfiguration-nvidia.yaml"
+  tags:
+    - nvidia-mirror
+
+- name: Mirror NVIDIA GPU operator images
+  when: disconnected | default(true)
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel | default('info') }} \
+      --authfile {{ pullSecretPath }} \
+      -c {{ workingDir }}/config/imagesetconfiguration-nvidia.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
+      docker://{{ quayHostname }}:8443 \
+      --dest-tls-verify=false \
+      --parallel-images 10 \
+      --parallel-layers 10 \
+      --retry-times 10 \
+      --retry-delay 0 \
+      > {{ workingDir }}/logs/oc-mirror-nvidia.$(date +%s).log 2>&1
+  retries: 5
+  delay: 10
+  register: r_oc_mirror_nvidia
+  until: r_oc_mirror_nvidia is succeeded
+  tags:
+    - nvidia-mirror
+
+- name: NVIDIA mirror summary
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════════"
+      - "✅ NVIDIA GPU Operator Images Mirrored Successfully"
+      - "═══════════════════════════════════════════════════════════════"
+      - ""
+      - "Mirror log: {{ workingDir }}/logs/oc-mirror-nvidia.*.log"
+      - ""
+      - "Operators mirrored:"
+      - "  - gpu-operator-certified (v{{ nvidia_gpu_operator_channel | default('25.10') }})"
+      - ""
+      - "Registry: {{ quayHostname }}:8443"
+      - "Catalog: certified-operator-index:v4.20"
+      - ""
+      - "═══════════════════════════════════════════════════════════════"
+  tags:
+    - nvidia-mirror

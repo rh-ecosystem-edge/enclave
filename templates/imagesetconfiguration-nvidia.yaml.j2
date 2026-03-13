@@ -1,0 +1,25 @@
+---
+# NVIDIA GPU Operator Image Set Configuration
+# Mirrors NVIDIA GPU operator for disconnected deployments
+
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
+      packages:
+        # NVIDIA GPU Operator (Red Hat Certified)
+        - name: gpu-operator-certified
+          defaultChannel: {{ nvidia_gpu_operator_channel | default('v25.10') }}
+          channels:
+            - name: {{ nvidia_gpu_operator_channel | default('v25.10') }}
+              minVersion: {{ nvidia_gpu_operator_min_version | default('25.10.0') }}
+              maxVersion: {{ nvidia_gpu_operator_version | default('25.10.1') }}
+
+  # Additional NVIDIA images that may be needed
+  # These are typically pulled by the GPU operator itself
+  # Uncomment if you need to pre-mirror them
+  # additionalImages:
+  #   - name: nvcr.io/nvidia/gpu-feature-discovery
+  #   - name: nvcr.io/nvidia/gpu-operator
+  #   - name: nvcr.io/nvidia/driver

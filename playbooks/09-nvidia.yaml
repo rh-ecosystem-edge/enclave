@@ -1,0 +1,169 @@
+---
+# NVIDIA GPU Support Installation Playbook
+# Can be run as day0 (during deployment) or day2+ (post-deployment)
+#
+# IMPORTANT: This playbook requires OpenShift AI to be deployed first
+# (see playbooks/08-openshift-ai.yaml for OpenShift AI deployment)
+#
+# Usage:
+#   Day0 (connected): make deploy-nvidia
+#   Day0 (disconnected): make deploy-nvidia-disconnected
+#   Day2: make day2-nvidia
+#
+# Prerequisites:
+#   - OpenShift cluster deployed and accessible
+#   - OpenShift AI deployed (playbooks/08-openshift-ai.yaml)
+#   - config/nvidia.yaml created (copy from config/nvidia.yaml.example)
+#   - For disconnected: NVIDIA images mirrored to local registry
+#   - GPU-capable hardware (or ability to label nodes for testing)
+
+- name: Install NVIDIA GPU Support
+  hosts: localhost
+  gather_facts: true
+  vars_files:
+    - "{{ workingDir | default(playbook_dir + '/..') }}/defaults/catalogs.yaml"
+  vars:
+    # Load NVIDIA configuration if it exists
+    nvidia_config_file: "{{ workingDir | default(playbook_dir + '/..') }}/config/nvidia.yaml"
+    # Load NVIDIA defaults
+    nvidia_defaults_file: "{{ playbook_dir }}/../operators/nvidia-gpu-operator/defaults/main.yaml"
+
+  tasks:
+    - name: Load NVIDIA defaults
+      ansible.builtin.include_vars:
+        file: "{{ nvidia_defaults_file }}"
+      tags:
+        - always
+
+    - name: Check if NVIDIA config exists
+      ansible.builtin.stat:
+        path: "{{ nvidia_config_file }}"
+      register: r_nvidia_config_stat
+      tags:
+        - always
+
+    - name: Load NVIDIA configuration
+      when: r_nvidia_config_stat.stat.exists
+      ansible.builtin.include_vars:
+        file: "{{ nvidia_config_file }}"
+      tags:
+        - always
+
+    - name: Verify prerequisites
+      ansible.builtin.assert:
+        that:
+          - enable_nvidia | default(false)
+          - clusterName is defined
+          - workingDir is defined
+        fail_msg: |
+          ═══════════════════════════════════════════════════════════════
+          Prerequisites Not Met
+          ═══════════════════════════════════════════════════════════════
+
+          Required configuration:
+            - enable_nvidia: true (in config/nvidia.yaml)
+            - clusterName defined
+            - workingDir defined
+
+          To create configuration:
+            cp config/nvidia.yaml.example config/nvidia.yaml
+            # Edit config/nvidia.yaml as needed
+
+          IMPORTANT: OpenShift AI must be deployed first!
+            make deploy-openshift-ai
+
+          ═══════════════════════════════════════════════════════════════
+      tags:
+        - always
+
+    - name: Mirror NVIDIA images (disconnected only)
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../operators/nvidia-gpu-operator/mirror.yaml"
+      tags:
+        - nvidia
+        - nvidia-mirror
+        - mirror
+
+    - name: Install NVIDIA GPU operator
+      ansible.builtin.include_tasks: "{{ playbook_dir }}/../operators/nvidia-gpu-operator/tasks.yaml"
+      tags:
+        - nvidia
+        - nvidia-install
+        - install
+
+    - name: Verify NVIDIA installation
+      ansible.builtin.shell: |
+        echo "═══════════════════════════════════════════════════════════════"
+        echo "NVIDIA GPU Operator Verification"
+        echo "═══════════════════════════════════════════════════════════════"
+        echo ""
+        echo "Namespace:"
+        oc get namespace {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+        echo ""
+        echo "GPU Operator Subscription:"
+        oc get subscription gpu-operator-certified -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+        echo ""
+        echo "ClusterPolicy:"
+        oc get clusterpolicy {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }}
+        echo ""
+        echo "GPU Operator Pods:"
+        oc get pods -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+        echo ""
+        echo "ClusterPolicy Status:"
+        oc get clusterpolicy {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }} -o jsonpath='{.status.state}'
+        echo ""
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_nvidia_verify_status
+      tags:
+        - nvidia
+        - nvidia-verify
+        - verify
+
+    - name: NVIDIA installation complete
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════════"
+          - "✅ NVIDIA GPU Support Installation Complete"
+          - "═══════════════════════════════════════════════════════════════"
+          - ""
+          - "Cluster: {{ clusterName }}"
+          - "Mode: {{ 'Disconnected' if disconnected | default(true) else 'Connected' }}"
+          - "Support Mode: {{ nvidia_support_mode | default('certified') }}"
+          - ""
+          - "Installed Components:"
+          - "  - NVIDIA GPU Operator (gpu-operator-certified)"
+          - "  - ClusterPolicy: {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }}"
+          - "  - Namespace: {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}"
+          - ""
+          - "Features Enabled:"
+          - "  - DCGM (GPU Manager): {{ nvidia_dcgm_enabled | default(true) }}"
+          - "  - DCGM Exporter (Metrics): {{ nvidia_dcgm_exporter_enabled | default(true) }}"
+          - "  - MIG Manager: {{ nvidia_mig_manager_enabled | default(true) }}"
+          - "  - GPU Feature Discovery: {{ nvidia_gpu_feature_discovery_enabled | default(true) }}"
+          - "  - Device Plugin: {{ nvidia_device_plugin_enabled | default(true) }}"
+          - ""
+          - "Next Steps:"
+          - "  1. Label GPU nodes (if not auto-detected):"
+          - "     oc label node <node-name> nvidia.com/gpu=true"
+          - ""
+          - "  2. Verify GPU nodes:"
+          - "     oc get nodes -l nvidia.com/gpu=true"
+          - ""
+          - "  3. Check GPU operator status:"
+          - "     oc get pods -n nvidia-gpu-operator"
+          - "     oc get clusterpolicy gpu-cluster-policy"
+          - ""
+          - "  4. Deploy GPU workloads:"
+          - "     - Use OpenShift AI for ML/AI workloads"
+          - "     - Create pods with nvidia.com/gpu resource requests"
+          - ""
+          - "  5. Monitor GPU usage:"
+          - "     - DCGM metrics available in Prometheus"
+          - "     - Check node GPU capacity: oc describe node <node>"
+          - ""
+          - "═══════════════════════════════════════════════════════════════"
+      tags:
+        - nvidia
+        - nvidia-verify
+        - verify

@@ -1,0 +1,109 @@
+---
+# NVIDIA GPU Operator User Interactive Disclaimer
+# Prompts user for confirmation before proceeding with installation
+
+- name: Display NVIDIA installation disclaimer
+  when:
+    - nvidia_show_disclaimer | default(true)
+    - ansible_check_mode is not defined or not ansible_check_mode
+  block:
+    - name: Pause for user confirmation
+      ansible.builtin.pause:
+        prompt: |
+
+          ═══════════════════════════════════════════════════════════════
+          NVIDIA GPU OPERATOR INSTALLATION DISCLAIMER
+          ═══════════════════════════════════════════════════════════════
+
+          You are about to install NVIDIA GPU operator for OpenShift.
+
+          IMPORTANT INFORMATION:
+
+          1. SUPPORT MODEL
+             - Certified Mode: Red Hat provides support for GPU operator
+             - Community Mode: Community support only (no Red Hat support)
+             - Vendor-Managed: Your facility provider manages GPU drivers
+
+             Current mode: {{ nvidia_support_mode | default('certified') }}
+
+          2. LICENSING
+             - NVIDIA drivers are subject to NVIDIA End User License Agreement
+             - Review license at: https://www.nvidia.com/en-us/drivers/nvidia-license/
+             - You must accept the NVIDIA EULA to proceed
+
+          3. PREREQUISITES (Verified)
+             - OpenShift AI deployed: ✓
+             - Cluster ready for GPU workloads
+             - Nodes can be labeled: nvidia.com/gpu=true
+
+          4. CONFIGURATION
+             - GPU Operator Version: {{ nvidia_gpu_operator_version | default('25.10.1') }}
+             - Channel: {{ nvidia_gpu_operator_channel | default('v25.10') }}
+             - Auto-upgrade: {{ nvidia_driver_auto_upgrade | default(true) }}
+             - Kernel module type: {{ nvidia_driver_kernel_module_type | default('auto') }}
+
+          5. IMPACT
+             - Installation may trigger node reboots for driver loading
+             - GPU workloads will be unavailable during driver updates
+             - Estimated installation time: 10-20 minutes per node
+             - ClusterPolicy will be created and enforced
+
+          6. FEATURES ENABLED
+             - DCGM (Data Center GPU Manager): {{ nvidia_dcgm_enabled | default(true) }}
+             - DCGM Exporter (Metrics): {{ nvidia_dcgm_exporter_enabled | default(true) }}
+             - MIG Manager: {{ nvidia_mig_manager_enabled | default(true) }}
+             - GPU Feature Discovery: {{ nvidia_gpu_feature_discovery_enabled | default(true) }}
+             - Device Plugin: {{ nvidia_device_plugin_enabled | default(true) }}
+
+          BY PROCEEDING, YOU ACKNOWLEDGE THAT YOU:
+          - Have read and accept the NVIDIA End User License Agreement
+          - Understand the support model for your chosen mode ({{ nvidia_support_mode | default('certified') }})
+          - Have the necessary GPU hardware or can label nodes appropriately
+          - Accept that nodes may reboot during driver installation
+          - Understand this is production-grade software that modifies cluster state
+
+          ═══════════════════════════════════════════════════════════════
+
+          Do you want to proceed with NVIDIA GPU operator installation?
+
+          Type 'yes' to continue, or 'no' to cancel:
+      register: r_nvidia_disclaimer_response
+      tags:
+        - nvidia-disclaimer
+
+    - name: Verify user acceptance
+      ansible.builtin.assert:
+        that:
+          - r_nvidia_disclaimer_response.user_input | lower == 'yes'
+        fail_msg: |
+          ═══════════════════════════════════════════════════════════════
+          NVIDIA GPU Operator Installation Cancelled
+          ═══════════════════════════════════════════════════════════════
+
+          You chose not to proceed with NVIDIA GPU operator installation.
+
+          To install later, run:
+            make deploy-nvidia         (connected mode)
+            make day2-nvidia           (day2 operations)
+
+          To skip the disclaimer in future runs, set in config/nvidia.yaml:
+            nvidia_show_disclaimer: false
+
+          ═══════════════════════════════════════════════════════════════
+        success_msg: |
+          ═══════════════════════════════════════════════════════════════
+          ✅ User Accepted NVIDIA Installation Disclaimer
+          ═══════════════════════════════════════════════════════════════
+
+          Proceeding with NVIDIA GPU operator installation...
+      tags:
+        - nvidia-disclaimer
+
+- name: Disclaimer skipped (automated mode)
+  when: not (nvidia_show_disclaimer | default(true)) or (ansible_check_mode is defined and ansible_check_mode)
+  ansible.builtin.debug:
+    msg:
+      - "Disclaimer skipped (nvidia_show_disclaimer: false or check mode)"
+      - "Proceeding with NVIDIA GPU operator installation..."
+  tags:
+    - nvidia-disclaimer
