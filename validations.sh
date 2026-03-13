@@ -286,6 +286,24 @@ if [[ "$quay_backend" == "RadosGWStorage" ]]; then
     fi
     s3_endpoint=${s3_protocol}://${s3_hostname}:${s3_port}
 
+    min_chunk=$(getValue .quayBackendRGWConfiguration.minimum_chunk_size_mb)
+    if [[ -n "$min_chunk" && "$min_chunk" != "null" ]]; then
+        if ! [[ "$min_chunk" =~ ^[0-9]+$ ]]; then
+            validation fail minimum_chunk_size_mb "minimum_chunk_size_mb must be an integer, got: $min_chunk"
+        else
+            validation pass minimum_chunk_size_mb "minimum_chunk_size_mb is a valid integer ($min_chunk)"
+        fi
+    fi
+
+    max_chunk=$(getValue .quayBackendRGWConfiguration.maximum_chunk_size_mb)
+    if [[ -n "$max_chunk" && "$max_chunk" != "null" ]]; then
+        if ! [[ "$max_chunk" =~ ^[0-9]+$ ]]; then
+            validation fail maximum_chunk_size_mb "maximum_chunk_size_mb must be an integer, got: $max_chunk"
+        else
+            validation pass maximum_chunk_size_mb "maximum_chunk_size_mb is a valid integer ($max_chunk)"
+        fi
+    fi
+
     s3_endpoint_curl_return=$(curl -o /dev/null -s -w '%{http_code}' $s3_endpoint)
     if [[ \
             $s3_endpoint_curl_return != 200 && \
