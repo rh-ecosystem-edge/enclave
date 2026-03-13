@@ -4,7 +4,7 @@
     state: patched
     definition:
       apiVersion: operators.coreos.com/v1alpha1
-      kind: subscription
+      kind: Subscription
       metadata:
         name: openshift-external-secrets-operator
         namespace: external-secrets-operator
@@ -13,3 +13,7 @@
           resources:
             limits:
               cpu: 100m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 1Gi
