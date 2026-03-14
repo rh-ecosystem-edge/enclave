@@ -49,7 +49,7 @@ spec:
               name: gpu-operator-certified
               namespace: nvidia-gpu-operator
             spec:
-              channel: v25.10
+              channel: {{ nvidia_gpu_operator_channel }}
               installPlanApproval: Automatic
               name: gpu-operator-certified
               source: {{ mirror_certified_rh_operator_catalog }}
@@ -64,27 +64,27 @@ spec:
               name: gpu-cluster-policy
             spec:
               operator:
-                defaultRuntime: crio
-                use_ocp_driver_toolkit: true
+                defaultRuntime: {{ nvidia_default_runtime }}
+                use_ocp_driver_toolkit: {{ nvidia_use_ocp_driver_toolkit | lower }}
                 initContainer: {}
               cdi:
-                enabled: true
+                enabled: {{ nvidia_cdi_enabled | lower }}
               sandboxWorkloads:
-                enabled: false
-                defaultWorkload: container
+                enabled: {{ nvidia_sandbox_workloads_enabled | lower }}
+                defaultWorkload: {{ nvidia_sandbox_workloads_default }}
               driver:
-                enabled: true
-                useNvidiaDriverCRD: false
-                kernelModuleType: auto
+                enabled: {{ nvidia_driver_enabled | lower }}
+                useNvidiaDriverCRD: {{ nvidia_driver_use_nvidia_driver_crd | lower }}
+                kernelModuleType: {{ nvidia_driver_kernel_module_type }}
                 upgradePolicy:
-                  autoUpgrade: true
+                  autoUpgrade: {{ nvidia_driver_auto_upgrade | lower }}
                   drain:
                     deleteEmptyDir: false
                     enable: false
                     force: false
                     timeoutSeconds: 300
-                  maxParallelUpgrades: 1
-                  maxUnavailable: 25%
+                  maxParallelUpgrades: {{ nvidia_driver_max_parallel_upgrades }}
+                  maxUnavailable: {{ nvidia_driver_max_unavailable }}
                   podDeletion:
                     deleteEmptyDir: false
                     force: false
@@ -96,53 +96,53 @@ spec:
                 certConfig:
                   name: ''
                 licensingConfig:
-                  nlsEnabled: true
+                  nlsEnabled: {{ nvidia_licensing_nls_enabled | lower }}
                   secretName: ''
                 virtualTopology:
                   config: ''
                 kernelModuleConfig:
                   name: ''
               dcgmExporter:
-                enabled: true
+                enabled: {{ nvidia_dcgm_exporter_enabled | lower }}
                 config:
                   name: ''
                 serviceMonitor:
-                  enabled: true
+                  enabled: {{ nvidia_dcgm_exporter_enabled | lower }}
               dcgm:
-                enabled: true
+                enabled: {{ nvidia_dcgm_enabled | lower }}
               daemonsets:
-                updateStrategy: RollingUpdate
+                updateStrategy: {{ nvidia_daemonsets_update_strategy }}
                 rollingUpdate:
-                  maxUnavailable: '1'
+                  maxUnavailable: '{{ nvidia_daemonsets_rolling_update_max_unavailable }}'
               devicePlugin:
-                enabled: true
+                enabled: {{ nvidia_device_plugin_enabled | lower }}
                 config:
                   name: ''
                   default: ''
                 mps:
                   root: /run/nvidia/mps
               gfd:
-                enabled: true
+                enabled: {{ nvidia_gpu_feature_discovery_enabled | lower }}
               migManager:
-                enabled: true
+                enabled: {{ nvidia_mig_manager_enabled | lower }}
               nodeStatusExporter:
                 enabled: true
               mig:
-                strategy: single
+                strategy: {{ nvidia_mig_strategy }}
               toolkit:
-                enabled: true
+                enabled: {{ nvidia_toolkit_enabled | lower }}
               validator:
                 plugin:
                   env: []
               vgpuManager:
-                enabled: false
+                enabled: {{ nvidia_vgpu_manager_enabled | lower }}
               vgpuDeviceManager:
-                enabled: true
+                enabled: {{ nvidia_vgpu_device_manager_enabled | lower }}
               sandboxDevicePlugin:
-                enabled: true
+                enabled: {{ nvidia_sandbox_device_plugin_enabled | lower }}
               vfioManager:
-                enabled: true
+                enabled: {{ nvidia_vfio_manager_enabled | lower }}
               gds:
-                enabled: false
+                enabled: {{ nvidia_gds_enabled | lower }}
               gdrcopy:
-                enabled: false
+                enabled: {{ nvidia_gdrcopy_enabled | lower }}

@@ -14,7 +14,7 @@
   when: disconnected | default(true)
   ansible.builtin.shell: |
     {{ workingDir }}/bin/oc-mirror --v2 \
-      --log-level {{ ocMirrorLogLevel }} \
+      --log-level {{ ocMirrorLogLevel | default('info') }} \
       --authfile {{ pullSecretPath }} \
       -c {{ workingDir }}/config/imagesetconfiguration-openshift-ai.yaml \
       --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
