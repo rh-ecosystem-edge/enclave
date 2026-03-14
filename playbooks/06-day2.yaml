@@ -73,9 +73,75 @@
         loop_var: openshift_version
       tags: acm-policy-catalogsources
 
-    # Model configurations moved to optional OpenShift AI module
-    # See: operators/openshift-ai/ and playbooks/08-openshift-ai.yaml
-    # To deploy: make deploy-openshift-ai or make day2-openshift-ai
+    # Optional Tier 2: OpenShift AI Module
+    # Deploy OpenShift AI and supporting operators (rhods, nfd, servicemesh, etc.)
+    # Enable with: enable_openshift_ai: true in config/global.yaml
+    # Or deploy separately: make deploy-openshift-ai or make day2-openshift-ai
+    - name: Deploy OpenShift AI (Tier 2 - optional)
+      when: enable_openshift_ai | default(false)
+      block:
+        - name: Mirror OpenShift AI images (disconnected only)
+          when: disconnected | default(true)
+          ansible.builtin.include_tasks:
+            file: ../operators/openshift-ai/mirror.yaml
+          tags:
+            - openshift-ai
+            - openshift-ai-mirror
+            - day2-openshift-ai
+
+        - name: Install OpenShift AI operators
+          ansible.builtin.include_tasks:
+            file: ../operators/openshift-ai/tasks.yaml
+          tags:
+            - openshift-ai
+            - openshift-ai-install
+            - day2-openshift-ai
+      tags:
+        - openshift-ai
+        - day2-openshift-ai
+
+    # Optional Tier 3: NVIDIA GPU Operator Module
+    # Deploy NVIDIA GPU operator (requires OpenShift AI)
+    # Enable with: enable_nvidia: true in config/global.yaml
+    # Or deploy separately: make deploy-nvidia or make day2-nvidia
+    - name: Deploy NVIDIA GPU Operator (Tier 3 - optional)
+      when: enable_nvidia | default(false)
+      block:
+        - name: Check OpenShift AI prerequisites
+          ansible.builtin.include_tasks:
+            file: ../operators/nvidia-gpu-operator/prerequisites.yaml
+          tags:
+            - nvidia
+            - nvidia-prerequisites
+            - day2-nvidia
+
+        - name: Display NVIDIA user disclaimer
+          ansible.builtin.include_tasks:
+            file: ../operators/nvidia-gpu-operator/disclaimer.yaml
+          tags:
+            - nvidia
+            - nvidia-disclaimer
+            - day2-nvidia
+
+        - name: Mirror NVIDIA images (disconnected only)
+          when: disconnected | default(true)
+          ansible.builtin.include_tasks:
+            file: ../operators/nvidia-gpu-operator/mirror.yaml
+          tags:
+            - nvidia
+            - nvidia-mirror
+            - day2-nvidia
+
+        - name: Install NVIDIA GPU operator
+          ansible.builtin.include_tasks:
+            file: ../operators/nvidia-gpu-operator/tasks.yaml
+          tags:
+            - nvidia
+            - nvidia-install
+            - day2-nvidia
+      tags:
+        - nvidia
+        - day2-nvidia
 
     - name: Kubevirt - VMaaS
       ansible.builtin.include_tasks:
