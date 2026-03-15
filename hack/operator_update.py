@@ -4,6 +4,10 @@ import subprocess
 import sys
 import time
 
+# Operators with full_channel true have no startingCSV; OLM uses channel head.
+# We approve any CSV version for them and skip waiting for a specific CSV name.
+FULL_CHANNEL_SENTINEL = "__full_channel__"
+
 
 def parse_jsonpath_value(raw: str) -> str:
     return raw.strip().strip("'\"")
@@ -96,7 +100,10 @@ def approve_install_plans(
                     f"Install plan {install_plan_name} includes unmanaged CSV {csv_op_name}. Skipping."
                 )
                 break
-            version_ok = semver_key(csv_version) <= semver_key(desired_op_version)
+            if desired_op_version == FULL_CHANNEL_SENTINEL:
+                version_ok = True
+            else:
+                version_ok = semver_key(csv_version) <= semver_key(desired_op_version)
             if not version_ok:
                 print(
                     f"Install plan {install_plan_name} for {csv_op_name} {csv_version} is not at a desired version {desired_op_version}. Skipping."
@@ -138,12 +145,15 @@ def init_ns_op_version_map(
 
     for op in operators:
         op_name = op["name"]
-        op_version = op["version"]
         op_namespace = op["namespace"]
         op_csv_name = op.get("csvName")
+        if op.get("full_channel"):
+            op_version = FULL_CHANNEL_SENTINEL
+        else:
+            op_version = op["version"].replace("+", "-")
         ns_op_version_map.setdefault(op_namespace, {})[
             op_csv_name or op_name
-        ] = op_version.replace("+", "-")
+        ] = op_version
 
     return ns_op_version_map
 
@@ -162,6 +172,11 @@ def main():
     for op_namespace, op_name_version_map in ns_op_version_map.items():
         approve_install_plans(dry_run, op_namespace, op_name_version_map)
         for op_name, op_version in op_name_version_map.items():
+            if op_version == FULL_CHANNEL_SENTINEL:
+                print(
+                    f"Skipping wait for full_channel operator {op_name} in namespace {op_namespace} (no pinned CSV)."
+                )
+                continue
             print(
                 f"Waiting for CSV {op_name}.v{op_version} in namespace {op_namespace} to reach status.phase=Succeeded."
             )

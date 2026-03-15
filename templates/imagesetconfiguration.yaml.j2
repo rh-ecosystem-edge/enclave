@@ -28,8 +28,10 @@ mirror:
           defaultChannel: {{ operator.channel }}
           channels:
             - name: {{ operator.channel }}
+{% if not (operator.full_channel | default(false) | bool) %}
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
+{% endif %}
 {% endfor %}
 {% if blockStorageBackend == "odf" %}
         - name: mcg-operator
