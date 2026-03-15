@@ -11,6 +11,7 @@ mirror:
 {% endfor %}
     graph: true
   operators:
+{% if enable_nvidia_gpu | default(false) %}
     - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
       packages:
         - name: gpu-operator-certified
@@ -19,11 +20,12 @@ mirror:
             - name: v25.10
               minVersion: 25.10.0
               maxVersion: 25.10.1
+{% endif %}
     - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
-{% for operator in operators + model_operators + storage_operators[blockStorageBackend] %}
+{% for operator in operators + (model_operators if (enable_openshift_ai | default(false)) else []) + storage_operators[blockStorageBackend] %}
         - name: {{ operator.name }}
           defaultChannel: {{ operator.channel }}
           channels:
@@ -56,6 +58,7 @@ mirror:
     - name: {{ osac_operator.image }}:{{ osac_operator.tag }}
     - name: {{ aap_bootstrap_job.image }}:{{ aap_bootstrap_job.tag }}
 
+{% if enable_openshift_ai | default(false) %}
   blockedimages:
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel8
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel9
@@ -143,3 +146,4 @@ mirror:
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-driver-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-launcher-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-runtime-generic-rhel9
+{% endif %}
