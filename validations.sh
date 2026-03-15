@@ -384,3 +384,9 @@ else
 fi
 
 # END OF VALIDATIONS
+
+if [ -f ./partner-install/validations.sh ]; then
+    bash ./partner-install/validations.sh 2>&1 >> ${log}
+else
+    echo "Partner validations not found, skipping"
+fi
