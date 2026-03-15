@@ -1,0 +1,175 @@
+---
+# NVIDIA GPU Operator Installation Tasks
+# Can be run as day0 (during deployment) or day2+ (post-deployment)
+
+- name: Verify NVIDIA support is enabled
+  ansible.builtin.assert:
+    that:
+      - enable_nvidia | default(false)
+    fail_msg: "NVIDIA support is disabled. Set enable_nvidia: true in config/nvidia.yaml to proceed."
+    quiet: true
+  tags:
+    - nvidia-install
+
+- name: NVIDIA GPU operator deployment information
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════════"
+      - "Installing NVIDIA GPU Operator"
+      - "═══════════════════════════════════════════════════════════════"
+      - ""
+      - "Cluster: {{ clusterName }}"
+      - "Mode: {{ 'Disconnected' if disconnected | default(true) else 'Connected' }}"
+      - "Support Mode: {{ nvidia_support_mode | default('certified') }}"
+      - "GPU Operator Version: {{ nvidia_gpu_operator_version | default('25.10.1') }}"
+      - ""
+  tags:
+    - nvidia-install
+
+- name: Check OpenShift AI prerequisites
+  ansible.builtin.include_tasks: prerequisites.yaml
+  tags:
+    - nvidia
+    - nvidia-prerequisites
+
+- name: Display user disclaimer
+  ansible.builtin.include_tasks: disclaimer.yaml
+  tags:
+    - nvidia
+    - nvidia-disclaimer
+
+- name: Install NVIDIA GPU operator (certified mode)
+  when: nvidia_support_mode | default('certified') == 'certified'
+  block:
+    - name: Apply NVIDIA GPU operator ACM policies
+      ansible.builtin.shell: |
+        oc apply -f {{ workingDir }}/operators/nvidia-gpu-operator/policies/
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_apply_nvidia_policies
+      tags:
+        - nvidia-install
+
+    - name: Wait for NVIDIA namespace creation
+      ansible.builtin.shell: |
+        oc wait --for=jsonpath='{.status.phase}'=Active namespace/{{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }} --timeout=5m
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      retries: 3
+      delay: 10
+      register: r_wait_nvidia_namespace
+      until: r_wait_nvidia_namespace is succeeded
+      tags:
+        - nvidia-install
+
+    - name: Wait for GPU operator subscription
+      ansible.builtin.shell: |
+        oc wait --for=jsonpath='{.status.state}'=AtLatestKnown \
+          subscription/gpu-operator-certified \
+          -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }} \
+          --timeout=10m
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      retries: 5
+      delay: 30
+      register: r_wait_gpu_operator
+      until: r_wait_gpu_operator is succeeded
+      tags:
+        - nvidia-install
+
+    - name: Wait for ClusterPolicy creation
+      ansible.builtin.shell: |
+        oc get clusterpolicy {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }} \
+          -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      retries: 10
+      delay: 30
+      register: r_wait_clusterpolicy
+      until: r_wait_clusterpolicy is succeeded
+      tags:
+        - nvidia-install
+
+    - name: NVIDIA GPU operator installed (certified mode)
+      ansible.builtin.debug:
+        msg:
+          - "✅ NVIDIA GPU operator installed successfully (certified mode)"
+          - "Namespace: {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}"
+          - "Operator: gpu-operator-certified"
+          - "ClusterPolicy: {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }}"
+      tags:
+        - nvidia-install
+
+- name: Install NVIDIA GPU operator (community mode)
+  when: nvidia_support_mode | default('certified') == 'community'
+  block:
+    - name: Community GPU operator installation
+      ansible.builtin.debug:
+        msg:
+          - "Community GPU operator mode selected"
+          - "This mode uses the community GPU operator from OperatorHub"
+          - "Note: Red Hat support not available in community mode"
+      tags:
+        - nvidia-install
+
+    - name: Community operator installation placeholder
+      ansible.builtin.fail:
+        msg: "Community GPU operator mode not yet implemented. Use certified mode for now."
+      tags:
+        - nvidia-install
+
+- name: Vendor-managed GPU setup
+  when: nvidia_support_mode | default('certified') == 'vendor-managed'
+  block:
+    - name: Configure cluster for vendor-managed GPUs
+      ansible.builtin.debug:
+        msg:
+          - "Vendor-managed GPU mode selected"
+          - "No GPU operator will be installed"
+          - "Your facility provider or hardware vendor will manage GPU drivers"
+          - "Ensure nodes are properly labeled: nvidia.com/gpu=true"
+      tags:
+        - nvidia-install
+
+- name: Verify NVIDIA installation
+  when: nvidia_support_mode | default('certified') == 'certified'
+  ansible.builtin.shell: |
+    echo "=== NVIDIA GPU Operator Verification ==="
+    echo ""
+    echo "Namespace:"
+    oc get namespace {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+    echo ""
+    echo "GPU Operator Subscription:"
+    oc get subscription gpu-operator-certified -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+    echo ""
+    echo "ClusterPolicy:"
+    oc get clusterpolicy {{ nvidia_cluster_policy_name | default('gpu-cluster-policy') }}
+    echo ""
+    echo "GPU Operator Pods:"
+    oc get pods -n {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_nvidia_verification
+  tags:
+    - nvidia-verify
+
+- name: NVIDIA installation summary
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════════"
+      - "✅ NVIDIA GPU Support Installation Complete"
+      - "═══════════════════════════════════════════════════════════════"
+      - ""
+      - "Cluster: {{ clusterName }}"
+      - "Mode: {{ nvidia_support_mode | default('certified') }}"
+      - "Namespace: {{ nvidia_gpu_operator_namespace | default('nvidia-gpu-operator') }}"
+      - ""
+      - "Next steps:"
+      - "  1. Label GPU nodes: oc label node <node> nvidia.com/gpu=true"
+      - "  2. Verify GPU detection: oc get nodes -l nvidia.com/gpu=true"
+      - "  3. Check GPU operator pods: oc get pods -n nvidia-gpu-operator"
+      - "  4. Deploy GPU workloads using OpenShift AI"
+      - ""
+      - "═══════════════════════════════════════════════════════════════"
+  tags:
+    - nvidia-verify

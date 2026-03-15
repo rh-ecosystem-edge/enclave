@@ -1,0 +1,148 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  name: nvidia-gpu-operator
+  namespace: openshift-acm-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: nvidia-gpu-operator
+      spec:
+        evaluationInterval:
+          compliant: 2h
+          noncompliant: 45s
+        object-templates:
+        # Install NVIDIA GPU Operator
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+                name: nvidia-gpu-operator
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1
+            kind: OperatorGroup
+            metadata:
+              name: nvidia-gpu-operator-group
+              namespace: nvidia-gpu-operator
+            spec:
+              targetNamespaces:
+              - nvidia-gpu-operator
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: Subscription
+            metadata:
+              name: gpu-operator-certified
+              namespace: nvidia-gpu-operator
+            spec:
+              channel: {{ nvidia_gpu_operator_channel }}
+              installPlanApproval: Automatic
+              name: gpu-operator-certified
+              source: {{ mirror_certified_rh_operator_catalog }}
+              sourceNamespace: openshift-marketplace
+        # Create ClusterPolicy Instance
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            kind: ClusterPolicy
+            apiVersion: nvidia.com/v1
+            metadata:
+              name: gpu-cluster-policy
+            spec:
+              operator:
+                defaultRuntime: {{ nvidia_default_runtime }}
+                use_ocp_driver_toolkit: {{ nvidia_use_ocp_driver_toolkit | lower }}
+                initContainer: {}
+              cdi:
+                enabled: {{ nvidia_cdi_enabled | lower }}
+              sandboxWorkloads:
+                enabled: {{ nvidia_sandbox_workloads_enabled | lower }}
+                defaultWorkload: {{ nvidia_sandbox_workloads_default }}
+              driver:
+                enabled: {{ nvidia_driver_enabled | lower }}
+                useNvidiaDriverCRD: {{ nvidia_driver_use_nvidia_driver_crd | lower }}
+                kernelModuleType: {{ nvidia_driver_kernel_module_type }}
+                upgradePolicy:
+                  autoUpgrade: {{ nvidia_driver_auto_upgrade | lower }}
+                  drain:
+                    deleteEmptyDir: false
+                    enable: false
+                    force: false
+                    timeoutSeconds: 300
+                  maxParallelUpgrades: {{ nvidia_driver_max_parallel_upgrades }}
+                  maxUnavailable: {{ nvidia_driver_max_unavailable }}
+                  podDeletion:
+                    deleteEmptyDir: false
+                    force: false
+                    timeoutSeconds: 300
+                  waitForCompletion:
+                    timeoutSeconds: 0
+                repoConfig:
+                  configMapName: ''
+                certConfig:
+                  name: ''
+                licensingConfig:
+                  nlsEnabled: {{ nvidia_licensing_nls_enabled | lower }}
+                  secretName: ''
+                virtualTopology:
+                  config: ''
+                kernelModuleConfig:
+                  name: ''
+              dcgmExporter:
+                enabled: {{ nvidia_dcgm_exporter_enabled | lower }}
+                config:
+                  name: ''
+                serviceMonitor:
+                  enabled: {{ nvidia_dcgm_exporter_enabled | lower }}
+              dcgm:
+                enabled: {{ nvidia_dcgm_enabled | lower }}
+              daemonsets:
+                updateStrategy: {{ nvidia_daemonsets_update_strategy }}
+                rollingUpdate:
+                  maxUnavailable: '{{ nvidia_daemonsets_rolling_update_max_unavailable }}'
+              devicePlugin:
+                enabled: {{ nvidia_device_plugin_enabled | lower }}
+                config:
+                  name: ''
+                  default: ''
+                mps:
+                  root: /run/nvidia/mps
+              gfd:
+                enabled: {{ nvidia_gpu_feature_discovery_enabled | lower }}
+              migManager:
+                enabled: {{ nvidia_mig_manager_enabled | lower }}
+              nodeStatusExporter:
+                enabled: true
+              mig:
+                strategy: {{ nvidia_mig_strategy }}
+              toolkit:
+                enabled: {{ nvidia_toolkit_enabled | lower }}
+              validator:
+                plugin:
+                  env: []
+              vgpuManager:
+                enabled: {{ nvidia_vgpu_manager_enabled | lower }}
+              vgpuDeviceManager:
+                enabled: {{ nvidia_vgpu_device_manager_enabled | lower }}
+              sandboxDevicePlugin:
+                enabled: {{ nvidia_sandbox_device_plugin_enabled | lower }}
+              vfioManager:
+                enabled: {{ nvidia_vfio_manager_enabled | lower }}
+              gds:
+                enabled: {{ nvidia_gds_enabled | lower }}
+              gdrcopy:
+                enabled: {{ nvidia_gdrcopy_enabled | lower }}

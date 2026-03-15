@@ -1,0 +1,481 @@
+name: E2E - OpenShift AI Module
+
+# Test OpenShift AI module deployment (Tier 2)
+# Runs weekly to validate OpenShift AI extraction and deployment
+# Can also be triggered manually for testing
+
+on:
+  schedule:
+    # Run weekly on Sundays at 2:00 AM EST (07:00 UTC)
+    - cron: '0 7 * * 0'
+  push:
+    branches:
+      - main
+    paths:
+      - 'operators/openshift-ai/**'
+      - 'playbooks/08-openshift-ai.yaml'
+      - 'config/openshift-ai.yaml.example'
+      - 'templates/imagesetconfiguration-openshift-ai.yaml.j2'
+      - '.github/workflows/e2e-openshift-ai.yml'
+  pull_request:
+    paths:
+      - 'operators/openshift-ai/**'
+      - 'playbooks/08-openshift-ai.yaml'
+      - 'config/openshift-ai.yaml.example'
+      - 'templates/imagesetconfiguration-openshift-ai.yaml.j2'
+      - '.github/workflows/e2e-openshift-ai.yml'
+  workflow_dispatch:
+    # Allow manual triggering with mode selection
+    inputs:
+      deployment-mode:
+        description: 'Deployment mode'
+        required: true
+        type: choice
+        options:
+          - connected
+          - disconnected
+        default: connected
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
+
+# Prevent concurrent runs
+concurrency:
+  group: e2e-openshift-ai-${{ github.event.inputs.deployment-mode || 'disconnected' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  openshift-ai-deployment:
+    name: OpenShift AI Deployment (${{ github.event.inputs.deployment-mode || 'disconnected' }})
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 300  # 5 hours (includes AI deployment time)
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment-mode || 'disconnected' }}
+      CLEANUP_AFTER: 'true'
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: ai
+          run-id: ${{ github.run_id }}
+
+      - name: Setup cluster-specific working directory
+        run: |
+          make setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Workflow information
+        run: |
+          echo "## E2E OpenShift AI Module Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**Mode**: ${{ github.event.inputs.deployment-mode || 'disconnected' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: E2E OpenShift AI Module Test
+          check-pull-secret: 'true'
+
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
+
+          make environment
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Provision Landing Zone
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make provision-landing-zone
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          make install-enclave
+          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 1 - Prepare binaries and content
+        id: deploy_prepare
+        run: |
+          echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-prepare
+
+          echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2 - Mirror registry (disconnected only)
+        id: deploy_mirror
+        if: github.event.inputs.deployment-mode == 'disconnected' || github.event_name == 'schedule'
+        run: |
+          echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Setting up local mirror registry..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-mirror
+
+          echo "✅ Phase 2 complete - Mirror registry ready" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 3 - Deploy OpenShift cluster
+        id: deploy_install
+        run: |
+          echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift cluster..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-install
+
+          echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 4 - Post-install configuration
+        id: deploy_post_install
+        run: |
+          echo "## Phase 4: Post-Install Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring cluster (secrets, certificates, API health)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-post-install
+
+          echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 5 - Install operators
+        id: deploy_operators
+        run: |
+          echo "## Phase 5: Operators" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing and configuring operators..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-operators
+
+          echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 6 - Day-2 operations (base)
+        id: deploy_day2
+        run: |
+          echo "## Phase 6: Day-2 Operations (Base)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring advanced features and policies (without AI)..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-day2
+
+          echo "✅ Phase 6 complete - Base cluster ready" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 7 - Configure hardware discovery
+        id: deploy_discovery
+        run: |
+          echo "## Phase 7: Hardware Discovery" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring hardware discovery infrastructure..." >> $GITHUB_STEP_SUMMARY
+
+          make deploy-cluster-discovery
+
+          echo "✅ Phase 7 complete - Base deployment complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify base cluster deployment
+        if: success()
+        id: verify_base_cluster
+        run: |
+          echo "## Verifying Base Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          make verify-cluster
+
+          echo "✅ Base cluster verification passed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 8 - Deploy OpenShift AI (Tier 2 Module)
+        id: deploy_openshift_ai
+        run: |
+          echo "## Phase 8: OpenShift AI Module" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift AI and supporting operators..." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Create OpenShift AI configuration
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave && cp config/openshift-ai.yaml.example ${WORKING_DIR}/config/openshift-ai.yaml"
+
+          # Deploy OpenShift AI based on mode
+          if [ "${{ github.event.inputs.deployment-mode || 'disconnected' }}" = "disconnected" ]; then
+            echo "Deploying OpenShift AI in disconnected mode..." >> $GITHUB_STEP_SUMMARY
+            make deploy-openshift-ai-disconnected
+          else
+            echo "Deploying OpenShift AI in connected mode..." >> $GITHUB_STEP_SUMMARY
+            make deploy-openshift-ai
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Phase 8 complete - OpenShift AI deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify OpenShift AI deployment
+        if: success()
+        id: verify_openshift_ai
+        run: |
+          echo "## Verifying OpenShift AI Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          # Verify OpenShift AI components
+          VERIFY_OUTPUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave && \
+            export KUBECONFIG=${WORKING_DIR}/ocp-cluster/auth/kubeconfig && \
+            echo '=== OpenShift AI Namespace ===' && \
+            oc get namespace redhat-ods-operator && \
+            echo '' && \
+            echo '=== RHOAI Operator ===' && \
+            oc get subscription rhods-operator -n redhat-ods-operator && \
+            echo '' && \
+            echo '=== DataScienceCluster ===' && \
+            oc get datasciencecluster default-dsc && \
+            echo '' && \
+            echo '=== NFD Operator ===' && \
+            oc get subscription nfd -n openshift-nfd && \
+            echo '' && \
+            echo '=== Service Mesh Operator ===' && \
+            oc get subscription servicemeshoperator3 -n openshift-operators && \
+            echo '' && \
+            echo '=== Cert Manager Operator ===' && \
+            oc get subscription openshift-cert-manager-operator -n cert-manager-operator && \
+            echo '' && \
+            echo '=== DataScienceCluster Status ===' && \
+            oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}'" 2>&1)
+
+          echo "$VERIFY_OUTPUT"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### OpenShift AI Components:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "$VERIFY_OUTPUT" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if DataScienceCluster is Ready
+          DSC_STATUS=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+            "export KUBECONFIG=${WORKING_DIR}/ocp-cluster/auth/kubeconfig && \
+             oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}'" 2>&1 || echo "Unknown")
+
+          if [ "$DSC_STATUS" = "Ready" ]; then
+            echo "✅ OpenShift AI verification passed - DataScienceCluster is Ready" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ DataScienceCluster status: $DSC_STATUS (expected: Ready)" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
+
+      - name: Collect full diagnostics on failure
+        if: failure()
+        run: |
+          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Use centralized artifact collection script with full level
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "⚠️ Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Also run must-gather if cluster is accessible
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          if [ -n "$LZ_IP" ]; then
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/scripts/diagnostics/gather.sh" 2>/dev/null; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
+
+              mkdir -p artifacts/must-gather
+              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+                "cd /home/cloud-user/enclave/scripts/diagnostics && \
+                 export KUBECONFIG=${WORKING_DIR}/ocp-cluster/auth/kubeconfig && \
+                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ${WORKING_DIR}/config/global.yaml 2>&1" || true)
+              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
+
+              # Copy must-gather archives
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:${WORKING_DIR}/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:${WORKING_DIR}/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+
+              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
+                echo "✅ Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        id: upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-openshift-ai-${{ github.event.inputs.deployment-mode || 'disconnected' }}-${{ env.ENCLAVE_CLUSTER_NAME }}
+          path: artifacts/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Get artifact download URL
+        if: always()
+        id: artifact_url
+        run: |
+          # Wait a moment for artifact to be registered
+          sleep 2
+
+          # Get the artifact ID for this run
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+            --jq '.artifacts[] | select(.name | startswith("e2e-openshift-ai")) | .id')
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
+            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          else
+            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Cleanup infrastructure
+        if: always() && (github.event_name == 'schedule' || inputs.skip-cleanup != true)
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          make clean
+
+          echo "✅ Infrastructure cleaned up" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## ⚠️ Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**⚠️ IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## OpenShift AI Module Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ github.event.inputs.deployment-mode || 'disconnected' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Phases:" >> $GITHUB_STEP_SUMMARY
+          echo "- Base Cluster: ✅ Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- OpenShift AI Module: ${{ steps.deploy_openshift_ai.outcome == 'success' && '✅ Completed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- AI Verification: ${{ steps.verify_openshift_ai.outcome == 'success' && '✅ Passed' || '❌ Failed' }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Determine failed step
+        if: failure()
+        id: failed_step
+        run: |
+          # Map of step IDs to human-readable names
+          declare -A step_names=(
+            ["deploy_prepare"]="Phase 1: Prepare binaries and content"
+            ["deploy_mirror"]="Phase 2: Mirror registry setup"
+            ["deploy_install"]="Phase 3: Deploy OpenShift cluster"
+            ["deploy_post_install"]="Phase 4: Post-install configuration"
+            ["deploy_operators"]="Phase 5: Install operators"
+            ["deploy_day2"]="Phase 6: Day-2 operations"
+            ["deploy_discovery"]="Phase 7: Configure hardware discovery"
+            ["verify_base_cluster"]="Verify base cluster deployment"
+            ["deploy_openshift_ai"]="Phase 8: Deploy OpenShift AI"
+            ["verify_openshift_ai"]="Verify OpenShift AI deployment"
+          )
+
+          # Ordered list of step IDs to check
+          step_order=(
+            deploy_prepare
+            deploy_mirror
+            deploy_install
+            deploy_post_install
+            deploy_operators
+            deploy_day2
+            deploy_discovery
+            verify_base_cluster
+            deploy_openshift_ai
+            verify_openshift_ai
+          )
+
+          # Check each step outcome in order from the JSON context
+          FAILED_STEP=""
+          for step_id in "${step_order[@]}"; do
+            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            if [ "$outcome" == "failure" ]; then
+              FAILED_STEP="${step_names[$step_id]}"
+              break
+            fi
+          done
+
+          # Only output if we found a failed step
+          if [ -n "$FAILED_STEP" ]; then
+            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: E2E OpenShift AI Module
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
