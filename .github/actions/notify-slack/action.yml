@@ -20,6 +20,9 @@ inputs:
   branch-name:
     description: 'Git branch name'
     required: true
+  commit-sha:
+    description: 'Git commit sha'
+    required: true
   failed-step:
     description: 'Name of the failed step (optional, for failure notifications)'
     required: false
@@ -39,6 +42,7 @@ runs:
         INPUT_WORKFLOW_NAME: ${{ inputs.workflow-name }}
         INPUT_CLUSTER_NAME: ${{ inputs.cluster-name }}
         INPUT_BRANCH_NAME: ${{ inputs.branch-name }}
+        INPUT_COMMIT_SHA: ${{ inputs.commit-sha }}
         INPUT_WORKFLOW_URL: ${{ inputs.workflow-url }}
         INPUT_FAILED_STEP: ${{ inputs.failed-step }}
         INPUT_ARTIFACT_URL: ${{ inputs.artifact-url }}
@@ -70,13 +74,14 @@ runs:
         FIELDS=$(jq -n \
           --arg cluster "$INPUT_CLUSTER_NAME" \
           --arg branch "$INPUT_BRANCH_NAME" \
+          --arg commit "$INPUT_COMMIT_SHA" \
           --arg workflow_url "$INPUT_WORKFLOW_URL" \
           --arg status "$STATUS_TEXT" \
           --arg failed_step "$INPUT_FAILED_STEP" \
           --arg artifact_url "$INPUT_ARTIFACT_URL" \
           '[
             {"type": "mrkdwn", "text": ("*Cluster:*\n" + $cluster)},
-            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch)},
+            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch + "(Commit: " + $commit + ")")},
             {"type": "mrkdwn", "text": ("*Workflow:*\n<" + $workflow_url + "|View Run>")},
             (if ($failed_step != "") then
               {"type": "mrkdwn", "text": ("*Failed at:*\n" + $failed_step)}
