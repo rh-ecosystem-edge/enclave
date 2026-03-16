@@ -74,13 +74,13 @@ echo "Creating dev-scripts configuration at: $CONFIG_FILE"
 ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}"
 ENCLAVE_NUM_LANDINGZONE="${ENCLAVE_NUM_LANDINGZONE:-1}"
 
-# VM extra disk size: 500G for disconnected (mirroring), 60G for connected
+# VM extra disk size: 800G for disconnected (mirroring), 60G for connected
 DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
 if [ "$DEPLOYMENT_MODE" = "connected" ]; then
     VM_EXTRADISKS_SIZE_VAL="60G"
     MASTER_MEMORY_VAL=24576    # 24 GB for connected
 else
-    VM_EXTRADISKS_SIZE_VAL="500G"
+    VM_EXTRADISKS_SIZE_VAL="800G"
     MASTER_MEMORY_VAL=32768    # 32 GB for disconnected
 fi
 

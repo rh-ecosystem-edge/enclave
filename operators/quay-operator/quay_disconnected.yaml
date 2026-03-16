@@ -40,7 +40,7 @@
       --image-timeout 40m0s \
       > {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log 2>&1
 
-  retries: 5
+  retries: 10
   delay: 10
   register: r_oc_mirror_quay
   until: r_oc_mirror_quay is succeeded

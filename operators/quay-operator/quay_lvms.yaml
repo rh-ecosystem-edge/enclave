@@ -55,7 +55,9 @@
   until: r_quay_lvms is succeeded
 
 - name: Quay LVMS storage (PVC and deployment patch)
-  when: quayBackend == 'LocalStorage'
+  when:
+    - quayBackend == 'LocalStorage'
+    - disconnected | default(true)
   block:
   - name: Wait for Quay app deployment to exist (LVMS)
     kubernetes.core.k8s_info:
@@ -92,7 +94,7 @@
             - ReadWriteOnce
           resources:
             requests:
-              storage: 300Gi
+              storage: 600Gi
           storageClassName: lvms-vg1
 
   - name: Patch Quay app deployment to mount registry storage PVC (LVMS)
