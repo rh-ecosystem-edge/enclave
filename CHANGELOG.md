@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Operator version pinning.
+- Optional chunk size parameters support for RadosGW storage.
 
 ### Fixed
 
@@ -18,5 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - User input variables restructure under `config`.
+- OpenShift AI and Nvidia GPU functionality feature flags.
 
 ### Removed

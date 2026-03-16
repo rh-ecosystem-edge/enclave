@@ -90,8 +90,8 @@
     echo | openssl s_client -connect api.{{ clusterName }}.{{ baseDomain }}:6443 2>/dev/null \
       | openssl x509 -noout -fingerprint
   register: remote_fp
-  retries: 100
-  delay: 5
+  retries: 30
+  delay: 30
   until: remote_fp.stdout == local_fp.stdout
 
 - name: Remove certificate-authority-data from the kubeconfig

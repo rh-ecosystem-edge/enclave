@@ -11,3 +11,6 @@ quayBackendDefaults:
 quayBackendRGWDefaults:
   is_secure: true
   port: 443
+  minimum_chunk_size_mb: 100
+  maximum_chunk_size_mb: 500
+  server_side_assembly: true

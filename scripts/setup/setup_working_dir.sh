@@ -37,13 +37,15 @@ CLUSTER_WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
 echo "Creating cluster-specific working directory: ${CLUSTER_WORKING_DIR}"
 mkdir -p "$CLUSTER_WORKING_DIR"
 
+# Always write to temp file for workflow steps to read
+echo "${CLUSTER_WORKING_DIR}" > /tmp/working_dir
+
 # Export to GitHub Actions environment if available
 if [ -n "${GITHUB_ENV:-}" ]; then
     echo "WORKING_DIR=${CLUSTER_WORKING_DIR}" >> "$GITHUB_ENV"
     echo "✅ Working directory exported to GitHub Actions: ${CLUSTER_WORKING_DIR}"
 else
-    # For local execution, write to temp file and export to current shell
-    echo "${CLUSTER_WORKING_DIR}" > /tmp/working_dir
+    # For local execution, export to current shell
     export WORKING_DIR="${CLUSTER_WORKING_DIR}"
     echo "✅ Working directory set: ${CLUSTER_WORKING_DIR}"
     echo "   (exported as WORKING_DIR environment variable)"

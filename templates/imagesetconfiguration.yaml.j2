@@ -11,17 +11,28 @@ mirror:
 {% endfor %}
     graph: true
   operators:
+{% if enable_nvidia_gpu | default(false) %}
     - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
       packages:
         - name: gpu-operator-certified
+          defaultChannel: v25.10
+          channels:
+            - name: v25.10
+              minVersion: 25.10.0
+              maxVersion: 25.10.1
+{% endif %}
     - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
-{% for operator in operators + model_operators %}
+{% for operator in operators + (model_operators if (enable_openshift_ai | default(false)) else []) + storage_operators[blockStorageBackend] %}
         - name: {{ operator.name }}
+          defaultChannel: {{ operator.channel }}
+          channels:
+            - name: {{ operator.channel }}
+              minVersion: {{ operator.init_version }}
+              maxVersion: {{ operator.version }}
 {% endfor %}
-        - name: "{{ storage_operators[blockStorageBackend].name }}"
 {% if blockStorageBackend == "odf" %}
         - name: mcg-operator
         - name: odf-csi-addons-operator
@@ -47,10 +58,8 @@ mirror:
     - name: {{ osac_operator.image }}:{{ osac_operator.tag }}
     - name: {{ aap_bootstrap_job.image }}:{{ aap_bootstrap_job.tag }}
 
+{% if enable_openshift_ai | default(false) %}
   blockedimages:
-    - name: registry.redhat.io/3scale-tech-preview/authorino-rhel9-operator
-    - name: registry.redhat.io/3scale-tech-preview/authorino-rhel9
-    - name: registry.redhat.io/3scale-tech-preview/authorino-operator-bundle
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel8
     - name: registry.redhat.io/rhoai/odh-dashboard-rhel9
     - name: registry.redhat.io/rhoai/odh-codeflare-operator-rhel9
@@ -137,4 +146,4 @@ mirror:
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-driver-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-launcher-rhel9
     - name: registry.redhat.io/rhoai/odh-ml-pipelines-runtime-generic-rhel9
-    - name: nvcr.io/nvidia/gpu-feature-discovery
+{% endif %}

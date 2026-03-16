@@ -15,10 +15,15 @@ on:
         required: false
         type: boolean
         default: false
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
 
-# Prevent concurrent nightly runs
+# Allow parallel runs with unique concurrency groups per run
 concurrency:
-  group: nightly-connected
+  group: nightly-connected-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -39,11 +44,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate cluster name with date
+      - name: Generate cluster name with hash
         uses: ./.github/actions/setup-cluster-name
         with:
-          naming-strategy: date
+          naming-strategy: hash
           prefix: nc
+          run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
         run: |
@@ -176,6 +182,46 @@ jobs:
           artifact-type: deployment
           output-directory: artifacts
 
+      - name: Collect full diagnostics on failure
+        if: failure()
+        run: |
+          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Use centralized artifact collection script with full level
+          # Make this best-effort so must-gather runs even if artifact collection fails
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "⚠️ Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Also run must-gather if cluster is accessible
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          if [ -n "$LZ_IP" ]; then
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/scripts/diagnostics/gather.sh" 2>/dev/null; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
+
+              mkdir -p artifacts/must-gather
+              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+                "cd /home/cloud-user/enclave/scripts/diagnostics && \
+                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
+              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
+
+              # Copy must-gather archives
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+
+              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
+                echo "✅ Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "⚠️ Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
       - name: Upload artifacts
         if: always()
         id: upload_artifacts
@@ -207,7 +253,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always()
+        if: always() && (github.event_name == 'schedule' || inputs.skip-cleanup != true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -215,6 +261,20 @@ jobs:
           make clean
 
           echo "✅ Infrastructure cleaned up" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## ⚠️ Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**⚠️ IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
 
       - name: Summary
         if: always()

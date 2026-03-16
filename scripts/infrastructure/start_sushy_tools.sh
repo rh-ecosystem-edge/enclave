@@ -219,7 +219,7 @@ fi
 
 # Verify sushy-tools endpoint is responding
 info "Verifying sushy-tools endpoint accessibility..."
-MAX_WAIT=30
+MAX_WAIT=90
 COUNTER=0
 ENDPOINT_READY=false
 

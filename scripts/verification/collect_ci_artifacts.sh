@@ -47,6 +47,10 @@ info() {
 warn() {
     echo -e "${YELLOW}[WARN]${NC} $1"
     COLLECTION_WARNINGS=$((COLLECTION_WARNINGS + 1))
+    # Emit GitHub annotation if in CI
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        echo "::warning file=collect_ci_artifacts.sh,title=Collection Warning::$1"
+    fi
 }
 
 error() {
@@ -811,7 +815,16 @@ esac
 
 info "✓ Artifact collection complete"
 if [ "$COLLECTION_WARNINGS" -gt 0 ]; then
-    warn "Collection completed with $COLLECTION_WARNINGS warning(s)"
+    # Use info instead of warn to avoid incrementing counter again
+    echo -e "${YELLOW}[INFO]${NC} Collection completed with $COLLECTION_WARNINGS warning(s)"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "## ⚠️ Collection Warnings ($COLLECTION_WARNINGS)" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "Artifact collection completed with warnings (non-fatal):" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "> Check annotations above for details." >> "$GITHUB_STEP_SUMMARY"
+    fi
 fi
 if [ "$COLLECTION_ERRORS" -gt 0 ]; then
     error "Collection completed with $COLLECTION_ERRORS error(s)"

@@ -21,6 +21,7 @@ runs:
         echo "" >> $GITHUB_STEP_SUMMARY
 
         # Run artifact collection script
+        # The script handles its own warning reporting via annotations and GITHUB_STEP_SUMMARY
         ./scripts/verification/collect_ci_artifacts.sh ${{ inputs.artifact-type }} ${{ inputs.output-directory }} 2>&1 | tee artifact-collection.log
 
         # Add summary if available

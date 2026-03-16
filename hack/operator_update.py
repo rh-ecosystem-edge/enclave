@@ -31,10 +31,7 @@ def wait_for_resource_status(
         )
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
-            if "not found" not in stderr.lower():
-                raise RuntimeError(
-                    f"Failed to read {kind}/{name} in namespace {namespace}: {stderr}"
-                )
+            print(f"Failed to read {kind}/{name} in namespace {namespace}: {stderr}")
 
         current_state = parse_jsonpath_value(result.stdout or "")
         if current_state == desired_state:
@@ -146,7 +143,7 @@ def init_ns_op_version_map(
         op_csv_name = op.get("csvName")
         ns_op_version_map.setdefault(op_namespace, {})[
             op_csv_name or op_name
-        ] = op_version
+        ] = op_version.replace("+", "-")
 
     return ns_op_version_map
 

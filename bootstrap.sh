@@ -189,6 +189,14 @@ printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
   | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
 /g' -e 's/\\"/"/g')"
 
+echo -p "Start discovering nodes.. " -n1 -s
+    if [ -f $cloud_infra_vars ]; then
+        if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml; then
+            echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml"
+        fi
+    fi
+echo -e "\e[38;5;10m Done...\033[0m"; date
+
 echo -p "Deploying Partner OverLay .. " -n1 -s
     if [ -f ./partner-install/start.sh ]; then
         bash ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}

@@ -55,7 +55,7 @@ output() {
     local msg="$1"
     echo -e "$msg"
     if [ "$USE_GITHUB" = true ]; then
-        # Strip ANSI color codes for GitHub summary
-        echo "$msg" | sed 's/\x1b\[[0-9;]*m//g' >> "$GITHUB_STEP_SUMMARY"
+        # Strip ANSI color codes for GitHub summary (both \033 and \x1b forms)
+        echo "$msg" | sed -e 's/\\033\[[0-9;]*m//g' -e 's/\x1b\[[0-9;]*m//g' >> "$GITHUB_STEP_SUMMARY"
     fi
 }

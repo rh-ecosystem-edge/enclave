@@ -35,9 +35,23 @@ properties:
         description: Port for backend storage endpoint
         minimum: 1
         maximum: 65535
+      minimum_chunk_size_mb:
+        type: integer
+        description: Minimum multipart upload chunk size in MB
+        minimum: 1
+      maximum_chunk_size_mb:
+        type: integer
+        description: Maximum multipart upload chunk size in MB
+        minimum: 1
+      server_side_assembly:
+        type: boolean
+        description: Enable server-side assembly for multipart uploads
     required:
       - is_secure
       - port
+      - minimum_chunk_size_mb
+      - maximum_chunk_size_mb
+      - server_side_assembly
 
 required:
   - quayFeatureProxyStorage
