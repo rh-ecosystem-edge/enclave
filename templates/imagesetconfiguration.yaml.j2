@@ -12,7 +12,7 @@ mirror:
     graph: true
   operators:
 {% if enable_nvidia_gpu | default(false) %}
-    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
+    - catalog: {{ certified_operator_catalog }}:{{ certified_operator_catalog_version }}
       packages:
         - name: gpu-operator-certified
           defaultChannel: v25.10
@@ -21,7 +21,7 @@ mirror:
               minVersion: 25.10.0
               maxVersion: 25.10.1
 {% endif %}
-    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+    - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
