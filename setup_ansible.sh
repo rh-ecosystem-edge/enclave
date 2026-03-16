@@ -1,7 +1,7 @@
 #!/bin/sh -e
 # Download Ansible Collections to check the checksum
 # Check if the 'collections' directory exists and has files in it
-if [ -d "collections" ] && [ "$(ls -A collections)" ]; then
+if [ -d "collections" ] && [ "$(ls -A collections)" ] && sha256sum --status -c ansible_collections.sha256; then
     echo "Collections already exist. Skipping download."
 else
     echo "Collections not found or empty. Downloading..."
