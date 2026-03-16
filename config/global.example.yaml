@@ -45,6 +45,9 @@ quayBackendRGWConfiguration:
   secret_key: YOUR_S3_SECRET_KEY
   bucket_name: YOUR_S3_BUCKET_NAME
   hostname: YOUR_RADOSGW_ENDPOINT_HOSTNAME
+  # Uncomment only to override
+  # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
+  # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
 
 # Option 2: Local storage (NOT recommended for production)
 # quayBackend: LocalStorage

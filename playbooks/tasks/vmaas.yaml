@@ -123,10 +123,10 @@
   vars:
     aap_name: "osac-aap"
     aap_ns: "ansible-aap"
-    aap_controller_name: "{{ aap_name }}"
+    aap_controller_name: "{{ aap_name }}-controller"
     aap_token_description: "OSAC Operator Token"
     aap_token_overwrite: false
-    aap_api_path: "/api/controller/v2"
+    aap_api_path: "/api/v2"
     aap_api_user: "admin"
     aap_api_validate_certs: false
   block:
@@ -266,7 +266,7 @@
         validate_certs: "{{ aap_api_validate_certs }}"
         return_content: true
       register: __aap_user_response
-      retries: 30
+      retries: 60
       delay: 10
       until:
         - __aap_user_response.json is defined
@@ -379,6 +379,38 @@
       delay: 5
       until: __r_create_aap_bootstrap is success
 
+    # Disable the schedule osac-publish-templates if it exists.
+    # We don't use it in the enclave environment.
+    - name: "Query AAP API for the schedule osac-publish-templates"
+      ansible.builtin.uri:
+        url: "{{ osac_aap_url }}/api/controller/v2/schedules/?name=osac-publish-templates"
+        method: GET
+        user: "{{ aap_api_user }}"
+        password: "{{ __aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_api_validate_certs }}"
+        return_content: true
+      register: __aap_query_publish_template
+
+    - name: "Disable the schedule osac-publish-templates if enabled"
+      ansible.builtin.uri:
+        url: "{{ osac_aap_url }}/api/controller/v2/schedules/{{ item.id }}/"
+        method: PATCH
+        user: "{{ aap_api_user }}"
+        password: "{{ __aap_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ aap_api_validate_certs }}"
+        body_format: json
+        body:
+          enabled: false
+        status_code: 200
+      loop: "{{ __aap_query_publish_template.json.results }}"
+      when:
+        - __aap_query_publish_template.json.count > 0
+        - item.enabled | bool
+      loop_control:
+        label: "Disabling schedule ID: {{ item.id }} (Name: {{ item.name }})"
+
 - name: Deploy OSAC
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
@@ -427,6 +459,15 @@
       retries: "{{ k8s_retries }}"
       delay: "{{ k8s_delay }}"
       until: r_kubeconfig_secret_osac is success
+
+    - name: "Create osac-rolebinding RoleBinding in OSAC operator namespace"
+      kubernetes.core.k8s:
+        state: present
+        definition: "{{ lookup('ansible.builtin.template', '../templates/osac-rolebinding.yaml.j2') | from_yaml }}"
+      register: __r_create_osac_rolebinding
+      retries: 10
+      delay: 5
+      until: __r_create_osac_rolebinding is success
 
     - name: "Pull OSAC operator container image"
       containers.podman.podman_image:

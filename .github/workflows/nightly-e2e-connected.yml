@@ -21,9 +21,9 @@ on:
         type: boolean
         default: false
 
-# Prevent concurrent nightly runs
+# Allow parallel runs with unique concurrency groups per run
 concurrency:
-  group: nightly-connected
+  group: nightly-connected-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -44,7 +44,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Generate cluster name
+      - name: Generate cluster name with hash
         uses: ./.github/actions/setup-cluster-name
         with:
           naming-strategy: hash
@@ -339,5 +339,6 @@ jobs:
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
           artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}

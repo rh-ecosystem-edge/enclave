@@ -694,6 +694,9 @@ quayBackendRGWConfiguration:
   secret_key: YOUR_S3_SECRET_KEY_HERE
   bucket_name: quay-bucket-name
   hostname: ocs-storagecluster-cephobjectstore-openshift-storage.apps.store.enclave-test.nodns.in
+  # Uncomment only to override
+  # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
+  # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
 ```
 
 **Note**: Replace `YOUR_S3_ACCESS_KEY_HERE` and `YOUR_S3_SECRET_KEY_HERE` with your actual S3/RadosGW credentials.
@@ -709,12 +712,16 @@ quayBackendRGWConfiguration:
 | `is_secure` | Use HTTPS | `true` | `false` |
 | `port` | Port number | `443` | `8080` |
 | `storage_path` | Path prefix in bucket | `/datastorage/registry` | `/custom/path` |
+| `minimum_chunk_size_mb` | Minimum multipart upload chunk size (MB) | `100` | `50` |
+| `maximum_chunk_size_mb` | Maximum multipart upload chunk size (MB) | `500` | `800` |
 
 **Notes**:
 - Access and secret keys are created when setting up Ceph/RadosGW
 - Bucket must exist before Quay configuration
 - Hostname should be the OCP route for RadosGW service
 - `is_secure`, `port`, and `storage_path` have defaults in `defaults/quay_operator.yaml` and only need to be set here when overriding those defaults
+- `minimum_chunk_size_mb` and `maximum_chunk_size_mb` default to `100` and `500` respectively; override in `quayBackendRGWConfiguration` if needed
+- `server_side_assembly` is always enabled as it is included in the defaults alongside `maximum_chunk_size_mb`
 
 ### Pull Secrets
 

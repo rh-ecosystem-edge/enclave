@@ -373,6 +373,9 @@ quayBackendRGWConfiguration:
   bucket_name: quay-bucket-name
   hostname: ocs-storagecluster-cephobjectstore-openshift-storage.apps.store.enclave-test.nodns.in
   # is_secure, port, and storage_path have defaults in defaults/quay_operator.yaml
+  # Uncomment only to override
+  # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
+  # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
 
 # Pull secret (combines public and internal registry secrets) - can be downloaded from https://console.redhat.com/openshift/downloads
 pullSecret: {"auths":{"cloud.openshift.com":{"auth":"...","email":"..."},"quay.io":{"auth":"...","email":"..."}}}
