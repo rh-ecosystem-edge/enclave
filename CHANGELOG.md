@@ -19,6 +19,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - User input variables restructure under `config`.
-- OpenShift AI and Nvidia GPU functionality feature flags.
 
 ### Removed

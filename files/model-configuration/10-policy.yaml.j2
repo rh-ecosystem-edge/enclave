@@ -175,7 +175,6 @@ spec:
               operand:
                 imagePullPolicy: IfNotPresent
                 servicePort: 12000
-{% if enable_nvidia_gpu | default(false) %}
         # Install NVIDIA GPU Operator
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -301,7 +300,6 @@ spec:
                 enabled: false
               gdrcopy:
                 enabled: false
-{% endif %}
         # Install cert-manager for Red Hat OpenShift
         - complianceType: mustonlyhave
           metadataComplianceType: musthave

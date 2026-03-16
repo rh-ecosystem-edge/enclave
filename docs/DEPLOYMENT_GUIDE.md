@@ -540,13 +540,6 @@ Each operator in the `operators` list requires:
 - `source`: Catalog source name (from oc-mirror)
 - `config`: (Optional) Operator-specific configuration
 
-### Additional Functionality Configuration
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `enable_openshift_ai` | Enable OpenShift AI features | `true` |
-| `enable_nvidia_gpu` | Enable Nvidia GPU functionality | `true` |
-
 ### SSL Certificates
 
 Certificates are stored in `config/certificates.yaml` and must be provided in PEM format:

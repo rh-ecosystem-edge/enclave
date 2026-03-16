@@ -74,7 +74,6 @@
       tags: acm-policy-catalogsources
 
     - name: Model configurations
-      when: enable_openshift_ai | default(false)
       ansible.builtin.include_tasks:
         file: tasks/model_config.yaml
         apply:

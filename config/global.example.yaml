@@ -123,8 +123,3 @@ agent_hosts:
 # instead of the macAddress and ipAddress parameters
 # See docs/CONFIGURATION_REFERENCE.md for reference
 
-# Enable OpenShift AI support
-enable_openshift_ai: false
-
-# Enable NVIDIA GPU support
-enable_nvidia_gpu: false
