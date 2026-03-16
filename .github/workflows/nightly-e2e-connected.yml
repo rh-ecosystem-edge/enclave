@@ -339,5 +339,6 @@ jobs:
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
           artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
