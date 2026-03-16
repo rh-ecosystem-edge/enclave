@@ -81,7 +81,7 @@ runs:
           --arg artifact_url "$INPUT_ARTIFACT_URL" \
           '[
             {"type": "mrkdwn", "text": ("*Cluster:*\n" + $cluster)},
-            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch + "(Commit: " + $commit + ")")},
+            {"type": "mrkdwn", "text": ("*Branch:*\n" + $branch + " (Commit: " + $commit + ")")},
             {"type": "mrkdwn", "text": ("*Workflow:*\n<" + $workflow_url + "|View Run>")},
             (if ($failed_step != "") then
               {"type": "mrkdwn", "text": ("*Failed at:*\n" + $failed_step)}
