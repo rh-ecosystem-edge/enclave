@@ -3,7 +3,6 @@
 # This phase is common to both modes
 #
 # Performs:
-# - Discovery crontab setup
 # - Namespace and secret creation
 # - TLS certificate configuration
 # - API server health checks

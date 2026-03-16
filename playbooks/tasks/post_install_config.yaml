@@ -1,10 +1,3 @@
-- name: Add discovery crontab task
-  ansible.builtin.cron:
-    name: "Cloud hardware - discovery and recycle"
-    minute: "0"
-    hour: "*"
-    job: "cd {{ playbook_dir }}/../ && /usr/bin/ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/07-configure-discovery.yaml"
-
 - name: "Ensure redhat-lz-admin Namespace exists"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"

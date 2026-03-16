@@ -373,6 +373,9 @@ quayBackendRGWConfiguration:
   bucket_name: quay-bucket-name
   hostname: ocs-storagecluster-cephobjectstore-openshift-storage.apps.store.enclave-test.nodns.in
   # is_secure, port, and storage_path have defaults in defaults/quay_operator.yaml
+  # Uncomment only to override
+  # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
+  # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
 
 # Pull secret (combines public and internal registry secrets) - can be downloaded from https://console.redhat.com/openshift/downloads
 pullSecret: {"auths":{"cloud.openshift.com":{"auth":"...","email":"..."},"quay.io":{"auth":"...","email":"..."}}}
@@ -536,6 +539,13 @@ Each operator in the `operators` list requires:
 - `namespace`: Target namespace for the operator
 - `source`: Catalog source name (from oc-mirror)
 - `config`: (Optional) Operator-specific configuration
+
+### Additional Functionality Configuration
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `enable_openshift_ai` | Enable OpenShift AI features | `true` |
+| `enable_nvidia_gpu` | Enable Nvidia GPU functionality | `true` |
 
 ### SSL Certificates
 
