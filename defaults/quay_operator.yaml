@@ -1,7 +1,7 @@
 ---
 # Quay features
 quayFeatureProxyStorage: true
-quayFeatureQuotaManagement: true
+quayFeatureQuotaManagement: false
 
 # Default storage configuration for all Quay backends
 quayBackendDefaults:
