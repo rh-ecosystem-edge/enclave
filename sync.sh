@@ -65,7 +65,7 @@ echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Validating Config .. " -n1 -s  | tee -a ${log}
     ansible-playbook playbooks/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
-    bash ./validations.sh $global_vars $certs_vars 2>&1 | tee -a ${log}
+    bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Building local cache .. " -n1 -s
