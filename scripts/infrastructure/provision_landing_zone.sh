@@ -272,11 +272,16 @@ sudo qemu-img convert -f qcow2 -O qcow2 \
     "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" \
     "${POOL_PATH}/${LZ_VM_NAME}.qcow2"
 
-# Resize to 700GB (needed for OpenShift image mirroring)
-# Provides ample space for: Quay storage ~130GB, oc-mirror workspace ~7GB,
-# ISO files ~3GB, binaries ~3GB, OS and other ~7GB, plus large buffer
-info "Resizing disk to 700GB..."
-sudo qemu-img resize "${POOL_PATH}/${LZ_VM_NAME}.qcow2" 700G
+# Resize disk: 1000GB for disconnected deployment, 600GB otherwise
+if is_enclave_disconnected; then
+    LZ_DISK_SIZE="1000G"
+else
+    LZ_DISK_SIZE="600G"
+fi
+# 600GB: Quay ~130GB, oc-mirror ~7GB, ISO ~3GB, binaries ~3GB, OS and buffer
+# 1000GB: extra headroom for full release mirror and OLM catalogs in disconnected env
+info "Resizing disk to ${LZ_DISK_SIZE}..."
+sudo qemu-img resize "${POOL_PATH}/${LZ_VM_NAME}.qcow2" "$LZ_DISK_SIZE"
 
 # Refresh pool so libvirt sees the new volume
 info "Refreshing libvirt pool..."

@@ -12,6 +12,7 @@
 # Functions:
 #   load_devscripts_config [CLUSTER_NAME]  - Load dev-scripts config file (required)
 #   try_load_devscripts_config [CLUSTER_NAME] - Load dev-scripts config (optional, no error)
+#   is_enclave_disconnected               - True if ENCLAVE_DEPLOYMENT_MODE=disconnected
 #   get_env_json_value PATH [ENV_FILE]     - Extract value from environment.json using jq
 
 # Load dev-scripts configuration file for a cluster
@@ -58,6 +59,13 @@ try_load_devscripts_config() {
     # shellcheck source=/dev/null
     source "$config_file"
     return 0
+}
+
+# Return 0 if Enclave is running in disconnected mode.
+# Uses ENCLAVE_DEPLOYMENT_MODE: "disconnected" (case-insensitive) = true, anything else = false.
+is_enclave_disconnected() {
+    local deployment_mode="${ENCLAVE_DEPLOYMENT_MODE:-}"
+    [[ "${deployment_mode,,}" == "disconnected" ]]
 }
 
 # Extract a value from environment.json using jq
