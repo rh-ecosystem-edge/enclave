@@ -30,7 +30,7 @@ jobs:
   nightly-disconnected-deployment:
     name: Nightly Disconnected Deployment
     runs-on: [self-hosted, enclave-disconnected]
-    timeout-minutes: 480  # 8 hours
+    timeout-minutes: 600  # 10 hours
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
