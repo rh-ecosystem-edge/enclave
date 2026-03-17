@@ -189,7 +189,13 @@
 - name: Combine pull secrets for connected mode
   when: not (disconnected | default(true))
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=true) }}"
+    # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
+    pullSecretNew: >-
+      {% if pullSecret | type_debug == 'dict' %}
+        {{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=true) | to_json }}
+      {% else %}
+        {{ pullSecret | from_json | ansible.builtin.combine(pullSecretQuay, recursive=true) | to_json }}
+      {% endif %}
 
 - name: Set pull secret for disconnected (no combine)
   when: disconnected | default(true)
@@ -206,7 +212,7 @@
         name: pull-secret
         namespace: openshift-config
       stringData:
-        .dockerconfigjson: "{{ pullSecretNew | to_json }}"
+        .dockerconfigjson: "{{ pullSecretNew }}"
       type: kubernetes.io/dockerconfigjson
   register: r_patch_cluster_pullsecret
   retries: "{{ k8s_retries }}"
