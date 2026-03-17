@@ -129,13 +129,11 @@ if ! command -v httpd &>/dev/null; then
     sudo systemctl start httpd
     echo "  Creating /var/www/html directory..."
     sudo mkdir -p /var/www/html
-    sudo chown -R cloud-user:cloud-user /var/www/html
     sudo chmod 755 /var/www/html
 else
     echo "  httpd is already installed"
     # Ensure directory exists and has correct permissions
     sudo mkdir -p /var/www/html
-    sudo chown -R cloud-user:cloud-user /var/www/html
     sudo chmod 755 /var/www/html
 fi
 
