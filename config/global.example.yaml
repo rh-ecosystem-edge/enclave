@@ -117,7 +117,7 @@ agent_hosts:
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: YOUR_REDFISH_USER
     redfishPassword: YOUR_REDFISH_PASSWORD
-  # Add more hosts as needed (minimum 3 for HA)
+  # Add a total of 3 agent hosts, no more, no less
 
 # For complex network setups you can use mapInterfaces and networkConfig
 # instead of the macAddress and ipAddress parameters

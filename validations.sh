@@ -250,6 +250,12 @@ validation pass pull_secret "Pull secret validated"
 ## Redfish
 validation_section redfish
 
+number_of_hosts=$(getValue .agent_hosts | jq length)
+if [[ $number_of_hosts -ne 3 ]]; then
+    validation fail number_of_agent_hosts "Number of agent_hosts is ${number_of_hosts}. It should be 3"
+fi
+validation pass number_of_agent_hosts "Number of agent_hosts is 3"
+
 # validate redfish access
 for host in 0 1 2; do
     host_name=$(getValue .agent_hosts[$host].name)
