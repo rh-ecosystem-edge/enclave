@@ -1,4 +1,8 @@
 ---
+- name: ">>> START: {{ operator.name }} ({{ '%Y-%m-%d %H:%M:%S' | strftime }})"
+  ansible.builtin.debug:
+    msg: "Starting operator: {{ operator.name }}"
+
 - name: "Ensure Namespace exists"
   kubernetes.core.k8s:
     state: present
@@ -174,3 +178,7 @@
     - files:
         - "../../operators/{{ operator.name }}/tasks.yaml"
       skip: true
+
+- name: "<<< DONE: {{ operator.name }} ({{ '%Y-%m-%d %H:%M:%S' | strftime }})"
+  ansible.builtin.debug:
+    msg: "Finished operator: {{ operator.name }}"

@@ -41,7 +41,21 @@
 
 - name: Start oc-mirror process
   ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc-mirror --v2 --log-level {{ ocMirrorLogLevel }} --authfile "{{ pullSecretPath }}" -c {{ workingDir }}/config/imagesetconfiguration.yaml --workspace file://{{ workingDir }}/config/oc-mirror-workspace docker://{{ quayHostname }}:8443 --dest-tls-verify=false --parallel-images 10 --parallel-layers 10 --retry-times 10 --retry-delay 0 > {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log 2>&1
+    set -o pipefail
+    {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile "{{ pullSecretPath }}" \
+      -c {{ workingDir }}/config/imagesetconfiguration.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
+      docker://{{ quayHostname }}:8443 \
+      --dest-tls-verify=false \
+      --parallel-images 10 \
+      --parallel-layers 10 \
+      --retry-times 10 \
+      --retry-delay 0 \
+      2>&1 | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush() }' | tee {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log
+  args:
+    executable: /bin/bash
   retries: 10
   delay: 10
   register: r_oc_mirror

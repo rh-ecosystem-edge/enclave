@@ -25,6 +25,7 @@
 
 - name: Start oc-mirror process
   ansible.builtin.shell: |
+    set -o pipefail
     {{ workingDir }}/bin/oc-mirror --v2 \
       --log-level {{ ocMirrorLogLevel }} \
       --authfile {{ workingDir }}/config/pull-secret.quay.json \
@@ -38,8 +39,9 @@
       --retry-times 10 \
       --retry-delay 0 \
       --image-timeout 40m0s \
-      > {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log 2>&1
-
+      2>&1 | awk '{ print strftime("[%Y-%m-%d %H:%M:%S]"), $0; fflush() }' | tee {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log
+  args:
+    executable: /bin/bash
   retries: 10
   delay: 10
   register: r_oc_mirror_quay
