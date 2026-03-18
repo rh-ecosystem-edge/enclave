@@ -49,3 +49,8 @@
   ansible.builtin.file:
     path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
     state: absent
+
+- name: Apply release signature ConfigMap
+  ansible.builtin.command:
+    cmd: |
+      {{ workingDir }}/bin/oc apply -f {{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml
