@@ -20,7 +20,7 @@
 #   make verify                           - Verify infrastructure is working
 #   make clean                            - Clean up infrastructure
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin deploy-openshift-ai deploy-nvidia verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
+.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin deploy-openshift-ai deploy-nvidia mirror-plugin mirror-openshift-ai mirror-nvidia verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
 
 # Configuration
 DEV_SCRIPTS_PATH ?=
@@ -91,6 +91,11 @@ help:
 	@echo "  make deploy-plugin PLUGIN=<name>      - Deploy a plugin (e.g., PLUGIN=example)"
 	@echo "  make deploy-openshift-ai              - Deploy OpenShift AI plugin"
 	@echo "  make deploy-nvidia                    - Deploy NVIDIA GPU plugin"
+	@echo ""
+	@echo "Plugin mirror-only (for upgrades):"
+	@echo "  make mirror-plugin PLUGIN=<name>      - Mirror plugin content only"
+	@echo "  make mirror-openshift-ai              - Mirror OpenShift AI content only"
+	@echo "  make mirror-nvidia                    - Mirror NVIDIA GPU content only"
 	@echo ""
 	@echo "Required configuration for CI targets:"
 	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
@@ -376,6 +381,38 @@ deploy-nvidia:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_plugin.sh nvidia-gpu
+
+# Mirror plugin content only (for upgrades)
+mirror-plugin:
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "Error: PLUGIN variable is required. Usage: make mirror-plugin PLUGIN=<name>"; \
+		exit 1; \
+	fi
+	@if ! echo "$(PLUGIN)" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._-]*$$'; then \
+		echo "Error: Invalid PLUGIN name '$(PLUGIN)'. Must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$$"; \
+		exit 1; \
+	fi
+	@echo "=========================================="
+	@echo "Mirroring plugin content: $(PLUGIN)"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh "$(PLUGIN)" --tags mirror
+
+# Mirror OpenShift AI content only
+mirror-openshift-ai:
+	@echo "=========================================="
+	@echo "Mirroring OpenShift AI plugin content"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh openshift-ai --tags mirror
+
+# Mirror NVIDIA GPU content only
+mirror-nvidia:
+	@echo "=========================================="
+	@echo "Mirroring NVIDIA GPU plugin content"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh nvidia-gpu --tags mirror
 
 # Verify infrastructure
 verify:

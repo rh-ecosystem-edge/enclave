@@ -1,6 +1,6 @@
 ---
 name: nvidia-gpu
-type: day2
+type: addon
 order: 200
 mirror: true
 operators: false

@@ -4,8 +4,9 @@
 # This script connects to the Landing Zone VM and runs the
 # deploy-plugin.yaml playbook for the specified plugin.
 #
-# Usage: ./deploy_plugin.sh <plugin-name>
+# Usage: ./deploy_plugin.sh <plugin-name> [ansible-playbook extra args]
 # Example: ./deploy_plugin.sh openshift-ai
+# Example: ./deploy_plugin.sh openshift-ai --tags mirror
 
 set -euo pipefail
 
@@ -21,13 +22,16 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Check arguments
-if [ $# -ne 1 ]; then
-    error "Usage: $0 <plugin-name>"
+if [ $# -lt 1 ]; then
+    error "Usage: $0 <plugin-name> [--tags <tags>]"
     error "Example: $0 openshift-ai"
+    error "Example: $0 openshift-ai --tags mirror"
     exit 1
 fi
 
 PLUGIN_NAME="$1"
+shift
+ANSIBLE_EXTRA_ARGS="$*"
 
 # Validate plugin name format (prevent path traversal)
 if [[ ! "$PLUGIN_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
@@ -118,7 +122,7 @@ LOG_FILE="deployment_plugin_${PLUGIN_NAME}.log"
 info "Running playbook (logging to $LOG_FILE)..."
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 set +e
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml 2>&1 | tee $LOG_FILE'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 PLUGIN_EXIT_CODE=$?
 set -e
 

@@ -1,6 +1,6 @@
 ---
 name: example
-type: day2
+type: addon
 order: 999
 mirror: false
 operators: false

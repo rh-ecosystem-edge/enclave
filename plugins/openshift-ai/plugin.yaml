@@ -1,6 +1,6 @@
 ---
 name: openshift-ai
-type: day2
+type: addon
 order: 100
 mirror: true
 operators: true

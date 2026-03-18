@@ -9,6 +9,12 @@
   delay: "{{ k8s_delay }}"
   until: r_cluster_check is success
 
+- name: Validate storage_provider name format
+  ansible.builtin.assert:
+    that:
+      - storage_provider is regex('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    fail_msg: "Invalid storage_provider name: '{{ storage_provider }}'. Must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+
 - name: Set provider directory
   ansible.builtin.set_fact:
     provider_dir: "{{ plugin_dir }}/providers/{{ storage_provider }}"
