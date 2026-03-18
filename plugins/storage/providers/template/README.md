@@ -3,7 +3,7 @@
 To add a custom storage provider:
 
 1. Copy this directory to a new provider name:
-   ```
+   ```bash
    cp -r plugins/storage/providers/template plugins/storage/providers/my-storage
    ```
 
@@ -12,6 +12,6 @@ To add a custom storage provider:
 3. Edit `validate.yaml` with your storage validation tasks.
 
 4. Run the storage plugin with your provider:
-   ```
+   ```bash
    make deploy-plugin PLUGIN=storage -e storage_provider=my-storage
    ```

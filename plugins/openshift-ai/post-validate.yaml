@@ -5,8 +5,8 @@
     kind: ClusterServiceVersion
     namespace: "{{ openshift_ai_namespace }}"
   register: r_csvs
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
     - r_csvs is success
     - r_csvs.resources | length > 0
@@ -30,8 +30,8 @@
     api_version: datasciencecluster.opendatahub.io/v1
     kind: DataScienceCluster
   register: r_dsc_ready
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
     - r_dsc_ready is success
     - r_dsc_ready.resources | length > 0

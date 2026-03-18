@@ -3,6 +3,16 @@
   ansible.builtin.set_fact:
     provider_dir: "{{ plugin_dir }}/providers/{{ storage_provider }}"
 
+- name: Check provider validate.yaml exists
+  ansible.builtin.stat:
+    path: "{{ provider_dir }}/validate.yaml"
+  register: r_provider_validate
+
+- name: Fail if provider validate.yaml is missing
+  ansible.builtin.assert:
+    that: r_provider_validate.stat.exists
+    fail_msg: "Provider validation file not found: {{ provider_dir }}/validate.yaml"
+
 - name: Validate storage provider
   ansible.builtin.include_tasks:
     file: "{{ provider_dir }}/validate.yaml"

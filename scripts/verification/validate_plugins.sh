@@ -178,7 +178,7 @@ except Exception:
 import yaml, sys
 
 filepath = sys.argv[1]
-required_keys = ['name', 'channel']
+required_keys = ['name', 'channel', 'namespace', 'source']
 
 try:
     with open(filepath) as f:

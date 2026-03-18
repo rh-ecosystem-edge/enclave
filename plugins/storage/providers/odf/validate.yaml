@@ -4,7 +4,7 @@
     api_version: ocs.openshift.io/v1
     kind: StorageCluster
     name: ocs-external-storagecluster
-    namespace: openshift-storage
+    namespace: "{{ storage_namespace | default('openshift-storage') }}"
     wait: true
     wait_sleep: 10
     wait_timeout: 300
@@ -14,8 +14,8 @@
       type: Available
   register: r_storage_cluster_info
   until: r_storage_cluster_info is success
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
 
 - name: Check for default StorageClass
   kubernetes.core.k8s_info:
@@ -28,7 +28,11 @@
     default_sc: >-
       {{ r_storageclasses.resources
          | selectattr('metadata.annotations', 'defined')
-         | selectattr('metadata.annotations.storageclass\.kubernetes\.io/is-default-class', 'equalto', 'true')
+         | map(attribute='metadata.annotations')
+         | map('dict2items')
+         | flatten
+         | selectattr('key', 'equalto', 'storageclass.kubernetes.io/is-default-class')
+         | selectattr('value', 'equalto', 'true')
          | list }}
 
 - name: Verify a default StorageClass exists

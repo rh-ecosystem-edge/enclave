@@ -5,8 +5,8 @@
     kind: ClusterServiceVersion
     namespace: "{{ nvidia_gpu_namespace }}"
   register: r_gpu_csvs
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
     - r_gpu_csvs is success
     - r_gpu_csvs.resources | length > 0
@@ -44,7 +44,10 @@
     that: >-
       r_gpu_nodes_alloc.resources
         | selectattr('status.allocatable', 'defined')
-        | selectattr('status.allocatable.nvidia.com/gpu', 'defined')
+        | map(attribute='status.allocatable')
+        | map('dict2items')
+        | flatten
+        | selectattr('key', 'equalto', 'nvidia.com/gpu')
         | list | length > 0
     fail_msg: >-
       No nodes have nvidia.com/gpu as an allocatable resource.
