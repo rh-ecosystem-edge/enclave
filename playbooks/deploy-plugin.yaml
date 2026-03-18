@@ -62,9 +62,18 @@
         name: plugin
       tags: always
 
+    - name: Normalize mirror mode
+      ansible.builtin.set_fact:
+        _mirror_mode: >-
+          {% if plugin.mirror is sameas true %}plugin
+          {%- elif plugin.mirror is sameas false %}none
+          {%- else %}{{ plugin.mirror | default('none') | string | lower }}
+          {%- endif %}
+      tags: always
+
     - name: Display plugin info
       ansible.builtin.debug:
-        msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order }})"
+        msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order }}, mirror={{ _mirror_mode }})"
       tags: always
 
     - name: Load plugin defaults
@@ -102,7 +111,7 @@
         src: "{{ plugin_dir }}/mirror/imageset.yaml.j2"
         dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.yaml"
       when:
-        - plugin.mirror | default(false) | bool
+        - _mirror_mode == 'plugin'
         - disconnected | default(false) | bool
         - lookup('ansible.builtin.fileglob', plugin_dir ~ '/mirror/imageset.yaml.j2') | length > 0
       tags: mirror
@@ -126,7 +135,7 @@
       register: r_plugin_mirror
       until: r_plugin_mirror is success
       when:
-        - plugin.mirror | default(false) | bool
+        - _mirror_mode == 'plugin'
         - disconnected | default(false) | bool
       tags: mirror
 
@@ -141,6 +150,7 @@
         file: "{{ plugin_dir }}/mirror/registries.yaml"
         name: plugin_registries_file
       when:
+        - _mirror_mode in ['core', 'plugin']
         - disconnected | default(false) | bool
         - r_plugin_registries_yaml.stat.exists
       tags: mirror
@@ -155,6 +165,7 @@
       vars:
         plugin_registries_entries: "{{ plugin_registries_file.plugin_registries }}"
       when:
+        - _mirror_mode in ['core', 'plugin']
         - disconnected | default(false) | bool
         - r_plugin_registries_yaml.stat.exists
         - plugin_registries_file is defined

@@ -20,7 +20,7 @@
 #   make verify                           - Verify infrastructure is working
 #   make clean                            - Clean up infrastructure
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin deploy-openshift-ai deploy-nvidia mirror-plugin mirror-openshift-ai mirror-nvidia verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
+.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-mirror-plugins deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin deploy-openshift-ai deploy-nvidia mirror-plugin mirror-openshift-ai mirror-nvidia verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
 
 # Configuration
 DEV_SCRIPTS_PATH ?=
@@ -81,6 +81,7 @@ help:
 	@echo "Deploy individual phases (for granular control):"
 	@echo "  make deploy-cluster-prepare           - Phase 1: Download binaries and content"
 	@echo "  make deploy-cluster-mirror            - Phase 2: Mirror registry setup (disconnected)"
+	@echo "  make deploy-cluster-mirror-plugins    - Phase 2: Mirror core plugin images (disconnected)"
 	@echo "  make deploy-cluster-install           - Phase 3: Deploy OpenShift cluster"
 	@echo "  make deploy-cluster-post-install      - Phase 4: Cluster configuration"
 	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
@@ -314,6 +315,13 @@ deploy-cluster-mirror:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml
+
+deploy-cluster-mirror-plugins:
+	@echo "=========================================="
+	@echo "Phase 2: Mirror core plugin images (disconnected only)"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
 
 deploy-cluster-install:
 	@echo "=========================================="

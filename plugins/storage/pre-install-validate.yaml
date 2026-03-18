@@ -1,0 +1,14 @@
+---
+- name: Count discovered hosts
+  ansible.builtin.set_fact:
+    _discovered_host_count: "{{ discovered_hosts | length }}"
+
+- name: Validate node count for ODF storage
+  ansible.builtin.assert:
+    that:
+      - _discovered_host_count | int >= 3
+    fail_msg: >-
+      Storage plugin pre-install validation failed:
+      ODF requires at least 3 nodes, but only {{ _discovered_host_count }} host(s) discovered.
+    success_msg: "{{ _discovered_host_count }} host(s) discovered - meets ODF minimum of 3 nodes"
+  when: storage_provider | default('odf') == 'odf'

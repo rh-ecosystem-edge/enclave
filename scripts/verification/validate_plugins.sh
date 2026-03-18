@@ -5,9 +5,9 @@
 # Checks per plugin:
 #   1. plugin.yaml exists and contains required fields (name, type, order, mirror, operators)
 #   2. config/defaults.yaml is valid YAML (if present)
-#   3. pre-validate.yaml, deploy.yaml, post-validate.yaml are valid YAML (if present)
+#   3. pre-install-validate.yaml, pre-validate.yaml, deploy.yaml, post-validate.yaml are valid YAML (if present)
 #   4. operators/operators.yaml is valid YAML with plugin_operators key (if operators: true)
-#   5. mirror/ directory exists (if mirror: true)
+#   5. mirror/ directory exists (if mirror is core or plugin)
 
 set -euo pipefail
 
@@ -142,7 +142,7 @@ if missing:
     fi
 
     # 3. Validate lifecycle YAML files are task lists if present
-    for lifecycle_file in pre-validate.yaml deploy.yaml post-validate.yaml; do
+    for lifecycle_file in pre-install-validate.yaml pre-validate.yaml deploy.yaml post-validate.yaml; do
         filepath="${plugin_dir}${lifecycle_file}"
         if [ -f "$filepath" ]; then
             if ! validate_yaml_tasklist "$filepath" 2>/dev/null; then
@@ -211,24 +211,32 @@ for i, op in enumerate(ops):
         fi
     fi
 
-    # 5. If mirror: true, check mirror/ directory exists
-    mirror_enabled=$(python3 -c "
+    # 5. Validate mirror enum value and check mirror/ directory
+    mirror_value=$(python3 -c "
 import yaml, sys
 try:
     with open(sys.argv[1]) as f:
         data = yaml.safe_load(f)
-    if isinstance(data, dict):
-        print(str(data.get('mirror', False)).lower())
+    val = data.get('mirror', 'none') if isinstance(data, dict) else 'none'
+    if isinstance(val, bool):
+        print('plugin' if val else 'none')
     else:
-        print('false')
+        print(str(val).lower())
 except Exception:
-    print('false')
+    print('none')
 " "$plugin_yaml" 2>/dev/null)
 
-    if [ "$mirror_enabled" = "true" ]; then
+    valid_mirrors="core plugin none"
+    if ! echo "$valid_mirrors" | grep -qw "$mirror_value"; then
+        error "  mirror must be one of: core, plugin, none (got: $mirror_value)"
+        FAILED=1
+        plugin_failed=1
+    fi
+
+    if [[ "$mirror_value" == "core" || "$mirror_value" == "plugin" ]]; then
         mirror_dir="${plugin_dir}mirror/"
         if [ ! -d "$mirror_dir" ]; then
-            error "  mirror: true but mirror/ directory is missing"
+            error "  mirror: $mirror_value but mirror/ directory is missing"
             FAILED=1
             plugin_failed=1
         fi

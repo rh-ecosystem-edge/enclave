@@ -2,5 +2,5 @@
 name: storage
 type: foundation
 order: 10
-mirror: true
+mirror: core
 operators: true

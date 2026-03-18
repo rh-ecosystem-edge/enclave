@@ -2,5 +2,5 @@
 name: example
 type: addon
 order: 999
-mirror: false
+mirror: none
 operators: false

@@ -1,0 +1,4 @@
+---
+- name: Log discovered host count
+  ansible.builtin.debug:
+    msg: "Example plugin pre-install validation: {{ discovered_hosts | length }} host(s) discovered"

@@ -2,5 +2,5 @@
 name: nvidia-gpu
 type: addon
 order: 200
-mirror: true
+mirror: plugin
 operators: false

@@ -2,5 +2,5 @@
 name: openshift-ai
 type: addon
 order: 100
-mirror: true
+mirror: plugin
 operators: true
