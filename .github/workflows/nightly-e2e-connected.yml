@@ -175,6 +175,18 @@ jobs:
         id: verify_cluster
         run: make verify-cluster
 
+      - name: Tag commit on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "refs/tags/e2e-connected-success-${{ github.run_id }}",
+              sha: context.sha
+            })
+
       - name: Collect artifacts
         if: always()
         uses: ./.github/actions/collect-artifacts
