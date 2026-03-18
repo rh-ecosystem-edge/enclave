@@ -181,6 +181,22 @@ jobs:
 
           echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Deploy OpenShift AI plugin
+        id: deploy_openshift_ai
+        run: |
+          echo "## Deploy OpenShift AI Plugin" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          make deploy-openshift-ai
+          echo "✅ OpenShift AI plugin deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy NVIDIA GPU plugin
+        id: deploy_nvidia
+        run: |
+          echo "## Deploy NVIDIA GPU Plugin" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          make deploy-nvidia
+          echo "✅ NVIDIA GPU plugin deployed" >> $GITHUB_STEP_SUMMARY
+
       - name: Verify cluster deployment
         if: success()
         id: verify_cluster
@@ -322,6 +338,8 @@ jobs:
             ["deploy_operators"]="Phase 5: Install operators"
             ["deploy_day2"]="Phase 6: Day-2 operations"
             ["deploy_discovery"]="Phase 7: Configure hardware discovery"
+            ["deploy_openshift_ai"]="Deploy OpenShift AI plugin"
+            ["deploy_nvidia"]="Deploy NVIDIA GPU plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
 
@@ -334,6 +352,8 @@ jobs:
             deploy_operators
             deploy_day2
             deploy_discovery
+            deploy_openshift_ai
+            deploy_nvidia
             verify_cluster
           )
 
