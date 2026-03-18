@@ -247,7 +247,54 @@ jobs:
           path: tags.log
           retention-days: 7
 
-  # Job 6: Makefile validation
+  # Job 6: Plugin validation
+  plugins:
+    name: Plugin Validation
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run plugin validation
+        run: |
+          set -o pipefail
+          echo "## Plugin Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make validate-plugins 2>&1 | tee plugins.log; then
+            echo "### ✅ Plugin validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 plugins.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Plugin validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the plugin validation issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 plugins.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload plugin validation log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugins-log
+          path: plugins.log
+          retention-days: 7
+
+  # Job 7: Makefile validation
   makefile:
     name: Makefile Validation
     runs-on: [self-hosted, pr-validation]

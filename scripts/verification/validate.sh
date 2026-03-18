@@ -191,6 +191,18 @@ validate_makefile() {
     fi
 }
 
+validate_plugins() {
+    print_header "Validating plugins"
+
+    if bash "${ENCLAVE_DIR}/scripts/verification/validate_plugins.sh"; then
+        print_success "Plugin validation passed"
+        return 0
+    else
+        print_error "Plugin validation failed"
+        return 1
+    fi
+}
+
 # Main function
 validate_all() {
     local failed=0
@@ -207,6 +219,7 @@ validate_all() {
     validate_ansible || failed=1
     validate_tags || failed=1
     validate_makefile || failed=1
+    validate_plugins || failed=1
 
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
@@ -243,11 +256,14 @@ case "${1:-all}" in
     makefile)
         validate_makefile
         ;;
+    plugins)
+        validate_plugins
+        ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile|plugins}"
         exit 1
         ;;
 esac

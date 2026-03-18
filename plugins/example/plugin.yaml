@@ -1,0 +1,6 @@
+---
+name: example
+type: day2
+order: 999
+mirror: false
+operators: false

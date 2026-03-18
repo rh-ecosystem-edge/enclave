@@ -1,0 +1,4 @@
+---
+- name: Example plugin deployed
+  ansible.builtin.debug:
+    msg: "{{ example_message }}"
