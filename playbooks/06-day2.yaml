@@ -44,6 +44,8 @@
         file: ../operators/openshift-pipelines-operator-rh/tasks.yaml
         apply:
           tags: openshift-pipelines
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: openshift-pipelines
 
     - name: Configure Quay in disconnected environments
