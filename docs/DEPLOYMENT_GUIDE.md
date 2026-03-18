@@ -8,7 +8,11 @@ This guide provides comprehensive documentation for deploying the Enclave Lab en
 2. [What Gets Deployed](#what-gets-deployed)
 3. [Prerequisites](#prerequisites)
 4. [Configuration](#configuration)
+   - [OpenShift AI Configuration](#openshift-ai-configuration)
+   - [NVIDIA GPU Configuration](#nvidia-gpu-configuration)
 5. [Deployment Workflow](#deployment-workflow)
+   - [Day0 Deployment (Integrated)](#day0-deployment-integrated)
+   - [Day2 Deployment (Post-Installation)](#day2-deployment-post-installation)
 6. [Configuration Examples](#configuration-examples)
 7. [Discovering New Nodes](#discovering-new-nodes)
 8. [Troubleshooting](#troubleshooting)
@@ -58,7 +62,80 @@ The following Red Hat operators are automatically installed and configured:
 | **Red Hat OADP** | `openshift-oadp` | Backup and restore operations |
 | **OpenShift Cert Manager** | `cert-manager-operator` | Certificate management |
 
-### 4. Post-Install Configuration
+### 4. Optional Modules (Tier 2 & 3)
+
+Enclave supports optional AI/ML and GPU modules that can be deployed alongside the base cluster. These modules are **opt-in** and disabled by default to provide faster base deployments.
+
+#### Three-Tier Architecture
+
+```
+Tier 1: Base Enclave (always deployed)
+  ├── OpenShift cluster
+  ├── Core operators (ACM, MCE, LVMS/ODF, etc.)
+  └── Duration: ~55 min (connected), ~110 min (disconnected)
+
+Tier 2: OpenShift AI (optional)
+  ├── rhods-operator (Red Hat OpenShift AI)
+  ├── nfd (Node Feature Discovery)
+  ├── servicemeshoperator3 (Service Mesh)
+  ├── openshift-cert-manager-operator (Cert Manager)
+  ├── Supporting operators (rhcl, lws, limitador, authorino, dns)
+  └── Duration: +15-20 min
+
+Tier 3: NVIDIA GPU (optional, requires Tier 2)
+  ├── gpu-operator-certified (NVIDIA GPU Operator)
+  ├── Requires OpenShift AI to be deployed first
+  ├── Interactive NVIDIA EULA acceptance required
+  └── Duration: +10-15 min
+```
+
+#### Tier 2: OpenShift AI Module
+
+**Operators Installed**:
+- rhods-operator (Red Hat OpenShift Data Science / AI)
+- nfd (Node Feature Discovery)
+- servicemeshoperator3 (Service Mesh v3)
+- openshift-cert-manager-operator (Certificate Manager)
+- rhcl-operator (Red Hat Connectivity Link)
+- leader-worker-set (distributed workloads)
+- limitador-operator (rate limiting)
+- authorino-operator (authorization)
+- dns-operator (DNS management)
+
+**Use Cases**:
+- Machine learning and AI workloads
+- Data science notebooks (Jupyter)
+- Model serving with KServe
+- MLOps pipelines
+
+**Configuration**: See [OpenShift AI Configuration](#openshift-ai-configuration) below.
+
+#### Tier 3: NVIDIA GPU Operator Module
+
+**Operators Installed**:
+- gpu-operator-certified (NVIDIA GPU Operator)
+
+**Features**:
+- Automatic GPU driver installation
+- GPU monitoring with DCGM (Data Center GPU Manager)
+- Multi-Instance GPU (MIG) support
+- GPU Feature Discovery (GFD)
+- vGPU support
+- Configurable ClusterPolicy for GPU management
+
+**Prerequisites**:
+- OpenShift AI (Tier 2) must be deployed first
+- GPU-capable hardware nodes
+- User acceptance of NVIDIA End User License Agreement (EULA)
+
+**Support Modes**:
+- **Certified** (default): Red Hat certified GPU operator with support
+- **Community**: Upstream community GPU operator
+- **Vendor-managed**: Facility provider manages GPU drivers
+
+**Configuration**: See [NVIDIA GPU Configuration](#nvidia-gpu-configuration) below.
+
+### 5. Post-Install Configuration
 
 - **SSL Certificates**: Custom TLS certificates for API server and Ingress
 - **Registry Configuration**: Image registry and pull secret configuration
@@ -149,6 +226,262 @@ Configuration is split across multiple files for better organization:
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime.
 
+### OpenShift AI Configuration
+
+OpenShift AI is an **optional module** (Tier 2) that provides machine learning and AI capabilities.
+
+#### Enable OpenShift AI
+
+**Option 1: Day0 Deployment (Integrated with cluster deployment)**
+
+Add to `config/global.yaml`:
+```yaml
+# Enable OpenShift AI module
+enable_openshift_ai: true
+```
+
+Then deploy normally:
+```bash
+make deploy-cluster  # Base cluster + OpenShift AI deployed together
+```
+
+**Option 2: Day2 Deployment (After cluster is running)**
+
+```bash
+# Create OpenShift AI configuration
+cp config/openshift-ai.yaml.example config/openshift-ai.yaml
+
+# Deploy OpenShift AI module
+make day2-openshift-ai
+```
+
+#### OpenShift AI Configuration File
+
+Create `config/openshift-ai.yaml` (copy from `config/openshift-ai.yaml.example`):
+
+```yaml
+---
+# OpenShift AI Configuration
+
+# Enable OpenShift AI module
+enable_openshift_ai: true
+
+# OpenShift AI operator configuration
+openshift_ai_namespace: "redhat-ods-operator"
+openshift_ai_operator_channel: "fast-3.x"
+openshift_ai_operator_version: "3.3.0"
+openshift_ai_operator_min_version: "3.0.0"
+
+# Component management (Managed, Removed)
+openshift_ai_components:
+  dashboard:
+    managementState: Managed
+  workbenches:
+    managementState: Managed
+  datasciencepipelines:
+    managementState: Managed
+  kserve:
+    managementState: Managed
+  modelmeshserving:
+    managementState: Removed
+  codeflare:
+    managementState: Removed
+  ray:
+    managementState: Removed
+  kueue:
+    managementState: Removed
+  trustyai:
+    managementState: Removed
+  trainingoperator:
+    managementState: Removed
+```
+
+**Key Configuration Options**:
+- `openshift_ai_namespace`: Namespace for OpenShift AI operator (default: `redhat-ods-operator`)
+- `openshift_ai_operator_channel`: Update channel for rhods-operator
+- Component `managementState`:
+  - `Managed`: Component deployed and managed by operator
+  - `Removed`: Component not deployed (reduces resource usage)
+
+#### Disconnected Mode
+
+For disconnected deployments, images are automatically mirrored when `disconnected: true` in `config/global.yaml`.
+
+Mirror images separately:
+```bash
+make mirror-openshift-ai
+```
+
+#### Verification
+
+After deployment, verify OpenShift AI:
+```bash
+# Check OpenShift AI namespace
+oc get namespace redhat-ods-operator
+
+# Check RHOAI operator
+oc get subscription rhods-operator -n redhat-ods-operator
+
+# Check DataScienceCluster
+oc get datasciencecluster default-dsc
+
+# Check DataScienceCluster status
+oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}'
+# Expected output: Ready
+```
+
+### NVIDIA GPU Configuration
+
+NVIDIA GPU Operator is an **optional module** (Tier 3) that provides GPU support for AI/ML workloads.
+
+**Prerequisites**:
+- OpenShift AI (Tier 2) **must be deployed first**
+- GPU-capable hardware nodes
+- Nodes labeled with `nvidia.com/gpu=true`
+
+#### Enable NVIDIA GPU Operator
+
+**Option 1: Day0 Deployment (Integrated with cluster deployment)**
+
+Add to `config/global.yaml`:
+```yaml
+# Enable OpenShift AI (required for NVIDIA)
+enable_openshift_ai: true
+
+# Enable NVIDIA GPU operator
+enable_nvidia: true
+```
+
+Then deploy normally:
+```bash
+make deploy-cluster  # Base + OpenShift AI + NVIDIA deployed together
+```
+
+**Option 2: Day2 Deployment (After cluster is running)**
+
+```bash
+# Ensure OpenShift AI is deployed first
+make day2-openshift-ai
+
+# Create NVIDIA configuration
+cp config/nvidia.yaml.example config/nvidia.yaml
+
+# Deploy NVIDIA GPU operator
+make day2-nvidia
+```
+
+#### NVIDIA GPU Configuration File
+
+Create `config/nvidia.yaml` (copy from `config/nvidia.yaml.example`):
+
+```yaml
+---
+# NVIDIA GPU Operator Configuration
+
+# Enable NVIDIA support
+enable_nvidia: true
+
+# Support mode
+# - certified: Red Hat certified GPU operator (default, includes support)
+# - community: Community GPU operator (no Red Hat support)
+# - vendor-managed: Facility provider manages GPUs
+nvidia_support_mode: "certified"
+
+# GPU Operator version (certified mode)
+nvidia_gpu_operator_version: "25.10.1"
+nvidia_gpu_operator_channel: "v25.10"
+nvidia_gpu_operator_min_version: "25.10.0"
+nvidia_gpu_operator_namespace: "nvidia-gpu-operator"
+
+# OpenShift AI dependency check
+nvidia_require_openshift_ai: true
+
+# User disclaimer (set to false to skip interactive prompt)
+nvidia_show_disclaimer: true
+
+# Driver configuration
+nvidia_driver_enabled: true
+nvidia_driver_auto_upgrade: true
+nvidia_driver_kernel_module_type: "auto"
+
+# Feature enablement
+nvidia_dcgm_enabled: true                      # GPU monitoring
+nvidia_dcgm_exporter_enabled: true             # Prometheus metrics
+nvidia_mig_manager_enabled: true               # Multi-Instance GPU
+nvidia_gpu_feature_discovery_enabled: true     # GPU node labeling
+nvidia_device_plugin_enabled: true             # GPU scheduling
+nvidia_vgpu_device_manager_enabled: true       # Virtual GPU support
+
+# ClusterPolicy configuration
+nvidia_default_runtime: "crio"
+nvidia_use_ocp_driver_toolkit: true
+nvidia_cdi_enabled: true
+nvidia_mig_strategy: "single"
+```
+
+**Key Configuration Options**:
+- `nvidia_support_mode`: Choose support model
+  - `certified`: Red Hat certified (includes support)
+  - `community`: Upstream community version
+  - `vendor-managed`: No operator; vendor manages GPUs
+- `nvidia_require_openshift_ai`: Enforce OpenShift AI prerequisite (recommended: `true`)
+- `nvidia_show_disclaimer`: Show interactive NVIDIA EULA prompt (disable for automation)
+- Feature flags: Enable/disable GPU features individually
+
+#### NVIDIA EULA Disclaimer
+
+When deploying NVIDIA, you'll be prompted to accept the NVIDIA End User License Agreement:
+
+```
+================================================================================
+NVIDIA GPU OPERATOR INSTALLATION DISCLAIMER
+================================================================================
+
+You are about to install NVIDIA GPU operator for OpenShift.
+
+By proceeding, you acknowledge:
+- You have read and accept the NVIDIA EULA
+- You understand the support model for your chosen mode
+- You have the necessary GPU hardware and licenses
+
+Type 'yes' to continue, or 'no' to cancel:
+```
+
+**Skip disclaimer for automation**:
+```yaml
+# In config/nvidia.yaml
+nvidia_show_disclaimer: false
+```
+
+#### Disconnected Mode
+
+For disconnected deployments, NVIDIA images are automatically mirrored when `disconnected: true` in `config/global.yaml`.
+
+Mirror images separately:
+```bash
+make mirror-nvidia
+```
+
+#### Verification
+
+After deployment, verify NVIDIA GPU operator:
+```bash
+# Check NVIDIA namespace
+oc get namespace nvidia-gpu-operator
+
+# Check GPU operator
+oc get subscription gpu-operator-certified -n nvidia-gpu-operator
+
+# Check ClusterPolicy
+oc get clusterpolicy
+
+# Check GPU operator pods
+oc get pods -n nvidia-gpu-operator
+
+# Check GPU nodes
+oc get nodes -l nvidia.com/gpu=true
+```
+
 ## Deployment Workflow
 
 The deployment follows this sequence (defined in `playbooks/main-disconnected.yaml`):
@@ -226,8 +559,130 @@ The deployment follows this sequence (defined in `playbooks/main-disconnected.ya
    - Applies SSL certificates to Ingress
    - Configures registry settings
 
-10. **Model Configuration** (`model-config` tag):
-    - Applies ACM Policy including required resources to deploy a model using RHOAI 3.x.
+10. **Day2 Operations** (`day2` tag):
+    - Optional: OpenShift AI deployment (if `enable_openshift_ai: true`)
+    - Optional: NVIDIA GPU deployment (if `enable_nvidia: true`)
+    - VMaaS configuration
+    - Management cluster upgrades
+
+### Day0 Deployment (Integrated)
+
+Deploy base cluster with optional modules in a single workflow:
+
+```bash
+# Configure optional modules in config/global.yaml
+cat >> config/global.yaml <<EOF
+# Enable OpenShift AI (Tier 2)
+enable_openshift_ai: true
+
+# Enable NVIDIA GPU (Tier 3)
+enable_nvidia: true
+EOF
+
+# Deploy everything together
+make deploy-cluster
+```
+
+**Timeline**:
+- Base cluster: ~110 min (disconnected)
+- + OpenShift AI: ~15-20 min
+- + NVIDIA GPU: ~10-15 min
+- **Total**: ~135-145 min
+
+**What happens**:
+1. Base cluster deployed (Tier 1)
+2. OpenShift AI automatically deployed during day2 phase (Tier 2)
+3. NVIDIA GPU automatically deployed after OpenShift AI (Tier 3)
+4. All modules integrated in single deployment run
+
+**Use when**:
+- Initial deployment with known AI/GPU requirements
+- Fresh environment setup
+- Automated provisioning workflows
+
+### Day2 Deployment (Post-Installation)
+
+Add optional modules to an already-running cluster:
+
+#### Deploy OpenShift AI (Tier 2)
+
+```bash
+# Create configuration
+cp config/openshift-ai.yaml.example config/openshift-ai.yaml
+
+# Edit configuration as needed
+vim config/openshift-ai.yaml
+
+# Deploy OpenShift AI module
+make day2-openshift-ai
+```
+
+**For disconnected environments**:
+```bash
+# Mirror images first
+make mirror-openshift-ai
+
+# Then deploy
+make day2-openshift-ai
+```
+
+#### Deploy NVIDIA GPU (Tier 3)
+
+**Prerequisites**: OpenShift AI must be deployed first
+
+```bash
+# Ensure OpenShift AI is deployed
+oc get datasciencecluster default-dsc
+
+# Create NVIDIA configuration
+cp config/nvidia.yaml.example config/nvidia.yaml
+
+# Edit configuration as needed
+vim config/nvidia.yaml
+
+# Deploy NVIDIA GPU operator
+make day2-nvidia
+```
+
+**For disconnected environments**:
+```bash
+# Mirror images first
+make mirror-nvidia
+
+# Then deploy
+make day2-nvidia
+```
+
+**Timeline**:
+- OpenShift AI: ~15-20 min
+- NVIDIA GPU: ~10-15 min
+
+**Use when**:
+- Cluster already running
+- Adding AI/GPU capabilities later
+- Testing modules independently
+- Existing clusters being upgraded
+
+### Tag-Based Selective Deployment
+
+Deploy only specific modules or phases using Ansible tags:
+
+```bash
+# Deploy only OpenShift AI
+ansible-playbook playbooks/06-day2.yaml --tags openshift-ai
+
+# Deploy only NVIDIA
+ansible-playbook playbooks/06-day2.yaml --tags nvidia
+
+# Skip NVIDIA, deploy everything else
+ansible-playbook playbooks/06-day2.yaml --skip-tags nvidia
+
+# Mirror only (disconnected prep)
+ansible-playbook playbooks/06-day2.yaml --tags openshift-ai-mirror,nvidia-mirror
+
+# Install only (images already mirrored)
+ansible-playbook playbooks/06-day2.yaml --tags openshift-ai-install,nvidia-install
+```
 
 ## Configuration Examples
 

@@ -85,6 +85,21 @@ help:
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
 	@echo ""
+	@echo "Optional Modules (Tier 2 & 3):"
+	@echo "  Tier 2 - OpenShift AI:"
+	@echo "    make deploy-openshift-ai              - Deploy OpenShift AI (connected mode)"
+	@echo "    make deploy-openshift-ai-disconnected - Deploy OpenShift AI (disconnected mode)"
+	@echo "    make day2-openshift-ai                - Deploy OpenShift AI (day 2 operations)"
+	@echo "    make mirror-openshift-ai              - Mirror OpenShift AI images only"
+	@echo ""
+	@echo "  Tier 3 - NVIDIA GPU (requires Tier 2):"
+	@echo "    make deploy-nvidia                    - Deploy NVIDIA GPU operator (connected mode)"
+	@echo "    make deploy-nvidia-disconnected       - Deploy NVIDIA GPU operator (disconnected mode)"
+	@echo "    make day2-nvidia                      - Deploy NVIDIA GPU operator (day 2 operations)"
+	@echo "    make mirror-nvidia                    - Mirror NVIDIA images only"
+	@echo "    make install-nvidia                   - Install NVIDIA operator (skip mirror)"
+	@echo "    make verify-nvidia                    - Verify NVIDIA installation"
+	@echo ""
 	@echo "Required configuration for CI targets:"
 	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
 	@echo ""
@@ -334,6 +349,134 @@ deploy-cluster-discovery:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
+
+# OpenShift AI Module (Optional - Tier 2)
+# Deploy OpenShift AI and supporting operators
+# Prerequisites: OpenShift cluster deployed
+deploy-openshift-ai:
+	@echo "=========================================="
+	@echo "Deploying OpenShift AI (Connected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/openshift-ai.yaml.example" ]; then \
+		echo "ERROR: config/openshift-ai.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ENCLAVE_DEPLOYMENT_MODE=connected ./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml
+
+deploy-openshift-ai-disconnected:
+	@echo "=========================================="
+	@echo "Deploying OpenShift AI (Disconnected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/openshift-ai.yaml.example" ]; then \
+		echo "ERROR: config/openshift-ai.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ENCLAVE_DEPLOYMENT_MODE=disconnected ./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml
+
+day2-openshift-ai:
+	@echo "=========================================="
+	@echo "Installing OpenShift AI (Day 2 Operations)"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/openshift-ai.yaml.example" ]; then \
+		echo "ERROR: config/openshift-ai.yaml.example not found"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml
+
+mirror-openshift-ai:
+	@echo "=========================================="
+	@echo "Mirroring OpenShift AI Images"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/openshift-ai.yaml.example" ]; then \
+		echo "ERROR: config/openshift-ai.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ANSIBLE_TAGS=openshift-ai-mirror ./scripts/deployment/deploy_phase.sh 08-openshift-ai.yaml
+
+# NVIDIA GPU Operator Module (Optional - Tier 3)
+# Deploy NVIDIA GPU operator and drivers
+# Prerequisites: OpenShift cluster deployed AND OpenShift AI deployed
+deploy-nvidia:
+	@echo "=========================================="
+	@echo "Deploying NVIDIA GPU Operator (Connected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@echo "IMPORTANT: OpenShift AI must be deployed first!"
+	@echo "If not deployed, run: make deploy-openshift-ai"
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ENCLAVE_DEPLOYMENT_MODE=connected ./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
+
+deploy-nvidia-disconnected:
+	@echo "=========================================="
+	@echo "Deploying NVIDIA GPU Operator (Disconnected Mode)"
+	@echo "=========================================="
+	@echo ""
+	@echo "IMPORTANT: OpenShift AI must be deployed first!"
+	@echo "If not deployed, run: make deploy-openshift-ai-disconnected"
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ENCLAVE_DEPLOYMENT_MODE=disconnected ./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
+
+day2-nvidia:
+	@echo "=========================================="
+	@echo "Installing NVIDIA GPU Operator (Day 2 Operations)"
+	@echo "=========================================="
+	@echo ""
+	@echo "IMPORTANT: OpenShift AI must be deployed first!"
+	@echo "If not deployed, run: make day2-openshift-ai"
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
+
+mirror-nvidia:
+	@echo "=========================================="
+	@echo "Mirroring NVIDIA GPU Operator Images"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ANSIBLE_TAGS=nvidia-mirror ./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
+
+install-nvidia:
+	@echo "=========================================="
+	@echo "Installing NVIDIA GPU Operator (Skip Mirror)"
+	@echo "=========================================="
+	@echo ""
+	@echo "IMPORTANT: OpenShift AI must be deployed first!"
+	@echo "Assumes images are already mirrored"
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ANSIBLE_TAGS=nvidia-install ./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
+
+verify-nvidia:
+	@echo "=========================================="
+	@echo "Verifying NVIDIA GPU Operator Installation"
+	@echo "=========================================="
+	@echo ""
+	@if [ ! -f "config/nvidia.yaml.example" ]; then \
+		echo "ERROR: config/nvidia.yaml.example not found"; \
+		exit 1; \
+	fi
+	@ANSIBLE_TAGS=nvidia-verify ./scripts/deployment/deploy_phase.sh 09-nvidia.yaml
 
 # Verify infrastructure
 verify:

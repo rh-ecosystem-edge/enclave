@@ -134,7 +134,7 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
-        "playbooks/06-day2.yaml:model-config:Model configurations"
+        # model-config tag removed - OpenShift AI is now optional (operators/openshift-ai/)
         "playbooks/validate-schema.yaml:schema-validation:Include schema validation tasks"
     )
 

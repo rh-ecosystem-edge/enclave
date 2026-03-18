@@ -1,0 +1,40 @@
+---
+# OpenShift AI Configuration
+# Copy to config/openshift-ai.yaml and customize
+
+# Enable OpenShift AI support
+enable_openshift_ai: true
+
+# OpenShift AI operator configuration
+openshift_ai_namespace: "redhat-ods-operator"
+openshift_ai_operator_channel: "fast-3.x"
+
+# DataScienceCluster configuration
+# Customize which AI components to enable
+# Options: Managed (enabled), Removed (disabled)
+openshift_ai_components:
+  codeflare: "Removed"        # Distributed workloads (Ray CodeFlare)
+  dashboard: "Removed"        # OpenShift AI web dashboard
+  datasciencepipelines: "Removed"  # Kubeflow Pipelines for ML workflows
+  kserve: "Managed"          # Model serving (RECOMMENDED - default enabled)
+  kueue: "Removed"           # Job queuing system
+  modelmeshserving: "Removed"  # Alternative model serving
+  ray: "Removed"             # Ray distributed computing framework
+  trainingoperator: "Removed"  # Kubeflow Training Operator
+  trustyai: "Removed"        # TrustyAI explainability
+  workbenches: "Removed"     # Jupyter notebooks and development environments
+
+# Supporting operators (usually keep all enabled)
+openshift_ai_support_operators:
+  nfd_enabled: true  # Node Feature Discovery - detects GPUs
+  servicemesh_enabled: true  # Service Mesh - required for KServe
+  cert_manager_enabled: true  # Cert Manager - required for TLS
+  rhcl_enabled: true  # Red Hat Connectivity Link
+  leader_worker_set_enabled: true  # Leader Worker Set - for distributed workloads
+  limitador_enabled: true  # Rate limiting
+  authorino_enabled: true  # Authorization
+  dns_operator_enabled: true  # DNS management
+
+# Advanced: Disable operators if already installed elsewhere
+# Set to false only if you have these operators deployed independently
+# nfd_enabled: false  # Skip if NFD already installed

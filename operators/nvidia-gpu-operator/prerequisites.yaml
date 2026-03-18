@@ -1,0 +1,65 @@
+---
+# NVIDIA GPU Operator Prerequisites Check
+# Verifies OpenShift AI is deployed before installing NVIDIA
+
+- name: Check if OpenShift AI prerequisite is required
+  when: nvidia_require_openshift_ai | default(true)
+  block:
+    - name: Verify OpenShift AI namespace exists
+      ansible.builtin.shell: |
+        oc get namespace redhat-ods-operator
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_ai_namespace
+      failed_when: false
+      tags:
+        - nvidia-prerequisites
+
+    - name: Verify OpenShift AI operator is deployed
+      ansible.builtin.shell: |
+        oc get subscription rhods-operator -n redhat-ods-operator
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_ai_operator
+      failed_when: false
+      tags:
+        - nvidia-prerequisites
+
+    - name: Fail if OpenShift AI is not deployed
+      when: r_ai_namespace.rc != 0 or r_ai_operator.rc != 0
+      ansible.builtin.fail:
+        msg: |
+          ═══════════════════════════════════════════════════════════════
+          NVIDIA GPU Operator Prerequisite Check Failed
+          ═══════════════════════════════════════════════════════════════
+
+          OpenShift AI must be deployed before installing NVIDIA GPU support.
+
+          OpenShift AI provides the ML/AI workloads that utilize GPU acceleration.
+          The NVIDIA GPU operator requires AI infrastructure to be present.
+
+          To deploy OpenShift AI first:
+            make deploy-openshift-ai
+
+          Or set nvidia_require_openshift_ai: false in config/nvidia.yaml
+          to skip this prerequisite check.
+
+          ═══════════════════════════════════════════════════════════════
+      tags:
+        - nvidia-prerequisites
+
+    - name: OpenShift AI prerequisite satisfied
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════════"
+          - "✅ OpenShift AI Prerequisite Check Passed"
+          - "═══════════════════════════════════════════════════════════════"
+          - ""
+          - "OpenShift AI is deployed and ready:"
+          - "  - Namespace: redhat-ods-operator"
+          - "  - Operator: rhods-operator"
+          - ""
+          - "Proceeding with NVIDIA GPU operator installation..."
+          - ""
+      tags:
+        - nvidia-prerequisites
