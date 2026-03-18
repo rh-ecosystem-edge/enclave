@@ -16,7 +16,14 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 # Configuration
 DEV_SCRIPTS_PATH="${DEV_SCRIPTS_PATH:-}"
 MIN_RAM_GB=48
-MIN_DISK_GB=200
+
+# Required disk depends on deployment mode
+DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-${DEPLOYMENT_MODE:-disconnected}}"
+if [[ "${DEPLOYMENT_MODE,,}" == "disconnected" ]]; then
+    MIN_DISK_GB=1200
+else
+    MIN_DISK_GB=200
+fi
 
 # Track validation status
 VALIDATION_FAILED=0
@@ -165,8 +172,9 @@ if [ -d "/opt" ]; then
     if [ "$AVAILABLE_GB" -ge "$MIN_DISK_GB" ]; then
         success "Sufficient disk space on /opt: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
     else
-        warning "Low disk space on /opt: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+)"
-        info_indent "Environment requires ~200GB (3 masters x 120GB + Landing Zone 60GB)"
+        warning "Low disk space on /opt: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+ for ${DEPLOYMENT_MODE} mode)"
+        info_indent "Disconnected: ~1200GB+ (VM extra disks 1200G for mirroring + masters + Landing Zone)"
+        info_indent "Connected: ~200GB (3 masters x 120GB + Landing Zone 60GB)"
     fi
 else
     warning "/opt directory does not exist (will be created)"
