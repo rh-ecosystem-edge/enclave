@@ -1,0 +1,82 @@
+---
+- name: Verify operator CSVs are Succeeded
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ openshift_ai_namespace }}"
+  register: r_csvs
+  retries: 30
+  delay: 10
+  until:
+    - r_csvs is success
+    - r_csvs.resources | length > 0
+    - r_csvs.resources | selectattr('status.phase', 'equalto', 'Succeeded') | list | length == r_csvs.resources | length
+
+- name: Display installed CSVs
+  ansible.builtin.debug:
+    msg: "CSV {{ item.metadata.name }} is {{ item.status.phase }}"
+  loop: "{{ r_csvs.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: Check for DataScienceCluster CR
+  kubernetes.core.k8s_info:
+    api_version: datasciencecluster.opendatahub.io/v1
+    kind: DataScienceCluster
+  register: r_dsc
+
+- name: Verify DataScienceCluster is Ready
+  kubernetes.core.k8s_info:
+    api_version: datasciencecluster.opendatahub.io/v1
+    kind: DataScienceCluster
+  register: r_dsc_ready
+  retries: 30
+  delay: 10
+  until:
+    - r_dsc_ready is success
+    - r_dsc_ready.resources | length > 0
+    - r_dsc_ready.resources[0].status.phase | default('') == 'Ready'
+  when: r_dsc.resources | length > 0
+
+- name: Verify ACM Policy exists
+  kubernetes.core.k8s_info:
+    api_version: policy.open-cluster-management.io/v1
+    kind: Policy
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_policy_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_policy_check is success
+    - r_policy_check.resources | length > 0
+
+- name: Verify ACM PlacementRule exists
+  kubernetes.core.k8s_info:
+    api_version: apps.open-cluster-management.io/v1
+    kind: PlacementRule
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_placementrule_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_placementrule_check is success
+    - r_placementrule_check.resources | length > 0
+
+- name: Verify ACM PlacementBinding exists
+  kubernetes.core.k8s_info:
+    api_version: policy.open-cluster-management.io/v1
+    kind: PlacementBinding
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_placementbinding_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_placementbinding_check is success
+    - r_placementbinding_check.resources | length > 0
+
+- name: OpenShift AI post-validation passed
+  ansible.builtin.debug:
+    msg: "OpenShift AI deployment verified - operators healthy, ACM policy resources present"

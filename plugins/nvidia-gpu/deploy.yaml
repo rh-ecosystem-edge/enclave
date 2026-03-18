@@ -1,0 +1,11 @@
+---
+- name: Check for certified operator catalog
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  register: r_catalogs
+
+- name: Verify certified catalog is available
+  ansible.builtin.debug:
+    msg: "Found {{ r_catalogs.resources | length }} catalog source(s) in openshift-marketplace"

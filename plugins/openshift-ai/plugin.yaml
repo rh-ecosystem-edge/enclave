@@ -1,0 +1,6 @@
+---
+name: openshift-ai
+type: day2
+order: 100
+mirror: true
+operators: true

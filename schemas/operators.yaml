@@ -44,11 +44,6 @@ properties:
     description: List of operators to install and configure.
     items:
       $ref: "#/definitions/operator"
-  model_operators:
-    type: array
-    description: List of operators to install and configure.
-    items:
-      $ref: "#/definitions/operator"
   storage_operators:
     type: object
     additionalProperties: false

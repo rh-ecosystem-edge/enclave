@@ -1,0 +1,15 @@
+---
+openshift_ai_namespace: redhat-ods-operator
+openshift_ai_policy_namespace: openshift-acm-policies
+
+# DataScienceCluster component states
+dsc_codeflare: Removed
+dsc_dashboard: Removed
+dsc_datasciencepipelines: Removed
+dsc_kserve: Managed
+dsc_kueue: Removed
+dsc_modelmeshserving: Removed
+dsc_ray: Removed
+dsc_trainingoperator: Removed
+dsc_trustyai: Removed
+dsc_workbenches: Removed

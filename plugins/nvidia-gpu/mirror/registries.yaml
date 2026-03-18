@@ -1,0 +1,6 @@
+---
+plugin_registries:
+  - location: "nvcr.io/nvidia"
+    mirror_path: nvidia
+  - location: "registry.connect.redhat.com/nvidia"
+    mirror_path: nvidia
