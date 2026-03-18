@@ -154,18 +154,6 @@
 
           [[registry]]
             prefix = ""
-            location = "registry.redhat.io/odf4"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/odf4"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhceph"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhceph"
-
-          [[registry]]
-            prefix = ""
             location = "registry.redhat.io/cert-manager"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/cert-manager"

@@ -1,0 +1,6 @@
+---
+name: storage
+type: day0
+order: 10
+mirror: true
+operators: true

@@ -1,0 +1,28 @@
+---
+- name: Verify cluster is accessible
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: default
+  register: r_cluster_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_cluster_check is success
+
+- name: Set provider directory
+  ansible.builtin.set_fact:
+    provider_dir: "{{ plugin_dir }}/providers/{{ storage_provider }}"
+
+- name: Check provider directory exists
+  ansible.builtin.stat:
+    path: "{{ provider_dir }}"
+  register: r_provider_dir
+
+- name: Fail if provider directory is missing
+  ansible.builtin.assert:
+    that: r_provider_dir.stat.exists and r_provider_dir.stat.isdir
+    fail_msg: "Storage provider not found: {{ provider_dir }}"
+
+- name: Storage pre-validation passed
+  ansible.builtin.debug:
+    msg: "Storage plugin pre-validation complete (provider={{ storage_provider }})"

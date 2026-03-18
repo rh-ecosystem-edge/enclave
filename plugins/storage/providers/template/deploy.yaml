@@ -1,0 +1,4 @@
+---
+- name: Custom storage provider deploy placeholder
+  ansible.builtin.debug:
+    msg: "Replace this file with your custom storage deployment tasks"
