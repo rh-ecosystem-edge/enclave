@@ -22,3 +22,7 @@
 - name: Create Clair Import Pipeline
   ansible.builtin.include_tasks:
     file: clair_import_pipeline.yaml
+
+- name: Create Cluster Upgrade Pipeline
+  ansible.builtin.include_tasks:
+    file: cluster_upgrade_pipeline.yaml
