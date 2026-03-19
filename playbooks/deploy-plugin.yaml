@@ -139,6 +139,43 @@
         - disconnected | default(false) | bool
       tags: mirror
 
+    - name: Apply updated mirror manifests to cluster
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc apply \
+          -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
+          --server-side --force-conflicts
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      when:
+        - _mirror_mode == 'plugin'
+        - disconnected | default(false) | bool
+        - r_plugin_mirror is defined
+        - r_plugin_mirror is success
+      tags: mirror
+
+    - name: Wait for updated CatalogSource to be ready
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        namespace: openshift-marketplace
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_catalog_sources
+      retries: 30
+      delay: 10
+      until: >-
+        r_catalog_sources.resources | default([])
+        | selectattr('status', 'defined')
+        | selectattr('status.connectionState', 'defined')
+        | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+        | list | length >= (r_catalog_sources.resources | length)
+      when:
+        - _mirror_mode == 'plugin'
+        - disconnected | default(false) | bool
+        - r_plugin_mirror is defined
+        - r_plugin_mirror is success
+      tags: mirror
+
     - name: Check plugin registries file exists
       ansible.builtin.stat:
         path: "{{ plugin_dir }}/mirror/registries.yaml"
