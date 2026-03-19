@@ -8,6 +8,7 @@
 #   make validate-ansible      - Validate Ansible playbooks with ansible-lint
 #   make validate-tags         - Validate Ansible playbook tags
 #   make validate-makefile     - Validate Makefile syntax
+#   make validate-plugins      - Validate plugin directory structure
 #
 # CI Infrastructure targets:
 #   make environment                      - Create test infrastructure (VMs, networks, BMC)
@@ -19,7 +20,7 @@
 #   make verify                           - Verify infrastructure is working
 #   make clean                            - Clean up infrastructure
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
+.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin mirror-plugin deploy-cluster-mirror-plugins verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
 
 # Configuration
 DEV_SCRIPTS_PATH ?=
@@ -42,6 +43,7 @@ help:
 	@echo "  make validate-ansible      - Validate Ansible playbooks with ansible-lint"
 	@echo "  make validate-tags         - Validate Ansible playbook tags"
 	@echo "  make validate-makefile     - Validate Makefile syntax"
+	@echo "  make validate-plugins      - Validate plugin directory structure"
 	@echo ""
 	@echo "CI Image targets:"
 	@echo "  make build-ci-image        - Build CI container image locally"
@@ -84,6 +86,12 @@ help:
 	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
+	@echo ""
+	@echo "Plugin targets:"
+	@echo "  make deploy-plugin PLUGIN=<name>      - Deploy a plugin to the cluster"
+	@echo "  make mirror-plugin PLUGIN=<name>      - Mirror plugin images (disconnected)"
+	@echo "  make deploy-cluster-mirror-plugins    - Mirror all core plugin images (Phase 2)"
+	@echo "  make validate-plugins                 - Validate plugin directory structure"
 	@echo ""
 	@echo "Required configuration for CI targets:"
 	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
@@ -152,6 +160,39 @@ validate-tags:
 
 validate-makefile:
 	@./scripts/verification/validate.sh makefile
+
+validate-plugins:
+	@./scripts/verification/validate.sh plugins
+
+# Plugin deployment targets
+deploy-plugin:
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "Error: PLUGIN is required. Usage: make deploy-plugin PLUGIN=<name>"; \
+		exit 1; \
+	fi
+	@echo "=========================================="
+	@echo "Deploying plugin: $(PLUGIN)"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
+
+mirror-plugin:
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "Error: PLUGIN is required. Usage: make mirror-plugin PLUGIN=<name>"; \
+		exit 1; \
+	fi
+	@echo "=========================================="
+	@echo "Mirroring plugin images: $(PLUGIN)"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh $(PLUGIN) --tags mirror
+
+deploy-cluster-mirror-plugins:
+	@echo "=========================================="
+	@echo "Phase 2: Mirror core plugin images"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
 
 # CI Image targets
 CI_IMAGE_NAME ?= quay.io/eerez/enclave-lab-ci
