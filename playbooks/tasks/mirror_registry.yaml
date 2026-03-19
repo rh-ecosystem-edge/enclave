@@ -19,7 +19,13 @@
 
 - name: Combine pull secrets
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=true) }}"
+    # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
+    pullSecretNew: >-
+      {% if pullSecret | type_debug == 'dict' %}
+        {{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=true) }}
+      {% else %}
+        {{ pullSecret | from_json | ansible.builtin.combine(pullSecretInternal, recursive=true) }}
+      {% endif %}
 
 - name: Create pull-secret file with the combination
   ansible.builtin.copy:
