@@ -12,19 +12,16 @@ PipelineRun example:
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-name: cluster-upgrade-dry-run
-namespace: openshift-pipelines
+  name: cluster-upgrade-dry-run
+  namespace: openshift-pipelines
 spec:
-params:
-- name: dry-run
-  value: "true"
-pipelineRef:
-  name: cluster-upgrade
-taskRunTemplate:
-  serviceAccountName: cluster-upgrade
-timeouts:
-  pipeline: "3h"
-workspaces:
-- name: shared-data
-  emptyDir: {}
+  params:
+    - name: dry-run
+      value: "true"
+  pipelineRef:
+    name: cluster-upgrade
+  taskRunTemplate:
+    serviceAccountName: cluster-upgrade
+  timeouts:
+    pipeline: "3h"
 ```
