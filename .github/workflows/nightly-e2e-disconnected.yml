@@ -196,6 +196,18 @@ jobs:
           echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
           ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
 
+      - name: Tag commit on success
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: "refs/tags/e2e-disconnected-success-${{ github.run_id }}",
+              sha: context.sha
+            })
+
       - name: Collect artifacts
         if: always()
         uses: ./.github/actions/collect-artifacts
