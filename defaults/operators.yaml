@@ -28,7 +28,8 @@ operators:
     init_version: 5.0.3
     namespace: openshift-update-service
     source: cs-redhat-operator-index-v4-20
-    csvName: update-service-operator
+    csvNames:
+      - update-service-operator
 
   - name: openshift-gitops-operator
     version: 1.19.2
@@ -53,7 +54,8 @@ operators:
     namespace: openshift-netobserv-operator
     source: cs-redhat-operator-index-v4-20
     global: true
-    csvName: network-observability-operator
+    csvNames:
+      - network-observability-operator
 
   - name: cluster-logging
     version: 6.4.2
@@ -76,7 +78,8 @@ operators:
     init_version: 1.5.0
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-20
-    csvName: oadp-operator
+    csvNames:
+      - oadp-operator
 
   - name: openshift-cert-manager-operator
     version: 1.18.1
@@ -84,7 +87,8 @@ operators:
     init_version: 1.18.0
     namespace: cert-manager-operator
     source: cs-redhat-operator-index-v4-20
-    csvName: cert-manager-operator
+    csvNames:
+      - cert-manager-operator
 
   - name: cluster-observability-operator
     version: 1.3.1
@@ -101,7 +105,8 @@ operators:
     namespace: external-secrets-operator
     source: cs-redhat-operator-index-v4-20
     global: true
-    csvName: external-secrets-operator
+    csvNames:
+      - external-secrets-operator
 
   - name: compliance-operator
     version: 1.8.2
@@ -117,7 +122,8 @@ operators:
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
     global: true
-    csvName: metallb-operator
+    csvNames:
+      - metallb-operator
 
   # AAP is a dependency for osac-operator
   - name: ansible-automation-platform-operator
@@ -127,4 +133,5 @@ operators:
     namespace: ansible-aap
     source: cs-redhat-operator-index-v4-20
     global: true
-    csvName: aap-operator
+    csvNames:
+      - aap-operator

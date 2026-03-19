@@ -25,9 +25,11 @@ definitions:
       source:
         type: string
         description: Catalog source name (from oc-mirror configuration).
-      csvName:
-        type: string
-        description: ClusterServiceVersion name for the operator.
+      csvNames:
+        type: array
+        items:
+          type: string
+          description: ClusterServiceVersion name for the operator.
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
