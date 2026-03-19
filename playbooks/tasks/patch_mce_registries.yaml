@@ -1,0 +1,104 @@
+---
+# Patch the MCE custom-registries ConfigMap with plugin registry mirror entries.
+#
+# Required variables:
+#   plugin_registries_entries: list of dicts with 'location' and optional 'mirror_path'
+#   clusterName: cluster name for Quay route
+#   baseDomain: base domain for Quay route
+
+- name: Read current custom-registries ConfigMap
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: custom-registries
+    namespace: multicluster-engine
+  register: r_custom_registries
+
+- name: Skip if custom-registries ConfigMap does not exist
+  ansible.builtin.debug:
+    msg: "custom-registries ConfigMap not found — skipping registry patching (connected mode or MCE not deployed)"
+  when: r_custom_registries.resources | length == 0
+
+- name: Patch MCE registries with plugin entries
+  when: r_custom_registries.resources | length > 0
+  block:
+    - name: Get current registries.conf content
+      ansible.builtin.set_fact:
+        current_registries_conf: "{{ r_custom_registries.resources[0].data['registries.conf'] }}"
+
+    - name: Determine new registry entries to add
+      ansible.builtin.set_fact:
+        new_registry_entries: >-
+          {{
+            plugin_registries_entries
+            | selectattr('location', 'defined')
+            | rejectattr('location', 'search', _reject_pattern)
+            | list
+          }}
+      vars:
+        _existing_locations: >-
+          {{ plugin_registries_entries
+             | selectattr('location', 'defined')
+             | map(attribute='location')
+             | select('in', current_registries_conf)
+             | list }}
+        _reject_pattern: "{{ _existing_locations | join('|') if _existing_locations | length > 0 else '^$' }}"
+
+    - name: Report entries already present
+      ansible.builtin.debug:
+        msg: >-
+          Skipping already-present entries:
+          {{ plugin_registries_entries
+             | selectattr('location', 'defined')
+             | map(attribute='location')
+             | select('in', current_registries_conf)
+             | list }}
+      when: >-
+        (plugin_registries_entries
+         | selectattr('location', 'defined')
+         | map(attribute='location')
+         | select('in', current_registries_conf)
+         | list | length) > 0
+
+    - name: Build TOML fragment for new entries
+      ansible.builtin.set_fact:
+        registry_toml_fragment: |
+          {% for entry in new_registry_entries %}
+
+          [[registry]]
+            prefix = ""
+            location = "{{ entry.location }}"
+          [[registry.mirror]]
+            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/{{ entry.mirror_path | default(entry.location | split('/') | last) }}"
+          {% endfor %}
+      when: new_registry_entries | length > 0
+
+    - name: Update custom-registries ConfigMap with new entries
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: custom-registries
+            namespace: multicluster-engine
+            labels:
+              app: assisted-service
+          data:
+            ca-bundle.crt: "{{ r_custom_registries.resources[0].data['ca-bundle.crt'] }}"
+            registries.conf: "{{ current_registries_conf }}{{ registry_toml_fragment }}"
+      when: new_registry_entries | length > 0
+      register: r_update_registries
+      retries: 3
+      delay: 5
+      until: r_update_registries is success
+
+    - name: Report patching result
+      ansible.builtin.debug:
+        msg: >-
+          {% if new_registry_entries | length > 0 %}
+          Added {{ new_registry_entries | length }} registry entries:
+          {{ new_registry_entries | map(attribute='location') | list }}
+          {% else %}
+          All plugin registry entries already present — nothing to add.
+          {% endif %}

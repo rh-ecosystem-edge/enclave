@@ -127,6 +127,8 @@ validate_tags() {
         "playbooks/01-prepare.yaml:download-content:Download content"
         "playbooks/01-prepare.yaml:download-control-binaries:Download control binaries"
         "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror-registry"
+        "playbooks/02-mirror.yaml:mirror-plugins:Mirror core plugin images"
+        "playbooks/03-deploy.yaml:pre-install-validate:Pre-install validate plugins"
         "playbooks/03-deploy.yaml:configure-abi:Include tasks for OCP ABI"
         "playbooks/03-deploy.yaml:hardware:Configure and boot hosts via Ironic"
         "playbooks/03-deploy.yaml:wait-deployment:Wait for deployment"
@@ -191,6 +193,18 @@ validate_makefile() {
     fi
 }
 
+validate_plugins() {
+    print_header "Validating plugin directory structure"
+
+    if "${ENCLAVE_DIR}/scripts/verification/validate_plugins.sh"; then
+        print_success "Plugin validation passed"
+        return 0
+    else
+        print_error "Plugin validation failed"
+        return 1
+    fi
+}
+
 # Main function
 validate_all() {
     local failed=0
@@ -207,6 +221,7 @@ validate_all() {
     validate_ansible || failed=1
     validate_tags || failed=1
     validate_makefile || failed=1
+    validate_plugins || failed=1
 
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
@@ -243,11 +258,14 @@ case "${1:-all}" in
     makefile)
         validate_makefile
         ;;
+    plugins)
+        validate_plugins
+        ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile|plugins}"
         exit 1
         ;;
 esac
