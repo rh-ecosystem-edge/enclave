@@ -34,7 +34,7 @@ plugin_operators:
     version: 1.0.0
     channel: stable-v1.0
     init_version: 1.0.0
-    namespace: openshift-operators
+    namespace: openshift-lws-operator
     source: cs-redhat-operator-index-v4-20
   - name: rhods-operator
     version: 3.3.0

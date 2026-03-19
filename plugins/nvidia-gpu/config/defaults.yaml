@@ -1,4 +1,4 @@
 ---
-nvidia_gpu_namespace: nvidia-gpu-operator
 nvidia_gpu_channel: v25.10
-nvidia_cluster_policy_name: gpu-cluster-policy
+# ACM policy namespace — GPU operator is deployed via ACM policy from openshift-ai plugin
+openshift_ai_policy_namespace: openshift-acm-policies

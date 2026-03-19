@@ -1,23 +1,49 @@
 ---
-- name: Verify operator CSVs are Succeeded
+- name: Get Subscription status for {{ item.name }}
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
-    kind: ClusterServiceVersion
-    namespace: "{{ openshift_ai_namespace }}"
-  register: r_csvs
+    kind: Subscription
+    name: "{{ item.name }}"
+    namespace: "{{ item.namespace }}"
+  register: r_operator_subs
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until:
-    - r_csvs is success
-    - r_csvs.resources | length > 0
-    - r_csvs.resources | selectattr('status.phase', 'equalto', 'Succeeded') | list | length == r_csvs.resources | length
-
-- name: Display installed CSVs
-  ansible.builtin.debug:
-    msg: "CSV {{ item.metadata.name }} is {{ item.status.phase }}"
-  loop: "{{ r_csvs.resources }}"
+    - r_operator_subs is success
+    - r_operator_subs.resources | length > 0
+    - r_operator_subs.resources[0].status.installedCSV | default('') | length > 0
+  loop: "{{ plugin_operators_file.plugin_operators }}"
   loop_control:
-    label: "{{ item.metadata.name }}"
+    label: "{{ item.name }}"
+
+- name: Build list of installed CSVs to verify
+  ansible.builtin.set_fact:
+    _expected_csvs: >-
+      {{ r_operator_subs.results
+         | map(attribute='resources')
+         | map('first')
+         | map(attribute='status')
+         | map(attribute='installedCSV')
+         | zip(plugin_operators_file.plugin_operators | map(attribute='namespace'))
+         | map('list')
+         | list }}
+
+- name: Verify CSV {{ item[0] }} is Succeeded in {{ item[1] }}
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    name: "{{ item[0] }}"
+    namespace: "{{ item[1] }}"
+  register: r_csv_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_csv_check is success
+    - r_csv_check.resources | length > 0
+    - r_csv_check.resources[0].status.phase | default('') == 'Succeeded'
+  loop: "{{ _expected_csvs }}"
+  loop_control:
+    label: "{{ item[0] }}"
 
 - name: Check for DataScienceCluster CR
   kubernetes.core.k8s_info:

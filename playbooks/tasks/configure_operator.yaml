@@ -56,6 +56,122 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
+# Handle pre-existing subscriptions that reference a non-existent CatalogSource.
+# For example, the ingress-operator creates a servicemeshoperator3 Subscription
+# with source: redhat-operators, which doesn't exist in disconnected mode.
+# The ingress-operator actively manages the subscription spec and overwrites any
+# changes, so instead of fighting it we create a CatalogSource alias that makes
+# the existing subscription resolve to the mirrored catalog.
+- name: "Handle pre-existing Subscription with wrong source (disconnected mode)"
+  when:
+    - r_sub_check.resources | length > 0
+    - disconnected | default(true) | bool
+    - r_sub_check.resources[0].spec.source != operator.source
+  block:
+    - name: "Check if CatalogSource '{{ r_sub_check.resources[0].spec.source }}' exists"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ r_sub_check.resources[0].spec.source }}"
+        namespace: openshift-marketplace
+      register: r_sub_source_cs
+
+    - name: "Get image from CatalogSource '{{ operator.source }}'"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ operator.source }}"
+        namespace: openshift-marketplace
+      register: r_correct_cs
+      when: r_sub_source_cs.resources | length == 0
+
+    - name: "Create CatalogSource alias '{{ r_sub_check.resources[0].spec.source }}' pointing to mirror"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: CatalogSource
+          metadata:
+            name: "{{ r_sub_check.resources[0].spec.source }}"
+            namespace: openshift-marketplace
+          spec:
+            sourceType: grpc
+            image: "{{ r_correct_cs.resources[0].spec.image }}"
+            updateStrategy:
+              registryPoll:
+                interval: 10m
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | length > 0
+
+    - name: "Wait for CatalogSource '{{ r_sub_check.resources[0].spec.source }}' to be READY"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ r_sub_check.resources[0].spec.source }}"
+        namespace: openshift-marketplace
+      register: r_alias_cs_ready
+      retries: 30
+      delay: 10
+      until:
+        - r_alias_cs_ready.resources | length > 0
+        - r_alias_cs_ready.resources[0].status.connectionState.lastObservedState | default('') == 'READY'
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | length > 0
+
+    - name: "Wait for InstallPlan ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: Subscription
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_sub_installplan
+      retries: 30
+      delay: 10
+      until:
+        - r_sub_installplan.resources[0].status.installplan is defined
+        - r_sub_installplan.resources[0].status.installplan.name | default('') | length > 0
+
+    - name: "Approve InstallPlan for {{ operator.name }}"
+      kubernetes.core.k8s:
+        state: present
+        merge_type: merge
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: InstallPlan
+          metadata:
+            name: "{{ r_sub_installplan.resources[0].status.installplan.name }}"
+            namespace: "{{ operator.namespace }}"
+          spec:
+            approved: true
+
+    - name: "Wait for CSV ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: Subscription
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_subscription
+      retries: 30
+      delay: 10
+      until:
+        - r_subscription.resources[0].status.currentCSV is defined
+        - r_subscription.resources[0].status.currentCSV | length > 0
+
+    - name: "Wait until CSV is Succeeded ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        name: "{{ r_subscription.resources[0].status.currentCSV }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_csv
+      retries: 30
+      delay: 30
+      until:
+        - r_csv.resources[0].status.phase is defined
+        - r_csv.resources[0].status.phase == "Succeeded"
+
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0

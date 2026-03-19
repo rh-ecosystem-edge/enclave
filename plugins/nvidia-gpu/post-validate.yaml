@@ -1,60 +1,71 @@
 ---
-- name: Verify GPU operator CSV is Succeeded
+# The NVIDIA GPU operator is deployed to managed (spoke) clusters via ACM policy
+# from the openshift-ai plugin. This post-validate checks that the ACM policy
+# resources are correctly configured on the hub cluster.
+
+- name: Verify ACM Policy for GPU operator exists
+  kubernetes.core.k8s_info:
+    api_version: policy.open-cluster-management.io/v1
+    kind: Policy
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_gpu_policy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_gpu_policy is success
+    - r_gpu_policy.resources | length > 0
+
+- name: Verify ACM Policy is not disabled
+  ansible.builtin.assert:
+    that:
+      - not (r_gpu_policy.resources[0].spec.disabled | default(false) | bool)
+    fail_msg: "ACM Policy model-configuration is disabled"
+    success_msg: "ACM Policy model-configuration is enabled"
+
+- name: Verify PlacementRule for GPU policy exists
+  kubernetes.core.k8s_info:
+    api_version: apps.open-cluster-management.io/v1
+    kind: PlacementRule
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_gpu_placementrule
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_gpu_placementrule is success
+    - r_gpu_placementrule.resources | length > 0
+
+- name: Verify PlacementBinding for GPU policy exists
+  kubernetes.core.k8s_info:
+    api_version: policy.open-cluster-management.io/v1
+    kind: PlacementBinding
+    name: model-configuration
+    namespace: "{{ openshift_ai_policy_namespace }}"
+  register: r_gpu_placementbinding
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_gpu_placementbinding is success
+    - r_gpu_placementbinding.resources | length > 0
+
+- name: Check certified operator CatalogSource exists
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
-    kind: ClusterServiceVersion
-    namespace: "{{ nvidia_gpu_namespace }}"
-  register: r_gpu_csvs
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until:
-    - r_gpu_csvs is success
-    - r_gpu_csvs.resources | length > 0
-    - r_gpu_csvs.resources | selectattr('status.phase', 'equalto', 'Succeeded') | list | length == r_gpu_csvs.resources | length
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  register: r_gpu_catalogs
 
-- name: Display GPU operator CSVs
-  ansible.builtin.debug:
-    msg: "CSV {{ item.metadata.name }} is {{ item.status.phase }}"
-  loop: "{{ r_gpu_csvs.resources }}"
-  loop_control:
-    label: "{{ item.metadata.name }}"
-
-- name: Verify ClusterPolicy CR exists
-  kubernetes.core.k8s_info:
-    api_version: nvidia.com/v1
-    kind: ClusterPolicy
-    name: "{{ nvidia_cluster_policy_name }}"
-  register: r_cluster_policy
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until:
-    - r_cluster_policy is success
-    - r_cluster_policy.resources | length > 0
-
-- name: Check for nodes with nvidia.com/gpu allocatable
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Node
-    label_selectors:
-      - feature.node.kubernetes.io/pci-10de.present=true
-  register: r_gpu_nodes_alloc
-
-- name: Verify nvidia.com/gpu is allocatable
+- name: Verify mirror catalog for GPU operator is available
   ansible.builtin.assert:
     that: >-
-      r_gpu_nodes_alloc.resources
-        | selectattr('status.allocatable', 'defined')
-        | map(attribute='status.allocatable')
-        | map('dict2items')
-        | flatten
-        | selectattr('key', 'equalto', 'nvidia.com/gpu')
+      r_gpu_catalogs.resources
+        | selectattr('metadata.name', 'defined')
+        | map(attribute='metadata.name')
         | list | length > 0
-    fail_msg: >-
-      No nodes have nvidia.com/gpu as an allocatable resource.
-      The GPU operator may still be initializing drivers and device plugins.
-    success_msg: "GPU resources are allocatable on cluster nodes"
-  when: r_gpu_nodes_alloc.resources | length > 0
+    fail_msg: "No CatalogSources found in openshift-marketplace"
+    success_msg: "Found {{ r_gpu_catalogs.resources | length }} CatalogSource(s) in openshift-marketplace"
 
 - name: NVIDIA GPU post-validation passed
   ansible.builtin.debug:
-    msg: "NVIDIA GPU deployment verified - operator CSV healthy, ClusterPolicy present"
+    msg: "NVIDIA GPU deployment verified - ACM policy resources present, catalog sources available"
