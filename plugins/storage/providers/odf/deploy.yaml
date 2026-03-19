@@ -1,0 +1,44 @@
+---
+- name: Ensure Secret is present
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: rook-ceph-external-cluster-details
+        namespace: "{{ storage_namespace | default('openshift-storage') }}"
+      data:
+        external_cluster_details: "{{ odfExternalConfig | b64encode }}"
+      type: Opaque
+  register: r_odf_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_odf_secret is success
+
+- name: Ensure StorageCluster is present
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: ocs.openshift.io/v1
+      kind: StorageCluster
+      metadata:
+        name: ocs-external-storagecluster
+        namespace: "{{ storage_namespace | default('openshift-storage') }}"
+      spec:
+        encryption: {}
+        externalStorage:
+          enable: true
+        labelSelector: {}
+        managedResources:
+          cephBlockPools:
+            defaultStorageClass: true
+          cephFilesystems: {}
+          cephObjectStoreUsers:
+            reconcileStrategy: ignore
+          cephObjectStores:
+            reconcileStrategy: ignore
+  retries: 60
+  delay: 10
+  register: r_storagecluster
+  until: r_storagecluster is succeeded

@@ -1,0 +1,25 @@
+---
+- name: Parse host inventories for memory check
+  ansible.builtin.set_fact:
+    _worker_hosts_memory: >-
+      {{
+        discovered_hosts
+        | selectattr('role', 'equalto', 'worker')
+        | map(attribute='inventory')
+        | select('ne', '')
+        | map('from_json')
+        | map(attribute='memory')
+        | map(attribute='physical_bytes')
+        | list
+      }}
+
+- name: Validate worker nodes have at least 16 GiB memory
+  ansible.builtin.assert:
+    that:
+      - _worker_hosts_memory | length > 0
+      - _worker_hosts_memory | map('int') | select('lt', 17179869184) | list | length == 0
+    fail_msg: >-
+      OpenShift AI plugin pre-install validation failed:
+      All worker nodes must have at least 16 GiB (17179869184 bytes) of memory.
+      Worker memory values (bytes): {{ _worker_hosts_memory }}
+    success_msg: "All {{ _worker_hosts_memory | length }} worker node(s) have >= 16 GiB memory"

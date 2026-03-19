@@ -1,0 +1,6 @@
+---
+name: storage
+type: foundation
+order: 10
+mirror: core
+operators: true

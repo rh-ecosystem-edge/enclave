@@ -1,0 +1,64 @@
+---
+- name: Verify cluster is accessible
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: default
+  register: r_cluster_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_cluster_check is success
+
+- name: Check for StorageClass
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+  register: r_storageclasses
+
+- name: Require at least one StorageClass
+  ansible.builtin.assert:
+    that: r_storageclasses.resources | length > 0
+    fail_msg: >-
+      No StorageClass found. OpenShift AI requires persistent storage.
+      Deploy a storage provider (e.g., make deploy-plugin PLUGIN=storage) before deploying OpenShift AI.
+    success_msg: "Found {{ r_storageclasses.resources | length }} StorageClass(es)"
+
+- name: Check for ACM (MultiClusterHub)
+  kubernetes.core.k8s_info:
+    api_version: operator.open-cluster-management.io/v1
+    kind: MultiClusterHub
+  register: r_acm_check
+
+- name: Require ACM MultiClusterHub
+  ansible.builtin.assert:
+    that: r_acm_check.resources | length > 0
+    fail_msg: >-
+      ACM MultiClusterHub not found. OpenShift AI model configuration policy requires ACM.
+      Ensure Advanced Cluster Management is installed and a MultiClusterHub CR exists.
+    success_msg: "ACM MultiClusterHub is present"
+
+- name: Get worker nodes
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Node
+    label_selectors:
+      - node-role.kubernetes.io/worker
+  register: r_worker_nodes
+
+- name: Check worker node memory capacity
+  ansible.builtin.assert:
+    that: >-
+      r_worker_nodes.resources
+        | map(attribute='status.capacity.memory')
+        | map('regex_replace', 'Ki$', '')
+        | map('int')
+        | min >= 16384000
+    fail_msg: >-
+      At least one worker node has less than 16Gi of memory.
+      OpenShift AI components require adequate memory on worker nodes.
+    success_msg: "All worker nodes have sufficient memory"
+  when: r_worker_nodes.resources | length > 0
+
+- name: OpenShift AI pre-validation passed
+  ansible.builtin.debug:
+    msg: "OpenShift AI pre-validation complete - all prerequisites met"

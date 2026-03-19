@@ -175,10 +175,6 @@ echo -p "Catalog source ACM policy .." -n1 -s
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
-echo -p "Model config.. " -n1 -s
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags model-config 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
-
 echo -p "vmaas.. " -n1 -s
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags vmaas 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date

@@ -1,0 +1,49 @@
+---
+- name: Wait for Assisted Service to be reachable
+  ansible.builtin.uri:
+    url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2/clusters"
+    method: GET
+    status_code: [200]
+  register: r_assisted_clusters
+  retries: 60
+  delay: 30
+  until: r_assisted_clusters is success
+
+- name: Extract cluster ID
+  ansible.builtin.set_fact:
+    assisted_cluster_id: "{{ r_assisted_clusters.json[0].id }}"
+    assisted_service_url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2"
+
+- name: Wait for all hosts to report inventory
+  ansible.builtin.uri:
+    url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
+    method: GET
+  register: r_assisted_hosts
+  retries: 60
+  delay: 30
+  until: >-
+    r_assisted_hosts.json | length >= (agent_hosts | length)
+    and (r_assisted_hosts.json
+         | selectattr('inventory', 'defined')
+         | selectattr('inventory', 'ne', '')
+         | list | length) >= (agent_hosts | length)
+
+- name: Set discovered hosts fact
+  ansible.builtin.set_fact:
+    discovered_hosts: "{{ r_assisted_hosts.json }}"
+
+- name: Find plugins with pre-install-validate.yaml
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "pre-install-validate.yaml"
+    recurse: true
+    depth: 2
+  register: r_pre_install_plugins
+
+- name: Run pre-install validation for each plugin
+  ansible.builtin.include_tasks:
+    file: tasks/run_pre_install_validate.yaml
+  loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | list | sort }}"
+  loop_control:
+    loop_var: plugin_path
+  when: r_pre_install_plugins.files | length > 0

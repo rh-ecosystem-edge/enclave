@@ -1,0 +1,3 @@
+---
+storage_provider: odf
+storage_namespace: openshift-storage

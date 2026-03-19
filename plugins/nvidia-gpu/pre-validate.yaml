@@ -1,0 +1,50 @@
+---
+- name: Verify cluster is accessible
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: default
+  register: r_cluster_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_cluster_check is success
+
+- name: Check for NFD operator
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: nfd
+    namespace: openshift-nfd
+  register: r_nfd_check
+
+- name: Require NFD operator
+  ansible.builtin.assert:
+    that: r_nfd_check.resources | length > 0
+    fail_msg: >-
+      NFD operator not found. NVIDIA GPU operator requires Node Feature Discovery
+      to detect GPU hardware. Ensure NFD is installed (Subscription 'nfd' in openshift-nfd namespace).
+    success_msg: "NFD operator subscription is present"
+
+- name: Check for nodes with GPU hardware
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Node
+    label_selectors:
+      - feature.node.kubernetes.io/pci-10de.present=true
+  register: r_gpu_nodes
+
+- name: Warn if no GPU hardware detected
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: No nodes with GPU hardware detected (label feature.node.kubernetes.io/pci-10de.present).
+      The GPU operator will install but no GPUs will be available until nodes with NVIDIA GPUs are added.
+  when: r_gpu_nodes.resources | length == 0
+
+- name: Display GPU node count
+  ansible.builtin.debug:
+    msg: "Found {{ r_gpu_nodes.resources | length }} node(s) with NVIDIA GPU hardware"
+  when: r_gpu_nodes.resources | length > 0
+
+- name: NVIDIA GPU pre-validation passed
+  ansible.builtin.debug:
+    msg: "NVIDIA GPU pre-validation complete - all prerequisites met"

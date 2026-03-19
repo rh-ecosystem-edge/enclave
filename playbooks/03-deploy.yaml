@@ -66,6 +66,13 @@
           tags: hardware
       tags: hardware
 
+    - name: Pre-install hardware validation for plugins
+      ansible.builtin.include_tasks:
+        file: tasks/pre_install_validate_plugins.yaml
+        apply:
+          tags: pre-install-validate
+      tags: pre-install-validate
+
     - name: Wait for deployment
       ansible.builtin.include_tasks:
         file: tasks/wait_for_deployment.yaml

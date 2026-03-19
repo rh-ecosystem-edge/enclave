@@ -1,0 +1,11 @@
+---
+plugin_registries:
+  - location: "registry.redhat.io/rhoai"
+  - location: "registry.redhat.io/rhelai1"
+  - location: "registry.redhat.io/rhaiis"
+  - location: "registry.redhat.io/rhods"
+  - location: "registry.redhat.io/openshift-service-mesh"
+  - location: "registry.redhat.io/openshift-service-mesh-tech-preview"
+  - location: "registry.redhat.io/openshift-service-mesh-dev-preview-beta"
+  - location: "registry.redhat.io/rhcl-1"
+  - location: "registry.redhat.io/leader-worker-set"

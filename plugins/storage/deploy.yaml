@@ -1,0 +1,8 @@
+---
+- name: Set provider directory
+  ansible.builtin.set_fact:
+    provider_dir: "{{ plugin_dir }}/providers/{{ storage_provider }}"
+
+- name: Deploy storage provider
+  ansible.builtin.include_tasks:
+    file: "{{ provider_dir }}/deploy.yaml"

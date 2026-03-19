@@ -1,0 +1,4 @@
+---
+- name: Custom storage provider validate placeholder
+  ansible.builtin.debug:
+    msg: "Replace this file with your custom storage validation tasks"

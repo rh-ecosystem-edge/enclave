@@ -1,0 +1,6 @@
+---
+name: nvidia-gpu
+type: addon
+order: 200
+mirror: plugin
+operators: false

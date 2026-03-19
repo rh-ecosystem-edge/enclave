@@ -1,0 +1,29 @@
+---
+# ODF storage plugin - ImageSetConfiguration fragment
+# Contains operator packages for ODF and its dependencies
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
+      packages:
+{% for operator in plugin_operators_file.plugin_operators %}
+        - name: {{ operator.name }}
+          defaultChannel: {{ operator.channel }}
+          channels:
+            - name: {{ operator.channel }}
+              minVersion: {{ operator.init_version }}
+              maxVersion: {{ operator.version }}
+{% endfor %}
+        - name: mcg-operator
+        - name: odf-csi-addons-operator
+        - name: ocs-client-operator
+        - name: odf-prometheus-operator
+        - name: recipe
+        - name: rook-ceph-operator
+        - name: cephcsi-operator
+        - name: odf-dependencies
+        - name: odr-cluster-operator
+        - name: odr-hub-operator
+        - name: ocs-operator
+        - name: odf-external-snapshotter-operator

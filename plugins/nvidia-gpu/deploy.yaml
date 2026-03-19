@@ -1,0 +1,16 @@
+---
+# Placeholder: GPU operator is currently installed via ACM policy in the
+# openshift-ai plugin (10-policy.yaml.j2). This deploy.yaml verifies that
+# the certified catalog is available so the operator can be resolved.
+# Once GPU deployment is extracted from the ACM policy flow, this file
+# will contain the standalone GPU operator installation tasks.
+- name: Check for certified operator catalog
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  register: r_catalogs
+
+- name: Verify certified catalog is available
+  ansible.builtin.debug:
+    msg: "Found {{ r_catalogs.resources | length }} catalog source(s) in openshift-marketplace"

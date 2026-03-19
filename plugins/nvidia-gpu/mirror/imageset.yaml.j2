@@ -1,0 +1,15 @@
+---
+# NVIDIA GPU plugin - ImageSetConfiguration fragment
+# Contains the certified operator catalog entry for the GPU operator
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/certified-operator-index:v4.20
+      packages:
+        - name: gpu-operator-certified
+          defaultChannel: {{ nvidia_gpu_channel }}
+          channels:
+            - name: {{ nvidia_gpu_channel }}
+              minVersion: 25.10.0
+              maxVersion: 25.10.1

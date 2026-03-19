@@ -1,0 +1,25 @@
+---
+- name: Parse host inventories for GPU detection
+  ansible.builtin.set_fact:
+    _hosts_with_gpus: >-
+      {{
+        discovered_hosts
+        | map(attribute='inventory')
+        | select('ne', '')
+        | map('from_json')
+        | selectattr('gpus', 'defined')
+        | map(attribute='gpus')
+        | select('ne', None)
+        | flatten
+        | selectattr('vendor_id', 'equalto', '10de')
+        | list
+      }}
+
+- name: Validate at least one host has an NVIDIA GPU (PCI vendor 10de)
+  ansible.builtin.assert:
+    that:
+      - _hosts_with_gpus | length > 0
+    fail_msg: >-
+      NVIDIA GPU plugin pre-install validation failed:
+      No hosts with NVIDIA GPU (PCI vendor 10de) found in discovered hardware inventory.
+    success_msg: "Found {{ _hosts_with_gpus | length }} NVIDIA GPU(s) across discovered hosts"

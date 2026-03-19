@@ -1,0 +1,8 @@
+---
+- name: Custom storage provider not implemented
+  ansible.builtin.fail:
+    msg: >-
+      This is the template storage provider placeholder.
+      Copy this directory to create your own provider and implement
+      your CSI driver installation and StorageClass configuration.
+      See providers/template/README.md for instructions.

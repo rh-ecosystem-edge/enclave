@@ -56,8 +56,8 @@ quayBackendRGWConfiguration:
 # Storage Backend
 # ============================================================================
 # Storage backend for block devices for quay database and assisted installer
-# Options: lvms or odf
-# blockStorageBackend: odf
+# Default: lvms (installed by core pipeline)
+# For ODF storage, deploy the storage plugin: make deploy-plugin PLUGIN=storage
 blockStorageBackend: lvms
 
 # ============================================================================
@@ -71,10 +71,10 @@ blockStorageBackend: lvms
 #      - /dev/disk/by-path/YOUR_DISK_PATH_3
 
 # ============================================================================
-# Storage Configuration (ODF)
+# Storage Configuration (ODF) - requires storage plugin
 # ============================================================================
-# When odf is set, it is needed to configure the odfExternalConfig variable
-# with the data obtained from ceph-external-cluster-details-exporter.py script
+# ODF is deployed via the storage plugin. Set blockStorageBackend: odf
+# and configure odfExternalConfig, then run: make deploy-plugin PLUGIN=storage
 # odfExternalConfig:
 #  '[{"name": "external-cluster-user-command",
 #     "kind": "ConfigMap", "data": ..}]'

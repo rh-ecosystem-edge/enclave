@@ -4,8 +4,9 @@
 # This script connects to the Landing Zone VM and runs a specific
 # Enclave Lab ansible playbook phase.
 #
-# Usage: ./deploy_phase.sh <playbook-file>
+# Usage: ./deploy_phase.sh <playbook-file> [ansible-playbook extra args]
 # Example: ./deploy_phase.sh 04-post-install.yaml
+# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
 
 set -euo pipefail
 
@@ -21,13 +22,16 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Check arguments
-if [ $# -ne 1 ]; then
-    error "Usage: $0 <playbook-file>"
+if [ $# -lt 1 ]; then
+    error "Usage: $0 <playbook-file> [ansible-playbook extra args]"
     error "Example: $0 04-post-install.yaml"
+    error "Example: $0 02-mirror.yaml --tags mirror-plugins"
     exit 1
 fi
 
 PLAYBOOK_FILE="$1"
+shift
+ANSIBLE_EXTRA_ARGS="$*"
 
 # Validate required environment variables
 require_env_var "DEV_SCRIPTS_PATH"
@@ -103,7 +107,7 @@ EOF
 LOG_FILE="deployment_$(basename "$PLAYBOOK_FILE" .yaml).log"
 info "Running playbook (logging to $LOG_FILE)..."
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml 2>&1 | tee $LOG_FILE'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 
 PHASE_EXIT_CODE=$?
 
