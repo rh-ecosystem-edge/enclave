@@ -29,7 +29,7 @@ concurrency:
 jobs:
   nightly-disconnected-deployment:
     name: Nightly Disconnected Deployment
-    runs-on: [self-hosted, enclave-disconnected, gpu]
+    runs-on: [self-hosted, enclave-disconnected-ai, gpu]
     timeout-minutes: 600  # 10 hours
 
     env:
