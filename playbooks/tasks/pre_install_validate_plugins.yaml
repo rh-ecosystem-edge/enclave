@@ -64,13 +64,43 @@
     depth: 2
   register: r_pre_install_plugins
 
+- name: Read plugin descriptors for filtering
+  ansible.builtin.slurp:
+    src: "{{ item }}/plugin.yaml"
+  loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | list | sort }}"
+  register: r_pre_install_slurp
+  when: r_pre_install_plugins.files | length > 0
+
+- name: Build enabled plugin name list
+  ansible.builtin.set_fact:
+    _pre_install_included_names: >-
+      {{ r_pre_install_slurp.results | default([])
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | map(attribute='name')
+         | list }}
+  when: r_pre_install_plugins.files | length > 0
+
+- name: Build filtered plugin paths
+  ansible.builtin.set_fact:
+    _pre_install_plugin_paths: >-
+      {{ r_pre_install_slurp.results | default([])
+         | map(attribute='item')
+         | select('search', '/(' + (_pre_install_included_names | join('|')) + ')$')
+         | list | sort }}
+  when:
+    - r_pre_install_plugins.files | length > 0
+    - _pre_install_included_names | default([]) | length > 0
+
 - name: Run pre-install validation for each plugin
   ansible.builtin.include_tasks:
     file: tasks/run_pre_install_validate.yaml
-  loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | list | sort }}"
+  loop: "{{ _pre_install_plugin_paths | default([]) }}"
   loop_control:
     loop_var: plugin_path
-  when: r_pre_install_plugins.files | length > 0
+  when: _pre_install_plugin_paths | default([]) | length > 0
 
 - name: Release installation gate on rendezvous node
   ansible.builtin.shell: |

@@ -40,12 +40,6 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
 
-- name: validate defaults/storage_operators.yaml schema
-  ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', '../../defaults/storage_operators.yaml') | from_yaml | to_json }}"
-    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
-    engine: ansible.utils.jsonschema
-
 - name: validate defaults/platforms.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/platforms.yaml') | from_yaml | to_json }}"
@@ -62,12 +56,6 @@
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/quay_operator.yaml') | from_yaml | to_json }}"
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/quay_operator.yaml') | from_yaml | to_json }}"
-    engine: ansible.utils.jsonschema
-
-- name: validate defaults/lvms_operator.yaml schema
-  ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', '../../defaults/lvms_operator.yaml') | from_yaml | to_json }}"
-    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/lvms_operator.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
 
 - name: Include deployment vars

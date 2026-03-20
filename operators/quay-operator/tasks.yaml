@@ -112,7 +112,7 @@
               requests:
                 cpu: 500m
                 memory: 2Gi
-  when: blockStorageBackend == 'odf'
+  when: storage_plugin == 'odf'
   retries: 60
   delay: 10
   register: r_quay
@@ -120,7 +120,7 @@
 
 - name: Run LVMS-specific Quay tasks (PVC, QuayRegistry, deployment patch)
   ansible.builtin.include_tasks: quay_lvms.yaml
-  when: blockStorageBackend == 'lvms'
+  when: storage_plugin == 'lvms'
 
 - name: Get router pod IP for Quay route access
   kubernetes.core.k8s_info:

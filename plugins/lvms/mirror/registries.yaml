@@ -1,0 +1,3 @@
+plugin_registries:
+  - location: "registry.redhat.io/lvms4"
+    mirror: "lvms4"

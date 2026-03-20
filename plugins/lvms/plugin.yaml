@@ -1,0 +1,5 @@
+name: lvms
+type: foundation
+order: 10
+mirror: core
+operators: true

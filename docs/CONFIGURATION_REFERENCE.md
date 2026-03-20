@@ -13,14 +13,15 @@ Configuration is split across multiple files for better organization and maintai
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
 | `defaults/operators.yaml` | General cluster operators configuration |
 | `defaults/platforms.yaml` | Available OpenShift versions |
-| `defaults/storage_operators.yaml` | Storage operators (ODF, LVMS) configuration |
+| `plugins/lvms/` | LVMS storage plugin (operator, mirroring, deploy) |
+| `plugins/odf/` | ODF storage plugin (operator, mirroring) |
 | `defaults/model_operators.yaml` | AI/ML model operators configuration |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/content_images.yaml` | RHCOS images and ISOs configuration |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
 | `defaults/mirror_registry.yaml` | Quay hostname and CA path defaults |
 | `defaults/quay_operator.yaml` | Quay feature flags and backend storage defaults |
-| `defaults/lvms_operator.yaml` | LVMS device selector defaults |
+| `plugins/lvms/config/defaults.yaml` | LVMS device selector defaults |
 
 Copy the example files to get started:
 ```bash
@@ -786,21 +787,21 @@ pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 
 ## Storage Configuration
 
-Block storage configuration is set via `blockStorageBackend` and optional backend-specific variables in `config/global.yaml`.
+Block storage configuration is set via `storage_plugin` and optional backend-specific variables in `config/global.yaml`. Each storage backend is implemented as a foundation plugin under `plugins/`. The `enabled_plugins` list controls which plugins are deployed and mirrored; by default it contains only the selected `storage_plugin`.
 
-#### `blockStorageBackend`
+#### `storage_plugin`
 
-**Description**: Selects which storage operator provides block storage for Quay and the Assisted Installer.
+**Description**: Selects which storage plugin provides block storage for Quay and the Assisted Installer. This value is included in the default `enabled_plugins` list, so the matching plugin under `plugins/` is automatically deployed.
 
 **Type**: String
 
 **Valid values**:
-- `lvms`: Local Volume Manager Storage
-- `odf`: OpenShift Data Foundation in external mode
+- `lvms`: Local Volume Manager Storage (plugin: `plugins/lvms/`)
+- `odf`: OpenShift Data Foundation in external mode (plugin: `plugins/odf/`)
 
 **Example**:
 ```yaml
-blockStorageBackend: lvms
+storage_plugin: lvms
 ```
 
 #### `lvmsConfig`
@@ -819,14 +820,14 @@ lvmsConfig:
 
 **Notes**:
 - Use paths from `/dev/disk/by-path/` for stable device identification across reboots
-- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in `defaults/lvms_operator.yaml`)
+- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in `plugins/lvms/config/defaults.yaml`)
 - Only needed when you want to restrict which disks LVMS uses; omit to let LVMS manage all disks automatically
 
 #### `odfExternalConfig`
 
-**Description**: External Ceph cluster configuration required when `blockStorageBackend: odf`.
+**Description**: External Ceph cluster configuration required when `storage_plugin: odf`.
 
-**Type**: String (JSON, required when `blockStorageBackend: odf`)
+**Type**: String (JSON, required when `storage_plugin: odf`)
 
 **Example**:
 ```yaml
@@ -836,7 +837,7 @@ odfExternalConfig:
 ```
 
 **Notes**:
-- Only required when `blockStorageBackend` is set to `odf`
+- Only required when `storage_plugin` is set to `odf`
 
 ### Datacenter Cache Configuration
 
@@ -1036,9 +1037,10 @@ sslCACertificate: |
 
 ## Operator Configuration
 
-Operator configuration is stored in the `defaults/` directory:
+Operator configuration is stored in the `defaults/` directory and in storage plugins:
 - `defaults/operators.yaml` - General cluster operators
-- `defaults/storage_operators.yaml` - Storage operators (selected based on `blockStorageBackend` variable)
+- `plugins/lvms/operators/operators.yaml` - LVMS storage operator (deployed when `storage_plugin: lvms`)
+- `plugins/odf/operators/operators.yaml` - ODF storage operator (deployed when `storage_plugin: odf`)
 - `defaults/model_operators.yaml` - AI/ML model operators
 
 ### Operator List Structure
@@ -1126,7 +1128,7 @@ source: cs-redhat-operator-index-v4-19
 **Example for LVMS Operator**:
 ```yaml
 deviceSelector:
-  # forceWipeDevicesAndDestroyAllData defaults to true (defaults/lvms_operator.yaml)
+  # forceWipeDevicesAndDestroyAllData defaults to true (plugins/lvms/config/defaults.yaml)
   optionalPaths:
     - /dev/disk/by-path/pci-0000:00:17.0-ata-1
     - /dev/disk/by-path/pci-0000:00:17.0-ata-2
@@ -1250,7 +1252,7 @@ pullSecret: '{"auths":{"cloud.openshift.com":{...},"quay.io":{...}}}'
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
 
 # Storage Backend
-blockStorageBackend: lvms
+storage_plugin: lvms
 
 # Agent Hosts (control plane nodes)
 agent_hosts:

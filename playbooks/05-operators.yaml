@@ -4,9 +4,10 @@
 #
 # Performs:
 # - Disable default catalog sources (disconnected mode)
-# - Install storage operators (LVMS/ODF)
-# - Install general operators from defaults/operators.yaml
 # - Auto-discover and deploy foundation plugins (type: foundation)
+#   Storage plugins (LVMS/ODF) run here, BEFORE core operators,
+#   so that Quay can rely on the storage backend being present.
+# - Install general operators from defaults/operators.yaml
 #
 # Usage:
 #   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
@@ -29,16 +30,16 @@
         msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
 
-    - name: Configure operators
-      ansible.builtin.include_tasks:
-        file: tasks/configure_operators.yaml
-        apply:
-          tags: operators
-      tags: operators
-
     - name: Auto-discover and deploy foundation plugins
       ansible.builtin.include_tasks:
         file: tasks/deploy_foundation_plugins.yaml
         apply:
           tags: foundation-plugins
       tags: foundation-plugins
+
+    - name: Configure operators
+      ansible.builtin.include_tasks:
+        file: tasks/configure_operators.yaml
+        apply:
+          tags: operators
+      tags: operators

@@ -110,6 +110,7 @@ import yaml, sys
 
 filepath = sys.argv[1]
 required_fields = ['name', 'type', 'order', 'mirror', 'operators']
+valid_fields = required_fields
 
 try:
     with open(filepath) as f:
@@ -125,6 +126,11 @@ if not isinstance(data, dict):
 missing = [f for f in required_fields if f not in data]
 if missing:
     print(f'  plugin.yaml missing required fields: {missing}', file=sys.stderr)
+    sys.exit(1)
+
+unexpected = [f for f in data if f not in valid_fields]
+if unexpected:
+    print(f'  plugin.yaml has unexpected fields: {unexpected}', file=sys.stderr)
     sys.exit(1)
 " "$plugin_yaml" 2>&1; then
         FAILED=1
