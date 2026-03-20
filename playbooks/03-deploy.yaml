@@ -35,13 +35,6 @@
         msg: "Deploying in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
 
-    - name: Pre-install validate plugins
-      ansible.builtin.include_tasks:
-        file: tasks/pre_install_validate_plugins.yaml
-        apply:
-          tags: pre-install-validate
-      tags: pre-install-validate
-
     - name: Include tasks for OCP ABI
       ansible.builtin.include_tasks:
         file: tasks/configure_ocp_abi.yaml
@@ -68,7 +61,24 @@
       loop_control:
         loop_var: agent_host
       ansible.builtin.include_tasks:
-        file: tasks/configure_hardware_ironic_node.yaml
+        file: tasks/configure_hardware_ironic_boot.yaml
+        apply:
+          tags: hardware
+      tags: hardware
+
+    - name: Pre-install validate plugins
+      ansible.builtin.include_tasks:
+        file: tasks/pre_install_validate_plugins.yaml
+        apply:
+          tags: pre-install-validate
+      tags: pre-install-validate
+
+    - name: Wait for all hosts to reach active state
+      loop: "{{ agent_hosts }}"
+      loop_control:
+        loop_var: agent_host
+      ansible.builtin.include_tasks:
+        file: tasks/configure_hardware_ironic_wait.yaml
         apply:
           tags: hardware
       tags: hardware
