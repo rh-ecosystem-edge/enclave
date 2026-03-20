@@ -1,32 +1,56 @@
 ---
-- name: Wait for Assisted Service to be reachable
+- name: Get Assisted Service auth token from rendezvous node
+  ansible.builtin.shell: |
+    set -o pipefail
+    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 core@{{ rendezvousIP }} \
+      'grep USER_AUTH_TOKEN /etc/assisted/rendezvous-host.env' | cut -d= -f2
+  register: r_auth_token
+  retries: 30
+  delay: 5
+  until: r_auth_token is success
+
+- name: Wait for Assisted Service cluster to be registered
   ansible.builtin.uri:
     url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2/clusters"
     method: GET
+    headers:
+      Authorization: "{{ r_auth_token.stdout }}"
     status_code: [200]
   register: r_assisted_clusters
   retries: 60
-  delay: 30
-  until: r_assisted_clusters is success
+  delay: 5
+  until:
+    - r_assisted_clusters is success
+    - r_assisted_clusters.json | length > 0
 
-- name: Extract cluster ID
+- name: Extract cluster info
   ansible.builtin.set_fact:
     assisted_cluster_id: "{{ r_assisted_clusters.json[0].id }}"
     assisted_service_url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2"
+    assisted_auth_token: "{{ r_auth_token.stdout }}"
 
-- name: Wait for all hosts to report inventory
+- name: Display initial cluster status
+  ansible.builtin.debug:
+    msg: "Assisted Service cluster status: {{ r_assisted_clusters.json[0].status }}"
+
+- name: Wait for all hosts to be ready
   ansible.builtin.uri:
     url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
     method: GET
+    headers:
+      Authorization: "{{ assisted_auth_token }}"
   register: r_assisted_hosts
   retries: 60
-  delay: 30
+  delay: 5
   until: >-
     r_assisted_hosts.json | length >= (agent_hosts | length)
     and (r_assisted_hosts.json
-         | selectattr('inventory', 'defined')
-         | selectattr('inventory', 'ne', '')
-         | list | length) >= (agent_hosts | length)
+        | selectattr('status', 'equalto', 'known')
+        | list | length) >= (agent_hosts | length)
+
+- name: Display discovered hosts
+  ansible.builtin.debug:
+    msg: "All {{ r_assisted_hosts.json | length }} hosts are ready (status: known)"
 
 - name: Set discovered hosts fact
   ansible.builtin.set_fact:
@@ -47,3 +71,17 @@
   loop_control:
     loop_var: plugin_path
   when: r_pre_install_plugins.files | length > 0
+
+- name: Release installation gate on rendezvous node
+  ansible.builtin.shell: |
+    set -o pipefail
+    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 core@{{ rendezvousIP }} \
+      'touch /var/tmp/proceed-with-installation'
+  retries: 3
+  delay: 5
+  register: r_gate_release
+  until: r_gate_release is success
+
+- name: Display gate release status
+  ansible.builtin.debug:
+    msg: "Installation gate released - cluster installation will proceed"

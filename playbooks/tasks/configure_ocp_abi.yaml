@@ -80,6 +80,10 @@
   ansible.builtin.command:
     cmd: "{{ workingDir }}/bin/openshift-install agent create image --dir {{ workingDir }}/ocp-cluster/"
 
+- name: Inject installation gate into ISO
+  ansible.builtin.command:
+    cmd: python3 {{ playbook_dir }}/../helpers/agent-gate/agent-gate-inject.py {{ workingDir }}/ocp-cluster/agent.x86_64.iso
+
 - name: Ensure {{ workingDir }}/ocp-cluster/abi-iso/ exists
   ansible.builtin.file:
     path: "{{ workingDir }}/ocp-cluster/abi-iso/"
