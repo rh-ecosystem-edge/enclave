@@ -1,0 +1,132 @@
+---
+- name: Get mirrored OpenShift versions
+  ansible.builtin.set_fact:
+    mirrored_versions: "{{ openshift_versions | map(attribute='version') | list }}"
+
+- name: Fail fast if version is not mirrored
+  ansible.builtin.fail:
+    msg: "Desired Cluster Version {{ mgmt_openshift_version }} is not mirrored (mirrored versions: {{ mirrored_versions }})"
+  when: mgmt_openshift_version not in mirrored_versions
+
+- name: Get OpenShift CLI image from OpenShift release
+  ansible.builtin.command: >
+    {{ workingDir }}/bin/oc adm release info --registry-config={{ workingDir }}/config/pull-secret.json --image-for cli
+    quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
+  register: r_oc_cli_image
+  changed_when: false
+
+- name: Set image facts
+  ansible.builtin.set_fact:
+    oc_cli_image: "{{ r_oc_cli_image.stdout }}"
+
+- name: Create Cluster Upgrade ServiceAccount
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: cluster-upgrade
+        namespace: openshift-pipelines
+
+- name: Create Cluster Upgrade ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: cluster-upgrade
+      rules:
+        - apiGroups: ["config.openshift.io"]
+          resources: ["clusterversions"]
+          verbs: ["get", "list", "patch"]
+        - apiGroups: ["config.openshift.io"]
+          resources: ["clusteroperators"]
+          verbs: ["get", "list"]
+
+- name: Create Cluster Upgrade ClusterRoleBinding
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: cluster-upgrade
+      subjects:
+        - kind: ServiceAccount
+          name: cluster-upgrade
+          namespace: openshift-pipelines
+      roleRef:
+        kind: ClusterRole
+        name: cluster-upgrade
+        apiGroup: rbac.authorization.k8s.io
+
+- name: Create Cluster Upgrade Task
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: tekton.dev/v1
+      kind: Task
+      metadata:
+        name: cluster-upgrade
+        namespace: openshift-pipelines
+      spec:
+        params:
+          - name: ocp-version
+            type: string
+            description: Target OCP version (e.g. 4.20.12)
+          - name: dry-run
+            description: "If true, only identifies pending upgrade"
+            type: string
+            default: "false"
+        results:
+          - name: status-report
+            description: "Final status message from the upgrade script"
+        steps:
+          - name: upgrade-and-wait
+            image: "{{ oc_cli_image }}"
+            env:
+              - name: OCP_VERSION
+                value: $(params.ocp-version)
+              - name: DRY_RUN
+                value: $(params.dry-run)
+              - name: STATUS_REPORT_PATH
+                value: $(results.status-report.path)
+            script: |
+                {{ lookup('ansible.builtin.file', '../hack/cluster_upgrade.py') }}
+
+- name: Create Cluster Upgrade Pipeline
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: tekton.dev/v1
+      kind: Pipeline
+      metadata:
+        name: cluster-upgrade
+        namespace: openshift-pipelines
+      spec:
+        params:
+          - name: ocp-version
+            type: string
+            description: Target OCP version (e.g. 4.20.12)
+            default: "{{ mgmt_openshift_version }}"
+          - name: dry-run
+            type: string
+            description: "If true, only identifies pending upgrade"
+            default: "false"
+        results:
+          - name: status-report
+            description: "Report of cluster upgrade"
+            value: $(tasks.cluster-upgrade.results.status-report)
+        tasks:
+          - name: cluster-upgrade
+            retries: 5
+            taskRef:
+              name: cluster-upgrade
+            params:
+              - name: dry-run
+                value: $(params.dry-run)
+              - name: ocp-version
+                value: $(params.ocp-version)
+            timeout: "3h"
