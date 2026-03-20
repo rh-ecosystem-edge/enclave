@@ -134,6 +134,7 @@ validate_tags() {
         "playbooks/03-deploy.yaml:wait-deployment:Wait for deployment"
         "playbooks/04-post-install.yaml:post-install-config:Post-install configurations"
         "playbooks/05-operators.yaml:operators:Configure operators"
+        "playbooks/05-operators.yaml:foundation-plugins:Auto-discover and deploy foundation plugins"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
         "playbooks/06-day2.yaml:model-config:Model configurations"

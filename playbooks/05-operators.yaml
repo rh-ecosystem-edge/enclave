@@ -6,6 +6,7 @@
 # - Disable default catalog sources (disconnected mode)
 # - Install storage operators (LVMS/ODF)
 # - Install general operators from defaults/operators.yaml
+# - Auto-discover and deploy foundation plugins (type: foundation)
 #
 # Usage:
 #   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
@@ -34,3 +35,10 @@
         apply:
           tags: operators
       tags: operators
+
+    - name: Auto-discover and deploy foundation plugins
+      ansible.builtin.include_tasks:
+        file: tasks/deploy_foundation_plugins.yaml
+        apply:
+          tags: foundation-plugins
+      tags: foundation-plugins
