@@ -54,6 +54,8 @@
         file: ../operators/quay-operator/quay_disconnected.yaml
         apply:
           tags: quay-disconnected
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: quay-disconnected
 
     - name: Configure Clair in disconnected environments
