@@ -97,6 +97,25 @@ else
 "
 fi
 
+# Set storage plugin from STORAGE_PLUGIN env var (overrides default in config)
+if [ -n "${STORAGE_PLUGIN:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}storage_plugin: ${STORAGE_PLUGIN}
+"
+    info "Storage plugin: $STORAGE_PLUGIN"
+fi
+
+# Set enabled plugins from ENABLED_PLUGINS env var (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}enabled_plugins:
+"
+    IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+    for _plugin in "${_plugins[@]}"; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
+"
+    done
+    info "Enabled plugins: $ENABLED_PLUGINS"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
