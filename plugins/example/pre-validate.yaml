@@ -1,0 +1,14 @@
+---
+- name: Verify cluster is accessible
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: default
+  register: r_cluster_check
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_cluster_check is success
+
+- name: Cluster is accessible
+  ansible.builtin.debug:
+    msg: "Cluster is accessible - example plugin pre-validation passed"

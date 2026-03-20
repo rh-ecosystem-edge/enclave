@@ -1,0 +1,39 @@
+---
+# Run per node: Wait for a single agent host to reach active state in Ironic
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Get current node state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ agent_host.name }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  register: node_info
+
+- name: Wait for node to reach active state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ agent_host.name }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  register: node_state
+  until: node_state.json.provision_state in ["active", "deploy failed"]
+  failed_when: node_state.json.provision_state == "deploy failed"
+  retries: 60
+  delay: 10
+  when: node_info.json.provision_state != "active"
+
+- name: Display node status
+  ansible.builtin.debug:
+    msg: "Node {{ agent_host.name }} ({{ node_info.json.uuid }}) is now in state: {{ node_state.json.provision_state | default(node_info.json.provision_state) }}"

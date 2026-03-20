@@ -40,3 +40,10 @@
         apply:
           tags: mirror-registry
       tags: mirror-registry
+
+    - name: Mirror core plugin images
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_core_plugins.yaml
+        apply:
+          tags: mirror-plugins
+      tags: mirror-plugins

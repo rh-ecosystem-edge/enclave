@@ -1,0 +1,186 @@
+---
+# Run per node: Configure and boot a single agent host via Ironic
+# This task creates the node, transitions it through states, and initiates
+# deployment (power on) but does NOT wait for the node to reach active state.
+# Use configure_hardware_ironic_wait.yaml to wait for active state.
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Check if baremetal node already exists
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ agent_host.name }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  register: existing_node
+
+- name: Create baremetal node in Ironic (without auto-transitioning to available)
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ agent_host.name }}"
+      driver: "redfish"
+      automated_clean: false
+      deploy_interface: "ramdisk"
+      boot_interface: "redfish-virtual-media"
+      resource_class: "baremetal"
+      driver_info:
+        redfish_address: "https://{{ agent_host.redfish }}"
+        redfish_username: "{{ agent_host.redfishUser }}"
+        redfish_password: "{{ agent_host.redfishPassword }}"
+        redfish_system_id: "/redfish/v1/Systems/{{ agent_host.bmcSystemId | default('1') }}"
+        redfish_verify_ca: false
+        force_persistent_boot_device: "Never"
+      properties:
+        capabilities: "boot_mode:uefi"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [201]
+  register: create_result
+  when: existing_node.status == 404
+
+- name: Set node UUID and initial state
+  ansible.builtin.set_fact:
+    node_uuid: "{{ existing_node.json.uuid if existing_node.status == 200 else create_result.json.uuid }}"
+    current_provision_state: "{{ existing_node.json.provision_state if existing_node.status == 200 else 'enroll' }}"
+
+- name: Create port for node
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/ports"
+    method: POST
+    body_format: json
+    body:
+      node_uuid: "{{ node_uuid }}"
+      address: "{{ agent_host.macAddress }}"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [201, 409]
+
+- name: Transition node to manageable state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "manage"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  register: manage_result
+  when: current_provision_state == "enroll"
+
+- name: Wait for node to reach manageable state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  register: node_state
+  until: node_state.json.provision_state == "manageable"
+  retries: 30
+  delay: 2
+  when: current_provision_state == "enroll"
+
+- name: Update provision state after manageable transition
+  ansible.builtin.set_fact:
+    current_provision_state: "{{ node_state.json.provision_state if current_provision_state == 'enroll' else current_provision_state }}"
+
+- name: Transition node to available state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "provide"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  register: provide_result
+  when: current_provision_state == "manageable"
+
+- name: Wait for node to reach available state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  register: node_state
+  until: node_state.json.provision_state == "available"
+  retries: 30
+  delay: 2
+  when: current_provision_state == "manageable"
+
+- name: Update provision state after available transition
+  ansible.builtin.set_fact:
+    current_provision_state: "{{ node_state.json.provision_state if current_provision_state == 'manageable' else current_provision_state }}"
+
+- name: Set instance_info with boot ISO
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}"
+    method: PATCH
+    body_format: json
+    body:
+      - op: add
+        path: /instance_info/boot_iso
+        value: "http://{{ lzBmcIP }}:{{ http_server_port }}/agent.x86_64.iso"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  when: current_provision_state == "available"
+
+- name: Deploy node (transition available -> active)
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ node_uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "active"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  register: deploy_result
+  when: current_provision_state == "available"
+
+- name: Display boot status
+  ansible.builtin.debug:
+    msg: "Node {{ agent_host.name }} ({{ node_uuid }}) boot initiated"

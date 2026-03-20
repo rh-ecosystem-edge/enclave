@@ -1,12 +1,12 @@
 #!/bin/bash
-# Deploy a specific phase of the OpenShift cluster deployment
+# Deploy a plugin to the OpenShift cluster
 #
-# This script connects to the Landing Zone VM and runs a specific
-# Enclave Lab ansible playbook phase.
+# This script connects to the Landing Zone VM and runs the
+# deploy-plugin.yaml playbook for the specified plugin.
 #
-# Usage: ./deploy_phase.sh <playbook-file> [ansible-playbook extra args]
-# Example: ./deploy_phase.sh 04-post-install.yaml
-# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
+# Usage: ./deploy_plugin.sh <plugin-name> [ansible-playbook extra args]
+# Example: ./deploy_plugin.sh openshift-ai
+# Example: ./deploy_plugin.sh openshift-ai --tags mirror
 
 set -euo pipefail
 
@@ -23,15 +23,28 @@ source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Check arguments
 if [ $# -lt 1 ]; then
-    error "Usage: $0 <playbook-file> [--tags <tags>]"
-    error "Example: $0 04-post-install.yaml"
-    error "Example: $0 02-mirror.yaml --tags mirror-plugins"
+    error "Usage: $0 <plugin-name> [--tags <tags>]"
+    error "Example: $0 openshift-ai"
+    error "Example: $0 openshift-ai --tags mirror"
     exit 1
 fi
 
-PLAYBOOK_FILE="$1"
+PLUGIN_NAME="$1"
 shift
 ANSIBLE_EXTRA_ARGS="$*"
+
+# Validate plugin name format (prevent path traversal)
+if [[ ! "$PLUGIN_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    error "Invalid plugin name: '$PLUGIN_NAME'"
+    error "Plugin name must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    exit 1
+fi
+
+# Validate plugin exists locally
+if [ ! -f "${ENCLAVE_DIR}/plugins/${PLUGIN_NAME}/plugin.yaml" ]; then
+    error "Plugin not found: plugins/${PLUGIN_NAME}/plugin.yaml"
+    exit 1
+fi
 
 # Validate required environment variables
 require_env_var "DEV_SCRIPTS_PATH"
@@ -61,7 +74,7 @@ setup_ssh_config "$CLUSTER_IP"
 # Deployment mode: connected or disconnected (default: disconnected)
 DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
 
-info "Running phase: $PLAYBOOK_FILE"
+info "Deploying plugin: $PLUGIN_NAME"
 info "Landing Zone: $CLUSTER_IP"
 info "Deployment mode: $DEPLOYMENT_MODE"
 info ""
@@ -73,8 +86,8 @@ if ! ssh_test_connection; then
 fi
 
 # Verify Enclave Lab is installed
-if ! ssh_file_exists "$LZ_ENCLAVE_DIR/playbooks/$PLAYBOOK_FILE"; then
-    error "Playbook not found: $LZ_ENCLAVE_DIR/playbooks/$PLAYBOOK_FILE"
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/plugins/${PLUGIN_NAME}/plugin.yaml"; then
+    error "Plugin not found on Landing Zone: $LZ_ENCLAVE_DIR/plugins/${PLUGIN_NAME}/plugin.yaml"
     exit 1
 fi
 
@@ -86,6 +99,7 @@ fi
 
 # Build ansible-playbook command with extra vars
 EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+plugin_name: ${PLUGIN_NAME}
 "
 
 # Set disconnected mode based on DEPLOYMENT_MODE
@@ -104,18 +118,19 @@ $EXTRA_VARS_CONTENT
 EOF
 
 # Run ansible-playbook with the extra vars file
-LOG_FILE="deployment_$(basename "$PLAYBOOK_FILE" .yaml).log"
+LOG_FILE="deployment_plugin_${PLUGIN_NAME}.log"
 info "Running playbook (logging to $LOG_FILE)..."
-# shellcheck disable=SC2086  # SSH_OPTS and ANSIBLE_EXTRA_ARGS need word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
-
-PHASE_EXIT_CODE=$?
+# shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+set +e
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+PLUGIN_EXIT_CODE=$?
+set -e
 
 echo ""
-if [ $PHASE_EXIT_CODE -eq 0 ]; then
-    success "Phase completed successfully: $PLAYBOOK_FILE"
+if [ $PLUGIN_EXIT_CODE -eq 0 ]; then
+    success "Plugin deployed successfully: $PLUGIN_NAME"
 else
-    error "Phase failed: $PLAYBOOK_FILE (exit code: $PHASE_EXIT_CODE)"
+    error "Plugin deployment failed: $PLUGIN_NAME (exit code: $PLUGIN_EXIT_CODE)"
     info "Check logs: ssh ${LZ_SSH} 'cat ~/$LOG_FILE'"
     exit 1
 fi
