@@ -8,5 +8,13 @@ diskEncryption: false
 # Default oc-mirror log level. Override in config/global.yaml for more verbosity.
 ocMirrorLogLevel: info
 
+# Default storage plugin. Override in config/global.yaml to use odf.
+storage_plugin: lvms
+
+# Plugins to deploy during the pipeline. Override in config/global.yaml to add or remove plugins.
+# By default only the selected storage plugin is enabled.
+enabled_plugins:
+  - "{{ storage_plugin }}"
+
 # Default pull secret path. Override in config/global.yaml if stored elsewhere.
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"

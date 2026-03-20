@@ -137,7 +137,6 @@ Configuration is split across multiple files for better organization:
 **Default configuration files** (in `defaults/` directory):
 - `defaults/operators.yaml` - General cluster operators
 - `defaults/platforms.yaml` - Available OpenShift versions
-- `defaults/storage_operators.yaml` - Storage operators (ODF, LVMS)
 - `defaults/model_operators.yaml` - AI/ML model operators
 - `defaults/vmaas_operators.yaml` - VMaaS (KubeVirt) operators
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
@@ -145,7 +144,9 @@ Configuration is split across multiple files for better organization:
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
 - `defaults/mirror_registry.yaml` - Quay hostname and CA path defaults
 - `defaults/quay_operator.yaml` - Quay feature flags and backend storage defaults
-- `defaults/lvms_operator.yaml` - LVMS device selector defaults
+- `plugins/lvms/config/defaults.yaml` - LVMS device selector defaults
+- `plugins/lvms/` - LVMS storage plugin
+- `plugins/odf/` - ODF storage plugin
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime.
 

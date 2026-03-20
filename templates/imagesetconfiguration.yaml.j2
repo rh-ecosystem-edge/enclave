@@ -38,7 +38,7 @@ mirror:
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
-{% for operator in operators + model_operators + storage_operators[blockStorageBackend] %}
+{% for operator in operators + model_operators %}
         - name: {{ operator.name }}
           defaultChannel: {{ operator.channel }}
           channels:
@@ -46,20 +46,6 @@ mirror:
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
 {% endfor %}
-{% if blockStorageBackend == "odf" %}
-        - name: mcg-operator
-        - name: odf-csi-addons-operator
-        - name: ocs-client-operator
-        - name: odf-prometheus-operator
-        - name: recipe
-        - name: rook-ceph-operator
-        - name: cephcsi-operator
-        - name: odf-dependencies
-        - name: odr-cluster-operator
-        - name: odr-hub-operator
-        - name: ocs-operator
-        - name: odf-external-snapshotter-operator
-{% endif %}
 
   additionalImages:
     - name: registry.redhat.io/ubi8/ubi:latest

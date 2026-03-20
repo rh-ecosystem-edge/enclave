@@ -51,17 +51,3 @@ properties:
     description: List of operators to install and configure.
     items:
       $ref: "#/definitions/operator"
-  storage_operators:
-    type: object
-    additionalProperties: false
-    properties:
-      odf:
-        type: array
-        description: List of operators to install and configure.
-        items:
-          $ref: "#/definitions/operator"
-      lvms:
-        type: array
-        description: List of operators to install and configure.
-        items:
-          $ref: "#/definitions/operator"
