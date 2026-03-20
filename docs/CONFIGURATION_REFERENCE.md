@@ -15,7 +15,6 @@ Configuration is split across multiple files for better organization and maintai
 | `defaults/platforms.yaml` | Available OpenShift versions |
 | `defaults/storage_operators.yaml` | Storage operators (ODF, LVMS) configuration |
 | `defaults/model_operators.yaml` | AI/ML model operators configuration |
-| `defaults/vmaas_operators.yaml` | VMaaS (KubeVirt) operators configuration |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/content_images.yaml` | RHCOS images and ISOs configuration |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
@@ -944,7 +943,6 @@ Operator configuration is stored in the `defaults/` directory:
 - `defaults/operators.yaml` - General cluster operators
 - `defaults/storage_operators.yaml` - Storage operators (selected based on `blockStorageBackend` variable)
 - `defaults/model_operators.yaml` - AI/ML model operators
-- `defaults/vmaas_operators.yaml` - VMaaS operators
 
 ### Operator List Structure
 

@@ -179,9 +179,6 @@ echo -p "Model config.. " -n1 -s
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags model-config 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
-echo -p "vmaas.. " -n1 -s
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags vmaas 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
 
 # Showing login information
 printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
