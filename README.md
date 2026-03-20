@@ -2,7 +2,7 @@
 
 The Red Hat Sovereign Enclave (RHSE) is an optionally disconnected, infrastructure platform that delivers a cloud-like experience based on OpenShift. It consumes standards-based bare metal hosts and simplifies deployment by the Infrastructure Operator, requiring only low-touch participation.
 
-RHSE provisions and maintains a local point of management (including ACM, AAP, and Quay) with controls on the ingress of software and related artifacts into the environment.
+RHSE provisions and maintains a local point of management (including ACM and Quay) with controls on the ingress of software and related artifacts into the environment.
 
 This is an Open Source project. Contributions are welcome! (Contribution guide coming soon)
 
