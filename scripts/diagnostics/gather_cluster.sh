@@ -193,8 +193,6 @@ if [ "$KUBECONFIG_FOUND" = true ]; then
     # Assisted service logs
     oc logs -n multicluster-engine deployment/assisted-service --tail=1000 > "${COLLECTION_DIR}/cluster-logs/assisted-service.log" 2>&1 || true
 
-    # OSAC Operator logs
-    oc logs -n osac-operator-system deployment/osac-operator-controller-manager --tail=1000 > "${COLLECTION_DIR}/cluster-logs/osac-operator.log" 2>&1 || true
 
     # Run must-gather if requested via environment
     if [[ -n "${GATHER_CLUSTER_MUST_GATHER:-}" ]]; then

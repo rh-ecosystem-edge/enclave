@@ -139,7 +139,6 @@ Configuration is split across multiple files for better organization:
 - `defaults/platforms.yaml` - Available OpenShift versions
 - `defaults/storage_operators.yaml` - Storage operators (ODF, LVMS)
 - `defaults/model_operators.yaml` - AI/ML model operators
-- `defaults/vmaas_operators.yaml` - VMaaS (KubeVirt) operators
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
 - `defaults/content_images.yaml` - RHCOS images and ISOs
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
