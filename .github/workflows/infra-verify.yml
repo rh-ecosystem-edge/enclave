@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 
 # Allow parallel execution with unique cluster names per run
 # Each job gets isolated VMs, networks, and resources
