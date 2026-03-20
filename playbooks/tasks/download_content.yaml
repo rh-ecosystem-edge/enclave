@@ -1,5 +1,6 @@
 ---
 - name: Download live rootfs images
+  become: true
   ansible.builtin.get_url:
     url: "{{ rootfs_img.url }}"
     dest: "/var/www/html/{{ (rootfs_img.url | ansible.builtin.split('/'))[-1] }}"
@@ -9,6 +10,7 @@
     loop_var: rootfs_img
 
 - name: Download live rootfs isos
+  become: true
   ansible.builtin.get_url:
     url: "{{ rootfs_iso.url }}"
     dest: "/var/www/html/{{ (rootfs_iso.url | ansible.builtin.split('/'))[-1] }}"
