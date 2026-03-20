@@ -6,6 +6,9 @@ on:
   merge_group:
     types: [checks_requested]
 
+permissions:
+  contents: read
+
 # Prevent concurrent runs for the same PR (use run_id as fallback for merge_group)
 concurrency:
   group: pr-validation-${{ github.event.pull_request.number || github.run_id }}

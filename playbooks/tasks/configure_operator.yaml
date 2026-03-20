@@ -132,6 +132,9 @@
       until:
         - r_sub_installplan.resources[0].status.installplan is defined
         - r_sub_installplan.resources[0].status.installplan.name | default('') | length > 0
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
 
     - name: "Approve InstallPlan for {{ operator.name }}"
       kubernetes.core.k8s:
@@ -145,6 +148,9 @@
             namespace: "{{ operator.namespace }}"
           spec:
             approved: true
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
 
     - name: "Wait for CSV ({{ operator.name }})"
       kubernetes.core.k8s_info:
@@ -158,6 +164,9 @@
       until:
         - r_subscription.resources[0].status.currentCSV is defined
         - r_subscription.resources[0].status.currentCSV | length > 0
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
 
     - name: "Wait until CSV is Succeeded ({{ operator.name }})"
       kubernetes.core.k8s_info:
@@ -171,6 +180,9 @@
       until:
         - r_csv.resources[0].status.phase is defined
         - r_csv.resources[0].status.phase == "Succeeded"
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
 
 - name: "Ensure Subscription exists (Automatic)"
   when:
