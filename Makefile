@@ -83,7 +83,7 @@ help:
 	@echo "  make deploy-cluster-mirror            - Phase 2: Mirror registry setup (disconnected)"
 	@echo "  make deploy-cluster-install           - Phase 3: Deploy OpenShift cluster"
 	@echo "  make deploy-cluster-post-install      - Phase 4: Cluster configuration"
-	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
+	@echo "  make deploy-cluster-operators         - Phase 5: Install operators + deploy foundation plugins"
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
 	@echo ""

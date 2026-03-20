@@ -1,0 +1,45 @@
+---
+# Auto-discover and deploy all foundation plugins (type: foundation)
+# sorted by order field.
+#
+# Called from 05-operators.yaml at the end of Phase 5.
+
+- name: Find all plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_foundation_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_foundation_find.files | map(attribute='path') | list }}"
+  register: r_foundation_slurp
+
+- name: Build sorted foundation plugin list
+  ansible.builtin.set_fact:
+    _foundation_deploy_list: >-
+      {{ r_foundation_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
+         | sort(attribute='order')
+         | map(attribute='name')
+         | list }}
+
+- name: Display foundation plugins to deploy
+  ansible.builtin.debug:
+    msg: "Foundation plugins to deploy (sorted by order): {{ _foundation_deploy_list }}"
+
+- name: Deploy foundation plugin
+  ansible.builtin.include_tasks:
+    file: tasks/deploy_plugin.yaml
+  vars:
+    plugin_name: "{{ _foundation_plugin_name }}"
+  loop: "{{ _foundation_deploy_list }}"
+  loop_control:
+    loop_var: _foundation_plugin_name
+  when: _foundation_deploy_list | length > 0
