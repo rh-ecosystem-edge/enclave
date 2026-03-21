@@ -32,7 +32,7 @@
           {{
             plugin_registries_entries
             | selectattr('location', 'defined')
-            | rejectattr('location', 'search', _reject_pattern)
+            | rejectattr('location', 'in', _existing_locations)
             | list
           }}
       vars:
@@ -42,7 +42,6 @@
              | map(attribute='location')
              | select('in', current_registries_conf)
              | list }}
-        _reject_pattern: "{{ _existing_locations | join('|') if _existing_locations | length > 0 else '^$' }}"
 
     - name: Report entries already present
       ansible.builtin.debug:

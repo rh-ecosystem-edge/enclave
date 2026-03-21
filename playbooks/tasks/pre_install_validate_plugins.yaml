@@ -8,6 +8,7 @@
   retries: 30
   delay: 5
   until: r_auth_token is success
+  no_log: true
 
 - name: Wait for Assisted Service cluster to be registered
   ansible.builtin.uri:
@@ -22,12 +23,14 @@
   until:
     - r_assisted_clusters is success
     - r_assisted_clusters.json | length > 0
+  no_log: true
 
 - name: Extract cluster info
   ansible.builtin.set_fact:
     assisted_cluster_id: "{{ r_assisted_clusters.json[0].id }}"
     assisted_service_url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2"
     assisted_auth_token: "{{ r_auth_token.stdout }}"
+  no_log: true
 
 - name: Display initial cluster status
   ansible.builtin.debug:
@@ -47,6 +50,7 @@
     and (r_assisted_hosts.json
         | selectattr('status', 'equalto', 'known')
         | list | length) >= (agent_hosts | length)
+  no_log: true
 
 - name: Display discovered hosts
   ansible.builtin.debug:

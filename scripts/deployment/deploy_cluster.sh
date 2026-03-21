@@ -184,6 +184,7 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
 "
     IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
     for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"  # trim whitespace
         EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
 "
     done
