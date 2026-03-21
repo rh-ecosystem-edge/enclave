@@ -38,7 +38,7 @@ mirror:
       packages:
         - name: kubevirt-hyperconverged
         - name: kubernetes-nmstate-operator
-{% for operator in operators + model_operators %}
+{% for operator in operators + model_operators + (_core_plugin_operators | default([])) %}
         - name: {{ operator.name }}
           defaultChannel: {{ operator.channel }}
           channels:
