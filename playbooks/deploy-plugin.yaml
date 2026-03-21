@@ -11,7 +11,7 @@
 #   workingDir: Working directory on the Landing Zone
 #   plugin_name: Name of the plugin directory under plugins/
 
-- name: Deploy plugin - {{ plugin_name }}
+- name: Deploy plugin - {{ plugin_name | default('UNSET') }}
   hosts: localhost
   gather_facts: false
   environment:
