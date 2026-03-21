@@ -73,7 +73,8 @@ echo -p "Building local cache .. " -n1 -s
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Quay disconnected .." -n1 -s
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags quay-disconnected 2>&1 | tee -a ${log}
+    # Enables quay-disconnected tasks in 06-day2
+    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars -e configureQuayDisconnected=true --tags quay-disconnected 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Clair disconnected .." -n1 -s

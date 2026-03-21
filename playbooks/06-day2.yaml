@@ -49,7 +49,7 @@
       tags: openshift-pipelines
 
     - name: Configure Quay in disconnected environments
-      when: disconnected | default(true)
+      when: disconnected | default(true) and configureQuayDisconnected | default(false) | bool
       ansible.builtin.include_tasks:
         file: ../operators/quay-operator/quay_disconnected.yaml
         apply:
