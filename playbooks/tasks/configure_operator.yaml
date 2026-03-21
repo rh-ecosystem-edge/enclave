@@ -10,9 +10,18 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
+- name: "Check if OperatorGroup already exists in namespace"
+  when: operator.namespace != "openshift-operators"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1
+    kind: OperatorGroup
+    namespace: "{{ operator.namespace }}"
+  register: r_og_check
+
 - name: "Ensure OperatorGroup exists (with target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - not (operator.global | default(false))
   kubernetes.core.k8s:
     state: present
@@ -20,7 +29,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec:
         targetNamespaces:
@@ -33,6 +42,7 @@
 - name: "Ensure OperatorGroup exists (global - without target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - operator.global | default(false)
   kubernetes.core.k8s:
     state: present
@@ -40,7 +50,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec: {}
   register: r_operatorgroup_exists
@@ -187,7 +197,7 @@
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -211,6 +221,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -223,9 +234,9 @@
         installPlanApproval: Manual
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source }}"
         sourceNamespace: openshift-marketplace
-        startingCSV: "{{ ((operator.csvNames | default([]) | first | default(operator.name)) ~ '.v' ~ (operator.version | replace('+', '-'))) if (disconnected | default(true) | bool) else omit }}"
+        startingCSV: "{{ (operator.csvNames | default([]) | first | default(operator.name)) ~ '.v' ~ (operator.version | replace('+', '-')) }}"
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -235,6 +246,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -251,6 +263,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.shell: |
     python ../hack/operator_update.py "{{ [operator] }}" "False"
   register: operator_update_result
@@ -259,13 +272,14 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.debug:
     var: operator_update_result.stdout_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -281,7 +295,7 @@
 - name: "Wait until CSV is installed"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion
