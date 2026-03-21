@@ -127,7 +127,7 @@ validate_tags() {
         "playbooks/01-prepare.yaml:download-content:Download content"
         "playbooks/01-prepare.yaml:download-control-binaries:Download control binaries"
         "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror-registry"
-        "playbooks/02-mirror.yaml:mirror-plugins:Mirror core plugin images"
+        "playbooks/02-mirror.yaml:mirror-plugins:Collect plugin operators for imageset"
         "playbooks/03-deploy.yaml:pre-install-validate:Pre-install validate plugins"
         "playbooks/03-deploy.yaml:configure-abi:Include tasks for OCP ABI"
         "playbooks/03-deploy.yaml:hardware:Configure and boot hosts via Ironic"

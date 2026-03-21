@@ -47,16 +47,20 @@
         success_msg: "Running in disconnected mode - proceeding with mirroring"
       tags: mirror-registry
 
+    - name: Collect plugin operators for imageset
+      ansible.builtin.include_tasks:
+        file: tasks/collect_core_plugin_operators.yaml
+        apply:
+          tags:
+            - mirror-registry
+            - mirror-plugins
+      tags:
+        - mirror-registry
+        - mirror-plugins
+
     - name: Include tasks for mirror-registry
       ansible.builtin.include_tasks:
         file: tasks/mirror_registry.yaml
         apply:
           tags: mirror-registry
       tags: mirror-registry
-
-    - name: Mirror core plugin images
-      ansible.builtin.include_tasks:
-        file: tasks/mirror_core_plugins.yaml
-        apply:
-          tags: mirror-plugins
-      tags: mirror-plugins
