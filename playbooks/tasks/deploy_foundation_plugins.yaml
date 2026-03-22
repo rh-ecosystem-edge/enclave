@@ -20,9 +20,9 @@
   loop: "{{ r_foundation_find.files | map(attribute='path') | list }}"
   register: r_foundation_slurp
 
-- name: Build filtered foundation plugin list
+- name: Parse foundation plugin descriptors
   ansible.builtin.set_fact:
-    _foundation_deploy_list: >-
+    _foundation_all_parsed: >-
       {{ r_foundation_slurp.results
          | map(attribute='content')
          | map('b64decode')
@@ -30,6 +30,20 @@
          | selectattr('type', 'equalto', 'foundation')
          | selectattr('name', 'in', enabled_plugins)
          | sort(attribute='order')
+         | list }}
+
+- name: Build filtered foundation plugin list
+  ansible.builtin.set_fact:
+    _foundation_deploy_list: >-
+      {{ _foundation_all_parsed
+         | rejectattr('storage_backend', 'defined')
+         | map(attribute='name')
+         | list
+         +
+         _foundation_all_parsed
+         | selectattr('storage_backend', 'defined')
+         | selectattr('storage_backend', 'equalto', true)
+         | selectattr('name', 'equalto', storage_plugin | default(''))
          | map(attribute='name')
          | list }}
 

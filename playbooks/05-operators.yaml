@@ -30,6 +30,16 @@
         msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
 
+    - name: Disable default operator catalog sources
+      when: disconnected | default(true) | bool
+      ansible.builtin.command: |
+        {{ workingDir }}/bin/oc patch OperatorHub cluster --type=json -p='[{"op":"replace","path":"/spec/disableAllDefaultSources","value":true}]'
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      tags:
+        - foundation-plugins
+        - operators
+
     - name: Auto-discover and deploy foundation plugins
       ansible.builtin.include_tasks:
         file: tasks/deploy_foundation_plugins.yaml
