@@ -1,0 +1,142 @@
+---
+# Quay disconnected: apply IDMS/ITMS from oc-mirror and trust Quay registry CA for image pulls.
+# Included from quay_disconnected.yaml.
+# Copy to idms-oc-mirror-internal.yaml / itms-oc-mirror-internal.yaml, rename the resource inside,
+# then apply so they coexist with the landing-zone IDMS/ITMS (idms-oc-mirror, itms-oc-mirror).
+# The cluster then has both: landing-zone mirrors (primary) and internal Quay mirrors (fallback).
+
+- name: Stat IDMS source from oc-mirror workspace
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror.yaml"
+  register: quay_idms_src_stat
+
+- name: Copy IDMS to idms-oc-mirror-internal.yaml
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror.yaml"
+    dest: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+    remote_src: true
+  when: quay_idms_src_stat.stat.exists
+
+# oc-mirror v2 uses names like idms-release-0, idms-operator-0 (not idms-oc-mirror); rename all with '-internal' suffix.
+- name: Rename ImageDigestMirrorSet resources in IDMS manifest to avoid conflict with landing-zone
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+    regexp: '^(\s*name:\s*)idms-([^\s]+)\s*$'
+    replace: '\1idms-\2-internal'
+  when: quay_idms_src_stat.stat.exists
+
+- name: Stat ITMS source from oc-mirror workspace
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror.yaml"
+  register: quay_itms_src_stat
+
+- name: Copy ITMS to itms-oc-mirror-internal.yaml
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror.yaml"
+    dest: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+    remote_src: true
+  when: quay_itms_src_stat.stat.exists
+
+# oc-mirror v2 uses names like itms-release-0, itms-operator-0; rename all with -internal suffix.
+- name: Rename ImageTagMirrorSet resources in ITMS manifest to avoid conflict with landing-zone
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+    regexp: '^(\s*name:\s*)itms-([^\s]+)\s*$'
+    replace: '\1itms-\2-internal'
+  when: quay_itms_src_stat.stat.exists
+
+- name: Apply Quay IDMS to cluster (fallback mirrors to internal Quay)
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: quay_idms_src_stat.stat.exists
+
+- name: Apply Quay ITMS to cluster (fallback mirrors to internal Quay)
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: quay_itms_src_stat.stat.exists
+
+# Trust the internal Quay registry's TLS cert for image pulls. Nodes pull from the Quay route
+# (default ingress cert); add the ingress CA to image.config so "x509: certificate signed by
+# unknown authority" is resolved.
+- name: Get ingress CA (signs default router/Quay route cert)
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: quay_registry_ingress_ca
+  changed_when: false
+  failed_when: false
+
+- name: Set Quay registry hostname for image trust
+  ansible.builtin.set_fact:
+    quay_registry_hostname: "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
+
+- name: Get current image config additionalTrustedCA ConfigMap name
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc get image.config.openshift.io/cluster -o jsonpath='{.spec.additionalTrustedCA.name}'
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: image_config_trusted_ca_name
+  changed_when: false
+  failed_when: false
+
+- name: Create ConfigMap with Quay registry CA for image pulls
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: quay-registry-ca
+        namespace: openshift-config
+      data: "{{ { quay_registry_hostname: quay_registry_ingress_ca.stdout } }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Add Quay registry CA to existing additionalTrustedCA ConfigMap
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+    and (image_config_trusted_ca_name.stdout | trim | length > 0)
+    and (image_config_trusted_ca_name.stdout | trim != 'quay-registry-ca')
+  kubernetes.core.k8s:
+    state: patched
+    kind: ConfigMap
+    name: "{{ image_config_trusted_ca_name.stdout | trim }}"
+    namespace: openshift-config
+    merge_type: strategic-merge
+    definition:
+      data: "{{ { quay_registry_hostname: quay_registry_ingress_ca.stdout } }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Patch image config to reference Quay registry CA ConfigMap
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+    and (image_config_trusted_ca_name.stdout | trim | length == 0)
+  kubernetes.core.k8s:
+    state: patched
+    kind: Image
+    name: cluster
+    api_version: config.openshift.io/v1
+    namespace: ""
+    merge_type: merge
+    definition:
+      spec:
+        additionalTrustedCA:
+          name: quay-registry-ca
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
