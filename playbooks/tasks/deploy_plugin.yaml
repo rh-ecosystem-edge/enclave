@@ -54,10 +54,16 @@
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order }}, mirror={{ _mirror_mode }})"
   tags: always
 
+- name: Check plugin defaults file exists
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/config/defaults.yaml"
+  register: r_plugin_defaults
+  tags: always
+
 - name: Load plugin defaults
   ansible.builtin.include_vars:
     file: "{{ plugin_dir }}/config/defaults.yaml"
-  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/config/defaults.yaml') | length > 0
+  when: r_plugin_defaults.stat.exists
   tags: always
 
 - name: Check operators file exists
