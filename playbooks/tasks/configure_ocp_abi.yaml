@@ -47,7 +47,9 @@
     dest: "{{ workingDir }}/ocp-cluster/agent-config.yaml"
 
 - name: Copy custom manifests from mirror registry to the ABI directory
-  when: disconnected | default(true)
+  when:
+    - disconnected | default(true)
+    - item | basename is not regex('^updateService')
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item | basename }}"
