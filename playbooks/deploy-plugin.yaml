@@ -1,0 +1,36 @@
+---
+# Deploy a plugin to the OpenShift cluster
+#
+# This playbook loads the plugin configuration, applies defaults,
+# and runs the plugin lifecycle: pre-validate -> mirror -> operators -> deploy -> post-validate.
+#
+# Usage:
+#   ansible-playbook playbooks/deploy-plugin.yaml -e workingDir=/home/cloud-user -e plugin_name=example
+#
+# Required variables:
+#   workingDir: Working directory on the Landing Zone
+#   plugin_name: Name of the plugin directory under plugins/
+
+- name: Deploy plugin - {{ plugin_name | default('UNSET') }}
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir | default('') }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Validate workingDir is provided
+      ansible.builtin.assert:
+        that:
+          - workingDir is defined
+          - workingDir | length > 0
+        fail_msg: "workingDir must be provided (e.g., -e workingDir=/home/cloud-user)"
+      tags: always
+
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+      tags: always
+
+    - name: Deploy plugin
+      ansible.builtin.include_tasks:
+        file: tasks/deploy_plugin.yaml
+      tags: always

@@ -10,9 +10,18 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
+- name: "Check if OperatorGroup already exists in namespace"
+  when: operator.namespace != "openshift-operators"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1
+    kind: OperatorGroup
+    namespace: "{{ operator.namespace }}"
+  register: r_og_check
+
 - name: "Ensure OperatorGroup exists (with target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - not (operator.global | default(false))
   kubernetes.core.k8s:
     state: present
@@ -20,7 +29,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec:
         targetNamespaces:
@@ -33,6 +42,7 @@
 - name: "Ensure OperatorGroup exists (global - without target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - operator.global | default(false)
   kubernetes.core.k8s:
     state: present
@@ -40,7 +50,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec: {}
   register: r_operatorgroup_exists
@@ -56,10 +66,138 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
+# Handle pre-existing subscriptions that reference a non-existent CatalogSource.
+# For example, the ingress-operator creates a servicemeshoperator3 Subscription
+# with source: redhat-operators, which doesn't exist in disconnected mode.
+# The ingress-operator actively manages the subscription spec and overwrites any
+# changes, so instead of fighting it we create a CatalogSource alias that makes
+# the existing subscription resolve to the mirrored catalog.
+- name: "Handle pre-existing Subscription with wrong source (disconnected mode)"
+  when:
+    - r_sub_check.resources | length > 0
+    - disconnected | default(true) | bool
+    - r_sub_check.resources[0].spec.source != operator.source
+  block:
+    - name: "Check if CatalogSource '{{ r_sub_check.resources[0].spec.source }}' exists"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ r_sub_check.resources[0].spec.source }}"
+        namespace: openshift-marketplace
+      register: r_sub_source_cs
+
+    - name: "Get image from CatalogSource '{{ operator.source }}'"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ operator.source }}"
+        namespace: openshift-marketplace
+      register: r_correct_cs
+      when: r_sub_source_cs.resources | length == 0
+
+    - name: "Create CatalogSource alias '{{ r_sub_check.resources[0].spec.source }}' pointing to mirror"
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: CatalogSource
+          metadata:
+            name: "{{ r_sub_check.resources[0].spec.source }}"
+            namespace: openshift-marketplace
+          spec:
+            sourceType: grpc
+            image: "{{ r_correct_cs.resources[0].spec.image }}"
+            updateStrategy:
+              registryPoll:
+                interval: 10m
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | length > 0
+
+    - name: "Wait for CatalogSource '{{ r_sub_check.resources[0].spec.source }}' to be READY"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: CatalogSource
+        name: "{{ r_sub_check.resources[0].spec.source }}"
+        namespace: openshift-marketplace
+      register: r_alias_cs_ready
+      retries: 30
+      delay: 10
+      until:
+        - r_alias_cs_ready.resources | length > 0
+        - r_alias_cs_ready.resources[0].status.connectionState.lastObservedState | default('') == 'READY'
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | length > 0
+
+    - name: "Wait for InstallPlan ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: Subscription
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_sub_installplan
+      retries: 30
+      delay: 10
+      until:
+        - r_sub_installplan.resources[0].status.installplan is defined
+        - r_sub_installplan.resources[0].status.installplan.name | default('') | length > 0
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
+
+    - name: "Approve InstallPlan for {{ operator.name }}"
+      kubernetes.core.k8s:
+        state: present
+        merge_type: merge
+        definition:
+          apiVersion: operators.coreos.com/v1alpha1
+          kind: InstallPlan
+          metadata:
+            name: "{{ r_sub_installplan.resources[0].status.installplan.name }}"
+            namespace: "{{ operator.namespace }}"
+          spec:
+            approved: true
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
+
+    - name: "Wait for CSV ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: Subscription
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_subscription
+      retries: 30
+      delay: 10
+      until:
+        - r_subscription.resources[0].status.currentCSV is defined
+        - r_subscription.resources[0].status.currentCSV | length > 0
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
+
+    - name: "Wait until CSV is Succeeded ({{ operator.name }})"
+      kubernetes.core.k8s_info:
+        api_version: operators.coreos.com/v1alpha1
+        kind: ClusterServiceVersion
+        name: "{{ r_subscription.resources[0].status.currentCSV }}"
+        namespace: "{{ operator.namespace }}"
+      register: r_csv
+      retries: 30
+      delay: 30
+      until:
+        - r_csv.resources[0].status.phase is defined
+        - r_csv.resources[0].status.phase == "Succeeded"
+      when:
+        - r_sub_source_cs.resources | length == 0
+        - r_correct_cs.resources | default([]) | length > 0
+
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -83,6 +221,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -95,9 +234,9 @@
         installPlanApproval: Manual
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source }}"
         sourceNamespace: openshift-marketplace
-        startingCSV: "{{ operator.csvNames | default([]) | first | default(operator.name) }}.v{{ operator.version | replace('+', '-') }}"
+        startingCSV: "{{ (operator.csvNames | default([]) | first | default(operator.name)) ~ '.v' ~ (operator.version | replace('+', '-')) }}"
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -107,6 +246,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -123,6 +263,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.shell: |
     python ../hack/operator_update.py "{{ [operator] }}" "False"
   register: operator_update_result
@@ -131,13 +272,14 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.debug:
     var: operator_update_result.stdout_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -153,7 +295,7 @@
 - name: "Wait until CSV is installed"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion

@@ -1,6 +1,6 @@
 ---
 # LVMS-specific tasks for Quay: PVC, QuayRegistry, and deployment patch to mount registry storage.
-# Included from tasks.yaml only when blockStorageBackend == 'lvms'.
+# Included from tasks.yaml only when storage_plugin == 'lvms'.
 
 - name: Ensure QuayRegistry is present (LVMS Backend)
   kubernetes.core.k8s:

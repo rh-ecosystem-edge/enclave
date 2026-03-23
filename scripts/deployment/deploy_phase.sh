@@ -4,8 +4,9 @@
 # This script connects to the Landing Zone VM and runs a specific
 # Enclave Lab ansible playbook phase.
 #
-# Usage: ./deploy_phase.sh <playbook-file>
+# Usage: ./deploy_phase.sh <playbook-file> [ansible-playbook extra args]
 # Example: ./deploy_phase.sh 04-post-install.yaml
+# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
 
 set -euo pipefail
 
@@ -21,13 +22,16 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Check arguments
-if [ $# -ne 1 ]; then
-    error "Usage: $0 <playbook-file>"
+if [ $# -lt 1 ]; then
+    error "Usage: $0 <playbook-file> [--tags <tags>]"
     error "Example: $0 04-post-install.yaml"
+    error "Example: $0 02-mirror.yaml --tags mirror-plugins"
     exit 1
 fi
 
 PLAYBOOK_FILE="$1"
+shift
+ANSIBLE_EXTRA_ARGS="$*"
 
 # Validate required environment variables
 require_env_var "DEV_SCRIPTS_PATH"
@@ -93,6 +97,26 @@ else
 "
 fi
 
+# Set storage plugin from STORAGE_PLUGIN env var (overrides default in config)
+if [ -n "${STORAGE_PLUGIN:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}storage_plugin: ${STORAGE_PLUGIN}
+"
+    info "Storage plugin: $STORAGE_PLUGIN"
+fi
+
+# Set enabled plugins from ENABLED_PLUGINS env var (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}enabled_plugins:
+"
+    IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+    for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"  # trim whitespace
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
+"
+    done
+    info "Enabled plugins: $ENABLED_PLUGINS"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
@@ -102,8 +126,8 @@ EOF
 # Run ansible-playbook with the extra vars file
 LOG_FILE="deployment_$(basename "$PLAYBOOK_FILE" .yaml).log"
 info "Running playbook (logging to $LOG_FILE)..."
-# shellcheck disable=SC2086  # SSH_OPTS needs word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml 2>&1 | tee $LOG_FILE'"
+# shellcheck disable=SC2086  # SSH_OPTS and ANSIBLE_EXTRA_ARGS need word splitting
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 
 PHASE_EXIT_CODE=$?
 

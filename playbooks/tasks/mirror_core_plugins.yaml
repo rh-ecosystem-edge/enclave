@@ -1,0 +1,37 @@
+---
+- name: Find all plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_all_plugin_descriptors
+
+- name: Read plugin descriptors for filtering
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_all_plugin_descriptors.files | map(attribute='path') | list }}"
+  register: r_all_plugin_slurp
+
+- name: Build filtered core-mirror plugin list
+  ansible.builtin.set_fact:
+    _core_mirror_plugins: >-
+      {{ r_all_plugin_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | map(attribute='name')
+         | list }}
+
+- name: Map plugin names to directories
+  ansible.builtin.set_fact:
+    _core_mirror_plugin_dirs: >-
+      {{ _core_mirror_plugins | map('regex_replace', '^(.*)$', playbook_dir ~ '/../plugins/\1') | list | sort }}
+
+- name: Run mirror for each core-mode plugin
+  ansible.builtin.include_tasks:
+    file: tasks/mirror_single_core_plugin.yaml
+  loop: "{{ _core_mirror_plugin_dirs }}"
+  loop_control:
+    loop_var: _core_plugin_dir

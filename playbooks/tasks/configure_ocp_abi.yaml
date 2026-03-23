@@ -47,15 +47,14 @@
     dest: "{{ workingDir }}/ocp-cluster/agent-config.yaml"
 
 - name: Copy custom manifests from mirror registry to the ABI directory
-  when: disconnected | default(true)
+  when:
+    - disconnected | default(true)
+    - item | basename is not regex('^updateService')
   ansible.builtin.copy:
-    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/{{ item }}"
-    dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item }}"
-  loop:
-    - idms-oc-mirror.yaml
-    - itms-oc-mirror.yaml
-    - signature-configmap.yaml
-    - cs-redhat-operator-index-v4-20.yaml
+    src: "{{ item }}"
+    dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item | basename }}"
+  with_fileglob:
+    - "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/*.yaml"
 
 - name: Enable diskEncryption if set
   when: diskEncryption | default(false) == true
@@ -82,6 +81,10 @@
 - name: Generate the ISO image
   ansible.builtin.command:
     cmd: "{{ workingDir }}/bin/openshift-install agent create image --dir {{ workingDir }}/ocp-cluster/"
+
+- name: Inject installation gate into ISO
+  ansible.builtin.command:
+    cmd: python3 {{ playbook_dir }}/../hack/agent-gate-inject.py {{ workingDir }}/ocp-cluster/agent.x86_64.iso
 
 - name: Ensure {{ workingDir }}/ocp-cluster/abi-iso/ exists
   ansible.builtin.file:

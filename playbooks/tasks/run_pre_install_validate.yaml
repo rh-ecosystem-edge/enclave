@@ -1,0 +1,14 @@
+---
+- name: Load plugin descriptor for {{ plugin_path | basename }}
+  ansible.builtin.include_vars:
+    file: "{{ plugin_path }}/plugin.yaml"
+    name: _piv_plugin
+
+- name: Load plugin defaults for {{ plugin_path | basename }}
+  ansible.builtin.include_vars:
+    file: "{{ plugin_path }}/config/defaults.yaml"
+  when: lookup('ansible.builtin.fileglob', plugin_path ~ '/config/defaults.yaml') | length > 0
+
+- name: Run pre-install validation for {{ plugin_path | basename }}
+  ansible.builtin.include_tasks:
+    file: "{{ plugin_path }}/pre-install-validate.yaml"

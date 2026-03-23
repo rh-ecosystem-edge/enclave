@@ -1,0 +1,4 @@
+---
+- name: Example plugin validated
+  ansible.builtin.debug:
+    msg: "Example plugin post-validation passed"

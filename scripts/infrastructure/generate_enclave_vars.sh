@@ -145,7 +145,7 @@ quayBackendLocalStorageConfiguration:
 # ============================================================================
 # Storage backend for block devices for quay database and assisted installer
 # Options: lvms or odf
-blockStorageBackend: lvms
+storage_plugin: lvms
 
 # ============================================================================
 # Storage Configuration (LVMS) (optional)
