@@ -253,3 +253,11 @@
   location = "quay.io/argoproj"
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/argoproj"
+{% for reg in (_core_plugin_registries | default([])) %}
+
+[[registry]]
+  prefix = ""
+  location = "{{ reg.location }}"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/{{ reg.mirror }}"
+{% endfor %}

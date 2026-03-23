@@ -2,6 +2,10 @@
 # Quay disconnected tasks: imageset for oc-mirror and mirror run.
 # This file is included only when disconnected | default(true).
 
+- name: Collect plugin registries for registries.conf
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/tasks/collect_plugin_registries.yaml"
+
 - name: Copy imagesetconfiguration to imagesetconfiguration.internal.yaml
   ansible.builtin.copy:
     src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
