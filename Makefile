@@ -213,7 +213,7 @@ environment:
 	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
-	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only"
+	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only && $(CURDIR)/scripts/infrastructure/configure_gpu_passthrough.sh"
 	@echo ""
 	@echo "Step 4: Verifying networks were created..."
 	@./scripts/infrastructure/verify_networks.sh

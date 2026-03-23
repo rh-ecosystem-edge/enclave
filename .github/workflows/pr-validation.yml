@@ -3,10 +3,12 @@ name: PR Validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 
-# Prevent concurrent runs for the same PR
+# Prevent concurrent runs for the same PR (use run_id as fallback for merge_group)
 concurrency:
-  group: pr-validation-${{ github.event.pull_request.number }}
+  group: pr-validation-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
