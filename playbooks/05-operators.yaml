@@ -33,7 +33,7 @@
     - name: Disable default operator catalog sources
       when: disconnected | default(true) | bool
       ansible.builtin.command: |
-        {{ workingDir }}/bin/oc patch OperatorHub cluster --type=json -p='[{"op":"replace","path":"/spec/disableAllDefaultSources","value":true}]'
+        {{ workingDir }}/bin/oc patch OperatorHub cluster --type=merge -p='{"spec":{"disableAllDefaultSources":true}}'
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags:

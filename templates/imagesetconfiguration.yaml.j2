@@ -46,6 +46,9 @@ mirror:
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
 {% endfor %}
+{% for pkg in (_core_plugin_extra_packages | default([])) %}
+        - name: {{ pkg }}
+{% endfor %}
 
   additionalImages:
     - name: registry.redhat.io/ubi8/ubi:latest
