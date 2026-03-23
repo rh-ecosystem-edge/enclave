@@ -41,18 +41,38 @@
   register: r_cp_ops_slurp
   when: _cp_operator_files | length > 0
 
-- name: Build combined plugin operators list
+- name: Parse plugin operator files
   ansible.builtin.set_fact:
-    _core_plugin_operators: >-
+    _cp_parsed_files: >-
       {{ r_cp_ops_slurp.results | default([])
          | selectattr('content', 'defined')
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
+         | list }}
+
+- name: Build combined plugin operators list
+  ansible.builtin.set_fact:
+    _core_plugin_operators: >-
+      {{ _cp_parsed_files
          | map(attribute='plugin_operators')
+         | flatten
+         | list }}
+
+- name: Build combined plugin extra packages list
+  ansible.builtin.set_fact:
+    _core_plugin_extra_packages: >-
+      {{ _cp_parsed_files
+         | selectattr('plugin_extra_packages', 'defined')
+         | map(attribute='plugin_extra_packages')
          | flatten
          | list }}
 
 - name: Display plugin operators to mirror
   ansible.builtin.debug:
     msg: "Plugin operators to include in imageset: {{ _core_plugin_operators | map(attribute='name') | list }}"
+
+- name: Display plugin extra packages to mirror
+  ansible.builtin.debug:
+    msg: "Plugin extra packages to include in imageset: {{ _core_plugin_extra_packages }}"
+  when: _core_plugin_extra_packages | length > 0

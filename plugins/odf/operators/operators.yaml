@@ -17,3 +17,19 @@ plugin_operators:
       - ocs-client-operator
       - cephcsi-operator
       - odf-external-snapshotter-operator
+
+# Extra packages that ODF depends on. These are mirrored as bare entries
+# (no channel/version pinning) so OLM can resolve all ODF sub-operators.
+plugin_extra_packages:
+  - mcg-operator
+  - odf-csi-addons-operator
+  - ocs-client-operator
+  - odf-prometheus-operator
+  - recipe
+  - rook-ceph-operator
+  - cephcsi-operator
+  - odf-dependencies
+  - odr-cluster-operator
+  - odr-hub-operator
+  - ocs-operator
+  - odf-external-snapshotter-operator
