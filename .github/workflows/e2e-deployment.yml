@@ -37,6 +37,8 @@ on:
         type: boolean
   pull_request:
     types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
 
 # Allow parallel execution with unique cluster names per run
 # Each job gets isolated VMs, networks, and resources
@@ -87,6 +89,9 @@ jobs:
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "▶️  Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "▶️  Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "✓ E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
@@ -308,7 +313,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Cleanup infrastructure
-        if: always() && (github.event.inputs.cleanup_after == 'true' || github.event.inputs.cleanup_after == true || github.event_name == 'pull_request')
+        if: always() && (github.event.inputs.cleanup_after == 'true' || github.event.inputs.cleanup_after == true || github.event_name == 'pull_request' || github.event_name == 'merge_group')
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

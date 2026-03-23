@@ -14,6 +14,7 @@ dnf install -y \
     openssl \
     podman \
     python3-pip \
+    rsync \
     tar \
     vim
 
