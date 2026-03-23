@@ -120,22 +120,13 @@
   ansible.builtin.include_tasks: quay_lvms.yaml
   when: storage_plugin == 'lvms'
 
-- name: Get router pod IP for Quay route access
-  kubernetes.core.k8s_info:
-    kind: Pod
-    namespace: openshift-ingress
-    label_selectors:
-      - ingresscontroller.operator.openshift.io/deployment-ingresscontroller=default
-  register: quay_router_pods
-
-- name: Configure DNS for Quay route in /etc/hosts using router pod IP
+- name: Ensure DNS for Quay route in /etc/hosts uses Ingress VIP
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    line: "{{ quay_router_pods.resources[0].status.podIP }} registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
+    line: "{{ ingressVIP }} registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
     regexp: ".*registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}.*"
     state: present
   become: true
-  when: quay_router_pods.resources | length > 0
 
 - name: Wait for QuayRegistry to be available
   kubernetes.core.k8s_info:
