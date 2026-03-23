@@ -663,6 +663,17 @@ quayFeatureProxyStorage: true
 quayFeatureQuotaManagement: true
 ```
 
+#### `quayMaximumLayerSize`
+
+**Description**: Maximum layer size for the Quay registry. Auto-set in `defaults/quay_operator.yaml` — only override in `config/global.yaml` when a non-default value is needed.
+
+**Type**: String
+
+**Default** (`defaults/quay_operator.yaml`):
+```yaml
+quayMaximumLayerSize: "100G"
+```
+
 ### Quay Backend Storage
 
 #### `quayBackend`

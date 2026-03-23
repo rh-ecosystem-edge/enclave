@@ -47,6 +47,7 @@
           TESTING: false
           FEATURE_PROXY_STORAGE: {{ quayFeatureProxyStorage | bool | lower }}
           FEATURE_QUOTA_MANAGEMENT: {{ quayFeatureQuotaManagement | bool | lower }}
+          MAXIMUM_LAYER_SIZE: {{ quayMaximumLayerSize }}
         clair-config.yaml: |
           indexer:
             airgap: true

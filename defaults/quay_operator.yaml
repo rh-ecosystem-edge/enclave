@@ -2,6 +2,7 @@
 # Quay features
 quayFeatureProxyStorage: true
 quayFeatureQuotaManagement: false
+quayMaximumLayerSize: "100G"
 
 # Default storage configuration for all Quay backends
 quayBackendDefaults:

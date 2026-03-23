@@ -11,6 +11,10 @@ properties:
   quayFeatureQuotaManagement:
     type: boolean
     description: Enable quota management feature for Quay
+  quayMaximumLayerSize:
+    type: string
+    description: Maximum layer size for Quay registry in M or G units (e.g. 100G, 20M)
+    pattern: "^[0-9]+(G|M)$"
   quayBackendDefaults:
     type: object
     description: Default configuration applied to all Quay backends
@@ -56,5 +60,6 @@ properties:
 required:
   - quayFeatureProxyStorage
   - quayFeatureQuotaManagement
+  - quayMaximumLayerSize
   - quayBackendDefaults
   - quayBackendRGWDefaults
