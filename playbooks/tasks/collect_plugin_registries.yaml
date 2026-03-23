@@ -1,0 +1,62 @@
+---
+# Collect registry mirror entries from all enabled plugins
+# so they can be included in registries.conf for oc-mirror.
+#
+# Sets fact: _core_plugin_registries (list of dicts with 'location' and 'mirror')
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_pr_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_pr_find.files | map(attribute='path') | list }}"
+  register: r_pr_slurp
+
+- name: Identify enabled plugin registry files
+  ansible.builtin.set_fact:
+    _pr_registry_files: >-
+      {{ r_pr_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | map(attribute='name')
+         | map('regex_replace', '^(.*)$', playbook_dir ~ '/../plugins/\1/mirror/registries.yaml')
+         | list }}
+
+- name: Check which plugin registry files exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ _pr_registry_files }}"
+  register: r_pr_stat
+
+- name: Read existing plugin registry files
+  ansible.builtin.slurp:
+    src: "{{ item.item }}"
+  loop: "{{ r_pr_stat.results }}"
+  when: item.stat.exists
+  register: r_pr_reg_slurp
+
+- name: Build combined plugin registries list
+  ansible.builtin.set_fact:
+    _core_plugin_registries: >-
+      {{ r_pr_reg_slurp.results | default([])
+         | selectattr('content', 'defined')
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('plugin_registries', 'defined')
+         | map(attribute='plugin_registries')
+         | flatten
+         | list }}
+
+- name: Display plugin registries
+  ansible.builtin.debug:
+    msg: "Plugin registries to include in registries.conf: {{ _core_plugin_registries | map(attribute='location') | list }}"
+  when: _core_plugin_registries | length > 0

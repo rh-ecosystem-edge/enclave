@@ -265,3 +265,11 @@
   location = "registry.redhat.io/ansible-automation-platform"
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/ansible-automation-platform"
+{% for reg in (_core_plugin_registries | default([])) %}
+
+[[registry]]
+  prefix = ""
+  location = "{{ reg.location }}"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/{{ reg.mirror }}"
+{% endfor %}
