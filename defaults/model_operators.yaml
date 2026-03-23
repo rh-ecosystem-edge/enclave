@@ -3,7 +3,7 @@ model_operators:
   - name: nfd
     version: 4.20.0-202602261925
     channel: stable
-    init_version: 4.20.0-202509262039
+    init_version: 4.20.0-202602261925
   - name: limitador-operator
     version: 1.3.0
     channel: stable
@@ -31,4 +31,4 @@ model_operators:
   - name: servicemeshoperator3
     version: 3.2.2
     channel: stable
-    init_version: 3.0.0
+    init_version: 3.2.2

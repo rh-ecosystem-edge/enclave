@@ -34,7 +34,7 @@ operators:
   - name: openshift-gitops-operator
     version: 1.19.2
     channel: gitops-1.19
-    init_version: 1.19.0
+    init_version: 1.19.2
     namespace: openshift-gitops-operator
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -42,7 +42,7 @@ operators:
   - name: openshift-pipelines-operator-rh
     version: 1.20.3
     channel: pipelines-1.20
-    init_version: 1.20.0
+    init_version: 1.20.3
     namespace: openshift-pipelines
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -60,14 +60,14 @@ operators:
   - name: cluster-logging
     version: 6.4.2
     channel: stable-6.4
-    init_version: 6.4.0
+    init_version: 6.4.2
     namespace: openshift-logging
     source: cs-redhat-operator-index-v4-20
 
   - name: loki-operator
     version: 6.4.2
     channel: stable-6.4
-    init_version: 6.4.0
+    init_version: 6.4.2
     namespace: openshift-operators-redhat
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -75,7 +75,7 @@ operators:
   - name: redhat-oadp-operator
     version: 1.5.5
     channel: stable
-    init_version: 1.5.0
+    init_version: 1.5.5
     namespace: openshift-oadp
     source: cs-redhat-operator-index-v4-20
     csvNames:
@@ -84,7 +84,7 @@ operators:
   - name: openshift-cert-manager-operator
     version: 1.18.1
     channel: stable-v1
-    init_version: 1.18.0
+    init_version: 1.18.1
     namespace: cert-manager-operator
     source: cs-redhat-operator-index-v4-20
     csvNames:
@@ -93,7 +93,7 @@ operators:
   - name: cluster-observability-operator
     version: 1.3.1
     channel: stable
-    init_version: 1.3.0
+    init_version: 1.3.1
     namespace: openshift-cluster-observability-operator
     source: cs-redhat-operator-index-v4-20
     global: true
@@ -111,14 +111,14 @@ operators:
   - name: compliance-operator
     version: 1.8.2
     channel: stable
-    init_version: 1.8.0
+    init_version: 1.8.2
     namespace: openshift-compliance
     source: cs-redhat-operator-index-v4-20
 
   - name: metallb-operator
     version: 4.20.0-202602261925
     channel: stable
-    init_version: 4.20.0-202602091941
+    init_version: 4.20.0-202602261925
     namespace: metallb-system
     source: cs-redhat-operator-index-v4-20
     global: true
