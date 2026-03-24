@@ -27,7 +27,7 @@ model_operators:
   - name: rhods-operator
     version: 3.3.0
     channel: fast-3.x
-    init_version: 3.0.0
+    init_version: 3.3.0
   - name: servicemeshoperator3
     version: 3.2.2
     channel: stable
