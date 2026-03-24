@@ -1,9 +1,16 @@
 ---
+- name: Add rendezvous node to inventory
+  ansible.builtin.add_host:
+    name: rendezvous
+    ansible_host: "{{ rendezvousIP }}"
+    ansible_user: core
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+
 - name: Get Assisted Service auth token from rendezvous node
   ansible.builtin.shell: |
     set -o pipefail
-    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 core@{{ rendezvousIP }} \
-      'grep USER_AUTH_TOKEN /etc/assisted/rendezvous-host.env' | cut -d= -f2
+    grep USER_AUTH_TOKEN /etc/assisted/rendezvous-host.env | cut -d= -f2
+  delegate_to: rendezvous
   register: r_auth_token
   retries: 30
   delay: 5
@@ -107,10 +114,10 @@
   when: _pre_install_plugin_paths | default([]) | length > 0
 
 - name: Release installation gate on rendezvous node
-  ansible.builtin.shell: |
-    set -o pipefail
-    ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 core@{{ rendezvousIP }} \
-      'touch /var/tmp/proceed-with-installation'
+  ansible.builtin.file:
+    path: /var/tmp/proceed-with-installation
+    state: touch
+  delegate_to: rendezvous
   retries: 3
   delay: 5
   register: r_gate_release
