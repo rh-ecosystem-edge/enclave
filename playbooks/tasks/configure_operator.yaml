@@ -119,12 +119,12 @@
   - r_subscription.resources[0].status.installplan is defined
   - r_subscription.resources[0].status.installplan | length > 0
 
-- name: "Update operator versions"
+- name: "Approve Install Plan ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.shell: |
-    python ../hack/operator_update.py "{{ [operator] }}" "False"
+    python ../helpers/operator_update/approve_installplans.py "{{ [operator] }}" "False"
   register: operator_update_result
 
 - name: Print the output
