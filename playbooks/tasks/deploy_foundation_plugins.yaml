@@ -32,20 +32,10 @@
          | sort(attribute='order')
          | list }}
 
-- name: Build filtered foundation plugin list
+- name: Build foundation plugin deploy list
   ansible.builtin.set_fact:
     _foundation_deploy_list: >-
-      {{ _foundation_all_parsed
-         | rejectattr('storage_backend', 'defined')
-         | map(attribute='name')
-         | list
-         +
-         _foundation_all_parsed
-         | selectattr('storage_backend', 'defined')
-         | selectattr('storage_backend', 'equalto', true)
-         | selectattr('name', 'equalto', storage_plugin | default(''))
-         | map(attribute='name')
-         | list }}
+      {{ _foundation_all_parsed | map(attribute='name') | list }}
 
 - name: Display foundation plugins to deploy
   ansible.builtin.debug:

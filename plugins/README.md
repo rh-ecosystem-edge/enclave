@@ -17,6 +17,7 @@ plugins/{plugin-name}/
 ├── pre-install-validate.yaml      # Optional - runs before cluster install
 ├── pre-validate.yaml              # Optional - runs before plugin deploy
 ├── deploy.yaml                    # Optional - main deployment tasks
+├── quay.yaml                      # Optional - Quay storage integration tasks
 └── post-validate.yaml             # Optional - runs after plugin deploy
 ```
 
@@ -42,14 +43,6 @@ operators: true          # Whether plugin installs operators
 | `mirror` | `core`, `plugin`, `none` | `core` = operators included in the main Phase 2 oc-mirror run. `plugin` = plugin mirrors images during its own deploy. `none` = no mirroring (connected-mode only) |
 | `operators` | boolean | When `true`, the framework installs operators from `operators/operators.yaml` |
 
-#### Optional field: `storage_backend`
-
-```yaml
-storage_backend: true
-```
-
-Marks the plugin as a storage backend. Only the plugin matching the `storage_plugin` global setting is deployed. This prevents both LVMS and ODF from deploying simultaneously.
-
 ## Configuration
 
 ### Global settings (config/global.yaml)
@@ -63,12 +56,20 @@ enabled_plugins:               # Plugins to deploy (defaults to just storage_plu
 
 ### Plugin defaults (config/defaults.yaml)
 
-Optional. Variables defined here are loaded into the Ansible scope before any plugin tasks run.
+Optional. Variables defined here are loaded into the Ansible scope before any plugin tasks run. Use a `{pluginName}Defaults` naming convention for plugin-specific defaults that can be overridden by users.
 
 ```yaml
 lvmsConfigDefaults:
   deviceSelector:
     forceWipeDevicesAndDestroyAllData: true
+
+lvmsDefaults:
+  deviceClassName: vg1
+  defaultStorageClass: true
+  thinPoolConfig:
+    name: vg1-pool-1
+    sizePercent: 90
+    overprovisionRatio: 10
 ```
 
 ## Operator Definitions (operators/operators.yaml)
@@ -195,6 +196,29 @@ Main deployment logic. Runs after operators are installed and ready. Use this to
 
 Runs after deploy.yaml completes. Use this to verify the plugin deployed correctly.
 
+### quay.yaml
+
+Optional. Provides Quay storage integration tasks for this plugin. When the plugin is selected as `storage_plugin`, the Quay operator dynamically includes `plugins/{name}/quay.yaml` to create the QuayRegistry CR with the appropriate storage configuration.
+
+```yaml
+---
+- name: Ensure QuayRegistry is present
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: quay.redhat.com/v1
+      kind: QuayRegistry
+      metadata:
+        name: registry
+        namespace: quay-enterprise
+      spec:
+        configBundleSecret: quay-config
+        components:
+        - kind: objectstorage
+          managed: false
+        # ... storage-specific components
+```
+
 ## Deployment Flow
 
 ### Phase 2 - Mirror (disconnected only)
@@ -220,6 +244,7 @@ Runs after deploy.yaml completes. Use this to verify the plugin deployed correct
    - Run deploy
    - Run post-validate
 3. Core operators are installed after all foundation plugins
+4. Quay operator includes `plugins/{storage_plugin}/quay.yaml` for storage-specific QuayRegistry setup
 
 ## Creating a New Plugin
 

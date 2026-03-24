@@ -70,6 +70,7 @@ storage_plugin: lvms
 # ============================================================================
 # Storage Configuration (LVMS) (optional)
 # ============================================================================
+# Device selector — restrict which disks LVMS manages (omit to use all disks)
 #lvmsConfig:
 #  deviceSelector:
 #    optionalPaths:
@@ -77,14 +78,27 @@ storage_plugin: lvms
 #      - /dev/disk/by-path/YOUR_DISK_PATH_2
 #      - /dev/disk/by-path/YOUR_DISK_PATH_3
 
+# LVMCluster defaults — uncomment to override (see plugins/lvms/config/defaults.yaml)
+#lvmsDefaults:
+#  deviceClassName: vg1
+#  defaultStorageClass: true
+#  thinPoolConfig:
+#    name: vg1-pool-1
+#    sizePercent: 90
+#    overprovisionRatio: 10
+
 # ============================================================================
 # Storage Configuration (ODF)
 # ============================================================================
-# When odf is set, it is needed to configure the odfExternalConfig variable
+# When odf is set, configure the odfExternalConfig variable
 # with the data obtained from ceph-external-cluster-details-exporter.py script
 # odfExternalConfig:
 #  '[{"name": "external-cluster-user-command",
 #     "kind": "ConfigMap", "data": ..}]'
+
+# ODF defaults — uncomment to override (see plugins/odf/config/defaults.yaml)
+#odfDefaults:
+#  defaultStorageClass: true
 
 # ============================================================================
 # OpenShift Deployment Configuration (optional)
