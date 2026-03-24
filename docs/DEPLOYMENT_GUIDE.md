@@ -143,11 +143,12 @@ Configuration is split across multiple files for better organization:
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
 - `defaults/mirror_registry.yaml` - Quay hostname and CA path defaults
 - `defaults/quay_operator.yaml` - Quay feature flags and backend storage defaults
-- `plugins/lvms/config/defaults.yaml` - LVMS device selector defaults
-- `plugins/lvms/` - LVMS storage plugin
-- `plugins/odf/` - ODF storage plugin
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime.
+
+**Storage plugins** (in `plugins/` directory):
+- `plugins/lvms/` - LVMS storage plugin (config, operators, deploy, mirroring)
+- `plugins/odf/` - ODF storage plugin (config, operators, deploy, mirroring)
 
 ## Deployment Workflow
 
