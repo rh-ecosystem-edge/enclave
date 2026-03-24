@@ -91,8 +91,8 @@
             script: |
                 #!/bin/bash
 
-                cat <<EOF > operator_update.py
-                {{ lookup('ansible.builtin.file', '../hack/operator_update.py') }}
+                cat <<EOF > approve_installplans.py
+                {{ lookup('ansible.builtin.file', '../helpers/operator_update/approve_installplans.py') }}
                 EOF
           - name: operator-update
             image: "{{ oc_cli_image }}"
@@ -100,7 +100,7 @@
             script: |
                 #!/bin/bash
 
-                python ./operator_update.py "{{ storage_operators[blockStorageBackend] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                python ./approve_installplans.py "{{ storage_operators[blockStorageBackend] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
                 rc=$?
                 echo -n "${rc}" > "$(results.exit-code.path)"
                 exit "${rc}"
