@@ -17,6 +17,10 @@
     file: "{{ _core_plugin_dir }}/config/defaults.yaml"
   when: lookup('ansible.builtin.fileglob', _core_plugin_dir ~ '/config/defaults.yaml') | length > 0
 
+- name: Reset plugin_operators_file for {{ _core_plugin_dir | basename }}
+  ansible.builtin.set_fact:
+    plugin_operators_file: {}
+
 - name: Load plugin operators for {{ _core_plugin_dir | basename }}
   ansible.builtin.include_vars:
     file: "{{ _core_plugin_dir }}/operators/operators.yaml"
