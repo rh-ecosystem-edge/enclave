@@ -38,27 +38,16 @@ mirror:
       packages:
         - name: kubevirt-hyperconverged
 {% for operator in operators + model_operators + storage_operators[blockStorageBackend] %}
-        - name: {{ operator.name }}
+{% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
+{% for operator_name in [operator.name] + additional_operator_names %}
+        - name: {{ operator_name }}
           defaultChannel: {{ operator.channel }}
           channels:
             - name: {{ operator.channel }}
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
 {% endfor %}
-{% if blockStorageBackend == "odf" %}
-        - name: mcg-operator
-        - name: odf-csi-addons-operator
-        - name: ocs-client-operator
-        - name: odf-prometheus-operator
-        - name: recipe
-        - name: rook-ceph-operator
-        - name: cephcsi-operator
-        - name: odf-dependencies
-        - name: odr-cluster-operator
-        - name: odr-hub-operator
-        - name: ocs-operator
-        - name: odf-external-snapshotter-operator
-{% endif %}
+{% endfor %}
 
   additionalImages:
     - name: registry.redhat.io/ubi8/ubi:latest
