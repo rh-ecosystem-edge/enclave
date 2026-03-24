@@ -40,7 +40,7 @@
             labelSelector: {}
             managedResources:
               cephBlockPools:
-                defaultStorageClass: true
+                defaultStorageClass: "{{ odfDefaults.defaultStorageClass }}"
               cephFilesystems: {}
               cephObjectStoreUsers:
                 reconcileStrategy: ignore

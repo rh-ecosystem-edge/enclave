@@ -21,7 +21,8 @@ Configuration is split across multiple files for better organization and maintai
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
 | `defaults/mirror_registry.yaml` | Quay hostname and CA path defaults |
 | `defaults/quay_operator.yaml` | Quay feature flags and backend storage defaults |
-| `plugins/lvms/config/defaults.yaml` | LVMS device selector defaults |
+| `plugins/lvms/config/defaults.yaml` | LVMS device selector and LVMCluster defaults |
+| `plugins/odf/config/defaults.yaml` | ODF StorageCluster defaults |
 
 Copy the example files to get started:
 ```bash
@@ -791,7 +792,7 @@ Block storage configuration is set via `storage_plugin` and optional backend-spe
 
 #### `storage_plugin`
 
-**Description**: Selects which storage plugin provides block storage for Quay and the Assisted Installer. This value is included in the default `enabled_plugins` list, so the matching plugin under `plugins/` is automatically deployed.
+**Description**: Selects which storage plugin provides block storage for Quay and the Assisted Installer. This value is included in the default `enabled_plugins` list, so the matching plugin under `plugins/` is automatically deployed. The Quay operator dynamically includes `plugins/{storage_plugin}/quay.yaml` for storage-specific QuayRegistry setup.
 
 **Type**: String
 
@@ -911,7 +912,6 @@ certified_operator_catalog_version: "v4.20"
 **Example**:
 ```yaml
 rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
-
 ```
 
 #### `rh_operator_catalog_version`
@@ -924,6 +924,26 @@ rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
 ```yaml
 rh_operator_catalog_version: "v4.20"
 ```
+
+#### LVMS Defaults (`plugins/lvms/config/defaults.yaml`)
+
+The following defaults control the LVMCluster resource created by the LVMS plugin. Override by setting the corresponding variables in `config/global.yaml`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `lvmsDefaults.deviceClassName` | `vg1` | Volume group name for the LVMCluster device class |
+| `lvmsDefaults.defaultStorageClass` | `true` | Whether to set LVMS as the default StorageClass |
+| `lvmsDefaults.thinPoolConfig.name` | `vg1-pool-1` | Thin pool name |
+| `lvmsDefaults.thinPoolConfig.sizePercent` | `90` | Percentage of volume group to use for thin pool |
+| `lvmsDefaults.thinPoolConfig.overprovisionRatio` | `10` | Thin pool overprovisioning ratio |
+
+#### ODF Defaults (`plugins/odf/config/defaults.yaml`)
+
+The following defaults control the StorageCluster resource created by the ODF plugin.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `odfDefaults.defaultStorageClass` | `true` | Whether ODF Ceph block pools create a default StorageClass |
 
 ## SSL Certificate Configuration
 

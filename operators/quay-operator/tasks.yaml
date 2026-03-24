@@ -66,61 +66,10 @@
   delay: "{{ k8s_delay }}"
   until: r_quay_config_secret is success
 
-- name: Ensure QuayRegistry is present (ODF Backend)
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: quay.redhat.com/v1
-      kind: QuayRegistry
-      metadata:
-        name: registry
-        namespace: quay-enterprise
-      spec:
-        configBundleSecret: quay-config
-        components:
-        - kind: horizontalpodautoscaler
-          managed: true
-        - kind: quay
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: "8"
-                memory: 32Gi
-              requests:
-                cpu: "{{ '4' if (disconnected | default(true)) else '2' }}"
-                memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
-        - kind: objectstorage
-          managed: false
-        - kind: postgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 500m
-                memory: 2Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
-        - kind: clairpostgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 500m
-                memory: 2Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
-  when: storage_plugin == 'odf'
-  retries: 60
-  delay: 10
-  register: r_quay
-  until: r_quay is succeeded
-
-- name: Run LVMS-specific Quay tasks (PVC, QuayRegistry, deployment patch)
-  ansible.builtin.include_tasks: quay_lvms.yaml
-  when: storage_plugin == 'lvms'
+- name: Run storage plugin Quay tasks
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/../plugins/{{ storage_plugin }}/quay.yaml"
+  when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../plugins/' ~ storage_plugin ~ '/quay.yaml') | length > 0
 
 - name: Ensure DNS for Quay route in /etc/hosts uses Ingress VIP
   ansible.builtin.lineinfile:
