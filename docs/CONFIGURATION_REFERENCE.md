@@ -838,6 +838,92 @@ odfExternalConfig:
 **Notes**:
 - Only required when `blockStorageBackend` is set to `odf`
 
+### Datacenter Cache Configuration
+
+#### `dc_cache_address`
+
+**Description**: Address (host:port) for the Datacenter Cache registry.
+
+**Type**: String
+
+**Example**:
+```yaml
+dc_cache_address: "registry.cdn.nodns.in:443"
+```
+
+#### `dc_cache_user`
+
+**Description**: Administrator username for the Datacenter Cache registry.
+
+**Type**: String
+
+**Example**:
+```yaml
+dc_cache_user: registry-admin
+```
+
+#### `dc_cache_password`
+
+**Description**: Administrator password for the Datacenter Cache registry.
+
+**Type**: String
+
+**Example**:
+```yaml
+dc_cache_password: YourSecurePassword
+```
+
+**Note**: This is a placeholder - use a strong, unique password in your actual configuration.
+
+**Security Note**: Consider using Ansible Vault to encrypt this value.
+
+### Operator Catalog Configuration
+
+#### `certified_operator_catalog`
+
+**Description**: Address of the _certified-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+certified_operator_catalog: "registry.redhat.io/redhat/certified-operator-index"
+```
+
+#### `certified_operator_catalog_version`
+
+**Description**: Version of the _certified-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+certified_operator_catalog_version: "v4.20"
+```
+
+#### `rh_operator_catalog`
+
+**Description**: Address of the _redhat-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
+
+```
+
+#### `rh_operator_catalog_version`
+
+**Description**: Version of the _redhat-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+rh_operator_catalog_version: "v4.20"
+```
+
 ## SSL Certificate Configuration
 
 SSL certificates are stored in `config/certificates.yaml`, separated from the main configuration in `config/global.yaml`.
