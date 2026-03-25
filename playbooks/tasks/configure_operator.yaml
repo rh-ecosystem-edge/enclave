@@ -121,8 +121,8 @@
         name: "{{ r_sub_check.resources[0].spec.source }}"
         namespace: openshift-marketplace
       register: r_alias_cs_ready
-      retries: 30
-      delay: 10
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
       until:
         - r_alias_cs_ready.resources | length > 0
         - r_alias_cs_ready.resources[0].status.connectionState.lastObservedState | default('') == 'READY'
@@ -137,8 +137,8 @@
         name: "{{ operator.name }}"
         namespace: "{{ operator.namespace }}"
       register: r_sub_installplan
-      retries: 30
-      delay: 10
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
       until:
         - r_sub_installplan.resources[0].status.installplan is defined
         - r_sub_installplan.resources[0].status.installplan.name | default('') | length > 0
@@ -169,8 +169,8 @@
         name: "{{ operator.name }}"
         namespace: "{{ operator.namespace }}"
       register: r_subscription
-      retries: 30
-      delay: 10
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
       until:
         - r_subscription.resources[0].status.currentCSV is defined
         - r_subscription.resources[0].status.currentCSV | length > 0
@@ -185,8 +185,8 @@
         name: "{{ r_subscription.resources[0].status.currentCSV }}"
         namespace: "{{ operator.namespace }}"
       register: r_csv
-      retries: 30
-      delay: 30
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
       until:
         - r_csv.resources[0].status.phase is defined
         - r_csv.resources[0].status.phase == "Succeeded"
@@ -253,8 +253,8 @@
     name: "{{ operator.name }}"
     namespace: "{{ operator.namespace }}"
   register: r_subscription
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_subscription.resources[0].status.installplan is defined
   - r_subscription.resources[0].status.installplan | length > 0
@@ -286,8 +286,8 @@
     name: "{{ operator.name }}"
     namespace: "{{ operator.namespace }}"
   register: r_subscription
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_subscription.resources[0].status.currentCSV is defined
   - r_subscription.resources[0].status.currentCSV | length > 0
@@ -302,8 +302,8 @@
     name: "{{ r_subscription.resources[0].status.currentCSV }}"
     namespace: "{{ operator.namespace }}"
   register: r_csv
-  retries: 30
-  delay: 30
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_csv.resources[0].status.phase is defined
   - r_csv.resources[0].status.phase | length > 0

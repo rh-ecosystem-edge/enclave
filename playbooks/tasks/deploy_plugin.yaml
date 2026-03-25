@@ -40,64 +40,38 @@
     name: plugin
   tags: always
 
-- name: Normalize mirror mode
-  ansible.builtin.set_fact:
-    _mirror_mode: >-
-      {% if plugin.mirror is sameas true %}plugin
-      {%- elif plugin.mirror is sameas false %}none
-      {%- else %}{{ plugin.mirror | default('none') | string | lower }}
-      {%- endif %}
-  tags: always
-
 - name: Display plugin info
   ansible.builtin.debug:
-    msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order }}, mirror={{ _mirror_mode }})"
-  tags: always
-
-- name: Check plugin defaults file exists
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/config/defaults.yaml"
-  register: r_plugin_defaults
+    msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin.mirror | default('none') }})"
   tags: always
 
 - name: Load plugin defaults
-  ansible.builtin.include_vars:
-    file: "{{ plugin_dir }}/config/defaults.yaml"
-  when: r_plugin_defaults.stat.exists
-  tags: always
-
-- name: Check operators file exists
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/operators/operators.yaml"
-  register: r_operators_yaml
-  tags: always
-
-- name: Load plugin operators list
-  ansible.builtin.include_vars:
-    file: "{{ plugin_dir }}/operators/operators.yaml"
-    name: plugin_operators_file
-  when:
-    - r_operators_yaml.stat.exists
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ plugin.defaults | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: plugin.defaults is defined
   tags: always
 
 - name: Run pre-validate
   ansible.builtin.include_tasks:
-    file: "{{ plugin_dir }}/pre-validate.yaml"
+    file: "{{ plugin_dir }}/tasks/pre-validate.yaml"
     apply:
       tags: pre-validate
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/pre-validate.yaml') | length > 0
+  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
 - name: Template plugin imageset configuration
   ansible.builtin.template:
-    src: "{{ plugin_dir }}/mirror/imageset.yaml.j2"
+    src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
     dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.yaml"
   when:
-    - _mirror_mode == 'plugin'
+    - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(false) | bool
-    - lookup('ansible.builtin.fileglob', plugin_dir ~ '/mirror/imageset.yaml.j2') | length > 0
+    - plugin.operators is defined
   tags: mirror
 
 - name: Run oc-mirror for plugin
@@ -119,7 +93,7 @@
   register: r_plugin_mirror
   until: r_plugin_mirror is success
   when:
-    - _mirror_mode == 'plugin'
+    - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(false) | bool
   tags: mirror
 
@@ -131,7 +105,7 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - _mirror_mode == 'plugin'
+    - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(false) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -145,8 +119,8 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_catalog_sources
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until: >-
     r_catalog_sources.resources | default([])
     | selectattr('status', 'defined')
@@ -154,26 +128,10 @@
     | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
     | list | length >= (r_catalog_sources.resources | length)
   when:
-    - _mirror_mode == 'plugin'
+    - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(false) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
-  tags: mirror
-
-- name: Check plugin registries file exists
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/mirror/registries.yaml"
-  register: r_plugin_registries_yaml
-  tags: mirror
-
-- name: Load plugin registries
-  ansible.builtin.include_vars:
-    file: "{{ plugin_dir }}/mirror/registries.yaml"
-    name: plugin_registries_file
-  when:
-    - _mirror_mode in ['core', 'plugin']
-    - disconnected | default(false) | bool
-    - r_plugin_registries_yaml.stat.exists
   tags: mirror
 
 - name: Patch MCE custom-registries with plugin entries
@@ -184,22 +142,12 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   vars:
-    plugin_registries_entries: "{{ plugin_registries_file.plugin_registries }}"
+    plugin_registries_entries: "{{ plugin.registries }}"
   when:
-    - _mirror_mode in ['core', 'plugin']
+    - plugin.registries is defined
+    - plugin.mirror | default('none') in ['core', 'plugin']
     - disconnected | default(false) | bool
-    - r_plugin_registries_yaml.stat.exists
-    - plugin_registries_file is defined
-    - plugin_registries_file.plugin_registries is defined
   tags: mirror
-
-- name: Fail if operators file missing when operators enabled
-  ansible.builtin.assert:
-    that: r_operators_yaml.stat.exists
-    fail_msg: "Plugin has operators: true but {{ plugin_dir }}/operators/operators.yaml is missing"
-  when:
-    - plugin.operators | default(false) | bool
-  tags: operators
 
 - name: Install plugin operators
   ansible.builtin.include_tasks:
@@ -208,31 +156,28 @@
       tags: operators
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  loop: "{{ plugin_operators_file.plugin_operators | default([]) }}"
+  loop: "{{ plugin.operators }}"
   loop_control:
     loop_var: operator
-  when:
-    - plugin.operators | default(false) | bool
-    - plugin_operators_file is defined
-    - plugin_operators_file.plugin_operators is defined
+  when: plugin.operators is defined
   tags: operators
 
 - name: Run deploy
   ansible.builtin.include_tasks:
-    file: "{{ plugin_dir }}/deploy.yaml"
+    file: "{{ plugin_dir }}/tasks/deploy.yaml"
     apply:
       tags: deploy
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/deploy.yaml') | length > 0
+  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/deploy.yaml') | length > 0
   tags: deploy
 
 - name: Run post-validate
   ansible.builtin.include_tasks:
-    file: "{{ plugin_dir }}/post-validate.yaml"
+    file: "{{ plugin_dir }}/tasks/post-validate.yaml"
     apply:
       tags: post-validate
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/post-validate.yaml') | length > 0
+  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/post-validate.yaml') | length > 0
   tags: post-validate

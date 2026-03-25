@@ -2,5 +2,6 @@
 name: example
 type: addon
 order: 999
-mirror: none
-operators: false
+
+defaults:
+  example_message: "Hello from example plugin"

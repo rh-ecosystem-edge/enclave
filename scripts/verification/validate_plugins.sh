@@ -3,11 +3,12 @@
 # Validates that all plugins under plugins/ have correct structure and valid YAML
 #
 # Checks per plugin:
-#   1. plugin.yaml exists and contains required fields (name, type, order, mirror, operators)
-#   2. config/defaults.yaml is valid YAML (if present)
-#   3. pre-install-validate.yaml, pre-validate.yaml, deploy.yaml, post-validate.yaml are valid YAML (if present)
-#   4. operators/operators.yaml is valid YAML with plugin_operators key (if operators: true)
-#   5. mirror/ directory exists (if mirror is core or plugin)
+#   1. plugin.yaml exists and is a valid YAML mapping with required fields (name, type)
+#   2. Task files under tasks/ are valid YAML task lists (if present)
+#   3. No unexpected files outside plugin.yaml and tasks/ directory
+#
+# Full field validation (types, enums, operator structure) is handled by JSON Schema
+# in playbooks/tasks/schema_validation.yaml using schemas/plugin.yaml.
 
 set -euo pipefail
 
@@ -41,35 +42,6 @@ fi
 echo "Validating $PLUGIN_COUNT plugin(s)..."
 echo ""
 
-# Helper: validate a YAML file is syntactically valid
-validate_yaml_file() {
-    python3 -c "
-import yaml, sys
-try:
-    with open(sys.argv[1]) as f:
-        yaml.safe_load(f)
-except Exception as e:
-    print(str(e), file=sys.stderr)
-    sys.exit(1)
-" "$1"
-}
-
-# Helper: validate a YAML file is a mapping (dict)
-validate_yaml_mapping() {
-    python3 -c "
-import yaml, sys
-try:
-    with open(sys.argv[1]) as f:
-        data = yaml.safe_load(f)
-except Exception as e:
-    print(str(e), file=sys.stderr)
-    sys.exit(1)
-if not isinstance(data, dict):
-    print(f'Expected YAML mapping, got {type(data).__name__}', file=sys.stderr)
-    sys.exit(1)
-" "$1"
-}
-
 # Helper: validate a YAML file is a list of task mappings
 validate_yaml_tasklist() {
     python3 -c "
@@ -96,7 +68,7 @@ for plugin_dir in "$PLUGINS_DIR"/*/; do
     plugin_failed=0
     echo "--- Plugin: $plugin_name ---"
 
-    # 1. Check plugin.yaml exists
+    # 1. Check plugin.yaml exists and has required fields
     plugin_yaml="${plugin_dir}plugin.yaml"
     if [ ! -f "$plugin_yaml" ]; then
         error "  Missing plugin.yaml"
@@ -104,13 +76,13 @@ for plugin_dir in "$PLUGINS_DIR"/*/; do
         continue
     fi
 
-    # Validate plugin.yaml is valid YAML and has required fields
     if ! python3 -c "
 import yaml, sys
 
 filepath = sys.argv[1]
-required_fields = ['name', 'type', 'order', 'mirror', 'operators']
-valid_fields = required_fields
+required_fields = ['name', 'type']
+valid_fields = ['name', 'type', 'order', 'mirror', 'operators', 'defaults',
+                'registries', 'extra_packages']
 
 try:
     with open(filepath) as f:
@@ -137,116 +109,27 @@ if unexpected:
         plugin_failed=1
     fi
 
-    # 2. Validate config/defaults.yaml is a mapping if present
-    defaults_yaml="${plugin_dir}config/defaults.yaml"
-    if [ -f "$defaults_yaml" ]; then
-        if ! validate_yaml_mapping "$defaults_yaml" 2>/dev/null; then
-            error "  config/defaults.yaml must be a YAML mapping"
-            FAILED=1
-            plugin_failed=1
-        fi
-    fi
-
-    # 3. Validate lifecycle YAML files are task lists if present
-    for lifecycle_file in pre-install-validate.yaml pre-validate.yaml deploy.yaml post-validate.yaml; do
-        filepath="${plugin_dir}${lifecycle_file}"
-        if [ -f "$filepath" ]; then
-            if ! validate_yaml_tasklist "$filepath" 2>/dev/null; then
-                error "  ${lifecycle_file} must be a YAML list of tasks"
+    # 2. Validate task files under tasks/ are valid task lists
+    if [ -d "${plugin_dir}tasks" ]; then
+        for task_file in "${plugin_dir}"tasks/*.yaml; do
+            [ -f "$task_file" ] || continue
+            if ! validate_yaml_tasklist "$task_file" 2>/dev/null; then
+                error "  tasks/$(basename "$task_file") must be a YAML list of tasks"
                 FAILED=1
                 plugin_failed=1
             fi
+        done
+    fi
+
+    # 3. Check for unexpected files/directories (only plugin.yaml and tasks/ allowed)
+    for entry in "${plugin_dir}"*; do
+        entry_name=$(basename "$entry")
+        if [ "$entry_name" != "plugin.yaml" ] && [ "$entry_name" != "tasks" ]; then
+            error "  Unexpected file or directory: $entry_name (only plugin.yaml and tasks/ are allowed)"
+            FAILED=1
+            plugin_failed=1
         fi
     done
-
-    # 4. If operators: true, check operators/operators.yaml
-    operators_enabled=$(python3 -c "
-import yaml, sys
-try:
-    with open(sys.argv[1]) as f:
-        data = yaml.safe_load(f)
-    if isinstance(data, dict):
-        print(str(data.get('operators', False)).lower())
-    else:
-        print('false')
-except Exception:
-    print('false')
-" "$plugin_yaml" 2>/dev/null)
-
-    if [ "$operators_enabled" = "true" ]; then
-        operators_yaml="${plugin_dir}operators/operators.yaml"
-        if [ ! -f "$operators_yaml" ]; then
-            error "  operators: true but operators/operators.yaml is missing"
-            FAILED=1
-            plugin_failed=1
-        else
-            if ! python3 -c "
-import yaml, sys
-
-filepath = sys.argv[1]
-required_keys = ['name', 'version', 'channel', 'namespace', 'source']
-
-try:
-    with open(filepath) as f:
-        data = yaml.safe_load(f)
-except Exception as e:
-    print(f'  operators/operators.yaml is not valid YAML: {e}', file=sys.stderr)
-    sys.exit(1)
-
-if not isinstance(data, dict) or 'plugin_operators' not in data:
-    print('  operators/operators.yaml must contain plugin_operators key', file=sys.stderr)
-    sys.exit(1)
-
-ops = data['plugin_operators']
-if not isinstance(ops, list):
-    print('  plugin_operators must be a list', file=sys.stderr)
-    sys.exit(1)
-
-for i, op in enumerate(ops):
-    if not isinstance(op, dict):
-        print(f'  plugin_operators[{i}] is not a mapping', file=sys.stderr)
-        sys.exit(1)
-    missing = [k for k in required_keys if k not in op]
-    if missing:
-        print(f'  plugin_operators[{i}] missing keys: {missing}', file=sys.stderr)
-        sys.exit(1)
-" "$operators_yaml" 2>&1; then
-                FAILED=1
-                plugin_failed=1
-            fi
-        fi
-    fi
-
-    # 5. Validate mirror enum value and check mirror/ directory
-    mirror_value=$(python3 -c "
-import yaml, sys
-try:
-    with open(sys.argv[1]) as f:
-        data = yaml.safe_load(f)
-    val = data.get('mirror', 'none') if isinstance(data, dict) else 'none'
-    if isinstance(val, bool):
-        print('plugin' if val else 'none')
-    else:
-        print(str(val).lower())
-except Exception:
-    print('none')
-" "$plugin_yaml" 2>/dev/null)
-
-    valid_mirrors="core plugin none"
-    if ! echo "$valid_mirrors" | grep -qw "$mirror_value"; then
-        error "  mirror must be one of: core, plugin, none (got: $mirror_value)"
-        FAILED=1
-        plugin_failed=1
-    fi
-
-    if [[ "$mirror_value" == "core" || "$mirror_value" == "plugin" ]]; then
-        mirror_dir="${plugin_dir}mirror/"
-        if [ ! -d "$mirror_dir" ]; then
-            error "  mirror: $mirror_value but mirror/ directory is missing"
-            FAILED=1
-            plugin_failed=1
-        fi
-    fi
 
     if [ $plugin_failed -eq 0 ]; then
         echo "  OK"

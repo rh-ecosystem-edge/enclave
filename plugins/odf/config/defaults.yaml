@@ -1,4 +1,0 @@
----
-# ODF default configuration
-odfDefaults:
-  defaultStorageClass: true

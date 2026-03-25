@@ -1,0 +1,102 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+definitions:
+  operator:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Operator package name as it appears in the catalog.
+      version:
+        type: string
+        description: Operator version.
+      channel:
+        type: string
+        description: Update channel for the operator.
+      init_version:
+        type: string
+        description: Initial operator version.
+      namespace:
+        type: string
+        description: Target namespace where the operator will be installed.
+      source:
+        type: string
+        description: Catalog source name (from oc-mirror configuration).
+      csvNames:
+        type: array
+        items:
+          type: string
+        description: ClusterServiceVersion names for the operator.
+      global:
+        type: boolean
+        description: Configure operator to watch the entire cluster.
+    required:
+      - name
+      - version
+      - channel
+      - init_version
+
+  registry:
+    type: object
+    additionalProperties: false
+    properties:
+      location:
+        type: string
+        description: Source registry location (e.g. registry.redhat.io/lvms4).
+      mirror:
+        type: string
+        description: Mirror path under the internal Quay registry.
+    required:
+      - location
+      - mirror
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    description: Plugin identifier. Must match the directory name.
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+  type:
+    type: string
+    enum:
+      - foundation
+      - addon
+    description: Plugin type. foundation plugins deploy before core operators.
+  order:
+    type: integer
+    description: Deploy order among same-type plugins. Lower values deploy first.
+  mirror:
+    type: string
+    enum:
+      - core
+      - plugin
+      - none
+    description: >-
+      How images are mirrored. core = included in the main oc-mirror run.
+      plugin = plugin runs its own oc-mirror during deploy. none = no mirroring.
+  operators:
+    type: array
+    description: List of OLM operators to install.
+    items:
+      $ref: "#/definitions/operator"
+  defaults:
+    type: object
+    description: Default variables loaded into Ansible scope before plugin tasks run.
+  registries:
+    type: array
+    description: Registry mirror entries for MCE custom-registries patching.
+    items:
+      $ref: "#/definitions/registry"
+  extra_packages:
+    type: array
+    description: Additional OLM packages to include in the imageset for dependency resolution.
+    items:
+      type: string
+
+required:
+  - name
+  - type

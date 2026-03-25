@@ -5,10 +5,13 @@
     name: _piv_plugin
 
 - name: Load plugin defaults for {{ plugin_path | basename }}
-  ansible.builtin.include_vars:
-    file: "{{ plugin_path }}/config/defaults.yaml"
-  when: lookup('ansible.builtin.fileglob', plugin_path ~ '/config/defaults.yaml') | length > 0
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ _piv_plugin.defaults | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: _piv_plugin.defaults is defined
 
 - name: Run pre-install validation for {{ plugin_path | basename }}
   ansible.builtin.include_tasks:
-    file: "{{ plugin_path }}/pre-install-validate.yaml"
+    file: "{{ plugin_path }}/tasks/pre-install-validate.yaml"
