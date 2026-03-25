@@ -17,15 +17,15 @@
   ansible.builtin.set_fact:
     pullSecretInternal: '{"auths":{"{{ quayHostname }}:8443":{"auth":"{{ (quayUser + ":" + quayPassword) | ansible.builtin.b64encode }}"}}}'
 
-# We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
-- name: combine pull secrets if pullSecret is already a dictionary
-  when: pullSecret is mapping
+- name: Combine pull secrets
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=True) }}"
-- name: combine pull secrets if pullSecret is a JSON string
-  when: pullSecret is not mapping
-  ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | from_json | ansible.builtin.combine(pullSecretInternal, recursive=True) | to_json }}"
+    # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
+    pullSecretNew: >-
+      {% if pullSecret | type_debug == 'dict' %}
+        {{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=true) | to_json }}
+      {% else %}
+        {{ pullSecret | from_json | ansible.builtin.combine(pullSecretInternal, recursive=true) | to_json }}
+      {% endif %}
 
 - name: Create pull-secret file with the combination
   ansible.builtin.copy:

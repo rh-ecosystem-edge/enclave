@@ -187,19 +187,16 @@
       {"auth":"{{ (quayUser + ":" + quayPassword) | ansible.builtin.b64encode }}"}
       }}
 
-# We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
-- name: combine pull secrets for connected mode if pullSecret is already a dictionary
-  when:
-    - not (disconnected | default(true))
-    - pullSecret is mapping
+- name: Combine pull secrets for connected mode
+  when: not (disconnected | default(true))
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=True) }}"
-- name: combine pull secrets for connected mode if pullSecret is a JSON string
-  when:
-    - not (disconnected | default(true))
-    - pullSecret is not mapping
-  ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | from_json | ansible.builtin.combine(pullSecretQuay, recursive=True) | to_json }}"
+    # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
+    pullSecretNew: >-
+      {% if pullSecret | type_debug == 'dict' %}
+        {{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=true) | to_json }}
+      {% else %}
+        {{ pullSecret | from_json | ansible.builtin.combine(pullSecretQuay, recursive=true) | to_json }}
+      {% endif %}
 
 - name: Set pull secret for disconnected (no combine)
   when: disconnected | default(true)
