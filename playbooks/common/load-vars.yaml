@@ -28,3 +28,10 @@
     - k8s.yaml
   loop_control:
     loop_var: config_file
+
+- name: Include plugins configuration
+  ansible.builtin.include_vars:
+    file: "{{ item }}"
+    name: "plugins.{{ item | basename | splitext | first }}"
+  with_fileglob:
+    - "../../plugins/*.yaml"
