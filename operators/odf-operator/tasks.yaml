@@ -1,5 +1,4 @@
 - name: Ensure Secret is present
-  no_log: true
   kubernetes.core.k8s:
     state: present
     definition:

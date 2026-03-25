@@ -12,7 +12,6 @@
   until: r_namespace_creds_exists is success
 
 - name: Create quay-credentials Secret
-  no_log: true
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:

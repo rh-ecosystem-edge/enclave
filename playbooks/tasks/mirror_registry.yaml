@@ -9,36 +9,30 @@
     - r_container_quay_app.containers | default([]) | length == 0
   block:
     - name: Deploy mirror-registry
-      no_log: true
       ansible.builtin.command: |
         {{ workingDir }}/bin/mirror-registry  install --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data --initPassword "{{ quayPassword }}" --initUser "{{ quayUser }}"
       register: r_mirror_registry
 
 - name: Generate pull secret for internal mirror
-  no_log: true
   ansible.builtin.set_fact:
     pullSecretInternal: '{"auths":{"{{ quayHostname }}:8443":{"auth":"{{ (quayUser + ":" + quayPassword) | ansible.builtin.b64encode }}"}}}'
 
 # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
 - name: combine pull secrets if pullSecret is already a dictionary
-  no_log: true
   when: pullSecret is mapping
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=True) | to_json }}"
+    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretInternal, recursive=True) }}"
 - name: combine pull secrets if pullSecret is a JSON string
-  no_log: true
   when: pullSecret is not mapping
   ansible.builtin.set_fact:
     pullSecretNew: "{{ pullSecret | from_json | ansible.builtin.combine(pullSecretInternal, recursive=True) | to_json }}"
 
 - name: Create pull-secret file with the combination
-  no_log: true
   ansible.builtin.copy:
     content: "{{ pullSecretNew }}"
     dest: "{{ pullSecretPath }}"
 
 - name: Create pull-secret internal file with the combination
-  no_log: true
   ansible.builtin.copy:
     content: "{{ pullSecretInternal }}"
     dest: "{{ workingDir }}/config/pull-secret.internal.json"
