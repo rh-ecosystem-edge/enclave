@@ -48,6 +48,16 @@ mirror:
               maxVersion: {{ operator.version }}
 {% endfor %}
 {% endfor %}
+{% for plugin in plugins %}
+{% for operator in plugin.operators | default([]) %}
+        - name: {{ operator_name }}
+          defaultChannel: {{ operator.channel }}
+          channels:
+            - name: {{ operator.channel }}
+              minVersion: {{ operator.init_version }}
+              maxVersion: {{ operator.version }}
+{% endfor %}
+{% endfor %}
 
   additionalImages:
     - name: registry.redhat.io/ubi8/ubi:latest
