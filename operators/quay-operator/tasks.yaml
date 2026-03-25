@@ -1,4 +1,5 @@
 - name: Create or update quay-config Secret
+  no_log: true
   kubernetes.core.k8s:
     state: present
     definition:
@@ -155,6 +156,7 @@
 
 
 - name: Create user
+  no_log: true
   ansible.builtin.uri:
     url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/user/initialize"
     method: POST
@@ -179,6 +181,7 @@
     - r_quay_user.status | default(0) == 200 or r_quay_user.json.message | default("") == "Cannot initialize user in a non-empty database"
 
 - name: Generate pull secret for internal mirror
+  no_log: true
   ansible.builtin.set_fact:
     pullSecretQuay: >-
       {"auths":{
@@ -189,12 +192,14 @@
 
 # We need to check if the pullSecret is a string (surrounded by single quotes) or a dict/json (not surrounded)
 - name: combine pull secrets for connected mode if pullSecret is already a dictionary
+  no_log: true
   when:
     - not (disconnected | default(true))
     - pullSecret is mapping
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=True) }}"
+    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=True) | to_json }}"
 - name: combine pull secrets for connected mode if pullSecret is a JSON string
+  no_log: true
   when:
     - not (disconnected | default(true))
     - pullSecret is not mapping
@@ -202,11 +207,13 @@
     pullSecretNew: "{{ pullSecret | from_json | ansible.builtin.combine(pullSecretQuay, recursive=True) | to_json }}"
 
 - name: Set pull secret for disconnected (no combine)
+  no_log: true
   when: disconnected | default(true)
   ansible.builtin.set_fact:
     pullSecretNew: "{{ pullSecretQuay }}"
 
 - name: Patch cluster pull-secret
+  no_log: true
   kubernetes.core.k8s:
     state: patched
     definition:
@@ -224,6 +231,7 @@
   until: r_patch_cluster_pullsecret is success
 
 - name: Create pull-secret file with the combination
+  no_log: true
   ansible.builtin.copy:
     content: "{{ pullSecretQuay }}"
     dest: "{{ workingDir }}/config/pull-secret.quay.json"

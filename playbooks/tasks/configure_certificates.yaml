@@ -3,6 +3,7 @@
 # Only included when custom certificates are provided
 
 - name: Create TLS secret for ingress controller
+  no_log: true
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:
@@ -41,6 +42,7 @@
   until: r_patch_ingress_controller is success
 
 - name: Create TLS secret for API server
+  no_log: true
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:

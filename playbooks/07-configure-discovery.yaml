@@ -31,10 +31,12 @@
       until: r_namespace_infraenv is success
 
     - name: Read pull secret from file
+      no_log: true
       ansible.builtin.set_fact:
         pull_secret_content: "{{ lookup('file', '{{ workingDir }}/config/pull-secret.quay.json') | from_json }}"
 
     - name: Create pullsecret for infraenv
+      no_log: true
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       kubernetes.core.k8s:
