@@ -46,11 +46,7 @@
   tags: always
 
 - name: Load plugin defaults
-  ansible.builtin.set_fact:
-    "{{ item.key }}": "{{ item.value }}"
-  loop: "{{ plugin.defaults | default({}) | dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
+  ansible.builtin.set_fact: "{{ plugin.defaults }}"
   when: plugin.defaults is defined
   tags: always
 

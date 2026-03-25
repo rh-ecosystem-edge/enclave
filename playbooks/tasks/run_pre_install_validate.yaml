@@ -5,11 +5,7 @@
     name: _piv_plugin
 
 - name: Load plugin defaults for {{ plugin_path | basename }}
-  ansible.builtin.set_fact:
-    "{{ item.key }}": "{{ item.value }}"
-  loop: "{{ _piv_plugin.defaults | default({}) | dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
+  ansible.builtin.set_fact: "{{ _piv_plugin.defaults }}"
   when: _piv_plugin.defaults is defined
 
 - name: Run pre-install validation for {{ plugin_path | basename }}
