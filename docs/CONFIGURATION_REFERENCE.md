@@ -13,7 +13,6 @@ Configuration is split across multiple files for better organization and maintai
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
 | `defaults/operators.yaml` | General cluster operators configuration |
 | `defaults/platforms.yaml` | Available OpenShift versions |
-| `defaults/storage_operators.yaml` | Storage operators (ODF, LVMS) configuration |
 | `defaults/model_operators.yaml` | AI/ML model operators configuration |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/content_images.yaml` | RHCOS images and ISOs configuration |
@@ -1038,7 +1037,6 @@ sslCACertificate: |
 
 Operator configuration is stored in the `defaults/` directory:
 - `defaults/operators.yaml` - General cluster operators
-- `defaults/storage_operators.yaml` - Storage operators (selected based on `blockStorageBackend` variable)
 - `defaults/model_operators.yaml` - AI/ML model operators
 
 ### Operator List Structure

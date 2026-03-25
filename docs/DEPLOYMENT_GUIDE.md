@@ -137,7 +137,6 @@ Configuration is split across multiple files for better organization:
 **Default configuration files** (in `defaults/` directory):
 - `defaults/operators.yaml` - General cluster operators
 - `defaults/platforms.yaml` - Available OpenShift versions
-- `defaults/storage_operators.yaml` - Storage operators (ODF, LVMS)
 - `defaults/model_operators.yaml` - AI/ML model operators
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
 - `defaults/content_images.yaml` - RHCOS images and ISOs

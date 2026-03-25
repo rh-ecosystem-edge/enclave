@@ -40,12 +40,6 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
 
-- name: validate defaults/storage_operators.yaml schema
-  ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', '../../defaults/storage_operators.yaml') | from_yaml | to_json }}"
-    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
-    engine: ansible.utils.jsonschema
-
 - name: validate defaults/platforms.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/platforms.yaml') | from_yaml | to_json }}"
