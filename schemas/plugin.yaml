@@ -73,6 +73,9 @@ properties:
           type: string
         mirror:
           type: string
+      required:
+        - location
+        - mirror
 
 required:
 - name
