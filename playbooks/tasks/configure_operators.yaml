@@ -9,7 +9,7 @@
 
     - name: Include configure_operator
       ansible.builtin.include_tasks: configure_operator.yaml
-      loop: "{{ storage_operators[blockStorageBackend] + operators }}"
+      loop: "{{ plugins[blockStorageBackend].operators + operators }}"
       loop_control:
         loop_var: operator
 

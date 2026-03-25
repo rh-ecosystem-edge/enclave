@@ -100,7 +100,7 @@
             script: |
                 #!/bin/bash
 
-                python ./approve_installplans.py "{{ storage_operators[blockStorageBackend] + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                python ./approve_installplans.py "{{ plugins[blockStorageBackend].operators + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
                 rc=$?
                 echo -n "${rc}" > "$(results.exit-code.path)"
                 exit "${rc}"
