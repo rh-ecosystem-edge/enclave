@@ -17,7 +17,7 @@
 
 - name: Combine pull secrets
   ansible.builtin.set_fact:
-    __pull_secret_cache: "{{ pullSecret | from_json | ansible.builtin.combine(__pull_secret_dc, recursive=true) }}"
+    __pull_secret_cache: "{{ pullSecret | ansible.builtin.combine(__pull_secret_dc, recursive=true) }}"
   no_log: true
 
 - name: Create pull-secret-cache file with the combination
