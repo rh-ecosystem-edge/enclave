@@ -35,7 +35,6 @@ The plugin descriptor. Contains all plugin data: metadata, operator definitions,
 | `operators` | list | OLM operators to install (see Operator fields below) |
 | `defaults` | object | Default variables loaded into Ansible scope before plugin tasks run |
 | `registries` | list | Registry mirror entries for MCE custom-registries patching |
-| `extra_packages` | list of strings | Additional OLM packages for dependency resolution in the imageset |
 
 ### Example: foundation plugin with operators
 
@@ -91,6 +90,7 @@ defaults:
 | `namespace` | No | Namespace for Subscription and OperatorGroup |
 | `source` | No | CatalogSource name |
 | `csvNames` | No | List of CSV names to approve and wait for (for operators with sub-operators) |
+| `csvMirror` | No | When `true`, csvNames entries are mirrored as separate packages in the imageset |
 | `global` | No | When `true`, creates a cluster-wide OperatorGroup (no target namespace) |
 
 ### Defaults
@@ -144,7 +144,7 @@ enabled_plugins:               # Plugins to deploy (defaults to just storage_plu
 
 1. `collect_core_plugin_operators` reads `operators` from `plugin.yaml` of all enabled plugins
 2. Plugin operators are merged into the main imageset for a single oc-mirror invocation
-3. `extra_packages` are added as bare entries for OLM dependency resolution
+3. Operators with `csvMirror: true` have their `csvNames` entries added as separate packages for OLM dependency resolution
 4. `collect_plugin_registries` reads `registries` from `plugin.yaml` and adds entries to `registries.conf`
 
 ### Phase 3 - Cluster Deploy

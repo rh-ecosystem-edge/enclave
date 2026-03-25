@@ -31,9 +31,15 @@ definitions:
         items:
           type: string
         description: ClusterServiceVersion names for the operator.
+      csvMirror:
+        type: boolean
+        description: Mirror operator packages listed under csvNames.
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
+    dependencies:
+      csvMirror:
+      - csvNames
     required:
       - name
       - version
@@ -91,12 +97,6 @@ properties:
     description: Registry mirror entries for MCE custom-registries patching.
     items:
       $ref: "#/definitions/registry"
-  extra_packages:
-    type: array
-    description: Additional OLM packages to include in the imageset for dependency resolution.
-    items:
-      type: string
-
 required:
   - name
   - type

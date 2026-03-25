@@ -5,8 +5,7 @@
 # This avoids running separate oc-mirror invocations per plugin, which
 # would overwrite the catalog index and lose operators from earlier runs.
 #
-# Sets facts: _core_plugin_operators (list of operator dicts)
-#             _core_plugin_extra_packages (list of package name strings)
+# Sets fact: _core_plugin_operators (list of operator dicts)
 
 - name: Find plugin descriptors
   ansible.builtin.find:
@@ -35,24 +34,6 @@
          | flatten
          | list }}
 
-- name: Build combined plugin extra packages list
-  ansible.builtin.set_fact:
-    _core_plugin_extra_packages: >-
-      {{ r_cp_slurp.results
-         | map(attribute='content')
-         | map('b64decode')
-         | map('from_yaml')
-         | selectattr('name', 'in', enabled_plugins)
-         | selectattr('extra_packages', 'defined')
-         | map(attribute='extra_packages')
-         | flatten
-         | list }}
-
 - name: Display plugin operators to mirror
   ansible.builtin.debug:
     msg: "Plugin operators to include in imageset: {{ _core_plugin_operators | map(attribute='name') | list }}"
-
-- name: Display plugin extra packages to mirror
-  ansible.builtin.debug:
-    msg: "Plugin extra packages to include in imageset: {{ _core_plugin_extra_packages }}"
-  when: _core_plugin_extra_packages | length > 0

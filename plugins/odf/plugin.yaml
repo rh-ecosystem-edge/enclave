@@ -11,6 +11,7 @@ operators:
     init_version: 4.20.7-rhodf
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
+    csvMirror: true
     csvNames:
       - odf-operator
       - odf-dependencies
@@ -23,20 +24,8 @@ operators:
       - ocs-client-operator
       - cephcsi-operator
       - odf-external-snapshotter-operator
-
-extra_packages:
-  - mcg-operator
-  - odf-csi-addons-operator
-  - ocs-client-operator
-  - odf-prometheus-operator
-  - recipe
-  - rook-ceph-operator
-  - cephcsi-operator
-  - odf-dependencies
-  - odr-cluster-operator
-  - odr-hub-operator
-  - ocs-operator
-  - odf-external-snapshotter-operator
+      - odr-cluster-operator
+      - odr-hub-operator
 
 defaults:
   odfDefaults:
