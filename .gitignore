@@ -4,7 +4,6 @@ config/*.yaml
 debug.yaml
 .claude
 CLAUDE.md
-tmp/
 
 # IDE folders
 .vscode/
