@@ -3,10 +3,177 @@
 version: "1.0"
 type: object
 
-additionalProperties: true
+additionalProperties: false
 properties:
+  agent_hosts:
+    type: array
+    minItems: 3
+    maxItems: 3
+    description: List of exactly 3 control plane nodes
+    items:
+      type: object
+      properties:
+        bmcSystemId:
+          type: string
+          description: Redfish system ID path component, defaults to '1'
+        ipAddress:
+          "$ref": "#/definitions/ipv4Address"
+        macAddress:
+          "$ref": "#/definitions/macAddress"
+        mapInterfaces:
+          type: object
+          description: Interface mapping configuration
+        name:
+          "$ref": "#/definitions/nonEmptyString"
+        networkConfig:
+          type: object
+          description: Network configuration
+        redfish:
+          "$ref": "#/definitions/ipv4Address"
+        redfishPassword:
+          "$ref": "#/definitions/nonEmptyString"
+        redfishUser:
+          "$ref": "#/definitions/nonEmptyString"
+        rootDisk:
+          "$ref": "#/definitions/nonEmptyString"
+      required:
+        - ipAddress
+        - macAddress
+        - name
+        - redfish
+        - redfishPassword
+        - redfishUser
+        - rootDisk
+  apiVIP:
+    "$ref": "#/definitions/ipv4Address"
+  baseDomain:
+    "$ref": "#/definitions/nonEmptyString"
+  blockStorageBackend:
+    type: string
+    enum: [lvms, odf]
+    description: Block storage backend for Quay database and assisted installer
+  clusterName:
+    "$ref": "#/definitions/nonEmptyString"
+  defaultDNS:
+    "$ref": "#/definitions/ipv4Address"
+  defaultGateway:
+    "$ref": "#/definitions/ipv4Address"
+  defaultNtpServers:
+    type: array
+    description: Additional NTP servers for cluster nodes
+    items:
+      type: string
+  defaultPrefix:
+    type: integer
+    minimum: 1
+    maximum: 32
+    description: Network prefix length (subnet mask bits)
+  disconnected:
+    "$ref": "#/definitions/disconnected"
+  diskEncryption:
+    "$ref": "#/definitions/diskEncryption"
+  ingressVIP:
+    "$ref": "#/definitions/ipv4Address"
+  lvmsConfig:
+    type: object
+    description: LVMS storage configuration
+    properties:
+      deviceSelector:
+        type: object
+        properties:
+          optionalPaths:
+            type: array
+            items:
+              type: string
+  lzBmcIP:
+    "$ref": "#/definitions/ipv4Address"
+  machineNetwork:
+    "$ref": "#/definitions/cidr"
+  ocMirrorLogLevel:
+    "$ref": "#/definitions/ocMirrorLogLevel"
+  odfExternalConfig:
+    type: string
+    description: ODF external cluster configuration JSON string
   pullSecret:
     type: object
     description: Pull Secret
+  quayBackend:
+    type: string
+    enum: [RadosGWStorage, LocalStorage]
+    description: Quay storage backend type
+  quayBackendRGWConfiguration:
+    type: object
+    description: RadosGW/S3 backend configuration for Quay
+    additionalProperties: false
+    properties:
+      access_key:
+        "$ref": "#/definitions/nonEmptyString"
+      bucket_name:
+        "$ref": "#/definitions/nonEmptyString"
+      hostname:
+        "$ref": "#/definitions/nonEmptyString"
+      is_secure:
+        "$ref": "#/definitions/quayBackendRGWIsSecure"
+      maximum_chunk_size_mb:
+        "$ref": "#/definitions/quayBackendRGWMaximumChunkSizeMb"
+      minimum_chunk_size_mb:
+        "$ref": "#/definitions/quayBackendRGWMinimumChunkSizeMb"
+      port:
+        "$ref": "#/definitions/quayBackendRGWPort"
+      secret_key:
+        "$ref": "#/definitions/nonEmptyString"
+      server_side_assembly:
+        "$ref": "#/definitions/quayBackendRGWServerSideAssembly"
+      storage_path:
+        "$ref": "#/definitions/quayBackendStoragePath"
+    required:
+      - access_key
+      - bucket_name
+      - hostname
+      - secret_key
+  quayPassword:
+    "$ref": "#/definitions/nonEmptyString"
+  quayUser:
+    "$ref": "#/definitions/nonEmptyString"
+  rendezvousIP:
+    "$ref": "#/definitions/ipv4Address"
+  sshPubPath:
+    "$ref": "#/definitions/nonEmptyString"
+  workingDir:
+    "$ref": "#/definitions/nonEmptyString"
+
 required:
-- pullSecret
+  - agent_hosts
+  - apiVIP
+  - baseDomain
+  - blockStorageBackend
+  - clusterName
+  - defaultDNS
+  - defaultGateway
+  - defaultPrefix
+  - ingressVIP
+  - lzBmcIP
+  - machineNetwork
+  - pullSecret
+  - quayBackend
+  - quayPassword
+  - quayUser
+  - rendezvousIP
+  - sshPubPath
+  - workingDir
+
+allOf:
+  - if:
+      properties:
+        quayBackend:
+          const: RadosGWStorage
+    then:
+      required:
+        - quayBackendRGWConfiguration
+  - if:
+      properties:
+        blockStorageBackend:
+          const: odf
+    then:
+      required:
+        - odfExternalConfig

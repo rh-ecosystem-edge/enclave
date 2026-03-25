@@ -1,0 +1,20 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  k8s_retries:
+    type: integer
+    minimum: 1
+    description: Number of retries for k8s module calls
+  k8s_delay:
+    type: integer
+    minimum: 1
+    description: Delay in seconds between k8s module call retries
+
+required:
+  - k8s_retries
+  - k8s_delay
+

@@ -1,0 +1,47 @@
+- name: Load shared schema definitions
+  ansible.builtin.set_fact:
+    schema_definitions: "{{ lookup('ansible.builtin.file', '../../schemas/definitions.yaml') | from_yaml }}"
+
+- name: Load variables schema
+  ansible.builtin.set_fact:
+    variables_schema: "{{ lookup('ansible.builtin.file', '../../schemas/variables.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+
+- name: Find valid fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../schemas/fixtures/valid"
+    patterns: "*.yaml"
+  register: valid_fixtures
+
+- name: Validate valid fixtures
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ variables_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ valid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Find invalid fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../schemas/fixtures/invalid"
+    patterns: "*.yaml"
+  register: invalid_fixtures
+
+- name: Validate invalid fixtures (expect failure)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ variables_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ invalid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: invalid_results
+  ignore_errors: true
+
+- name: Assert invalid fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid fixture {{ item.item.path | basename }} unexpectedly passed schema validation"
+  loop: "{{ invalid_results.results }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"

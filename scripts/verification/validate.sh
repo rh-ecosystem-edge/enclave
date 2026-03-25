@@ -64,7 +64,7 @@ validate_yaml() {
 validate_json_schema() {
     print_header "Validating JSON schema"
 
-    if ansible-playbook playbooks/validate-schema.yaml -e@config/global.example.yaml; then
+    if ansible-playbook playbooks/validate-schema.yaml; then
         print_success "JSON schema validation passed"
         return 0
     else
@@ -134,7 +134,8 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
-        "playbooks/validate-schema.yaml:schema-validation:Include schema validation tasks"
+        "playbooks/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
+        "playbooks/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
     )
 
     for test in "${tag_tests[@]}"; do

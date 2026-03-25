@@ -1,0 +1,43 @@
+---
+# Fixture: unrecognized field at top level
+# Expected failure: additionalProperties is false; unknown fields are rejected
+unknownFieldwithAnUnknownName: this-should-not-be-here
+workingDir: /home/enclave
+baseDomain: enclave-test.nodns.in
+clusterName: mgmt
+machineNetwork: 192.168.2.0/24
+apiVIP: 192.168.2.201
+ingressVIP: 192.168.2.202
+defaultDNS: 9.30.31.32
+defaultGateway: 192.168.2.10
+defaultPrefix: 24
+rendezvousIP: 192.168.2.24
+lzBmcIP: 100.64.1.10
+quayUser: admin
+quayPassword: password
+quayBackend: LocalStorage
+blockStorageBackend: lvms
+pullSecret: {"auths":{}}
+sshPubPath: /home/enclave/.ssh/id_rsa.pub
+agent_hosts:
+  - name: mgmt-ctl01
+    macAddress: 0c:c4:7a:62:fe:ec
+    ipAddress: 192.168.2.24
+    redfish: 192.168.1.101
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: password
+  - name: mgmt-ctl02
+    macAddress: 0c:c4:7a:62:fe:ed
+    ipAddress: 192.168.2.25
+    redfish: 192.168.1.102
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: password
+  - name: mgmt-ctl03
+    macAddress: 0c:c4:7a:62:fe:ee
+    ipAddress: 192.168.2.26
+    redfish: 192.168.1.103
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: password

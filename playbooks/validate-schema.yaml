@@ -9,9 +9,16 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Include schema validation tasks
+    - name: Include defaults schema validation tasks
       ansible.builtin.include_tasks:
-        file: tasks/schema_validation.yaml
+        file: tasks/defaults_schema_validation.yaml
+        apply:
+          tags: schema-validation
+      tags: schema-validation
+
+    - name: Include variables schema validation tasks
+      ansible.builtin.include_tasks:
+        file: tasks/variables_schema_validation.yaml
         apply:
           tags: schema-validation
       tags: schema-validation
