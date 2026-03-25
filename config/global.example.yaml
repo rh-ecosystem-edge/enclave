@@ -101,6 +101,7 @@ blockStorageBackend: lvms
 # Pull Secret and SSH Public Key Configuration
 # ============================================================================
 # Obtain from: https://console.redhat.com/openshift/install/pull-secret
+# Do not wrap the pull secret in quotes
 pullSecret: {"auths":{}} # Replace with your Pull Secret
 
 # SSH public key path for cluster nodes
