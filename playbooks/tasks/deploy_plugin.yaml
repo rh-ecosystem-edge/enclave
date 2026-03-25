@@ -45,8 +45,18 @@
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin.mirror | default('none') }})"
   tags: always
 
-- name: Load plugin defaults
-  ansible.builtin.set_fact: "{{ plugin.defaults }}"
+# Dynamically set each key in plugin.defaults as an Ansible fact.
+# The dict2items loop is required because set_fact needs explicit key: value
+# pairs — the free-form `set_fact: "{{ dict }}"` renders to a string and
+# does not expand into individual facts.
+# noqa: var-naming[no-jinja] is needed because Jinja2 in the variable name
+# is the only way to set dynamic fact names from a dict.
+- name: Load plugin defaults  # noqa: var-naming[no-jinja]
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ plugin.defaults | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
   when: plugin.defaults is defined
   tags: always
 

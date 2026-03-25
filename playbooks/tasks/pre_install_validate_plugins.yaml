@@ -6,6 +6,10 @@
     ansible_user: core
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
 
+# Nodes were just booted via Ironic and may not have SSH ready yet.
+# delegate_to connection failures (UNREACHABLE) are fatal and bypass
+# Ansible's retries/until mechanism, so we must wait for connectivity
+# explicitly before any delegated tasks.
 - name: Wait for rendezvous node to become reachable
   ansible.builtin.wait_for_connection:
     timeout: 300
