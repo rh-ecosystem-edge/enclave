@@ -1,0 +1,28 @@
+---
+name: lvms
+type: foundation
+enabled: true
+
+operators:
+  - name: lvms-operator
+    version: 4.20.0
+    channel: stable-4.20
+    init_version: 4.20.0
+    namespace: openshift-storage
+    source: cs-redhat-operator-index-v4-20
+
+config:
+  deviceSelector:
+    forceWipeDevicesAndDestroyAllData: true
+
+defaults:
+  deviceClassName: vg1
+  defaultStorageClass: true
+  thinPoolConfig:
+    name: vg1-pool-1
+    sizePercent: 90
+    overprovisionRatio: 10
+
+registries:
+  - location: "registry.redhat.io/lvms4"
+    mirror: "lvms4"

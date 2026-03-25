@@ -1,0 +1,79 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    description: Plugin name
+  type:
+    type: string
+    description: Plugin type
+  enabled:
+    type: boolean
+    description: Plugin enabled or disabled
+  operators:
+    type: array
+    description: List of operators to install and configure.
+    items:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Operator package name as it appears in the catalog.
+        version:
+          type: string
+          description: Operator version.
+        channel:
+          type: string
+          description: Update channel for the operator.
+        init_version:
+          type: string
+          description: Initial operator version.
+        namespace:
+          type: string
+          description: Target namespace where the operator will be installed.
+        source:
+          type: string
+          description: Catalog source name (from oc-mirror configuration).
+        csvNames:
+          type: array
+          items:
+            type: string
+            description: ClusterServiceVersion name for the operator.
+        csvMirror:
+          type: boolean
+          description: Mirror operator packages listed under csvNames.
+        global:
+          type: boolean
+          description: Configure operator to watch the entire cluster.
+      dependencies:
+        csvMirror:
+        - csvNames
+      required:
+      - name
+      - version
+      - channel
+      - init_version
+  config:
+    type: object
+  defaults:
+    type: object
+  registries:
+    type: array
+    description: List of registries to include in mirroring
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        location:
+          type: string
+        mirror:
+          type: string
+
+required:
+- name
+- type
+- enabled
