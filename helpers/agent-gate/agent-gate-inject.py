@@ -19,6 +19,7 @@ import argparse
 import gzip
 import io
 import json
+import mmap
 import struct
 import sys
 
@@ -291,10 +292,10 @@ def main():
                         help="Print modified ignition JSON to stdout without writing to ISO")
     args = parser.parse_args()
 
-    # Read entire ISO into memory
+    # Memory-map the ISO to avoid loading the entire file into RAM
     print(f"Reading ISO: {args.iso}")
-    with open(args.iso, "rb") as f:
-        iso_data = bytearray(f.read())
+    iso_file = open(args.iso, "r+b")
+    iso_data = mmap.mmap(iso_file.fileno(), 0)
 
     # --- Locate ignition embed area ---
     # First try to read /coreos/igninfo.json for the embed area metadata
@@ -369,6 +370,8 @@ def main():
         print("\n--- Modified ignition config ---")
         print(modified_ign.decode())
         print("--- Dry run: ISO not modified ---")
+        iso_data.close()
+        iso_file.close()
         return
 
     # Replace config.ign in the entries
@@ -395,17 +398,13 @@ def main():
         sys.exit(1)
 
     # --- Write new data into the ISO ---
-    # Zero out the embed area first
-    for i in range(embed_length):
-        iso_data[abs_embed_offset + i] = 0
-
-    # Write the new compressed data
-    for i, b in enumerate(new_compressed):
-        iso_data[abs_embed_offset + i] = b
-
-    # Write modified ISO back
-    with open(args.iso, "wb") as f:
-        f.write(iso_data)
+    # Zero out the embed area and write the new compressed data
+    patched = b"\x00" * embed_length
+    patched = new_compressed + patched[len(new_compressed):]
+    iso_data[abs_embed_offset:abs_embed_offset + embed_length] = patched
+    iso_data.flush()
+    iso_data.close()
+    iso_file.close()
 
     print(f"\nISO modified successfully: {args.iso}")
     print()
