@@ -5,7 +5,8 @@
 # This avoids running separate oc-mirror invocations per plugin, which
 # would overwrite the catalog index and lose operators from earlier runs.
 #
-# Sets fact: _core_plugin_operators (list of operator dicts)
+# Sets facts: _core_plugin_operators (list of operator dicts)
+#             _core_plugin_extra_packages (list of package name strings)
 
 - name: Find plugin descriptors
   ansible.builtin.find:
@@ -21,50 +22,29 @@
   loop: "{{ r_cp_find.files | map(attribute='path') | list }}"
   register: r_cp_slurp
 
-- name: Identify enabled plugin operator files
+- name: Build combined plugin operators list
   ansible.builtin.set_fact:
-    _cp_operator_files: >-
+    _core_plugin_operators: >-
       {{ r_cp_slurp.results
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
          | selectattr('name', 'in', enabled_plugins)
-         | selectattr('operators', 'equalto', true)
-         | map(attribute='name')
-         | map('regex_replace', '^(.*)$', playbook_dir ~ '/../plugins/\1/operators/operators.yaml')
-         | list }}
-
-- name: Read plugin operator definitions
-  ansible.builtin.slurp:
-    src: "{{ item }}"
-  loop: "{{ _cp_operator_files }}"
-  register: r_cp_ops_slurp
-  when: _cp_operator_files | length > 0
-
-- name: Parse plugin operator files
-  ansible.builtin.set_fact:
-    _cp_parsed_files: >-
-      {{ r_cp_ops_slurp.results | default([])
-         | selectattr('content', 'defined')
-         | map(attribute='content')
-         | map('b64decode')
-         | map('from_yaml')
-         | list }}
-
-- name: Build combined plugin operators list
-  ansible.builtin.set_fact:
-    _core_plugin_operators: >-
-      {{ _cp_parsed_files
-         | map(attribute='plugin_operators')
+         | selectattr('operators', 'defined')
+         | map(attribute='operators')
          | flatten
          | list }}
 
 - name: Build combined plugin extra packages list
   ansible.builtin.set_fact:
     _core_plugin_extra_packages: >-
-      {{ _cp_parsed_files
-         | selectattr('plugin_extra_packages', 'defined')
-         | map(attribute='plugin_extra_packages')
+      {{ r_cp_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | selectattr('extra_packages', 'defined')
+         | map(attribute='extra_packages')
          | flatten
          | list }}
 

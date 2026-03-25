@@ -782,7 +782,7 @@ Block storage configuration is set via `storage_plugin` and optional backend-spe
 
 #### `storage_plugin`
 
-**Description**: Selects which storage plugin provides block storage for Quay and the Assisted Installer. This value is included in the default `enabled_plugins` list, so the matching plugin under `plugins/` is automatically deployed. The Quay operator dynamically includes `plugins/{storage_plugin}/quay.yaml` for storage-specific QuayRegistry setup.
+**Description**: Selects which storage plugin provides block storage for Quay and the Assisted Installer. This value is included in the default `enabled_plugins` list, so the matching plugin under `plugins/` is automatically deployed. The Quay operator dynamically includes `plugins/{storage_plugin}/tasks/quay.yaml` for storage-specific QuayRegistry setup.
 
 **Type**: String
 

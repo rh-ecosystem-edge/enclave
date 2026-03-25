@@ -52,6 +52,14 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/quay_operator.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
 
+- name: Validate plugin schemas
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/plugin.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+  with_fileglob:
+    - "../../plugins/*/plugin.yaml"
+
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml
 

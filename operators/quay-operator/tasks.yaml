@@ -66,8 +66,8 @@
 
 - name: Run storage plugin Quay tasks
   ansible.builtin.include_tasks:
-    file: "{{ playbook_dir }}/../plugins/{{ storage_plugin }}/quay.yaml"
-  when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../plugins/' ~ storage_plugin ~ '/quay.yaml') | length > 0
+    file: "{{ playbook_dir }}/../plugins/{{ storage_plugin }}/tasks/quay.yaml"
+  when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../plugins/' ~ storage_plugin ~ '/tasks/quay.yaml') | length > 0
 
 - name: Ensure DNS for Quay route in /etc/hosts uses Ingress VIP
   ansible.builtin.lineinfile:

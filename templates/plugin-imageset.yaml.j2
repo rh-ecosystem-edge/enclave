@@ -5,11 +5,14 @@ mirror:
   operators:
     - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.20
       packages:
-{% for operator in plugin_operators_file.plugin_operators %}
+{% for operator in plugin.operators | default([]) %}
         - name: {{ operator.name }}
           defaultChannel: {{ operator.channel }}
           channels:
             - name: {{ operator.channel }}
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
+{% endfor %}
+{% for pkg in (plugin.extra_packages | default([])) %}
+        - name: {{ pkg }}
 {% endfor %}

@@ -1,5 +1,0 @@
-plugin_registries:
-  - location: "registry.redhat.io/odf4"
-    mirror: "odf4"
-  - location: "registry.redhat.io/rhceph"
-    mirror: "rhceph"

@@ -67,18 +67,18 @@
   ansible.builtin.set_fact:
     discovered_hosts: "{{ r_assisted_hosts.json }}"
 
-- name: Find plugins with pre-install-validate.yaml
+- name: Find plugins with tasks/pre-install-validate.yaml
   ansible.builtin.find:
     paths: "{{ playbook_dir }}/../plugins"
     patterns: "pre-install-validate.yaml"
     recurse: true
-    depth: 2
+    depth: 3
   register: r_pre_install_plugins
 
 - name: Read plugin descriptors for filtering
   ansible.builtin.slurp:
     src: "{{ item }}/plugin.yaml"
-  loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | list | sort }}"
+  loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | map('dirname') | unique | list | sort }}"
   register: r_pre_install_slurp
   when: r_pre_install_plugins.files | length > 0
 
