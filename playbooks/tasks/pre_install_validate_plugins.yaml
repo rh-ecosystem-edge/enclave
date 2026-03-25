@@ -6,6 +6,12 @@
     ansible_user: core
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
 
+- name: Wait for rendezvous node to become reachable
+  ansible.builtin.wait_for_connection:
+    timeout: 300
+    sleep: 10
+  delegate_to: rendezvous
+
 - name: Get Assisted Service auth token from rendezvous node
   ansible.builtin.shell: |
     set -o pipefail
