@@ -139,7 +139,7 @@
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/openshift-serverless-1"
 
-{% for operator plugins[blockStorageBackend].operators %}
+{% for operator in plugins[blockStorageBackend].operators %}
 {% for registry in operator.registries | default([]) %}
 [[registry]]
   prefix = ""
