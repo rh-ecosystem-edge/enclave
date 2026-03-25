@@ -30,8 +30,6 @@
     loop_var: config_file
 
 - name: Include plugins configuration
-  ansible.builtin.include_vars:
-    file: "{{ item }}"
-    name: "plugins.{{ item | basename | splitext | first }}"
-  with_fileglob:
-    - "../../plugins/*.yaml"
+  set_fact:
+    plugins: "{{ plugins | default({}) | combine({ (item | basename | splitext | first): lookup('file', item) | from_yaml }) }}"
+  with_fileglob: "../../plugins/*.yaml"

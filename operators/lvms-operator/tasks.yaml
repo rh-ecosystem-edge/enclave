@@ -3,8 +3,8 @@
     _spec: |
       storage:
         deviceClasses:
-          - name: {{ plugins.lvms.defaults.deviceClassName }}
-            default: {{ plugins.lvms.defaults.defaultStorageClass }}
+          - name: {{ plugins[lvms]defaults.deviceClassName }}
+            default: {{ plugins[lvms]defaults.defaultStorageClass }}
             thinPoolConfig:
               name: vg1-pool-1
               sizePercent: 90
