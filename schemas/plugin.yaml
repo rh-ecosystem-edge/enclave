@@ -18,6 +18,7 @@ properties:
     type: array
     description: List of operators to install and configure.
     items:
+      type: object
       additionalProperties: false
       properties:
         name:
