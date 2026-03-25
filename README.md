@@ -1,5 +1,9 @@
 # Red Hat Sovereign Enclave
 
+[![Nightly E2E - Connected Mode](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-connected.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-connected.yml)
+[![Nightly E2E - Disconnected Mode](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-disconnected.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-disconnected.yml)
+[![Build and Push Tarball](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/build-push-tarball.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/build-push-tarball.yml)
+
 The Red Hat Sovereign Enclave (RHSE) is an optionally disconnected, infrastructure platform that delivers a cloud-like experience based on OpenShift. It consumes standards-based bare metal hosts and simplifies deployment by the Infrastructure Operator, requiring only low-touch participation.
 
 RHSE provisions and maintains a local point of management (including ACM and Quay) with controls on the ingress of software and related artifacts into the environment.
