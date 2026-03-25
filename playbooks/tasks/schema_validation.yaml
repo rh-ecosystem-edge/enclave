@@ -1,3 +1,9 @@
+- name: validate variables schema
+  ansible.utils.validate:
+    data: "{{ vars }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/variables.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+
 - name: validate defaults/deployment.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/deployment.yaml') | from_yaml | to_json }}"

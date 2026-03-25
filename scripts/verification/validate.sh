@@ -64,7 +64,7 @@ validate_yaml() {
 validate_json_schema() {
     print_header "Validating JSON schema"
 
-    if ansible-playbook playbooks/validate-schema.yaml -e "workingDir=test"; then
+    if ansible-playbook playbooks/validate-schema.yaml -e@config/global.example.yaml; then
         print_success "JSON schema validation passed"
         return 0
     else
