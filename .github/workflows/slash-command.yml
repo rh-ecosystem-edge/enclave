@@ -8,6 +8,7 @@ permissions:
   contents: write
   pull-requests: write
   actions: write
+  checks: write
 
 jobs:
   handle-command:
@@ -16,25 +17,27 @@ jobs:
       (startsWith(github.event.comment.body, '/test') ||
        startsWith(github.event.comment.body, '/retest'))
     runs-on: [self-hosted, pr-validation]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_ID: ${{ github.event.comment.id }}
     steps:
       - name: Check permissions
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENTER: ${{ github.event.comment.user.login }}
         run: |
-          PERM=$(gh api "repos/${{ github.repository }}/collaborators/${COMMENTER}/permission" \
+          PERM=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" \
             --jq '.permission' 2>/dev/null) || true
           if [ -z "${PERM}" ]; then
-            gh pr comment "${{ github.event.issue.number }}" \
-              -R "${{ github.repository }}" \
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
               --body "@${COMMENTER} you don't have permission to trigger CI jobs. Required: write access or above."
             exit 1
           fi
           case "${PERM}" in
             admin|maintain|write) echo "User ${COMMENTER} has ${PERM} permission" ;;
             *)
-              gh pr comment "${{ github.event.issue.number }}" \
-                -R "${{ github.repository }}" \
+              gh pr comment "${PR_NUMBER}" -R "${REPO}" \
                 --body "@${COMMENTER} you don't have permission to trigger CI jobs. Required: write access or above."
               exit 1
               ;;
@@ -42,60 +45,26 @@ jobs:
 
       - name: Get PR details
         id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_JSON=$(gh pr view "${{ github.event.issue.number }}" \
-            -R "${{ github.repository }}" \
-            --json headRefName,headRefOid,headRepository,headRepositoryOwner)
+          PR_JSON=$(gh pr view "${PR_NUMBER}" -R "${REPO}" \
+            --json headRefName,headRefOid,headRepositoryOwner)
 
           HEAD_BRANCH=$(echo "${PR_JSON}" | jq -r '.headRefName')
           HEAD_SHA=$(echo "${PR_JSON}" | jq -r '.headRefOid')
           HEAD_REPO_OWNER=$(echo "${PR_JSON}" | jq -r '.headRepositoryOwner.login')
-          REPO_OWNER="${{ github.repository_owner }}"
 
           echo "head_branch=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
-          echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
 
-          if [ "${HEAD_REPO_OWNER}" != "${REPO_OWNER}" ]; then
+          if [ "${HEAD_REPO_OWNER}" != "${{ github.repository_owner }}" ]; then
             echo "is_fork=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_fork=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create temp branch for fork PRs
-        id: ref
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IS_FORK: ${{ steps.pr.outputs.is_fork }}
-          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
-          REPO: ${{ github.repository }}
-        run: |
-          if [ "${IS_FORK}" = "true" ]; then
-            TEMP_BRANCH="test/pr-${PR_NUMBER}"
-            # Try to update existing ref, or create new one
-            if gh api "repos/${REPO}/git/refs/heads/${TEMP_BRANCH}" \
-                 -X PATCH -f sha="${HEAD_SHA}" 2>/dev/null; then
-              echo "Updated existing temp branch ${TEMP_BRANCH}"
-            else
-              gh api "repos/${REPO}/git/refs" \
-                -f ref="refs/heads/${TEMP_BRANCH}" \
-                -f sha="${HEAD_SHA}"
-              echo "Created temp branch ${TEMP_BRANCH}"
-            fi
-            echo "dispatch_ref=${TEMP_BRANCH}" >> "$GITHUB_OUTPUT"
-          else
-            echo "dispatch_ref=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: React with eyes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content='eyes'
 
       - name: Parse command
@@ -115,11 +84,8 @@ jobs:
 
       - name: Handle help
         if: steps.cmd.outputs.command == '?' || steps.cmd.outputs.command == 'help'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment "${{ github.event.issue.number }}" \
-            -R "${{ github.repository }}" \
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
             --body "$(cat <<'EOF'
           ### Available `/test` commands
 
@@ -135,124 +101,188 @@ jobs:
           | `/test cleanup` | Run cleanup workflow | enclave-small |
           | `/test all` | Run validation + tarball + infra + e2e-connected | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
-          | `/retest` | Re-run all failed workflow runs for this PR | — |
+          | `/retest` | Re-run all failed checks on this PR | — |
           EOF
           )"
 
-          # Add rocket reaction
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content='rocket'
 
-      - name: Dispatch workflow
+      - name: Create temp branch for fork PRs
+        id: ref
+        if: >-
+          steps.cmd.outputs.command != '?' &&
+          steps.cmd.outputs.command != 'help'
+        env:
+          IS_FORK: ${{ steps.pr.outputs.is_fork }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          if [ "${IS_FORK}" = "true" ]; then
+            TEMP_BRANCH="test/pr-${PR_NUMBER}"
+            if gh api "repos/${REPO}/git/refs/heads/${TEMP_BRANCH}" \
+                 -X PATCH -f sha="${HEAD_SHA}" 2>/dev/null; then
+              echo "Updated existing temp branch ${TEMP_BRANCH}"
+            else
+              gh api "repos/${REPO}/git/refs" \
+                -f ref="refs/heads/${TEMP_BRANCH}" \
+                -f sha="${HEAD_SHA}"
+              echo "Created temp branch ${TEMP_BRANCH}"
+            fi
+            echo "dispatch_ref=${TEMP_BRANCH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dispatch_ref=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Execute command
         if: >-
           steps.cmd.outputs.command != '?' &&
           steps.cmd.outputs.command != 'help' &&
           steps.cmd.outputs.command != 'retest'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMAND: ${{ steps.cmd.outputs.command }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
           DISPATCH_REF: ${{ steps.ref.outputs.dispatch_ref }}
         run: |
-          dispatch() {
+          # Re-run a workflow's latest PR run for this commit.
+          # The re-run stays associated with the PR in the Checks tab.
+          rerun_pr_workflow() {
             local workflow="$1"
-            shift
-            echo "Dispatching ${workflow} on ref ${DISPATCH_REF} $*"
-            gh workflow run "${workflow}" --ref "${DISPATCH_REF}" "$@" \
-              -R "${{ github.repository }}"
+            local run_id
+            run_id=$(gh run list \
+              -R "${REPO}" \
+              --workflow "${workflow}" \
+              --limit 200 \
+              --json databaseId,headSha,event \
+              --jq "[.[] | select(.headSha == \"${HEAD_SHA}\" and .event == \"pull_request\")] | first | .databaseId")
+
+            if [ -z "${run_id}" ] || [ "${run_id}" = "null" ]; then
+              echo "::error::No PR run found for ${workflow} at ${HEAD_SHA:0:7}"
+              return 1
+            fi
+
+            echo "Re-running ${workflow} run #${run_id}"
+            gh run rerun "${run_id}" -R "${REPO}"
           }
 
-          DISPATCHED=""
+          # Dispatch a workflow via workflow_dispatch (for workflows without PR triggers).
+          dispatch_workflow() {
+            local workflow="$1"
+            shift
+            local ref="${DISPATCH_REF:-${HEAD_BRANCH}}"
+            echo "Dispatching ${workflow} on ref ${ref}"
+            gh workflow run "${workflow}" --ref "${ref}" "$@" -R "${REPO}"
+          }
+
+          SUCCEEDED=""
           FAILED=""
+
+          track_result() {
+            local name="$1"
+            if [ "$2" -eq 0 ]; then
+              SUCCEEDED="${SUCCEEDED:+${SUCCEEDED}, }${name}"
+            else
+              FAILED="${FAILED:+${FAILED}, }${name}"
+            fi
+          }
 
           case "${COMMAND}" in
             validation)
-              dispatch pr-validation.yml && DISPATCHED="pr-validation.yml" || FAILED="pr-validation.yml"
+              rerun_pr_workflow pr-validation.yml; track_result "PR Validation" $?
               ;;
             tarball)
-              dispatch build-push-tarball.yml && DISPATCHED="build-push-tarball.yml" || FAILED="build-push-tarball.yml"
+              rerun_pr_workflow build-push-tarball.yml; track_result "Build Tarball" $?
               ;;
             infra)
-              dispatch infra-verify.yml && DISPATCHED="infra-verify.yml" || FAILED="infra-verify.yml"
+              rerun_pr_workflow infra-verify.yml; track_result "Infra Verify" $?
               ;;
             e2e-connected)
-              dispatch e2e-deployment.yml -f deployment_mode=connected -f cleanup_after=true \
-                && DISPATCHED="e2e-deployment.yml (connected)" || FAILED="e2e-deployment.yml"
+              rerun_pr_workflow e2e-deployment.yml; track_result "E2E Connected" $?
               ;;
             e2e-disconnected)
-              dispatch e2e-deployment.yml -f deployment_mode=disconnected -f cleanup_after=true \
-                && DISPATCHED="e2e-deployment.yml (disconnected)" || FAILED="e2e-deployment.yml"
-              ;;
-            nightly-connected)
-              dispatch nightly-e2e-connected.yml && DISPATCHED="nightly-e2e-connected.yml" || FAILED="nightly-e2e-connected.yml"
-              ;;
-            nightly-disconnected)
-              dispatch nightly-e2e-disconnected.yml && DISPATCHED="nightly-e2e-disconnected.yml" || FAILED="nightly-e2e-disconnected.yml"
-              ;;
-            cleanup)
-              dispatch cleanup.yml && DISPATCHED="cleanup.yml" || FAILED="cleanup.yml"
-              ;;
-            all)
-              for wf in pr-validation.yml build-push-tarball.yml infra-verify.yml; do
-                if dispatch "${wf}"; then
-                  DISPATCHED="${DISPATCHED:+${DISPATCHED}, }${wf}"
-                else
-                  FAILED="${FAILED:+${FAILED}, }${wf}"
+              # Create a check run on the PR commit so it appears in Checks tab
+              CHECK_RUN_ID=$(gh api "repos/${REPO}/check-runs" \
+                -f name="E2E Disconnected" \
+                -f head_sha="${HEAD_SHA}" \
+                -f status="in_progress" \
+                -f "output[title]=E2E Deployment (disconnected)" \
+                -f "output[summary]=Triggered by \`/test e2e-disconnected\` — waiting for workflow to start..." \
+                --jq '.id')
+              if ! dispatch_workflow e2e-deployment.yml \
+                -f deployment_mode=disconnected \
+                -f cleanup_after=true \
+                -f check_run_id="${CHECK_RUN_ID}"; then
+                # Mark the check run as failed so it doesn't stay in_progress forever
+                if [ -n "${CHECK_RUN_ID}" ]; then
+                  gh api "repos/${REPO}/check-runs/${CHECK_RUN_ID}" \
+                    -X PATCH \
+                    -f status="completed" \
+                    -f conclusion="failure" \
+                    -f "output[title]=E2E Deployment (disconnected) — dispatch failed" \
+                    -f "output[summary]=Failed to dispatch the workflow." || true
                 fi
-              done
-              if dispatch e2e-deployment.yml -f deployment_mode=connected -f cleanup_after=true; then
-                DISPATCHED="${DISPATCHED:+${DISPATCHED}, }e2e-deployment.yml (connected)"
+                track_result "E2E Disconnected" 1
               else
-                FAILED="${FAILED:+${FAILED}, }e2e-deployment.yml"
+                track_result "E2E Disconnected" 0
               fi
               ;;
+            nightly-connected)
+              dispatch_workflow nightly-e2e-connected.yml; track_result "Nightly Connected" $?
+              ;;
+            nightly-disconnected)
+              dispatch_workflow nightly-e2e-disconnected.yml; track_result "Nightly Disconnected" $?
+              ;;
+            cleanup)
+              dispatch_workflow cleanup.yml; track_result "Cleanup" $?
+              ;;
+            all)
+              rerun_pr_workflow pr-validation.yml; track_result "PR Validation" $?
+              rerun_pr_workflow build-push-tarball.yml; track_result "Build Tarball" $?
+              rerun_pr_workflow infra-verify.yml; track_result "Infra Verify" $?
+              rerun_pr_workflow e2e-deployment.yml; track_result "E2E Connected" $?
+              ;;
             *)
-              gh pr comment "${{ github.event.issue.number }}" \
-                -R "${{ github.repository }}" \
+              gh pr comment "${PR_NUMBER}" -R "${REPO}" \
                 --body "Unknown command: \`/test ${COMMAND}\`. Use \`/test ?\` to see available commands."
-              gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
                 -f content='confused'
               exit 1
               ;;
           esac
 
-          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions?query=branch%3A${DISPATCH_REF}"
-
+          # Post result
           if [ -n "${FAILED}" ]; then
-            gh pr comment "${{ github.event.issue.number }}" \
-              -R "${{ github.repository }}" \
-              --body "Failed to dispatch: ${FAILED}"
-            gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            BODY="Failed: ${FAILED}"
+            [ -n "${SUCCEEDED}" ] && BODY="${BODY}
+          Succeeded: ${SUCCEEDED}"
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" --body "${BODY}"
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
               -f content='-1'
             exit 1
           fi
 
-          gh pr comment "${{ github.event.issue.number }}" \
-            -R "${{ github.repository }}" \
-            --body "Triggered: ${DISPATCHED}
-          [View workflow runs](${ACTIONS_URL})"
-
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "Triggered: ${SUCCEEDED}"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content='rocket'
 
       - name: Handle retest
         if: steps.cmd.outputs.command == 'retest'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DISPATCH_REF: ${{ steps.ref.outputs.dispatch_ref }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
         run: |
-          # Find failed runs for this branch
+          # Find failed workflow runs for this PR's head commit
           FAILED_RUNS=$(gh run list \
-            -R "${{ github.repository }}" \
-            --branch "${DISPATCH_REF}" \
+            -R "${REPO}" \
+            --branch "${HEAD_BRANCH}" \
             --status failure \
             --limit 200 \
             --json databaseId,name,headSha \
             --jq ".[] | select(.headSha == \"${HEAD_SHA}\") | \"\(.databaseId)\t\(.name)\"")
 
           if [ -z "${FAILED_RUNS}" ]; then
-            gh pr comment "${{ github.event.issue.number }}" \
-              -R "${{ github.repository }}" \
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
               --body "No failed workflow runs found for this PR at commit \`${HEAD_SHA:0:7}\`."
             exit 0
           fi
@@ -261,7 +291,7 @@ jobs:
           RERUN_ERRORS=""
 
           while IFS=$'\t' read -r RUN_ID RUN_NAME; do
-            if gh run rerun "${RUN_ID}" -R "${{ github.repository }}"; then
+            if gh run rerun "${RUN_ID}" -R "${REPO}"; then
               RERUN_LIST="${RERUN_LIST:+${RERUN_LIST}
           }- ${RUN_NAME} (#${RUN_ID})"
             else
@@ -282,15 +312,13 @@ jobs:
           ${RERUN_ERRORS}"
           fi
 
-          gh pr comment "${{ github.event.issue.number }}" \
-            -R "${{ github.repository }}" \
-            --body "${BODY}"
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" --body "${BODY}"
 
           if [ -n "${RERUN_ERRORS}" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
               -f content='confused'
             exit 1
           fi
 
-          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content='rocket'
