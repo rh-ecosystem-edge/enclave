@@ -35,6 +35,10 @@ on:
         required: true
         default: true
         type: boolean
+      check_run_id:
+        description: 'Check run ID to update (set by slash command dispatcher)'
+        required: false
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -42,6 +46,10 @@ on:
 
 # Allow parallel execution with unique cluster names per run
 # Each job gets isolated VMs, networks, and resources
+permissions:
+  contents: read
+  checks: write
+
 concurrency:
   group: enclave-ci-${{ github.run_id }}
   cancel-in-progress: false
@@ -413,3 +421,29 @@ jobs:
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Update PR check run
+        if: always() && inputs.check_run_id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHECK_RUN_ID: ${{ inputs.check_run_id }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          CONCLUSION="failure"
+          TITLE="E2E Deployment (disconnected) — failed"
+          if [ "${JOB_STATUS}" = "success" ]; then
+            CONCLUSION="success"
+            TITLE="E2E Deployment (disconnected) — passed"
+          elif [ "${JOB_STATUS}" = "cancelled" ]; then
+            CONCLUSION="cancelled"
+            TITLE="E2E Deployment (disconnected) — cancelled"
+          fi
+
+          gh api "repos/${{ github.repository }}/check-runs/${CHECK_RUN_ID}" \
+            -X PATCH \
+            -f status="completed" \
+            -f conclusion="${CONCLUSION}" \
+            -f "output[title]=${TITLE}" \
+            -f "output[summary]=See [workflow run](${RUN_URL}) for details." \
+            -f details_url="${RUN_URL}"
