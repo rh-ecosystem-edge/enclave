@@ -1,0 +1,26 @@
+- name: "Ensure LVMCluster exists"
+  vars:
+    _spec: |
+      storage:
+        deviceClasses:
+          - name: {{ lvmsDefaults.deviceClassName }}
+            default: {{ lvmsDefaults.defaultStorageClass }}
+            thinPoolConfig:
+              name: {{ lvmsDefaults.thinPoolConfig.name }}
+              sizePercent: {{ lvmsDefaults.thinPoolConfig.sizePercent }}
+              overprovisionRatio: {{ lvmsDefaults.thinPoolConfig.overprovisionRatio }}
+            {% if lvmsConfig is defined and lvmsConfig.deviceSelector is defined and lvmsConfig.deviceSelector.optionalPaths is defined %}{{ lvmsConfigDefaults | combine(lvmsConfig, recursive=true) | to_yaml | indent(6) }}{% endif %}
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: lvm.topolvm.io/v1alpha1
+      kind: LVMCluster
+      metadata:
+        name: lvm-storage
+        namespace: openshift-storage
+      spec: "{{ _spec | from_yaml }}"
+
+  register: r_lvmcluster_exists
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_lvmcluster_exists is success

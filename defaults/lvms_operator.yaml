@@ -1,5 +1,0 @@
----
-# LVMS default configuration
-lvmsConfigDefaults:
-  deviceSelector:
-    forceWipeDevicesAndDestroyAllData: true

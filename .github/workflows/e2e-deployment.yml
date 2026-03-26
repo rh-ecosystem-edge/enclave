@@ -30,6 +30,14 @@ on:
         options:
           - connected
           - disconnected
+      storage-plugin:
+        description: 'Storage plugin to deploy (lvms or odf)'
+        required: true
+        default: 'lvms'
+        type: choice
+        options:
+          - lvms
+          - odf
       cleanup_after:
         description: 'Cleanup infrastructure after deployment'
         required: true
@@ -125,6 +133,9 @@ jobs:
       ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
       # Use manual input if available, otherwise default to 'true' for PR runs
       CLEANUP_AFTER: ${{ github.event.inputs.cleanup_after || 'true' }}
+      # Storage plugin for Quay backend (default: lvms for PRs, manual input for dispatch)
+      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
       OPENSHIFT_CI: "true"
 
@@ -418,6 +429,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Mode**: $ENCLAVE_DEPLOYMENT_MODE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

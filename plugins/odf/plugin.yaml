@@ -1,0 +1,39 @@
+---
+name: odf
+type: foundation
+order: 10
+mirror: core
+
+operators:
+  - name: odf-operator
+    version: 4.20.7-rhodf
+    channel: stable-4.20
+    init_version: 4.20.7-rhodf
+    namespace: openshift-storage
+    source: cs-redhat-operator-index-v4-20
+    csvMirror: true
+    csvNames:
+      - odf-operator
+      - odf-dependencies
+      - odf-csi-addons-operator
+      - rook-ceph-operator
+      - ocs-operator
+      - recipe
+      - mcg-operator
+      - odf-prometheus-operator
+      - ocs-client-operator
+      - cephcsi-operator
+      - odf-external-snapshotter-operator
+    extraMirrorPackages:
+      - odr-cluster-operator
+      - odr-hub-operator
+
+defaults:
+  odfDefaults:
+    defaultStorageClass: true
+
+registries:
+  - location: "registry.redhat.io/odf4"
+    mirror: "odf4"
+  - location: "registry.redhat.io/rhceph"
+    mirror: "rhceph"

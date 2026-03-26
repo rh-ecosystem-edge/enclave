@@ -1,0 +1,67 @@
+- name: Skip ODF external storage configuration when odfExternalConfig is not set
+  ansible.builtin.debug:
+    msg: "odfExternalConfig is not defined — skipping external StorageCluster creation"
+  when: odfExternalConfig is not defined
+
+- name: Configure ODF external StorageCluster
+  when: odfExternalConfig is defined
+  block:
+    - name: Ensure Secret is present
+      no_log: true
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: rook-ceph-external-cluster-details
+            namespace: openshift-storage
+          data:
+            external_cluster_details: "{{ odfExternalConfig | b64encode }}"
+          type: Opaque
+      register: r_odf_secret
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until: r_odf_secret is success
+
+    - name: Ensure StorageCluster is present
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: ocs.openshift.io/v1
+          kind: StorageCluster
+          metadata:
+            name: ocs-external-storagecluster
+            namespace: openshift-storage
+          spec:
+            encryption: {}
+            externalStorage:
+              enable: true
+            labelSelector: {}
+            managedResources:
+              cephBlockPools:
+                defaultStorageClass: "{{ odfDefaults.defaultStorageClass }}"
+              cephFilesystems: {}
+              cephObjectStoreUsers:
+                reconcileStrategy: ignore
+              cephObjectStores:
+                reconcileStrategy: ignore
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      register: r_storagecluster
+      until: r_storagecluster is succeeded
+
+    - name: Wait for StorageCluster to be available
+      kubernetes.core.k8s_info:
+        api_version: ocs.openshift.io/v1
+        kind: StorageCluster
+        name: ocs-external-storagecluster
+        namespace: openshift-storage
+        wait: true
+        wait_sleep: 10
+        wait_timeout: 600
+        wait_condition:
+          reason: ReconcileCompleted
+          status: "True"
+          type: Available
+      register: r_storage_cluster_info

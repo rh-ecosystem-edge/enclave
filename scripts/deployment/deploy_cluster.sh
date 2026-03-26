@@ -171,6 +171,26 @@ if [ -n "$VARS_FILE" ]; then
 "
 fi
 
+# Set storage plugin from STORAGE_PLUGIN env var (overrides default in config)
+if [ -n "${STORAGE_PLUGIN:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}storage_plugin: ${STORAGE_PLUGIN}
+"
+    info "Storage plugin: $STORAGE_PLUGIN"
+fi
+
+# Set enabled plugins from ENABLED_PLUGINS env var (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}enabled_plugins:
+"
+    IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+    for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"  # trim whitespace
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
+"
+    done
+    info "Enabled plugins: $ENABLED_PLUGINS"
+fi
+
 # Create the extra vars file on Landing Zone
 ssh_exec "mkdir -p $LZ_ENCLAVE_DIR/config"
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
@@ -214,7 +234,7 @@ else
     info "To troubleshoot:"
     info "  1. SSH to Landing Zone: ssh ${LZ_SSH}"
     info "  2. Check logs: cat ~/enclave/deployment.log"
-    info "  3. Re-run manually: cd ~/enclave && ansible-playbook playbooks/main.yaml -e \"$EXTRA_VARS\""
+    info "  3. Re-run manually: cd ~/enclave && ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml"
     info ""
     exit 1
 fi

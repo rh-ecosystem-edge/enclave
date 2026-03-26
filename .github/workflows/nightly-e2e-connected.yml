@@ -15,6 +15,14 @@ on:
         required: false
         type: boolean
         default: false
+      storage-plugin:
+        description: 'Storage plugin to deploy (lvms or odf)'
+        required: false
+        type: choice
+        default: 'lvms'
+        options:
+          - lvms
+          - odf
       skip-cleanup:
         description: 'Skip cleanup after deployment (leave infrastructure running)'
         required: false
@@ -38,6 +46,9 @@ jobs:
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
       CLEANUP_AFTER: 'true'
+      # Storage plugin for Quay backend (default: lvms for schedule, manual input for dispatch)
+      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
 
     steps:
@@ -284,6 +295,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Nightly Test Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Mode**: Connected" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
           echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

@@ -20,11 +20,9 @@
     - model_operators.yaml
     - operators.yaml
     - platforms.yaml
-    - storage_operators.yaml
     - catalogs.yaml
     - mirror_registry.yaml
     - quay_operator.yaml
-    - lvms_operator.yaml
     - k8s.yaml
   loop_control:
     loop_var: config_file
