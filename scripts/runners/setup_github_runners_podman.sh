@@ -100,6 +100,11 @@ EOF
 info "Setting directory permissions..."
 chmod 755 /run/podman
 
+# Persist directory permissions across reboots and socket restarts.
+# Without this, systemd recreates /run/podman with 0700 (root-only),
+# blocking non-root users from accessing the socket even if SocketMode=0666.
+echo 'd /run/podman 0755 root root -' > /etc/tmpfiles.d/podman-socket.conf
+
 info "Restarting podman.socket with new permissions..."
 systemctl daemon-reload
 systemctl restart podman.socket
