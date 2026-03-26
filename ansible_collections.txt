@@ -9,3 +9,5 @@ collections:
   version: 12.1.0
 - name: ansible.utils
   version: 6.0.0
+- name: ansible.posix
+  version: 2.1.0
