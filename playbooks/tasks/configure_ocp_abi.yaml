@@ -88,6 +88,79 @@
     path: "{{ workingDir }}/ocp-cluster/abi-iso/"
     state: directory
 
+- name: Inject installation gate into agent ISO
+  when: installation_gate | default(true) | bool
+  block:
+    - name: Write gate script content
+      ansible.builtin.copy:
+        dest: "{{ workingDir }}/ocp-cluster/installation-gate.sh"
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          echo "=========================================="
+          echo "  Installation gate is ACTIVE"
+          echo "  Waiting for release signal..."
+          echo "  To proceed, run:"
+          echo "    touch /var/tmp/proceed-with-installation"
+          echo "=========================================="
+          while [ ! -f /var/tmp/proceed-with-installation ]; do
+            sleep 5
+          done
+          echo "Gate released. Proceeding with installation..."
+
+    - name: Extract ignition and inject gate service
+      ansible.builtin.shell: |
+        set -euo pipefail
+
+        GATE_SCRIPT_B64=$(base64 -w0 {{ workingDir }}/ocp-cluster/installation-gate.sh)
+
+        podman run --privileged --rm \
+          -v {{ workingDir }}/ocp-cluster:/data:z -w /data \
+          quay.io/coreos/coreos-installer:release \
+          iso ignition show agent.x86_64.iso \
+        | jq --compact-output \
+            --arg script_b64 "$GATE_SCRIPT_B64" \
+            '
+            # Add gate script file
+            .storage.files += [{
+              "path": "/usr/local/bin/installation-gate.sh",
+              "mode": 493,
+              "contents": { "source": ("data:text/plain;charset=utf-8;base64," + $script_b64) },
+              "overwrite": true
+            }]
+            # Add gate service unit
+            | .systemd.units += [{
+              "name": "installation-gate.service",
+              "enabled": true,
+              "contents": "[Unit]\nDescription=Installation gate - blocks start-cluster-installation\nBefore=start-cluster-installation.service\n\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/installation-gate.sh\nRemainAfterExit=yes\nStandardOutput=journal+console\n\n[Install]\nRequiredBy=start-cluster-installation.service\n"
+            }]
+            # Add drop-in to make start-cluster-installation depend on gate
+            | (.systemd.units[] |
+                select(.name == "start-cluster-installation.service")) |=
+                . + { "dropins": ((.dropins // []) + [{
+                  "name": "10-wait-for-gate.conf",
+                  "contents": "[Unit]\nRequires=installation-gate.service\nAfter=installation-gate.service\n"
+                }]) }
+            ' \
+        > {{ workingDir }}/ocp-cluster/gated.ign
+
+    - name: Embed gated ignition back into agent ISO
+      ansible.builtin.command:
+        cmd: >-
+          podman run --privileged --rm
+          -v {{ workingDir }}/ocp-cluster:/data:z
+          -w /data
+          quay.io/coreos/coreos-installer:release
+          iso ignition embed -f -i gated.ign agent.x86_64.iso
+
+    - name: Remove temporary gate files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ workingDir }}/ocp-cluster/gated.ign"
+        - "{{ workingDir }}/ocp-cluster/installation-gate.sh"
+
 - name: Move to {{ workingDir }}/ocp-cluster/abi-iso/
   ansible.builtin.command:
     cmd: mv "{{ workingDir }}/ocp-cluster/agent.x86_64.iso" "{{ workingDir }}/ocp-cluster/abi-iso/agent.x86_64.iso"

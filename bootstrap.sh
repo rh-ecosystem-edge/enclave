@@ -149,7 +149,7 @@ echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Acquiring Hardware .. " -n1 -s
     # setup content for and boot machines
-    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags hardware 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags hardware,pre-install-validate 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
 echo -p "Deploying management cluster .. " -n1 -s

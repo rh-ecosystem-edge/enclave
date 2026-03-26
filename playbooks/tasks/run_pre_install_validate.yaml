@@ -1,0 +1,20 @@
+---
+- name: Load plugin descriptor for {{ plugin_path | basename }}
+  ansible.builtin.include_vars:
+    file: "{{ plugin_path }}/plugin.yaml"
+    name: _piv_plugin
+
+# See deploy_plugin.yaml for why dict2items loop + noqa is needed here.
+- name: Load plugin defaults for {{ plugin_path | basename }}  # noqa: var-naming[no-jinja]
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ _piv_plugin.defaults | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: _piv_plugin.defaults is defined
+
+- name: Run pre-install validation for {{ plugin_path | basename }}
+  ansible.builtin.include_tasks:
+    file: "{{ plugin_path }}/tasks/pre-install-validate.yaml"
+    apply:
+      tags: pre-install-validate
