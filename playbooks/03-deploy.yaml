@@ -42,13 +42,6 @@
           tags: configure-abi
       tags: configure-abi
 
-    - name: Configure DNS resolution for cluster
-      ansible.builtin.include_tasks:
-        file: tasks/configure_dns.yaml
-        apply:
-          tags: configure-abi
-      tags: configure-abi
-
     - name: Setup Ironic for hardware configuration
       ansible.builtin.include_tasks:
         file: tasks/configure_hardware_ironic_setup.yaml

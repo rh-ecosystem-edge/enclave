@@ -262,18 +262,26 @@ for dir in "${EXPECTED_DIRS[@]}"; do
     fi
 done
 
-# Test 10: DNS resolution for mirror registry
-info "Test 10: Checking DNS resolution for mirror registry..."
+# Test 10: DNS resolution for cluster endpoints and mirror registry
+info "Test 10: Checking DNS resolution for cluster endpoints and mirror registry..."
 BASE_DOMAIN=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^baseDomain:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null || echo "")
+CLUSTER_NAME=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^clusterName:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null || echo "")
 if [ -n "$BASE_DOMAIN" ]; then
-    MIRROR_HOSTNAME="mirror.${BASE_DOMAIN}"
-    if ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${MIRROR_HOSTNAME} >/dev/null 2>&1"; then
-        MIRROR_IP=$(ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${MIRROR_HOSTNAME} | awk '{print \$1}'" 2>/dev/null || echo "")
-        success "${MIRROR_HOSTNAME} resolves to ${MIRROR_IP}"
-    else
-        fail "${MIRROR_HOSTNAME} does NOT resolve"
-        info "  Run 'make install-enclave' to configure DNS resolution"
+    DNS_HOSTNAMES="mirror.${BASE_DOMAIN}"
+    if [ -n "$CLUSTER_NAME" ]; then
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} api.${CLUSTER_NAME}.${BASE_DOMAIN}"
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} console-openshift-console.apps.${CLUSTER_NAME}.${BASE_DOMAIN}"
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} registry-quay-quay-enterprise.apps.${CLUSTER_NAME}.${BASE_DOMAIN}"
     fi
+    for HOSTNAME in $DNS_HOSTNAMES; do
+        if ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${HOSTNAME} >/dev/null 2>&1"; then
+            RESOLVED_IP=$(ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${HOSTNAME} | awk '{print \$1}'" 2>/dev/null || echo "")
+            success "${HOSTNAME} resolves to ${RESOLVED_IP}"
+        else
+            fail "${HOSTNAME} does NOT resolve"
+            info "  Run 'make install-enclave' to configure DNS resolution"
+        fi
+    done
 else
     warning "Cannot determine baseDomain from config/global.yaml"
 fi
