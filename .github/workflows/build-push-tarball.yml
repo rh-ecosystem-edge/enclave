@@ -1,6 +1,7 @@
 name: Build and Push Tarball
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main

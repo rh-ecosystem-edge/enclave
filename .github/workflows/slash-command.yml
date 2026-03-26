@@ -1,0 +1,296 @@
+name: Slash Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  handle-command:
+    if: >-
+      github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, '/test') ||
+       startsWith(github.event.comment.body, '/retest'))
+    runs-on: [self-hosted, pr-validation]
+    steps:
+      - name: Check permissions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          PERM=$(gh api "repos/${{ github.repository }}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission' 2>/dev/null) || true
+          if [ -z "${PERM}" ]; then
+            gh pr comment "${{ github.event.issue.number }}" \
+              -R "${{ github.repository }}" \
+              --body "@${COMMENTER} you don't have permission to trigger CI jobs. Required: write access or above."
+            exit 1
+          fi
+          case "${PERM}" in
+            admin|maintain|write) echo "User ${COMMENTER} has ${PERM} permission" ;;
+            *)
+              gh pr comment "${{ github.event.issue.number }}" \
+                -R "${{ github.repository }}" \
+                --body "@${COMMENTER} you don't have permission to trigger CI jobs. Required: write access or above."
+              exit 1
+              ;;
+          esac
+
+      - name: Get PR details
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_JSON=$(gh pr view "${{ github.event.issue.number }}" \
+            -R "${{ github.repository }}" \
+            --json headRefName,headRefOid,headRepository,headRepositoryOwner)
+
+          HEAD_BRANCH=$(echo "${PR_JSON}" | jq -r '.headRefName')
+          HEAD_SHA=$(echo "${PR_JSON}" | jq -r '.headRefOid')
+          HEAD_REPO_OWNER=$(echo "${PR_JSON}" | jq -r '.headRepositoryOwner.login')
+          REPO_OWNER="${{ github.repository_owner }}"
+
+          echo "head_branch=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "pr_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+
+          if [ "${HEAD_REPO_OWNER}" != "${REPO_OWNER}" ]; then
+            echo "is_fork=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_fork=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create temp branch for fork PRs
+        id: ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_FORK: ${{ steps.pr.outputs.is_fork }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "${IS_FORK}" = "true" ]; then
+            TEMP_BRANCH="test/pr-${PR_NUMBER}"
+            # Try to update existing ref, or create new one
+            if gh api "repos/${REPO}/git/refs/heads/${TEMP_BRANCH}" \
+                 -X PATCH -f sha="${HEAD_SHA}" 2>/dev/null; then
+              echo "Updated existing temp branch ${TEMP_BRANCH}"
+            else
+              gh api "repos/${REPO}/git/refs" \
+                -f ref="refs/heads/${TEMP_BRANCH}" \
+                -f sha="${HEAD_SHA}"
+              echo "Created temp branch ${TEMP_BRANCH}"
+            fi
+            echo "dispatch_ref=${TEMP_BRANCH}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dispatch_ref=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: React with eyes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content='eyes'
+
+      - name: Parse command
+        id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          FIRST_LINE=$(echo "${COMMENT_BODY}" | head -n1 | xargs)
+
+          if [[ "${FIRST_LINE}" =~ ^/retest ]]; then
+            echo "command=retest" >> "$GITHUB_OUTPUT"
+          elif [[ "${FIRST_LINE}" =~ ^/test[[:space:]]+(.*) ]]; then
+            echo "command=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "command=help" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Handle help
+        if: steps.cmd.outputs.command == '?' || steps.cmd.outputs.command == 'help'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" \
+            -R "${{ github.repository }}" \
+            --body "$(cat <<'EOF'
+          ### Available `/test` commands
+
+          | Command | Description | Runner |
+          |---------|-------------|--------|
+          | `/test validation` | Lint and validate (shell, YAML, Ansible, Makefile) | pr-validation |
+          | `/test tarball` | Build and push tarball | pr-validation |
+          | `/test infra` | Infrastructure verification | enclave-small |
+          | `/test e2e-connected` | E2E deployment (connected mode) | enclave-large |
+          | `/test e2e-disconnected` | E2E deployment (disconnected mode) | enclave-large |
+          | `/test nightly-connected` | Nightly E2E connected | enclave-large |
+          | `/test nightly-disconnected` | Nightly E2E disconnected | enclave-disconnected |
+          | `/test cleanup` | Run cleanup workflow | enclave-small |
+          | `/test all` | Run validation + tarball + infra + e2e-connected | multiple |
+          | `/test ?` or `/test help` | Show this help message | — |
+          | `/retest` | Re-run all failed workflow runs for this PR | — |
+          EOF
+          )"
+
+          # Add rocket reaction
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content='rocket'
+
+      - name: Dispatch workflow
+        if: >-
+          steps.cmd.outputs.command != '?' &&
+          steps.cmd.outputs.command != 'help' &&
+          steps.cmd.outputs.command != 'retest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMAND: ${{ steps.cmd.outputs.command }}
+          DISPATCH_REF: ${{ steps.ref.outputs.dispatch_ref }}
+        run: |
+          dispatch() {
+            local workflow="$1"
+            shift
+            echo "Dispatching ${workflow} on ref ${DISPATCH_REF} $*"
+            gh workflow run "${workflow}" --ref "${DISPATCH_REF}" "$@" \
+              -R "${{ github.repository }}"
+          }
+
+          DISPATCHED=""
+          FAILED=""
+
+          case "${COMMAND}" in
+            validation)
+              dispatch pr-validation.yml && DISPATCHED="pr-validation.yml" || FAILED="pr-validation.yml"
+              ;;
+            tarball)
+              dispatch build-push-tarball.yml && DISPATCHED="build-push-tarball.yml" || FAILED="build-push-tarball.yml"
+              ;;
+            infra)
+              dispatch infra-verify.yml && DISPATCHED="infra-verify.yml" || FAILED="infra-verify.yml"
+              ;;
+            e2e-connected)
+              dispatch e2e-deployment.yml -f deployment_mode=connected -f cleanup_after=true \
+                && DISPATCHED="e2e-deployment.yml (connected)" || FAILED="e2e-deployment.yml"
+              ;;
+            e2e-disconnected)
+              dispatch e2e-deployment.yml -f deployment_mode=disconnected -f cleanup_after=true \
+                && DISPATCHED="e2e-deployment.yml (disconnected)" || FAILED="e2e-deployment.yml"
+              ;;
+            nightly-connected)
+              dispatch nightly-e2e-connected.yml && DISPATCHED="nightly-e2e-connected.yml" || FAILED="nightly-e2e-connected.yml"
+              ;;
+            nightly-disconnected)
+              dispatch nightly-e2e-disconnected.yml && DISPATCHED="nightly-e2e-disconnected.yml" || FAILED="nightly-e2e-disconnected.yml"
+              ;;
+            cleanup)
+              dispatch cleanup.yml && DISPATCHED="cleanup.yml" || FAILED="cleanup.yml"
+              ;;
+            all)
+              for wf in pr-validation.yml build-push-tarball.yml infra-verify.yml; do
+                if dispatch "${wf}"; then
+                  DISPATCHED="${DISPATCHED:+${DISPATCHED}, }${wf}"
+                else
+                  FAILED="${FAILED:+${FAILED}, }${wf}"
+                fi
+              done
+              if dispatch e2e-deployment.yml -f deployment_mode=connected -f cleanup_after=true; then
+                DISPATCHED="${DISPATCHED:+${DISPATCHED}, }e2e-deployment.yml (connected)"
+              else
+                FAILED="${FAILED:+${FAILED}, }e2e-deployment.yml"
+              fi
+              ;;
+            *)
+              gh pr comment "${{ github.event.issue.number }}" \
+                -R "${{ github.repository }}" \
+                --body "Unknown command: \`/test ${COMMAND}\`. Use \`/test ?\` to see available commands."
+              gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+                -f content='confused'
+              exit 1
+              ;;
+          esac
+
+          ACTIONS_URL="${{ github.server_url }}/${{ github.repository }}/actions?query=branch%3A${DISPATCH_REF}"
+
+          if [ -n "${FAILED}" ]; then
+            gh pr comment "${{ github.event.issue.number }}" \
+              -R "${{ github.repository }}" \
+              --body "Failed to dispatch: ${FAILED}"
+            gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              -f content='-1'
+            exit 1
+          fi
+
+          gh pr comment "${{ github.event.issue.number }}" \
+            -R "${{ github.repository }}" \
+            --body "Triggered: ${DISPATCHED}
+          [View workflow runs](${ACTIONS_URL})"
+
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content='rocket'
+
+      - name: Handle retest
+        if: steps.cmd.outputs.command == 'retest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISPATCH_REF: ${{ steps.ref.outputs.dispatch_ref }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+        run: |
+          # Find failed runs for this branch
+          FAILED_RUNS=$(gh run list \
+            -R "${{ github.repository }}" \
+            --branch "${DISPATCH_REF}" \
+            --status failure \
+            --limit 200 \
+            --json databaseId,name,headSha \
+            --jq ".[] | select(.headSha == \"${HEAD_SHA}\") | \"\(.databaseId)\t\(.name)\"")
+
+          if [ -z "${FAILED_RUNS}" ]; then
+            gh pr comment "${{ github.event.issue.number }}" \
+              -R "${{ github.repository }}" \
+              --body "No failed workflow runs found for this PR at commit \`${HEAD_SHA:0:7}\`."
+            exit 0
+          fi
+
+          RERUN_LIST=""
+          RERUN_ERRORS=""
+
+          while IFS=$'\t' read -r RUN_ID RUN_NAME; do
+            if gh run rerun "${RUN_ID}" -R "${{ github.repository }}"; then
+              RERUN_LIST="${RERUN_LIST:+${RERUN_LIST}
+          }- ${RUN_NAME} (#${RUN_ID})"
+            else
+              RERUN_ERRORS="${RERUN_ERRORS:+${RERUN_ERRORS}
+          }- ${RUN_NAME} (#${RUN_ID})"
+            fi
+          done <<< "${FAILED_RUNS}"
+
+          BODY="Re-triggered failed runs:"
+          if [ -n "${RERUN_LIST}" ]; then
+            BODY="${BODY}
+          ${RERUN_LIST}"
+          fi
+          if [ -n "${RERUN_ERRORS}" ]; then
+            BODY="${BODY}
+
+          Failed to re-trigger:
+          ${RERUN_ERRORS}"
+          fi
+
+          gh pr comment "${{ github.event.issue.number }}" \
+            -R "${{ github.repository }}" \
+            --body "${BODY}"
+
+          if [ -n "${RERUN_ERRORS}" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+          gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content='rocket'
