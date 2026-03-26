@@ -10,9 +10,7 @@
 - name: Generate pull secret for datacenter cache
   ansible.builtin.set_fact:
     __pull_secret_dc:
-      auths:
-        "{{ dc_cache_address }}":
-          auth: "{{ (dc_cache_user + ':' + dc_cache_password) | ansible.builtin.b64encode }}"
+      auths: "{{ {dc_cache_address: {'auth': (dc_cache_user + ':' + dc_cache_password) | b64encode}} }}"
   no_log: true
 
 - name: Combine pull secrets
