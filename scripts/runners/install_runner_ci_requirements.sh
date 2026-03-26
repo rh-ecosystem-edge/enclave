@@ -88,6 +88,14 @@ info "Step 3: Installing EPEL repository (for additional packages)"
 sudo dnf install -y epel-release || {
     warning "EPEL repository not available, will install validation tools via pip"
 }
+# Set metadata_expire to avoid 404s during EPEL mirror metadata rotations.
+# Without this, dnf refreshes metadata on every run and can hit stale
+# repodata files that were just purged from all mirrors.
+if [ -f /etc/yum.repos.d/epel.repo ]; then
+    if ! grep -q '^metadata_expire=' /etc/yum.repos.d/epel.repo; then
+        sudo sed -i '/^\[epel\]/a metadata_expire=4h' /etc/yum.repos.d/epel.repo
+    fi
+fi
 success "EPEL repository configured"
 echo ""
 
