@@ -10,9 +10,27 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
+- name: "Check if OperatorGroup already exists in namespace"
+  when: operator.namespace != "openshift-operators"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1
+    kind: OperatorGroup
+    namespace: "{{ operator.namespace }}"
+  register: r_og_check
+
+- name: "Fail if multiple OperatorGroups exist in namespace"
+  when:
+    - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length > 1
+  ansible.builtin.fail:
+    msg: >-
+      Found {{ r_og_check.resources | length }} OperatorGroups in namespace {{ operator.namespace }},
+      but only one is allowed. Remove the extra OperatorGroups before proceeding.
+
 - name: "Ensure OperatorGroup exists (with target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - not (operator.global | default(false))
   kubernetes.core.k8s:
     state: present
@@ -20,7 +38,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec:
         targetNamespaces:
@@ -33,6 +51,7 @@
 - name: "Ensure OperatorGroup exists (global - without target namespace)"
   when:
     - operator.namespace != "openshift-operators"
+    - r_og_check.resources | default([]) | length == 0
     - operator.global | default(false)
   kubernetes.core.k8s:
     state: present
@@ -40,7 +59,7 @@
       apiVersion: operators.coreos.com/v1
       kind: OperatorGroup
       metadata:
-        name: "{{ operator.name }}-og"
+        name: "{{ operator.namespace }}-og"
         namespace: "{{ operator.namespace }}"
       spec: {}
   register: r_operatorgroup_exists
