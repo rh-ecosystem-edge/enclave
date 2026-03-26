@@ -7,6 +7,11 @@ operators:
     init_version: 3.15.0
     namespace: quay-enterprise
     source: cs-redhat-operator-index-v4-20
+    allowIngressFrom:
+      - name: ingress
+        namespaceSelector:
+          matchLabels:
+            network.openshift.io/policy-group: ingress
 
   - name: multicluster-engine
     version: 2.10.1
@@ -14,6 +19,11 @@ operators:
     init_version: 2.10.0
     namespace: multicluster-engine
     source: cs-redhat-operator-index-v4-20
+    allowIngressFrom:
+      - name: acm
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: open-cluster-management
 
   - name: advanced-cluster-management
     version: 2.15.1
@@ -21,6 +31,15 @@ operators:
     init_version: 2.15.0
     namespace: open-cluster-management
     source: cs-redhat-operator-index-v4-20
+    allowIngressFrom:
+      - name: ingress
+        namespaceSelector:
+          matchLabels:
+            network.openshift.io/policy-group: ingress
+      - name: mce
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: multicluster-engine
 
   - name: cincinnati-operator
     version: 5.0.3
@@ -30,6 +49,11 @@ operators:
     source: cs-redhat-operator-index-v4-20
     csvNames:
       - update-service-operator
+    allowIngressFrom:
+      - name: ingress
+        namespaceSelector:
+          matchLabels:
+            network.openshift.io/policy-group: ingress
 
   - name: openshift-gitops-operator
     version: 1.19.2
@@ -46,6 +70,11 @@ operators:
     namespace: openshift-pipelines
     source: cs-redhat-operator-index-v4-20
     global: true
+    allowIngressFrom:
+      - name: ingress
+        namespaceSelector:
+          matchLabels:
+            network.openshift.io/policy-group: ingress
 
   - name: netobserv-operator
     version: 1.11.0

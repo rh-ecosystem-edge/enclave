@@ -10,6 +10,109 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
+- name: "Ensure same-namespace NetworkPolicy exists"
+  when:
+    - operator.namespace != "openshift-operators"
+    - not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-from-same-namespace
+        namespace: "{{ operator.namespace }}"
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - podSelector: {}
+        policyTypes:
+          - Ingress
+  register: r_same_namespace_netpol
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_same_namespace_netpol is success
+
+- name: "Ensure kube-apiserver NetworkPolicy exists"
+  when:
+    - operator.namespace != "openshift-operators"
+    - not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-kube-apiserver
+        namespace: "{{ operator.namespace }}"
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - ipBlock:
+                  cidr: "{{ machineNetwork }}"
+        policyTypes:
+          - Ingress
+  register: r_kube_apiserver_netpol
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_kube_apiserver_netpol is success
+
+- name: "Ensure monitoring NetworkPolicy exists"
+  when:
+    - operator.namespace != "openshift-operators"
+    - not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-monitoring
+        namespace: "{{ operator.namespace }}"
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    network.openshift.io/policy-group: monitoring
+        policyTypes:
+          - Ingress
+  register: r_monitoring_netpol
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_monitoring_netpol is success
+
+- name: "Ensure ingress NetworkPolicies exist"
+  when:
+    - operator.namespace != "openshift-operators"
+    - not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: "allow-ingress-from-{{ item.name }}"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels: "{{ item.namespaceSelector.matchLabels }}"
+        policyTypes:
+          - Ingress
+  loop: "{{ operator.allowIngressFrom | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_ingress_netpols
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_ingress_netpols is success
+
 - name: "Check if OperatorGroup already exists in namespace"
   when: operator.namespace != "openshift-operators"
   kubernetes.core.k8s_info:
