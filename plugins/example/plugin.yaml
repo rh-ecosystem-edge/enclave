@@ -1,0 +1,7 @@
+---
+name: example
+type: addon
+order: 999
+
+defaults:
+  example_message: "Hello from example plugin"

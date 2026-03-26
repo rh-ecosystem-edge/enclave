@@ -72,6 +72,7 @@ jobs:
               - 'schemas/**'
               - 'templates/**'
               - 'operators/**'
+              - 'plugins/**'
               - 'files/**'
               - 'hack/**'
               - '.github/workflows/e2e-deployment.yml'
