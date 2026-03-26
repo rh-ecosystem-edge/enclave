@@ -6,51 +6,51 @@
 # ============================================================================
 # Base Configuration
 # ============================================================================
-workingDir: YOUR_ROOT_DIRECTORY       # Example: "/home/enclave"
+workingDir: /tmp/enclave                # Example: "/home/enclave"
 
 # ============================================================================
 # Network Configuration
 # ============================================================================
 # Cluster Network Settings (install-config.yaml parameters)
-baseDomain: YOUR_BASE_DOMAIN          # Example: enclave-test.nodns.in
-clusterName: YOUR_CLUSTER_NAME        # Example: mgmt
-machineNetwork: YOUR_MACHINE_NETWORK  # Example: 192.168.2.0/24
-apiVIP: YOUR_API_VIP                  # Example: 192.168.2.201
-ingressVIP: YOUR_INGRESS_VIP          # Example: 192.168.2.202
+baseDomain: example.test                # Example: enclave-test.nodns.in
+clusterName: test                       # Example: mgmt
+machineNetwork: 192.168.1.0/24          # Example: 192.168.2.0/24
+apiVIP: 192.168.1.201                   # Example: 192.168.2.201
+ingressVIP: 192.168.1.202               # Example: 192.168.2.202
 
 # Network Infrastructure
-defaultDNS: YOUR_DNS_SERVER           # Example: 9.30.31.32
-defaultGateway: YOUR_GATEWAY          # Example: 192.168.2.10
+defaultDNS: 192.168.1.1                 # Example: 9.30.31.32
+defaultGateway: 192.168.1.1             # Example: 192.168.2.10
 defaultPrefix: 24
 
 # First control plane node IP (in the machineNetwork)
-rendezvousIP: YOUR_RENDEZVOUS_IP      # Example: 192.168.2.24
+rendezvousIP: 192.168.1.24              # Example: 192.168.2.24
 
 # LZ IP where HTTP server serves the installation ISO to IPMI nodes
-lzBmcIP: YOUR_LZ_WEB_SERVER_IP        # Example: 100.64.1.10
+lzBmcIP: 100.64.1.10                   # Example: 100.64.1.10
 
 # ============================================================================
 # Quay Registry Configuration
 # ============================================================================
-quayUser: YOUR_QUAY_ADMIN_USERNAME
-quayPassword: YOUR_QUAY_ADMIN_PASSWORD
+quayUser: testuser
+quayPassword: testpassword
 
 # ============================================================================
 # Quay Backend Storage Configuration
 # ============================================================================
 # Option 1: External S3/RadosGW storage (RECOMMENDED for production)
-quayBackend: RadosGWStorage
-quayBackendRGWConfiguration:
-  access_key: YOUR_S3_ACCESS_KEY
-  secret_key: YOUR_S3_SECRET_KEY
-  bucket_name: YOUR_S3_BUCKET_NAME
-  hostname: YOUR_RADOSGW_ENDPOINT_HOSTNAME
-  # Uncomment only to override
-  # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
-  # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
+# quayBackend: RadosGWStorage
+# quayBackendRGWConfiguration:
+#   access_key: YOUR_S3_ACCESS_KEY
+#   secret_key: YOUR_S3_SECRET_KEY
+#   bucket_name: YOUR_S3_BUCKET_NAME
+#   hostname: YOUR_RADOSGW_ENDPOINT_HOSTNAME
+#   # Uncomment only to override
+#   # minimum_chunk_size_mb: YOUR_MIN_CHUNK_SIZE_MB  # Default: 100
+#   # maximum_chunk_size_mb: YOUR_MAX_CHUNK_SIZE_MB  # Default: 500
 
 # Option 2: Local storage (NOT recommended for production)
-# quayBackend: LocalStorage
+quayBackend: LocalStorage
 
 # ============================================================================
 # Storage Backend
@@ -113,22 +113,35 @@ storage_plugin: lvms
 pullSecret: {"auths":{}}
 
 # SSH public key path for cluster nodes
-sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
+sshPubPath: /dev/null
 
 # ============================================================================
 # Cluster Hosts Configuration (Agent Hosts)
 # ============================================================================
 agent_hosts:
-  - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
-    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
-    ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
-    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
-    rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: YOUR_REDFISH_USER
-    redfishPassword: YOUR_REDFISH_PASSWORD
+  - name: test-node-01                  # Example: mgmt-ctl01
+    macAddress: "00:00:00:00:00:01"     # Example: 0c:c4:7a:62:fe:ec
+    ipAddress: 192.168.1.24             # Should match rendezvousIP for first node
+    redfish: 192.168.1.100              # IPMI/Redfish management IP
+    rootDisk: /dev/sda                  # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: admin
+  - name: test-node-02
+    macAddress: "00:00:00:00:00:02"
+    ipAddress: 192.168.1.25
+    redfish: 192.168.1.101
+    rootDisk: /dev/sda
+    redfishUser: admin
+    redfishPassword: admin
+  - name: test-node-03
+    macAddress: "00:00:00:00:00:03"
+    ipAddress: 192.168.1.26
+    redfish: 192.168.1.102
+    rootDisk: /dev/sda
+    redfishUser: admin
+    redfishPassword: admin
   # Add a total of 3 agent hosts, no more, no less
 
 # For complex network setups you can use mapInterfaces and networkConfig
 # instead of the macAddress and ipAddress parameters
 # See docs/CONFIGURATION_REFERENCE.md for reference
-

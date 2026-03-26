@@ -179,6 +179,18 @@ validate_tags() {
     fi
 }
 
+validate_templates() {
+    print_header "Validating template rendering"
+
+    if ansible-playbook playbooks/validate-templates.yaml -e@config/global.example.yaml; then
+        print_success "Template rendering validation passed"
+        return 0
+    else
+        print_error "Template rendering validation failed"
+        return 1
+    fi
+}
+
 validate_makefile() {
     print_header "Validating Makefile syntax"
 
@@ -230,6 +242,7 @@ validate_all() {
     validate_json_schema || failed=1
     validate_ansible || failed=1
     validate_tags || failed=1
+    validate_templates || failed=1
     validate_makefile || failed=1
     validate_plugins || failed=1
 
@@ -265,6 +278,9 @@ case "${1:-all}" in
     tags)
         validate_tags
         ;;
+    templates)
+        validate_templates
+        ;;
     makefile)
         validate_makefile
         ;;
@@ -275,7 +291,7 @@ case "${1:-all}" in
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile|plugins}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|plugins}"
         exit 1
         ;;
 esac

@@ -1,0 +1,263 @@
+---
+# Template Rendering Validation Tasks
+# Renders all .j2 templates and validates the output
+
+- name: Include deployment defaults
+  ansible.builtin.include_vars: ../../defaults/deployment.yaml
+
+- name: Include common configuration
+  ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
+  loop:
+    - content_images.yaml
+    - control_binaries.yaml
+    - model_operators.yaml
+    - operators.yaml
+    - platforms.yaml
+    - storage_operators.yaml
+    - catalogs.yaml
+    - mirror_registry.yaml
+    - quay_operator.yaml
+    - lvms_operator.yaml
+    - k8s.yaml
+  loop_control:
+    loop_var: config_file
+
+- name: Create temporary directory for rendered templates
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: template_validation_
+  register: temp_dir
+
+- name: Create dummy pull secret file
+  ansible.builtin.copy:
+    content: '{"auths":{}}'
+    dest: "{{ temp_dir.path }}/pull-secret.json"
+
+- name: Create dummy SSH public key file
+  ansible.builtin.copy:
+    content: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ test@test"
+    dest: "{{ temp_dir.path }}/ssh-pub-key"
+
+- name: Create dummy CA certificate file
+  ansible.builtin.copy:
+    content: |
+      -----BEGIN CERTIFICATE-----
+      MIIBkTCB+wIJALRiMLAh3IIJMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+      c3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+      BnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAAwtJADBGAkEA0Z3VS5JJcds3xf0GPI9U
+      -----END CERTIFICATE-----
+    dest: "{{ temp_dir.path }}/rootCA.pem"
+
+- name: Override file paths for validation
+  ansible.builtin.set_fact:
+    pullSecretPath: "{{ temp_dir.path }}/pull-secret.json"
+    sshPubPath: "{{ temp_dir.path }}/ssh-pub-key"
+    quayCAPath: "{{ temp_dir.path }}/rootCA.pem"
+    workingDir: "{{ temp_dir.path }}"
+
+# ---------- Render imagesetconfiguration.yaml for each storage backend ----------
+
+- name: Render imagesetconfiguration.yaml for each storage backend
+  ansible.builtin.shell: |
+    ansible localhost -m template \
+      -a "src={{ playbook_dir }}/../templates/imagesetconfiguration.yaml.j2 dest={{ temp_dir.path }}/imagesetconfiguration-{{ item }}.yaml" \
+      {{ defaults_args }} \
+      -e@config/global.example.yaml \
+      -e "workingDir={{ temp_dir.path }}" \
+      -e "blockStorageBackend={{ item }}"
+  args:
+    chdir: "{{ playbook_dir }}/.."
+  vars:
+    defaults_args: >-
+      {% for f in ['deployment', 'content_images', 'control_binaries', 'model_operators',
+                   'operators', 'platforms', 'storage_operators', 'catalogs',
+                   'mirror_registry', 'quay_operator', 'lvms_operator', 'k8s'] %}
+      -e@defaults/{{ f }}.yaml
+      {% endfor %}
+  loop:
+    - lvms
+    - odf
+
+# ---------- Render other templates ----------
+
+- name: Render agent-config.yaml
+  ansible.builtin.template:
+    src: ../../templates/agent-config.yaml.j2
+    dest: "{{ temp_dir.path }}/agent-config.yaml"
+
+- name: Render install-config-connected.yaml
+  ansible.builtin.template:
+    src: ../../templates/install-config-connected.yaml.j2
+    dest: "{{ temp_dir.path }}/install-config-connected.yaml"
+
+- name: Render install-config-disconnected.yaml
+  ansible.builtin.template:
+    src: ../../templates/install-config-disconnected.yaml.j2
+    dest: "{{ temp_dir.path }}/install-config-disconnected.yaml"
+
+- name: Render registries.conf
+  ansible.builtin.template:
+    src: ../../templates/registries.conf.j2
+    dest: "{{ temp_dir.path }}/registries.conf"
+
+# ---------- Validate rendered YAML files parse correctly ----------
+
+- name: Read and parse rendered YAML files
+  ansible.builtin.slurp:
+    src: "{{ temp_dir.path }}/{{ item }}"
+  register: rendered_yaml_files
+  loop:
+    - imagesetconfiguration-lvms.yaml
+    - imagesetconfiguration-odf.yaml
+    - agent-config.yaml
+    - install-config-connected.yaml
+    - install-config-disconnected.yaml
+
+- name: Validate YAML parsing
+  ansible.builtin.assert:
+    that:
+      - item.content | b64decode | from_yaml is mapping
+    fail_msg: "{{ item.item }} is not valid YAML"
+    success_msg: "{{ item.item }} parsed successfully"
+  loop: "{{ rendered_yaml_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# ---------- Structural assertions on imagesetconfiguration ----------
+
+- name: Load imagesetconfiguration (lvms) for assertions
+  ansible.builtin.set_fact:
+    imageset_lvms: "{{ lookup('file', temp_dir.path + '/imagesetconfiguration-lvms.yaml') | from_yaml }}"
+
+- name: Load imagesetconfiguration (odf) for assertions
+  ansible.builtin.set_fact:
+    imageset_odf: "{{ lookup('file', temp_dir.path + '/imagesetconfiguration-odf.yaml') | from_yaml }}"
+
+- name: Validate imagesetconfiguration structure
+  ansible.builtin.assert:
+    that:
+      - item.mirror is defined
+      - item.mirror.platform is defined
+      - item.mirror.platform.channels is defined
+      - item.mirror.platform.channels | length > 0
+      - item.mirror.operators is defined
+      - item.mirror.operators | length > 0
+      - item.mirror.additionalImages is defined
+      - item.mirror.blockedimages is defined
+    fail_msg: "imagesetconfiguration is missing required top-level structure"
+    success_msg: "imagesetconfiguration has valid top-level structure"
+  loop:
+    - "{{ imageset_lvms }}"
+    - "{{ imageset_odf }}"
+  loop_control:
+    label: "imagesetconfiguration structure check"
+
+- name: Collect all operator packages from imagesetconfiguration (lvms)
+  ansible.builtin.set_fact:
+    all_packages_lvms: "{{ imageset_lvms.mirror.operators | map(attribute='packages') | flatten }}"
+
+- name: Collect all operator packages from imagesetconfiguration (odf)
+  ansible.builtin.set_fact:
+    all_packages_odf: "{{ imageset_odf.mirror.operators | map(attribute='packages') | flatten }}"
+
+- name: Identify versioned packages (have defaultChannel) vs bare mirror packages (lvms)
+  ansible.builtin.set_fact:
+    versioned_packages_lvms: "{{ all_packages_lvms | selectattr('defaultChannel', 'defined') | list }}"
+    bare_packages_lvms: "{{ all_packages_lvms | rejectattr('defaultChannel', 'defined') | list }}"
+
+- name: Identify versioned packages (have defaultChannel) vs bare mirror packages (odf)
+  ansible.builtin.set_fact:
+    versioned_packages_odf: "{{ all_packages_odf | selectattr('defaultChannel', 'defined') | list }}"
+    bare_packages_odf: "{{ all_packages_odf | rejectattr('defaultChannel', 'defined') | list }}"
+
+- name: Validate versioned packages have defaultChannel and channels (lvms)
+  ansible.builtin.assert:
+    that:
+      - item.defaultChannel is defined
+      - item.channels is defined
+      - item.channels | length > 0
+    fail_msg: "Package '{{ item.name }}' is missing defaultChannel or channels"
+    success_msg: "Package '{{ item.name }}' has defaultChannel and channels"
+  loop: "{{ versioned_packages_lvms }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate versioned packages have defaultChannel and channels (odf)
+  ansible.builtin.assert:
+    that:
+      - item.defaultChannel is defined
+      - item.channels is defined
+      - item.channels | length > 0
+    fail_msg: "Package '{{ item.name }}' is missing defaultChannel or channels"
+    success_msg: "Package '{{ item.name }}' has defaultChannel and channels"
+  loop: "{{ versioned_packages_odf }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate bare mirror packages only have name key (lvms)
+  ansible.builtin.assert:
+    that:
+      - item.keys() | list | length == 1
+      - item.name is defined
+    fail_msg: "Bare package '{{ item.name }}' has unexpected keys: {{ item.keys() | list }}"
+    success_msg: "Bare package '{{ item.name }}' is correctly a name-only entry"
+  loop: "{{ bare_packages_lvms }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: bare_packages_lvms | length > 0
+
+- name: Validate bare mirror packages only have name key (odf)
+  ansible.builtin.assert:
+    that:
+      - item.keys() | list | length == 1
+      - item.name is defined
+    fail_msg: "Bare package '{{ item.name }}' has unexpected keys: {{ item.keys() | list }}"
+    success_msg: "Bare package '{{ item.name }}' is correctly a name-only entry"
+  loop: "{{ bare_packages_odf }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: bare_packages_odf | length > 0
+
+- name: Collect extraMirrorPackages that should be bare entries
+  ansible.builtin.set_fact:
+    extra_mirror_names: >-
+      {{ (operators + model_operators + storage_operators['lvms'] + storage_operators['odf'])
+         | selectattr('extraMirrorPackages', 'defined')
+         | map(attribute='extraMirrorPackages')
+         | flatten
+         | list }}
+
+- name: Validate extraMirrorPackages are bare entries without version constraints (odf)
+  ansible.builtin.assert:
+    that:
+      - matching_packages | length > 0
+      - matching_packages | first | ansible.builtin.combine({}) | dict2items | map(attribute='key') | list | sort == ['name']
+    fail_msg: "extraMirrorPackage '{{ item }}' should be a bare name-only entry but has version constraints: {{ matching_packages | first | default({}) }}"
+    success_msg: "extraMirrorPackage '{{ item }}' is correctly a bare entry"
+  vars:
+    matching_packages: "{{ all_packages_odf | selectattr('name', 'equalto', item) | list }}"
+  loop: "{{ extra_mirror_names | intersect(all_packages_odf | map(attribute='name') | list) }}"
+  when: extra_mirror_names | length > 0
+
+- name: Check no overlap between additionalImages and blockedimages
+  ansible.builtin.assert:
+    that:
+      - additional_names | intersect(blocked_names) | length == 0
+    fail_msg: "Overlap found between additionalImages and blockedimages ({{ backend }}): {{ additional_names | intersect(blocked_names) }}"
+    success_msg: "No overlap between additionalImages and blockedimages ({{ backend }})"
+  vars:
+    additional_names: "{{ item.mirror.additionalImages | map(attribute='name') | list }}"
+    blocked_names: "{{ item.mirror.blockedimages | map(attribute='name') | list }}"
+    backend: "{{ 'lvms' if item == imageset_lvms else 'odf' }}"
+  loop:
+    - "{{ imageset_lvms }}"
+    - "{{ imageset_odf }}"
+  loop_control:
+    label: "{{ backend }}"
+
+# ---------- Cleanup ----------
+
+- name: Remove temporary directory
+  ansible.builtin.file:
+    path: "{{ temp_dir.path }}"
+    state: absent

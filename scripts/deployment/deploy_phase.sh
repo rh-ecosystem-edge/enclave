@@ -117,6 +117,12 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
+# Enable mirror dry-run mode if requested
+if [ "${ENCLAVE_MIRROR_DRY_RUN:-}" = "true" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}mirror_dry_run: true
+"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF

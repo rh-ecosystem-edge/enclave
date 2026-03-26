@@ -21,7 +21,7 @@ CI_IMAGE_LABELS ?=
 include Makefile
 
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
-        validate-tags validate-makefile validate-plugins \
+        validate-tags validate-templates validate-makefile validate-plugins \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-pre-install-validate \
         environment provision-landing-zone verify-landing-zone \
@@ -51,6 +51,7 @@ help:
 	@echo "  make -f Makefile.ci validate-json-schema  - Validate JSON schema"
 	@echo "  make -f Makefile.ci validate-ansible      - Validate Ansible playbooks with ansible-lint"
 	@echo "  make -f Makefile.ci validate-tags         - Validate Ansible playbook tags"
+	@echo "  make -f Makefile.ci validate-templates    - Validate template rendering"
 	@echo "  make -f Makefile.ci validate-makefile     - Validate Makefile syntax"
 	@echo "  make -f Makefile.ci validate-plugins      - Validate plugin directory structure"
 	@echo ""
@@ -223,6 +224,9 @@ validate-ansible:
 
 validate-tags:
 	@./scripts/verification/validate.sh tags
+
+validate-templates:
+	@./scripts/verification/validate.sh templates
 
 validate-makefile:
 	@./scripts/verification/validate.sh makefile
