@@ -18,9 +18,10 @@ storage_operators:  # Install operator depending blockStorageBackend variable
         - ocs-client-operator
         - cephcsi-operator
         - odf-external-snapshotter-operator
+      csvMirror: true
+      extraMirrorPackages:
         - odr-cluster-operator
         - odr-hub-operator
-      csvMirror: true
   lvms:
     - name: lvms-operator
       version: 4.20.0

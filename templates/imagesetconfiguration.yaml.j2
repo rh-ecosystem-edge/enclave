@@ -47,6 +47,9 @@ mirror:
               minVersion: {{ operator.init_version }}
               maxVersion: {{ operator.version }}
 {% endfor %}
+{% for pkg in operator.extraMirrorPackages | default([]) %}
+        - name: {{ pkg }}
+{% endfor %}
 {% endfor %}
 
   additionalImages:

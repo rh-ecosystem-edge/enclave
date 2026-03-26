@@ -33,6 +33,11 @@ definitions:
       csvMirror:
         type: boolean
         description: Mirror operator packages listed under csvNames.
+      extraMirrorPackages:
+        type: array
+        items:
+          type: string
+        description: Additional packages to mirror as bare entries without version constraints.
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
