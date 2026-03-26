@@ -54,7 +54,17 @@
       loop_control:
         loop_var: agent_host
       ansible.builtin.include_tasks:
-        file: tasks/configure_hardware_ironic_node.yaml
+        file: tasks/configure_hardware_ironic_boot.yaml
+        apply:
+          tags: hardware
+      tags: hardware
+
+    - name: Wait for all hosts to reach active state
+      loop: "{{ agent_hosts }}"
+      loop_control:
+        loop_var: agent_host
+      ansible.builtin.include_tasks:
+        file: tasks/configure_hardware_ironic_wait.yaml
         apply:
           tags: hardware
       tags: hardware
