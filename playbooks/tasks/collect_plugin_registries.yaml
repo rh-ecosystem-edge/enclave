@@ -1,0 +1,44 @@
+---
+# Collect registry mirror entries from all enabled plugins
+# so they can be included in registries.conf for oc-mirror.
+#
+# Sets fact: _core_plugin_registries (list of dicts with 'location' and 'mirror')
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_pr_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_pr_find.files | map(attribute='path') | list }}"
+  register: r_pr_slurp
+
+- name: Build combined plugin registries list
+  vars:
+    _enabled: >-
+      {{ r_pr_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | list }}
+    _core: >-
+      {{ (_enabled | rejectattr('mirror', 'defined') | list)
+         + (_enabled | selectattr('mirror', 'equalto', 'core') | list) }}
+  ansible.builtin.set_fact:
+    _core_plugin_registries: >-
+      {{ _core
+         | selectattr('registries', 'defined')
+         | map(attribute='registries')
+         | flatten
+         | list }}
+
+- name: Display plugin registries
+  ansible.builtin.debug:
+    msg: "Plugin registries to include in registries.conf: {{ _core_plugin_registries | map(attribute='location') | list }}"
+  when: _core_plugin_registries | length > 0
