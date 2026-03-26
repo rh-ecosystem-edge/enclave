@@ -58,7 +58,7 @@ jobs:
 
       - name: Setup cluster-specific working directory
         run: |
-          make setup-working-dir
+          make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
       - name: Pre-flight checks
@@ -80,21 +80,21 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
 
-          make environment
+          make -f Makefile.ci environment
           echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
         run: |
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          make provision-landing-zone
+          make -f Makefile.ci provision-landing-zone
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          make install-enclave
+          make -f Makefile.ci install-enclave
           echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 1 - Prepare binaries and content
@@ -103,7 +103,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-prepare
+          make -f Makefile.ci deploy-cluster-prepare
 
           echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -113,9 +113,19 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Running mirror registry setup with --dry-run (no image downloads)..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-mirror
+          make -f Makefile.ci deploy-cluster-mirror
 
           echo "✅ Phase 2 complete (dry-run)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2.5 - Validate mirror artifacts
+        run: |
+          echo "## Phase 2.5: Validate Mirror Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Validating mirror registry, pull secret, workspace manifests, and TLS certificate..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci validate-mirror
+
+          echo "✅ Mirror artifacts validated" >> $GITHUB_STEP_SUMMARY
 
       - name: Collect artifacts
         if: always()
@@ -142,7 +152,7 @@ jobs:
           if [ "${{ steps.upload_artifacts.outcome }}" = "failure" ]; then
             echo "FAILED_STEP=Upload artifacts" >> $GITHUB_OUTPUT
           elif [ "${{ job.status }}" = "failure" ]; then
-            echo "FAILED_STEP=Phase 2 - Mirror registry (dry-run)" >> $GITHUB_OUTPUT
+            echo "FAILED_STEP=Phase 2/2.5 - Mirror registry or validation" >> $GITHUB_OUTPUT
           else
             echo "FAILED_STEP=" >> $GITHUB_OUTPUT
           fi
@@ -154,7 +164,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           set +e
-          make clean 2>&1 | tee cleanup.log
+          make -f Makefile.ci clean 2>&1 | tee cleanup.log
           CLEANUP_EXIT_CODE=$?
           set -e
 

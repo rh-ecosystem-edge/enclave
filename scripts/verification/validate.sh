@@ -64,7 +64,7 @@ validate_yaml() {
 validate_json_schema() {
     print_header "Validating JSON schema"
 
-    if ansible-playbook playbooks/validate-schema.yaml; then
+    if ansible-playbook playbooks/validation/validate-schema.yaml -e@config/global.example.yaml; then
         print_success "JSON schema validation passed"
         return 0
     else
@@ -134,8 +134,14 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
+<<<<<<< HEAD
         "playbooks/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
         "playbooks/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
+=======
+        "playbooks/validate-schema.yaml:schema-validation:Include schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:schema-validation:Include schema validation tasks"
+        "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
+>>>>>>> 9aa4727 (Add post-mirror artifact validation to disconnected dry-run)
     )
 
     for test in "${tag_tests[@]}"; do
@@ -182,7 +188,7 @@ validate_tags() {
 validate_templates() {
     print_header "Validating template rendering"
 
-    if ansible-playbook playbooks/validate-templates.yaml -e@config/global.example.yaml; then
+    if ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.example.yaml; then
         print_success "Template rendering validation passed"
         return 0
     else
@@ -223,6 +229,17 @@ validate_plugins() {
         return 0
     else
         print_error "Plugin validation failed"
+    fi
+}
+
+validate_mirror() {
+    print_header "Validating mirror artifacts on Landing Zone"
+
+    if make validate-mirror; then
+        print_success "Mirror artifact validation passed"
+        return 0
+    else
+        print_error "Mirror artifact validation failed"
         return 1
     fi
 }
@@ -286,12 +303,14 @@ case "${1:-all}" in
         ;;
     plugins)
         validate_plugins
+    mirror)
+        validate_mirror
         ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|plugins}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins}"
         exit 1
         ;;
 esac

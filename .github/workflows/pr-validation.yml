@@ -287,7 +287,7 @@ jobs:
           echo "## Template Rendering Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-templates 2>&1 | tee template-rendering.log; then
+          if make -f Makefile.ci validate-templates 2>&1 | tee template-rendering.log; then
             echo "### ✅ Template rendering validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "All templates render valid YAML with correct structure." >> $GITHUB_STEP_SUMMARY
