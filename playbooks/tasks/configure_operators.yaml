@@ -2,14 +2,9 @@
 - name: Configure operators
   block:
 
-    - name: Disable default operator catalog sources
-      when: disconnected | default(true) | bool
-      ansible.builtin.command: |
-        {{ workingDir }}/bin/oc patch OperatorHub cluster --type=json -p='[{"op":"replace","path":"/spec/disableAllDefaultSources","value":true}]'
-
     - name: Include configure_operator
       ansible.builtin.include_tasks: configure_operator.yaml
-      loop: "{{ storage_operators[blockStorageBackend] + operators }}"
+      loop: "{{ storage_operators[storage_plugin] + operators }}"
       loop_control:
         loop_var: operator
 

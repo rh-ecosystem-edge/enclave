@@ -4,7 +4,9 @@
 #
 # Performs:
 # - Disable default catalog sources (disconnected mode)
-# - Install storage operators (LVMS/ODF)
+# - Auto-discover and deploy foundation plugins (type: foundation)
+#   Storage plugins (LVMS/ODF) run here, BEFORE core operators,
+#   so that Quay can rely on the storage backend being present.
 # - Install general operators from defaults/operators.yaml
 #
 # Usage:
@@ -27,6 +29,29 @@
       ansible.builtin.debug:
         msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
+
+    - name: Disable default operator catalog sources
+      when: disconnected | default(true) | bool
+      ansible.builtin.command: |
+        {{ workingDir }}/bin/oc patch OperatorHub cluster --type=merge -p='{"spec":{"disableAllDefaultSources":true}}'
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_patch_operatorhub
+      changed_when: "'(no change)' not in r_patch_operatorhub.stdout"
+      tags:
+        - foundation-plugins
+        - operators
+
+    - name: Auto-discover and deploy foundation plugins
+      ansible.builtin.include_tasks:
+        file: tasks/deploy_foundation_plugins.yaml
+        apply:
+          tags:
+            - foundation-plugins
+            - operators
+      tags:
+        - foundation-plugins
+        - operators
 
     - name: Configure operators
       ansible.builtin.include_tasks:

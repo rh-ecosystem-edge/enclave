@@ -1,0 +1,53 @@
+---
+# Auto-discover and deploy all foundation plugins (type: foundation)
+# sorted by order field.
+#
+# Only plugins listed in enabled_plugins are deployed.
+#
+# Called from 05-operators.yaml before configure_operators.
+
+- name: Find all plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_foundation_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_foundation_find.files | map(attribute='path') | list }}"
+  register: r_foundation_slurp
+
+- name: Parse foundation plugin descriptors
+  ansible.builtin.set_fact:
+    _foundation_all_parsed: >-
+      {{ r_foundation_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('name', 'in', enabled_plugins)
+         | selectattr('order', 'defined')
+         | sort(attribute='order')
+         | list }}
+
+- name: Build foundation plugin deploy list
+  ansible.builtin.set_fact:
+    _foundation_deploy_list: >-
+      {{ _foundation_all_parsed | map(attribute='name') | list }}
+
+- name: Display foundation plugins to deploy
+  ansible.builtin.debug:
+    msg: "Foundation plugins to deploy (sorted by order): {{ _foundation_deploy_list }}"
+
+- name: Deploy foundation plugin
+  ansible.builtin.include_tasks:
+    file: tasks/deploy_plugin.yaml
+  vars:
+    plugin_name: "{{ _foundation_plugin_name }}"
+  loop: "{{ _foundation_deploy_list }}"
+  loop_control:
+    loop_var: _foundation_plugin_name
+  when: _foundation_deploy_list | length > 0
