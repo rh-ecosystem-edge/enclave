@@ -1,3 +1,77 @@
 ---
-- ansible.builtin.debug: 
-    msg: "Operator configured properly, no further actions"
+# The gitops operator creates the openshift-gitops namespace where ArgoCD
+# components run. NetworkPolicies must be applied here separately since
+# configure_operator.yaml only manages the operator namespace
+# (openshift-gitops-operator).
+- name: "Ensure same-namespace NetworkPolicy exists in openshift-gitops"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-from-same-namespace
+        namespace: openshift-gitops
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - podSelector: {}
+        policyTypes:
+          - Ingress
+
+- name: "Ensure kube-apiserver can reach openshift-gitops webhooks"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-kube-apiserver
+        namespace: openshift-gitops
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - ipBlock:
+                  cidr: "{{ machineNetwork }}"
+        policyTypes:
+          - Ingress
+
+- name: "Ensure monitoring can reach openshift-gitops"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-monitoring
+        namespace: openshift-gitops
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    network.openshift.io/policy-group: monitoring
+        policyTypes:
+          - Ingress
+
+- name: "Ensure ingress can reach openshift-gitops"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-ingress
+        namespace: openshift-gitops
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    network.openshift.io/policy-group: ingress
+        policyTypes:
+          - Ingress

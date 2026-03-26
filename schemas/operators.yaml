@@ -41,6 +41,43 @@ definitions:
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
+      disableDefaultNetworkPolicies:
+        type: boolean
+        description: >-
+          Opt out of all three default NetworkPolicies: allow-from-same-namespace,
+          allow-ingress-from-kube-apiserver, and allow-ingress-from-monitoring.
+          When true, no default ingress rules are created and allowIngressFrom is forbidden.
+      allowIngressFrom:
+        type: array
+        description: Additional ingress NetworkPolicies based on namespace label selectors.
+        items:
+          type: object
+          additionalProperties: false
+          required:
+            - name
+            - namespaceSelector
+          properties:
+            name:
+              type: string
+              description: Identifier used to name the NetworkPolicy (allow-ingress-from-<name>).
+            namespaceSelector:
+              type: object
+              additionalProperties: false
+              required:
+                - matchLabels
+              properties:
+                matchLabels:
+                  type: object
+                  description: Label selector to match source namespaces.
+    if:
+      required:
+        - disableDefaultNetworkPolicies
+      properties:
+        disableDefaultNetworkPolicies:
+          const: true
+    then:
+      properties:
+        allowIngressFrom: false
     dependencies:
       csvMirror:
       - csvNames
