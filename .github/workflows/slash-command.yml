@@ -15,7 +15,8 @@ jobs:
     if: >-
       github.event.issue.pull_request &&
       (startsWith(github.event.comment.body, '/test') ||
-       startsWith(github.event.comment.body, '/retest'))
+       startsWith(github.event.comment.body, '/retest') ||
+       startsWith(github.event.comment.body, '/cancel'))
     runs-on: [self-hosted, pr-validation]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,6 +77,10 @@ jobs:
 
           if [[ "${FIRST_LINE}" =~ ^/retest ]]; then
             echo "command=retest" >> "$GITHUB_OUTPUT"
+          elif [[ "${FIRST_LINE}" =~ ^/cancel[[:space:]]+(.*) ]]; then
+            echo "command=cancel:${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          elif [[ "${FIRST_LINE}" =~ ^/cancel ]]; then
+            echo "command=cancel:all" >> "$GITHUB_OUTPUT"
           elif [[ "${FIRST_LINE}" =~ ^/test[[:space:]]+(.*) ]]; then
             echo "command=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
           else
@@ -96,12 +101,12 @@ jobs:
           | `/test infra` | Infrastructure verification | enclave-small |
           | `/test e2e-connected` | E2E deployment (connected mode) | enclave-large |
           | `/test e2e-disconnected` | E2E deployment (disconnected mode) | enclave-large |
-          | `/test nightly-connected` | Nightly E2E connected | enclave-large |
-          | `/test nightly-disconnected` | Nightly E2E disconnected | enclave-disconnected |
           | `/test cleanup` | Run cleanup workflow | enclave-small |
           | `/test all` | Run validation + tarball + infra + e2e-connected | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
           | `/retest` | Re-run all failed checks on this PR | — |
+          | `/cancel <name>` | Cancel a running check (e.g. `/cancel e2e-connected`) | — |
+          | `/cancel` | Cancel all running checks on this PR | — |
           EOF
           )"
 
@@ -112,7 +117,8 @@ jobs:
         id: ref
         if: >-
           steps.cmd.outputs.command != '?' &&
-          steps.cmd.outputs.command != 'help'
+          steps.cmd.outputs.command != 'help' &&
+          !startsWith(steps.cmd.outputs.command, 'cancel:')
         env:
           IS_FORK: ${{ steps.pr.outputs.is_fork }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
@@ -137,7 +143,8 @@ jobs:
         if: >-
           steps.cmd.outputs.command != '?' &&
           steps.cmd.outputs.command != 'help' &&
-          steps.cmd.outputs.command != 'retest'
+          steps.cmd.outputs.command != 'retest' &&
+          !startsWith(steps.cmd.outputs.command, 'cancel:')
         env:
           COMMAND: ${{ steps.cmd.outputs.command }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
@@ -226,12 +233,6 @@ jobs:
                 track_result "E2E Disconnected" 0
               fi
               ;;
-            nightly-connected)
-              dispatch_workflow nightly-e2e-connected.yml; track_result "Nightly Connected" $?
-              ;;
-            nightly-disconnected)
-              dispatch_workflow nightly-e2e-disconnected.yml; track_result "Nightly Disconnected" $?
-              ;;
             cleanup)
               dispatch_workflow cleanup.yml; track_result "Cleanup" $?
               ;;
@@ -315,6 +316,124 @@ jobs:
           gh pr comment "${PR_NUMBER}" -R "${REPO}" --body "${BODY}"
 
           if [ -n "${RERUN_ERRORS}" ]; then
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='rocket'
+
+      - name: Handle cancel
+        if: startsWith(steps.cmd.outputs.command, 'cancel:')
+        env:
+          COMMAND: ${{ steps.cmd.outputs.command }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
+        run: |
+          # Map command name to workflow file
+          workflow_for_name() {
+            case "$1" in
+              validation)           echo "pr-validation.yml" ;;
+              tarball)              echo "build-push-tarball.yml" ;;
+              infra)                echo "infra-verify.yml" ;;
+              e2e-connected)        echo "e2e-deployment.yml" ;;
+              e2e-disconnected)     echo "e2e-deployment.yml" ;;
+              cleanup)              echo "cleanup.yml" ;;
+              *) return 1 ;;
+            esac
+          }
+
+          CANCEL_TARGET="${COMMAND#cancel:}"
+          CANCELLED=""
+          CANCEL_ERRORS=""
+
+          cancel_runs_for_workflow() {
+            local workflow="$1"
+            local display_name="$2"
+            local run_ids
+            run_ids=$(gh run list \
+              -R "${REPO}" \
+              --workflow "${workflow}" \
+              --branch "${HEAD_BRANCH}" \
+              --status in_progress \
+              --limit 200 \
+              --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"${HEAD_SHA}\") | .databaseId")
+
+            if [ -z "${run_ids}" ]; then
+              return 0
+            fi
+
+            while read -r run_id; do
+              if gh run cancel "${run_id}" -R "${REPO}"; then
+                CANCELLED="${CANCELLED:+${CANCELLED}
+          }- ${display_name} (#${run_id})"
+              else
+                CANCEL_ERRORS="${CANCEL_ERRORS:+${CANCEL_ERRORS}
+          }- ${display_name} (#${run_id})"
+              fi
+            done <<< "${run_ids}"
+          }
+
+          if [ "${CANCEL_TARGET}" = "all" ]; then
+            # Cancel all in-progress runs for this PR's head commit
+            ALL_RUNS=$(gh run list \
+              -R "${REPO}" \
+              --branch "${HEAD_BRANCH}" \
+              --status in_progress \
+              --limit 200 \
+              --json databaseId,name,headSha \
+              --jq ".[] | select(.headSha == \"${HEAD_SHA}\") | \"\(.databaseId)\t\(.name)\"")
+
+            if [ -z "${ALL_RUNS}" ]; then
+              gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+                --body "No in-progress workflow runs found for this PR at commit \`${HEAD_SHA:0:7}\`."
+              exit 0
+            fi
+
+            while IFS=$'\t' read -r RUN_ID RUN_NAME; do
+              if gh run cancel "${RUN_ID}" -R "${REPO}"; then
+                CANCELLED="${CANCELLED:+${CANCELLED}
+          }- ${RUN_NAME} (#${RUN_ID})"
+              else
+                CANCEL_ERRORS="${CANCEL_ERRORS:+${CANCEL_ERRORS}
+          }- ${RUN_NAME} (#${RUN_ID})"
+              fi
+            done <<< "${ALL_RUNS}"
+          else
+            WORKFLOW=$(workflow_for_name "${CANCEL_TARGET}")
+            if [ -z "${WORKFLOW}" ]; then
+              gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+                --body "Unknown test name: \`${CANCEL_TARGET}\`. Use \`/test ?\` to see available names."
+              gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+                -f content='confused'
+              exit 1
+            fi
+            cancel_runs_for_workflow "${WORKFLOW}" "${CANCEL_TARGET}"
+          fi
+
+          if [ -z "${CANCELLED}" ] && [ -z "${CANCEL_ERRORS}" ]; then
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "No in-progress runs found for \`${CANCEL_TARGET}\` at commit \`${HEAD_SHA:0:7}\`."
+            exit 0
+          fi
+
+          BODY="Cancelled:"
+          if [ -n "${CANCELLED}" ]; then
+            BODY="${BODY}
+          ${CANCELLED}"
+          fi
+          if [ -n "${CANCEL_ERRORS}" ]; then
+            BODY="${BODY}
+
+          Failed to cancel:
+          ${CANCEL_ERRORS}"
+          fi
+
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" --body "${BODY}"
+
+          if [ -n "${CANCEL_ERRORS}" ]; then
             gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
               -f content='confused'
             exit 1
