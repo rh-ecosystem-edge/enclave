@@ -189,7 +189,7 @@ fi
 # Install required Ansible collections
 echo "  Installing required Ansible collections..."
 cd /home/cloud-user/enclave
-ansible-galaxy collection install -r requirements.yml --force 2>/dev/null || echo "  Note: Some collections may already be installed"
+ansible-galaxy collection install -r ansible_collections.txt --force
 EOSSH
 
 success "Dependencies installed"

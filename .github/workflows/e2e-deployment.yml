@@ -85,7 +85,6 @@ jobs:
               - 'hack/**'
               - '.github/workflows/e2e-deployment.yml'
               - 'ansible.cfg'
-              - 'requirements.yml'
               - 'ansible_collections.txt'
               - 'ansible_pip_requirements.txt'
               - 'bootstrap.sh'
