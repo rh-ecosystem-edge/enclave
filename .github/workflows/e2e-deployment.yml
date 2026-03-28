@@ -113,7 +113,7 @@ jobs:
   e2e-deployment:
     name: E2E Deployment Test
     runs-on: [self-hosted, enclave-large]
-    timeout-minutes: 210  # 3.5 hours
+    timeout-minutes: ${{ (github.event.inputs.deployment_mode == 'disconnected' && 360) || 210 }}
     needs: check-e2e-needed
     if: needs.check-e2e-needed.outputs.should_run == 'true'
 
