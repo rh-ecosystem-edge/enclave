@@ -1,5 +1,6 @@
 ---
 - name: "Ensure same-namespace NetworkPolicy exists in cert-manager"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -17,6 +18,7 @@
           - Ingress
 
 - name: "Ensure monitoring can reach cert-manager"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -36,6 +38,7 @@
           - Ingress
 
 - name: "Ensure kube-apiserver can reach cert-manager webhook"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
