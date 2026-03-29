@@ -165,7 +165,9 @@
   loop: "{{ plugin.operators }}"
   loop_control:
     loop_var: operator
-  when: plugin.operators is defined
+  when:
+    - plugin.operators is defined
+    - plugin.mirror | default('none') == 'core'
   tags: operators
 
 - name: Run deploy
