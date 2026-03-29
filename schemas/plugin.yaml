@@ -102,6 +102,18 @@ properties:
     description: Registry mirror entries for MCE custom-registries patching.
     items:
       $ref: "#/definitions/registry"
+  additionalImages:
+      type: array
+      description: The additional images configuration of the image set.
+      items:
+        type: string
+        description: The tag or digest of the image to mirror.
+  blockedImages:
+      type: array
+      description: The blocked images configuration of the image set.
+      items:
+        type: string
+        description: The full tag, digest, or pattern of images to block from mirroring.
 required:
   - name
   - type

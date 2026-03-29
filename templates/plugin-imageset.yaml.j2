@@ -18,4 +18,16 @@ mirror:
 {% for pkg in operator.extraMirrorPackages | default([]) %}
         - name: {{ pkg }}
 {% endfor %}
+{% if operator.additionalImages | default([]) | length > 0 %}
+  additionalImages:
+{% for img in operator.additionalImages %}
+    - name: {{ img }}
+{% endfor %}
+{% endif %}
+{% if operator.blockedImages | default([]) | length > 0 %}
+  blockedImages:
+{% for img in operator.blockedImages %}
+    - name: {{ img }}
+{% endfor %}
+{% endif %}
 {% endfor %}
