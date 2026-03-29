@@ -34,8 +34,4 @@ storage_operators:  # Install operator depending blockStorageBackend variable
       init_version: 4.20.0
       namespace: openshift-storage
       source: cs-redhat-operator-index-v4-20
-      allowIngressFrom:
-        - name: ingress
-          namespaceSelector:
-            matchLabels:
-              network.openshift.io/policy-group: ingress
+      disableDefaultNetworkPolicies: true
