@@ -4,6 +4,7 @@
 # configure_operator.yaml only manages the operator namespace
 # (openshift-gitops-operator).
 - name: "Ensure same-namespace NetworkPolicy exists in openshift-gitops"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -21,6 +22,7 @@
           - Ingress
 
 - name: "Ensure kube-apiserver can reach openshift-gitops webhooks"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -39,6 +41,7 @@
           - Ingress
 
 - name: "Ensure monitoring can reach openshift-gitops"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
@@ -58,6 +61,7 @@
           - Ingress
 
 - name: "Ensure ingress can reach openshift-gitops"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
   kubernetes.core.k8s:
     state: present
     definition:
