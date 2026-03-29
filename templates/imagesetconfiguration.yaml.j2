@@ -37,7 +37,6 @@ mirror:
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
       packages:
         - name: kubevirt-hyperconverged
-        - name: kubernetes-nmstate-operator
 {% for operator in operators + model_operators + (_core_plugin_operators | default([])) %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
 {% for operator_name in [operator.name] + additional_operator_names %}
