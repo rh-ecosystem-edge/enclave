@@ -268,12 +268,6 @@
 
           [[registry]]
             prefix = ""
-            location = "registry.redhat.io/openshift-update-service"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift-update-service"
-
-          [[registry]]
-            prefix = ""
             location = "quay.io/argoproj"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/argoproj"
