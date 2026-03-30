@@ -98,16 +98,6 @@ operators:
     source: cs-redhat-operator-index-v4-20
     global: true
 
-  - name: openshift-external-secrets-operator
-    version: 1.0.0
-    channel: stable-v1.0
-    init_version: 1.0.0
-    namespace: external-secrets-operator
-    source: cs-redhat-operator-index-v4-20
-    global: true
-    csvNames:
-      - external-secrets-operator
-
   - name: compliance-operator
     version: 1.8.2
     channel: stable

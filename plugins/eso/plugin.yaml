@@ -1,0 +1,20 @@
+---
+name: eso
+type: addon
+order: 20
+mirror: core
+
+operators:
+  - name: openshift-external-secrets-operator
+    version: 1.0.0
+    channel: stable-v1.0
+    init_version: 1.0.0
+    namespace: external-secrets-operator
+    source: cs-redhat-operator-index-v4-20
+    global: true
+    csvNames:
+      - external-secrets-operator
+
+registries:
+  - location: "registry.redhat.io/external-secrets-operator"
+    mirror: "external-secrets-operator"
