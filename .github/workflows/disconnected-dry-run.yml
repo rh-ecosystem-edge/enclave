@@ -22,6 +22,14 @@ on:
         default: false
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/disconnected-dry-run.yml'
+      - 'Makefile'
+      - 'scripts/**'
+      - 'playbooks/**'
+      - 'defaults/**'
+      - 'plugins/**'
+      - 'templates/**'
 
 permissions:
   contents: read

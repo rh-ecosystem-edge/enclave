@@ -134,14 +134,9 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
-<<<<<<< HEAD
-        "playbooks/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
-        "playbooks/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
-=======
-        "playbooks/validate-schema.yaml:schema-validation:Include schema validation tasks"
-        "playbooks/validation/validate-schema.yaml:schema-validation:Include schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
         "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
->>>>>>> 9aa4727 (Add post-mirror artifact validation to disconnected dry-run)
     )
 
     for test in "${tag_tests[@]}"; do
@@ -188,7 +183,7 @@ validate_tags() {
 validate_templates() {
     print_header "Validating template rendering"
 
-    if ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.example.yaml; then
+    if ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.validation.yaml; then
         print_success "Template rendering validation passed"
         return 0
     else
@@ -229,6 +224,7 @@ validate_plugins() {
         return 0
     else
         print_error "Plugin validation failed"
+        return 1
     fi
 }
 
@@ -303,6 +299,7 @@ case "${1:-all}" in
         ;;
     plugins)
         validate_plugins
+        ;;
     mirror)
         validate_mirror
         ;;

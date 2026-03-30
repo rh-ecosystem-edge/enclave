@@ -1,0 +1,53 @@
+##############################################################################
+# TEMPLATE VALIDATION FIXTURE
+# This file is used exclusively for template rendering tests.
+# Values are synthetic and must never be used for real deployments.
+# RFC 5737 TEST-NET addresses (192.0.2.0/24) are used intentionally.
+##############################################################################
+
+workingDir: /tmp/enclave-validation
+
+baseDomain: validation.test
+clusterName: validation
+machineNetwork: 192.0.2.0/24
+apiVIP: 192.0.2.201
+ingressVIP: 192.0.2.202
+
+defaultDNS: 192.0.2.1
+defaultGateway: 192.0.2.1
+defaultPrefix: 24
+
+rendezvousIP: 192.0.2.10
+lzBmcIP: 192.0.2.100
+
+quayUser: validation-user
+quayPassword: validation-pass
+quayBackend: LocalStorage
+
+storage_plugin: lvms
+
+pullSecret: '{"auths":{}}'
+sshPubPath: /dev/null
+
+agent_hosts:
+  - name: validation-node-01
+    macAddress: "00:00:00:00:00:01"
+    ipAddress: 192.0.2.10
+    redfish: 192.0.2.100
+    rootDisk: /dev/sda
+    redfishUser: admin
+    redfishPassword: admin
+  - name: validation-node-02
+    macAddress: "00:00:00:00:00:02"
+    ipAddress: 192.0.2.11
+    redfish: 192.0.2.101
+    rootDisk: /dev/sda
+    redfishUser: admin
+    redfishPassword: admin
+  - name: validation-node-03
+    macAddress: "00:00:00:00:00:03"
+    ipAddress: 192.0.2.12
+    redfish: 192.0.2.102
+    rootDisk: /dev/sda
+    redfishUser: admin
+    redfishPassword: admin

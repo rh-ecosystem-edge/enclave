@@ -1,0 +1,8 @@
+---
+# Template Validation: registries.conf
+# Only validates that the template renders without errors (TOML format, not YAML).
+
+- name: Render registries.conf
+  ansible.builtin.template:
+    src: ../../templates/registries.conf.j2
+    dest: "{{ temp_dir.path }}/registries.conf"
