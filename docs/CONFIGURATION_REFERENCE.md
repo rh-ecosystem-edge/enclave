@@ -13,14 +13,14 @@ Configuration is split across multiple files for better organization and maintai
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
 | `defaults/operators.yaml` | General cluster operators configuration |
 | `defaults/platforms.yaml` | Available OpenShift versions |
-| `defaults/storage_operators.yaml` | Storage operators (ODF, LVMS) configuration |
+| `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
 | `defaults/model_operators.yaml` | AI/ML model operators configuration |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/content_images.yaml` | RHCOS images and ISOs configuration |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
 | `defaults/mirror_registry.yaml` | Quay hostname and CA path defaults |
 | `defaults/quay_operator.yaml` | Quay feature flags and backend storage defaults |
-| `defaults/lvms_operator.yaml` | LVMS device selector defaults |
+| `plugins/<name>/plugin.yaml` | Plugin configuration (operators, defaults, registries) |
 
 Copy the example files to get started:
 ```bash
@@ -786,26 +786,52 @@ pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 
 ## Storage Configuration
 
-Block storage configuration is set via `blockStorageBackend` and optional backend-specific variables in `config/global.yaml`.
+Storage is configured via the plugin system. The `storage_plugin` variable selects which storage plugin to deploy, and each plugin provides its own operator definitions, defaults, and registry mirrors in `plugins/<name>/plugin.yaml`.
 
-#### `blockStorageBackend`
+#### `storage_plugin`
 
-**Description**: Selects which storage operator provides block storage for Quay and the Assisted Installer.
+**Description**: Selects which storage plugin to deploy for block storage (used by Quay and the Assisted Installer).
 
 **Type**: String
 
+**Default**: `lvms`
+
 **Valid values**:
-- `lvms`: Local Volume Manager Storage
-- `odf`: OpenShift Data Foundation in external mode
+- `lvms`: Local Volume Manager Storage (plugin at `plugins/lvms/`)
+- `odf`: OpenShift Data Foundation in external mode (plugin at `plugins/odf/`)
 
 **Example**:
 ```yaml
-blockStorageBackend: lvms
+storage_plugin: lvms
 ```
+
+**Notes**:
+- The selected plugin is automatically added to `enabled_plugins`
+
+#### `enabled_plugins`
+
+**Description**: List of plugins to deploy during the pipeline. Defaults to only the selected storage plugin.
+
+**Type**: List of strings (optional)
+
+**Default**: `["{{ storage_plugin }}"]`
+
+**Example**:
+```yaml
+enabled_plugins:
+  - lvms
+  - example
+```
+
+**Notes**:
+- Override this to deploy additional plugins alongside the storage plugin
+- Each entry must match a directory name under `plugins/`
+
+#### LVMS Configuration
 
 #### `lvmsConfig`
 
-**Description**: Optional device selector for the LVMS operator. When omitted, LVMS auto-detects and uses all available disks on each node (LVMS default behaviour). Set this variable to restrict which physical disks LVMS manages.
+**Description**: Optional device selector for the LVMS plugin. When omitted, LVMS auto-detects and uses all available disks on each node (LVMS default behaviour). Set this variable to restrict which physical disks LVMS manages.
 
 **Type**: Dictionary (optional)
 
@@ -819,14 +845,16 @@ lvmsConfig:
 
 **Notes**:
 - Use paths from `/dev/disk/by-path/` for stable device identification across reboots
-- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in `defaults/lvms_operator.yaml`)
+- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in the LVMS plugin defaults)
 - Only needed when you want to restrict which disks LVMS uses; omit to let LVMS manage all disks automatically
+
+#### ODF Configuration
 
 #### `odfExternalConfig`
 
-**Description**: External Ceph cluster configuration required when `blockStorageBackend: odf`.
+**Description**: External Ceph cluster configuration required when `storage_plugin: odf`. Contains the JSON output from the `ceph-external-cluster-details-exporter.py` script.
 
-**Type**: String (JSON, required when `blockStorageBackend: odf`)
+**Type**: String (JSON, required when `storage_plugin: odf`)
 
 **Example**:
 ```yaml
@@ -836,7 +864,29 @@ odfExternalConfig:
 ```
 
 **Notes**:
-- Only required when `blockStorageBackend` is set to `odf`
+- Only required when `storage_plugin` is set to `odf`
+- If not set, the ODF operator is installed but no StorageCluster is created
+
+#### `odfDefaults`
+
+**Description**: ODF plugin defaults. The plugin sets `defaultStorageClass: true` automatically. Override in `config/global.yaml` only if you need to change the default.
+
+**Type**: Dictionary (optional)
+
+**Default** (from `plugins/odf/plugin.yaml`):
+```yaml
+odfDefaults:
+  defaultStorageClass: true
+```
+
+**Example** (to override):
+```yaml
+odfDefaults:
+  defaultStorageClass: false
+```
+
+**Notes**:
+- Controls whether the ODF block pool is set as the default StorageClass on the cluster
 
 ### Datacenter Cache Configuration
 
@@ -1036,10 +1086,10 @@ sslCACertificate: |
 
 ## Operator Configuration
 
-Operator configuration is stored in the `defaults/` directory:
+Operator configuration is stored in:
 - `defaults/operators.yaml` - General cluster operators
-- `defaults/storage_operators.yaml` - Storage operators (selected based on `blockStorageBackend` variable)
 - `defaults/model_operators.yaml` - AI/ML model operators
+- `plugins/<name>/plugin.yaml` - Storage and other plugin operators (selected via `storage_plugin` / `enabled_plugins`)
 
 ### Operator List Structure
 
@@ -1249,8 +1299,14 @@ pullSecret: '{"auths":{"cloud.openshift.com":{...},"quay.io":{...}}}'
 # pullSecretPath: "{{ workingDir }}/config/pull-secret.json"  # Default
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
 
-# Storage Backend
-blockStorageBackend: lvms
+# Storage Plugin
+storage_plugin: lvms
+
+# To use ODF instead:
+# storage_plugin: odf
+# odfExternalConfig:
+#   '[{"name": "external-cluster-user-command",
+#      "kind": "ConfigMap", "data": ..}]'
 
 # Agent Hosts (control plane nodes)
 agent_hosts:
