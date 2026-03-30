@@ -178,12 +178,6 @@
 
           [[registry]]
             prefix = ""
-            location = "registry.redhat.io/external-secrets-operator"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/external-secrets-operator"
-
-          [[registry]]
-            prefix = ""
             location = "registry.redhat.io/compliance"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/compliance"

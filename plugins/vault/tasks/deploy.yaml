@@ -1,4 +1,3 @@
----
 - name: Patch Subscription openshift-external-secrets-operator to set resources
   kubernetes.core.k8s:
     state: patched
