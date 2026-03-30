@@ -11,6 +11,7 @@ operators:
     init_version: 4.20.0
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
+    disableDefaultNetworkPolicies: true
 
 requires:
   files:
