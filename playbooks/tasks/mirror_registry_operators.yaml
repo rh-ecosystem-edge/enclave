@@ -1,0 +1,40 @@
+---
+- name: Ensure pull secrets exist
+  ansible.builtin.stat:
+    path: "{{ pullSecretPath }}"
+  register: r_pull_secret_stat
+
+- name: Assert pull secrets are available
+  ansible.builtin.assert:
+    that:
+      - r_pull_secret_stat.stat.exists
+    fail_msg: "Pull secret file not found at {{ pullSecretPath }}. Execute 02a-mirror-core.yaml first."
+    success_msg: "Pull secrets are available - proceeding with operator mirroring"
+
+- name: Copy imagesetconfiguration-operators.yaml for post-install components
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration-operators.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration-operators.yaml"
+
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
+- name: Start oc-mirror process for operators
+  ansible.builtin.shell: >
+    {{ workingDir }}/bin/oc-mirror --v2
+    --log-level {{ ocMirrorLogLevel }}
+    --authfile {{ pullSecretPath }}
+    --dest-tls-verify=false
+    -c {{ workingDir }}/config/imagesetconfiguration-operators.yaml
+    --workspace file://{{ workingDir }}/config/oc-mirror-workspace-operators
+    --parallel-images 10 --parallel-layers 10
+    --retry-times 10 --retry-delay 0
+    docker://{{ quayHostname }}:8443
+    > {{ workingDir }}/logs/oc-mirror-operators.progress.$(date +%s).log 2>&1;
+    echo $? > {{ workingDir }}/logs/operator-mirror.exit
+  retries: 10
+  delay: 10
+  register: r_oc_mirror_operators
+  until: r_oc_mirror_operators is success

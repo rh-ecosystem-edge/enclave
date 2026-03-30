@@ -1,0 +1,47 @@
+---
+# Collect operator definitions from all enabled plugins that are NOT marked with 'mirror: core'
+# These operators will be mirrored separately from the core installation components
+# to enable parallel execution with OpenShift deployment.
+#
+# Sets fact: _post_install_plugin_operators (list of operator dicts)
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_pip_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ r_pip_find.files | map(attribute='path') | list }}"
+  register: r_pip_slurp
+
+- name: Build post-install plugin operators list
+  vars:
+    _enabled: >-
+      {{ r_pip_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | list }}
+    # Select plugins that don't have 'mirror: core' setting
+    _post_install: >-
+      {{ _enabled
+         | selectattr('mirror', 'defined')
+         | rejectattr('mirror', 'equalto', 'core')
+         | list }}
+  ansible.builtin.set_fact:
+    _post_install_plugin_operators: >-
+      {{ _post_install
+         | selectattr('operators', 'defined')
+         | map(attribute='operators')
+         | flatten
+         | list }}
+
+- name: Display post-install plugin operators to mirror
+  ansible.builtin.debug:
+    msg: "Post-install plugin operators to include in imageset: {{ _post_install_plugin_operators | map(attribute='name') | list }}"

@@ -1,0 +1,62 @@
+---
+# Red Hat Sovereign Enclave - Main Deployment Playbook (Split Mirror)
+#
+# This version supports split mirroring for improved performance in disconnected mode:
+# - Core components are mirrored first (OpenShift + foundation plugins)
+# - OpenShift deployment starts as soon as core mirroring completes
+# - Operator mirroring runs in parallel with OpenShift deployment
+#
+# DISCONNECTED MODE (with split mirroring):
+#   Phase 1: Prepare - Download binaries and content
+#   Phase 2a: Mirror Core - Mirror OpenShift and foundation plugins (LVMS, ODF)
+#   Phase 3: Deploy - Deploy OpenShift cluster
+#   Phase 2b: Mirror Operators - Mirror post-install operators (PARALLEL with Phase 3)
+#   Phase 4: Post-Install - Cluster-level configuration
+#   Phase 5: Operators - Install and configure operators
+#   Phase 6: Day2 - Optional advanced features
+#   Phase 7: Configure Discovery - Hardware discovery (optional)
+#
+# CONNECTED MODE:
+#   Phase 1: Prepare - Download binaries and content
+#   Phase 2a/2b: SKIPPED - No mirroring needed
+#   Phase 3: Deploy - Deploy OpenShift cluster (pulls from upstream)
+#   Phase 4: Post-Install - Cluster-level configuration
+#   Phase 5: Operators - Install and configure operators
+#   Phase 6: Day2 - Optional advanced features
+#   Phase 7: Configure Discovery - Hardware discovery (optional)
+#
+# Usage:
+#   # Full deployment with split mirroring (disconnected mode)
+#   ansible-playbook playbooks/main-split.yaml -e workingDir=/home/cloud-user
+#
+#   # Full deployment (connected mode)
+#   ansible-playbook playbooks/main-split.yaml -e workingDir=/home/cloud-user -e disconnected=false
+#
+#   # Use original sequential mirroring (fallback)
+#   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
+
+- name: Phase 1 - Prepare environment
+  ansible.builtin.import_playbook: 01-prepare.yaml
+
+- name: Phase 2 - Split mirroring with parallel execution
+  ansible.builtin.import_playbook: 02-mirror-split.yaml
+  when: disconnected | default(true) | bool
+
+- name: Phase 3 - Deploy OpenShift cluster
+  ansible.builtin.import_playbook: 03-deploy.yaml
+
+- name: Wait for operator mirroring completion
+  ansible.builtin.import_playbook: wait-operator-mirror.yaml
+  when: disconnected | default(true) | bool
+
+- name: Phase 4 - Post-installation configuration
+  ansible.builtin.import_playbook: 04-post-install.yaml
+
+- name: Phase 5 - Operator installation
+  ansible.builtin.import_playbook: 05-operators.yaml
+
+- name: Phase 6 - Day-2 operations
+  ansible.builtin.import_playbook: 06-day2.yaml
+
+- name: Phase 7 - Configure hardware discovery
+  ansible.builtin.import_playbook: 07-configure-discovery.yaml

@@ -1,0 +1,80 @@
+---
+# Phase 2: Mirror - Split mirroring with parallel execution
+# This phase implements split mirroring to optimize deployment time
+#
+# Performs:
+# 1. Phase 2a: Mirror core components (OpenShift + foundation plugins)
+# 2. Start OpenShift deployment in background
+# 3. Phase 2b: Mirror operators in parallel with deployment
+# 4. Wait for both to complete
+#
+# This approach reduces the critical path time by running operator mirroring
+# in parallel with OpenShift deployment.
+#
+# Usage:
+#   ansible-playbook playbooks/02-mirror-split.yaml -e workingDir=/home/cloud-user
+#
+# To use traditional sequential mirroring instead:
+#   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user
+
+- name: Phase 2 - Split mirror setup with parallel execution
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Verify disconnected mode
+      ansible.builtin.assert:
+        that:
+          - disconnected | default(true) | bool
+        fail_msg: "Split mirroring should only be used in disconnected mode. Use sequential mirroring for connected deployments."
+        success_msg: "Running in disconnected mode - proceeding with split mirroring"
+
+    - name: Phase 2a - Execute core mirroring
+      ansible.builtin.command:
+        cmd: >
+          ansible-playbook {{ playbook_dir }}/02a-mirror-core.yaml
+          -e workingDir={{ workingDir }}
+          {% if ansible_verbosity is defined %}-{{ 'v' * ansible_verbosity }}{% endif %}
+      register: core_mirror_result
+      changed_when: true
+
+    - name: Display core mirroring completion
+      ansible.builtin.debug:
+        msg: |
+          Core mirroring completed successfully.
+          Duration: {{ core_mirror_result.delta | default('N/A') }}
+          OpenShift deployment can now begin.
+
+    - name: Phase 2b - Start operator mirroring in background
+      ansible.builtin.shell: >
+        nohup ansible-playbook {{ playbook_dir }}/02b-mirror-operators.yaml
+        -e workingDir={{ workingDir }}
+        {% if ansible_verbosity is defined %}-{{ 'v' * ansible_verbosity }}{% endif %}
+        > {{ workingDir }}/logs/operator-mirror.$(date +%s).log 2>&1 &
+        echo $!
+      register: operator_mirror_pid
+      changed_when: true
+
+    - name: Store operator mirroring PID
+      ansible.builtin.copy:
+        content: "{{ operator_mirror_pid.stdout }}"
+        dest: "{{ workingDir }}/logs/operator-mirror.pid"
+
+    - name: Display parallel execution status
+      ansible.builtin.debug:
+        msg: |
+          Operator mirroring started in background (PID: {{ operator_mirror_pid.stdout }})
+          Log file: {{ workingDir }}/logs/operator-mirror.*.log
+
+          You can now proceed with OpenShift deployment in parallel.
+          Run the following command to wait for operator mirroring completion:
+
+          ansible-playbook playbooks/wait-operator-mirror.yaml -e workingDir={{ workingDir }}

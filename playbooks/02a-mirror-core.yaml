@@ -1,0 +1,66 @@
+---
+# Phase 2a: Mirror Core - Pre-installation mirroring
+# This phase is ONLY for disconnected deployments
+#
+# Performs:
+# - Deploy local Quay registry (mirror-registry)
+# - Generate combined pull secret
+# - Run oc-mirror for OpenShift images and foundation plugins only
+# - Mirror images to datacenter cache (optional)
+#
+# This phase mirrors only the essential components needed for OpenShift installation:
+# - OpenShift release images and catalogs
+# - Foundation plugins marked with 'mirror: core' (LVMS, ODF)
+#
+# Post-install operators are mirrored separately in 02b-mirror-operators.yaml
+# to enable parallel execution with the OpenShift deployment.
+#
+# Usage:
+#   ansible-playbook playbooks/02a-mirror-core.yaml -e workingDir=/home/cloud-user
+#
+#   # Mirror images to datacenter cache
+#   ansible-playbook playbooks/02a-mirror-core.yaml -e workingDir=/home/cloud-user --tags mirror-cache
+
+- name: Phase 2a - Mirror core components for installation
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Include tasks for mirror-cache
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_cache.yaml
+        apply:
+          tags: mirror-cache
+      tags:
+        - mirror-cache
+        - never
+
+    - name: Verify disconnected mode
+      ansible.builtin.assert:
+        that:
+          - disconnected | default(true) | bool
+        fail_msg: "Phase 2a (Mirror Core) should only run in disconnected mode. Set disconnected=true in config/global.yaml"
+        success_msg: "Running in disconnected mode - proceeding with core mirroring"
+      tags: mirror-core
+
+    - name: Collect foundation plugin operators for core imageset
+      ansible.builtin.include_tasks:
+        file: tasks/collect_core_plugin_operators.yaml
+        apply:
+          tags: mirror-core
+      tags: mirror-core
+
+    - name: Include tasks for core mirror registry
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_registry_core.yaml
+        apply:
+          tags: mirror-core
+      tags: mirror-core

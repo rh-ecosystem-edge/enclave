@@ -138,7 +138,7 @@ echo -e "\e[38;5;10m Done...\033[0m"; date
 echo -p "Building local cache .. " -n1 -s
     # get oc / helm / mirror content etc
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
-    ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/02-mirror-split.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags configure-abi 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 

@@ -1,0 +1,83 @@
+---
+# Wait for Operator Mirroring - Utility playbook
+# This playbook waits for the background operator mirroring process to complete
+#
+# Usage:
+#   ansible-playbook playbooks/wait-operator-mirror.yaml -e workingDir=/home/cloud-user
+#
+# This should be called after 02-mirror-split.yaml and before 05-operators.yaml
+
+- name: Wait for operator mirroring completion
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Check if operator mirroring PID file exists
+      ansible.builtin.stat:
+        path: "{{ workingDir }}/logs/operator-mirror.pid"
+      register: pid_file_stat
+
+    - name: Read operator mirroring PID
+      when: pid_file_stat.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ workingDir }}/logs/operator-mirror.pid"
+      register: pid_file_content
+
+    - name: Extract PID
+      when: pid_file_stat.stat.exists
+      ansible.builtin.set_fact:
+        operator_mirror_pid: "{{ pid_file_content.content | b64decode | trim }}"
+
+    - name: Wait for operator mirroring process to complete
+      when: pid_file_stat.stat.exists and operator_mirror_pid is defined
+      ansible.builtin.shell: |
+        while kill -0 {{ operator_mirror_pid }} 2>/dev/null; do
+          echo "Operator mirroring still running (PID: {{ operator_mirror_pid }})..."
+          sleep 30
+        done
+        echo "Operator mirroring process completed"
+      register: wait_result
+      changed_when: false
+
+    - name: Check operator mirroring exit status
+      when: pid_file_stat.stat.exists and operator_mirror_pid is defined
+      ansible.builtin.shell: |
+        if [ -f "{{ workingDir }}/logs/operator-mirror.exit" ]; then
+          cat {{ workingDir }}/logs/operator-mirror.exit
+        else
+          echo "0"  # Assume success if no exit file
+        fi
+      register: exit_status
+      changed_when: false
+
+    - name: Display operator mirroring results
+      ansible.builtin.debug:
+        msg: |
+          Operator mirroring process has completed.
+          Exit status: {{ exit_status.stdout | default('unknown') }}
+
+          Check log files in {{ workingDir }}/logs/operator-mirror.*.log for details.
+
+    - name: Fail if operator mirroring failed
+      when:
+        - exit_status.stdout is defined
+        - exit_status.stdout != "0"
+      ansible.builtin.fail:
+        msg: "Operator mirroring failed with exit status {{ exit_status.stdout }}"
+
+    - name: Clean up PID file
+      when: pid_file_stat.stat.exists
+      ansible.builtin.file:
+        path: "{{ workingDir }}/logs/operator-mirror.pid"
+        state: absent
+
+    - name: No operator mirroring process found
+      when: not pid_file_stat.stat.exists
+      ansible.builtin.debug:
+        msg: "No operator mirroring PID file found. Process may have already completed or was never started."
