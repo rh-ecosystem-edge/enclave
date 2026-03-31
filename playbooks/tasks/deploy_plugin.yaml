@@ -62,7 +62,7 @@
 
 - name: Validate plugin requirements (vars)
   ansible.builtin.assert:
-    that: "{{ item.name }} is defined"
+    that: "item.name in vars"
     fail_msg: >-
       Plugin '{{ plugin.name }}' requires variable '{{ item.name }}' but it is not defined.
       {{ item.description | default('') }}
