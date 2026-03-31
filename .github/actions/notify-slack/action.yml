@@ -104,6 +104,8 @@ runs:
         fi
 
         # Build compact Slack payload
+        # Blocks must be at the top level (not inside attachments).
+        # The attachment provides the color bar on the left.
         PAYLOAD=$(jq -n \
           --arg text "$MESSAGE_TEXT" \
           --arg color "$COLOR" \
@@ -111,17 +113,25 @@ runs:
           --argjson actions "$ACTIONS" \
           '{
             "text": $text,
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": $text,
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": $fields
+              },
+              $actions
+            ],
             "attachments": [
               {
                 "color": $color,
-                "text": $text,
-                "blocks": [
-                  {
-                    "type": "section",
-                    "fields": $fields
-                  },
-                  $actions
-                ]
+                "fallback": $text
               }
             ]
           }')
