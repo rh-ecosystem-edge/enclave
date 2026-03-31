@@ -165,7 +165,9 @@
   loop: "{{ plugin.operators }}"
   loop_control:
     loop_var: operator
-  when: plugin.operators is defined
+  when:
+    - plugin.operators is defined
+    - plugin.installOperators | default(true)
   tags: operators
 
 - name: Run deploy

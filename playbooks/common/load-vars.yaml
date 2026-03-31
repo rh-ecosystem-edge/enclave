@@ -17,7 +17,6 @@
   loop:
     - content_images.yaml
     - control_binaries.yaml
-    - model_operators.yaml
     - operators.yaml
     - platforms.yaml
     - catalogs.yaml

@@ -138,7 +138,6 @@ Configuration is split across multiple files for better organization:
 - `defaults/operators.yaml` - General cluster operators
 - `defaults/platforms.yaml` - Available OpenShift versions
 - `defaults/storage_operators.yaml` - Storage operators (ODF, LVMS)
-- `defaults/model_operators.yaml` - AI/ML model operators
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
 - `defaults/content_images.yaml` - RHCOS images and ISOs
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
@@ -224,9 +223,6 @@ The deployment follows this sequence (defined in `playbooks/main-disconnected.ya
    - Applies SSL certificates to API server
    - Applies SSL certificates to Ingress
    - Configures registry settings
-
-10. **Model Configuration** (`model-config` tag):
-    - Applies ACM Policy including required resources to deploy a model using RHOAI 3.x.
 
 ## Configuration Examples
 
