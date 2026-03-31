@@ -1,0 +1,72 @@
+---
+- name: Ensure {{ workingDir }}/helpers/operator-update/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/helpers/operator-update/"
+    state: directory
+
+- name: Generate Operator Update resources
+  ansible.builtin.copy:
+    dest: "{{ workingDir }}/helpers/operator-update/tekton.yaml"
+    content: |
+      ---
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: operator-update
+        namespace: openshift-pipelines
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: operator-update
+      rules:
+        - apiGroups: ["operators.coreos.com"]
+          resources: ["clusterserviceversions", "installplans"]
+          verbs: ["get", "list", "patch", "update", "watch"]
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: operator-update
+      subjects:
+        - kind: ServiceAccount
+          name: operator-update
+          namespace: openshift-pipelines
+      roleRef:
+        kind: ClusterRole
+        name: operator-update
+        apiGroup: rbac.authorization.k8s.io
+      ---
+      apiVersion: tekton.dev/v1
+      kind: Task
+      metadata:
+        name: operator-update
+        namespace: openshift-pipelines
+      spec:
+        params:
+          - name: dry-run
+            description: "If true, only identifies pending updates"
+            type: string
+            default: "false"
+        results:
+          - name: exit-code
+            description: "Success of operator version update (exit code)"
+          - name: status-report
+            description: "Report of operator version updates"
+        workspaces:
+          - name: shared-data
+        steps:
+          - name: operator-update
+            image: "{{ oc_cli_image }}"
+            workingDir: $(workspaces.shared-data.path)
+            script: |
+                #!/bin/bash
+
+                cat <<EOF > approve_installplans.py
+                {{ lookup('ansible.builtin.file', '../helpers/operator-update/approve_installplans.py') | indent(10) }}
+                EOF
+
+                python ./approve_installplans.py "{{ (_core_plugin_operators | default([])) + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                rc=$?
+                echo -n "${rc}" > "$(results.exit-code.path)"
+                exit "${rc}"

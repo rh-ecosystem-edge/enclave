@@ -14,11 +14,3 @@
   until: r_tekton_config_info is success
   retries: 120
   delay: 30
-
-- name: Create Operator Update Pipeline
-  ansible.builtin.include_tasks:
-    file: operator_update_pipeline.yaml
-
-- name: Create Clair Import Pipeline
-  ansible.builtin.include_tasks:
-    file: clair_import_pipeline.yaml
