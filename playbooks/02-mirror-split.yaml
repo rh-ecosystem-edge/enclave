@@ -37,44 +37,104 @@
         fail_msg: "Split mirroring should only be used in disconnected mode. Use sequential mirroring for connected deployments."
         success_msg: "Running in disconnected mode - proceeding with split mirroring"
 
-    - name: Phase 2a - Execute core mirroring
-      ansible.builtin.command:
-        cmd: >
-          ansible-playbook {{ playbook_dir }}/02a-mirror-core.yaml
-          -e workingDir={{ workingDir }}
-          {% if ansible_verbosity is defined %}-{{ 'v' * ansible_verbosity }}{% endif %}
-      register: core_mirror_result
-      changed_when: true
+    - name: Phase 2a - Setup core mirroring prerequisites
+      block:
+        - name: Include tasks for mirror-cache (core)
+          ansible.builtin.include_tasks:
+            file: tasks/mirror_cache.yaml
+            apply:
+              tags: mirror-cache
+          tags:
+            - mirror-cache
+            - never
+
+        - name: Collect foundation plugin operators for core imageset
+          ansible.builtin.include_tasks:
+            file: tasks/collect_core_plugin_operators.yaml
+
+        - name: Include tasks for core mirror registry
+          ansible.builtin.include_tasks:
+            file: tasks/mirror_registry_core.yaml
 
     - name: Display core mirroring completion
       ansible.builtin.debug:
         msg: |
           Core mirroring completed successfully.
-          Duration: {{ core_mirror_result.delta | default('N/A') }}
           OpenShift deployment can now begin.
 
-    - name: Phase 2b - Start operator mirroring in background
+    - name: Phase 2b - Setup operator mirroring prerequisites
+      block:
+        - name: Verify mirror registry is running for operators
+          containers.podman.podman_container_info:
+            name: quay-app
+          register: r_container_quay_app_operators
+
+        - name: Assert mirror registry exists for operators
+          ansible.builtin.assert:
+            that:
+              - r_container_quay_app_operators.containers | default([]) | length > 0
+              - r_container_quay_app_operators.containers[0].State.Status == "running"
+            fail_msg: "Mirror registry is not running. Core mirroring must complete before operator mirroring."
+            success_msg: "Mirror registry is running - proceeding with operator mirroring"
+
+        - name: Collect post-install plugin operators for operator imageset
+          ansible.builtin.include_tasks:
+            file: tasks/collect_post_install_plugin_operators.yaml
+
+        - name: Ensure pull secrets exist for operators
+          ansible.builtin.stat:
+            path: "{{ pullSecretPath }}"
+          register: r_pull_secret_stat_operators
+
+        - name: Assert pull secrets are available for operators
+          ansible.builtin.assert:
+            that:
+              - r_pull_secret_stat_operators.stat.exists
+            fail_msg: "Pull secret file not found at {{ pullSecretPath }}. Core mirroring must complete before operator mirroring."
+            success_msg: "Pull secrets are available - proceeding with operator mirroring"
+
+        - name: Copy imagesetconfiguration-operators.yaml for post-install components
+          ansible.builtin.template:
+            src: templates/imagesetconfiguration-operators.yaml.j2
+            dest: "{{ workingDir }}/config/imagesetconfiguration-operators.yaml"
+
+        - name: Change oc-mirror permissions for operators
+          ansible.builtin.file:
+            path: "{{ workingDir }}/bin/oc-mirror"
+            mode: "0755"
+
+    - name: Phase 2b - Start operator mirroring in background using async
       ansible.builtin.shell: >
-        nohup ansible-playbook {{ playbook_dir }}/02b-mirror-operators.yaml
-        -e workingDir={{ workingDir }}
-        {% if ansible_verbosity is defined %}-{{ 'v' * ansible_verbosity }}{% endif %}
-        > {{ workingDir }}/logs/operator-mirror.$(date +%s).log 2>&1 &
-        echo $!
-      register: operator_mirror_pid
+        {{ workingDir }}/bin/oc-mirror --v2
+        --log-level {{ ocMirrorLogLevel }}
+        --authfile {{ pullSecretPath }}
+        --dest-tls-verify=false
+        -c {{ workingDir }}/config/imagesetconfiguration-operators.yaml
+        --workspace file://{{ workingDir }}/config/oc-mirror-workspace-operators
+        --parallel-images 10 --parallel-layers 10
+        --retry-times 10 --retry-delay 0
+        docker://{{ quayHostname }}:8443
+      async: 7200  # 2 hours timeout
+      poll: 0      # Start immediately, don't wait
+      retries: 10
+      delay: 10
+      register: operator_mirror_async
       changed_when: true
 
-    - name: Store operator mirroring PID
+    - name: Save async job ID for later reference
       ansible.builtin.copy:
-        content: "{{ operator_mirror_pid.stdout }}"
-        dest: "{{ workingDir }}/logs/operator-mirror.pid"
+        content: "{{ operator_mirror_async.ansible_job_id }}"
+        dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"
 
     - name: Display parallel execution status
       ansible.builtin.debug:
         msg: |
-          Operator mirroring started in background (PID: {{ operator_mirror_pid.stdout }})
-          Log file: {{ workingDir }}/logs/operator-mirror.*.log
+          Operator mirroring started in background using Ansible async (Job ID: {{ operator_mirror_async.ansible_job_id }})
 
           You can now proceed with OpenShift deployment in parallel.
-          Run the following command to wait for operator mirroring completion:
 
+          To check operator mirroring status, use:
           ansible-playbook playbooks/wait-operator-mirror.yaml -e workingDir={{ workingDir }}
+
+          Or check manually with:
+          ansible localhost -m async_status -a "jid={{ operator_mirror_async.ansible_job_id }}"

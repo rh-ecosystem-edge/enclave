@@ -20,22 +20,24 @@ Mirror Core → Deploy OpenShift + Mirror Operators (parallel) → Install Opera
 
 ## Components
 
-### Phase 2a: Core Mirroring (`02a-mirror-core.yaml`)
+### Phase 2a: Core Mirroring (Integrated in `02-mirror-split.yaml`)
 **Purpose:** Mirror only essential components needed for OpenShift installation
 - OpenShift platform images and catalogs
 - Foundation plugins marked with `mirror: core` (LVMS, ODF)
 - Essential base images
 
 **Duration:** ~15 minutes (reduced from ~30 minutes)
+**Implementation:** Integrated into `02-mirror-split.yaml` using direct task inclusion instead of separate playbook execution
 
-### Phase 2b: Operator Mirroring (`02b-mirror-operators.yaml`)
+### Phase 2b: Operator Mirroring (Integrated in `02-mirror-split.yaml`)
 **Purpose:** Mirror operators and images for post-installation
 - Operators from `defaults/operators.yaml` (Quay, ACM, GitOps, etc.)
 - Model operators from `defaults/model_operators.yaml`
 - Post-install plugin operators not marked `mirror: core`
 - Additional images (Vault, ArgoCD, etc.)
 
-**Duration:** ~15 minutes (runs in parallel with OpenShift deployment)
+**Duration:** ~15 minutes (runs asynchronously with OpenShift deployment using Ansible async tasks)
+**Implementation:** Integrated into `02-mirror-split.yaml` using async execution instead of separate processes
 
 ### Supporting Files
 
@@ -84,14 +86,16 @@ ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user
 # ... etc
 ```
 
-### Option 3: Individual Phase Execution
+### Option 3: Individual Phase Execution (Deprecated)
 ```bash
-# Execute only core mirroring
+# Execute only core mirroring (deprecated - use 02-mirror-split.yaml instead)
 ansible-playbook playbooks/02a-mirror-core.yaml -e workingDir=/home/cloud-user
 
-# Execute only operator mirroring
+# Execute only operator mirroring (deprecated - use 02-mirror-split.yaml instead)
 ansible-playbook playbooks/02b-mirror-operators.yaml -e workingDir=/home/cloud-user
 ```
+
+**Note:** These individual playbooks are deprecated. The integrated `02-mirror-split.yaml` provides better task coordination, error handling, and monitoring capabilities.
 
 ### Fallback: Traditional Sequential Mirroring
 ```bash
@@ -138,39 +142,40 @@ operators:
 ### Log Files
 - Core mirroring: `$workingDir/logs/oc-mirror-core.progress.*.log`
 - Operator mirroring: `$workingDir/logs/oc-mirror-operators.progress.*.log`
-- Background operator mirroring: `$workingDir/logs/operator-mirror.*.log`
 
-### Process Monitoring
+### Async Task Monitoring
 ```bash
-# Check if operator mirroring is still running
-cat $workingDir/logs/operator-mirror.pid
+# Check stored async job ID
+cat $workingDir/logs/operator-mirror.async_job_id
 
-# Monitor operator mirroring progress
-tail -f $workingDir/logs/operator-mirror.*.log
+# Monitor async task status manually (using stored job ID)
+ansible localhost -m async_status -a "jid=$(cat $workingDir/logs/operator-mirror.async_job_id)"
 
-# Check exit status
-cat $workingDir/logs/operator-mirror.exit
+# Wait for completion using the wait playbook
+ansible-playbook playbooks/wait-operator-mirror.yaml -e workingDir=/home/cloud-user
 ```
 
 ### Common Issues
 
-#### Operator Mirroring Failed
+#### Async Operator Mirroring Failed
 ```bash
-# Check exit status
-cat $workingDir/logs/operator-mirror.exit
+# Check async task status using stored job ID
+ansible localhost -m async_status -a "jid=$(cat $workingDir/logs/operator-mirror.async_job_id)"
 
-# View detailed logs
-cat $workingDir/logs/operator-mirror.*.log
-cat $workingDir/logs/oc-mirror-operators.progress.*.log
+# Use the wait playbook to get detailed results
+ansible-playbook playbooks/wait-operator-mirror.yaml -e workingDir=/home/cloud-user
 ```
 
 #### Mirror Registry Not Ready
-If `02b-mirror-operators.yaml` fails because mirror registry isn't ready:
+If operator mirroring fails because mirror registry isn't ready:
 ```bash
 # Verify registry is running
 podman ps | grep quay-app
 
-# Re-run operator mirroring manually
+# Re-run the split mirroring (which includes better validation)
+ansible-playbook playbooks/02-mirror-split.yaml -e workingDir=/home/cloud-user
+
+# Or run the standalone operator playbook (deprecated)
 ansible-playbook playbooks/02b-mirror-operators.yaml -e workingDir=/home/cloud-user
 ```
 
@@ -204,5 +209,11 @@ The split is determined by analyzing plugin configurations:
 
 This prevents workspace conflicts and enables parallel execution.
 
-### Exit Status Tracking
-Background operator mirroring saves its exit status to `operator-mirror.exit` file, allowing the wait playbook to detect failures and report them appropriately.
+### Async Task Management
+Operator mirroring uses Ansible's built-in async functionality:
+- **Job ID tracking:** Saved to `operator-mirror.async_job_id` file for reference
+- **Status monitoring:** Use `ansible-module async_status` or the wait playbook
+- **Error handling:** Integrated with Ansible's error reporting and retry mechanisms
+- **Process isolation:** Runs within the same Ansible process context, sharing variables and configuration
+
+This approach eliminates the need for external process management and PID files, providing better integration with Ansible's error handling and monitoring capabilities.
