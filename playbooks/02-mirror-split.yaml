@@ -36,8 +36,10 @@
           - disconnected | default(true) | bool
         fail_msg: "Split mirroring should only be used in disconnected mode. Use sequential mirroring for connected deployments."
         success_msg: "Running in disconnected mode - proceeding with split mirroring"
+      tags: mirror-registry
 
     - name: Phase 2a - Setup core mirroring prerequisites
+      tags: mirror-registry
       block:
         - name: Include tasks for mirror-cache (core)
           ansible.builtin.include_tasks:
@@ -61,8 +63,10 @@
         msg: |
           Core mirroring completed successfully.
           OpenShift deployment can now begin.
+      tags: mirror-registry
 
     - name: Phase 2b - Setup operator mirroring prerequisites
+      tags: mirror-registry
       block:
         - name: Verify mirror registry is running for operators
           containers.podman.podman_container_info:
@@ -120,11 +124,13 @@
       delay: 10
       register: operator_mirror_async
       changed_when: true
+      tags: mirror-registry
 
     - name: Save async job ID for later reference
       ansible.builtin.copy:
         content: "{{ operator_mirror_async.ansible_job_id }}"
         dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"
+      tags: mirror-registry
 
     - name: Display parallel execution status
       ansible.builtin.debug:
@@ -138,3 +144,4 @@
 
           Or check manually with:
           ansible localhost -m async_status -a "jid={{ operator_mirror_async.ansible_job_id }}"
+      tags: mirror-registry
