@@ -10,6 +10,23 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_exists is success
 
+- name: "Apply LimitRange to namespace if needed"
+  when: operator.limits | default("") | length > 0
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: LimitRange
+      metadata:
+        name: "{{ operator.namespace }}-limits"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        limits: "{{ operator.limits }}"
+  register: r_limit_range_exists
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_limit_range_exists is success
+
 - name: "Check if OperatorGroup already exists in namespace"
   when: operator.namespace != "openshift-operators"
   kubernetes.core.k8s_info:
