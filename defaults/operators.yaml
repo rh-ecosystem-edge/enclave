@@ -47,13 +47,13 @@ operators:
     source: cs-redhat-operator-index-v4-20
     global: true
     limits:
-    - default:
-        cpu: 20m
-        memory: 64Mi
-      defaultRequest:
-        cpu: 10m
-        memory: 32Mi
-      type: Container
+      - default:
+          cpu: 20m
+          memory: 64Mi
+        defaultRequest:
+          cpu: 10m
+          memory: 32Mi
+        type: Container
 
   - name: netobserv-operator
     version: 1.11.0
