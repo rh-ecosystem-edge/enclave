@@ -78,7 +78,7 @@
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -91,7 +91,7 @@
         installPlanApproval: Automatic
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source }}"
         sourceNamespace: openshift-marketplace
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
@@ -102,6 +102,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -114,9 +115,9 @@
         installPlanApproval: Manual
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source }}"
         sourceNamespace: openshift-marketplace
-        startingCSV: "{{ operator.csvNames | default([]) | first | default(operator.name) }}.v{{ operator.version | replace('+', '-') }}"
+        startingCSV: "{{ (operator.csvNames | default([]) | first | default(operator.name)) ~ '.v' ~ (operator.version | replace('+', '-')) }}"
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -126,14 +127,15 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
     name: "{{ operator.name }}"
     namespace: "{{ operator.namespace }}"
   register: r_subscription
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_subscription.resources[0].status.installplan is defined
   - r_subscription.resources[0].status.installplan | length > 0
@@ -142,6 +144,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.shell: |
     python ../helpers/operator-update/approve_installplans.py "{{ [operator] }}" "False"
   register: operator_update_result
@@ -150,21 +153,22 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - disconnected | default(true) | bool
   ansible.builtin.debug:
     var: operator_update_result.stdout_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
     name: "{{ operator.name }}"
     namespace: "{{ operator.namespace }}"
   register: r_subscription
-  retries: 30
-  delay: 10
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_subscription.resources[0].status.currentCSV is defined
   - r_subscription.resources[0].status.currentCSV | length > 0
@@ -172,15 +176,15 @@
 - name: "Wait until CSV is installed"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or not (disconnected | default(true) | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion
     name: "{{ r_subscription.resources[0].status.currentCSV }}"
     namespace: "{{ operator.namespace }}"
   register: r_csv
-  retries: 30
-  delay: 30
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
   until:
   - r_csv.resources[0].status.phase is defined
   - r_csv.resources[0].status.phase | length > 0
