@@ -5,12 +5,11 @@
 # Performs:
 # - Clair configuration for disconnected Quay (disconnected only)
 # - ACM policies for mirrored catalogsources (disconnected only)
-# - ACM policies for model configuration
 #
 # Usage:
 #   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
 #   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags clair-disconnected
-#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags acm-policy-catalogsources,model-config
+#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags acm-policy-catalogsources
 
 - name: Phase 6 - Day-2 operations
   hosts: localhost
@@ -83,16 +82,6 @@
       loop_control:
         loop_var: openshift_version
       tags: acm-policy-catalogsources
-
-    - name: Model configurations
-      ansible.builtin.include_tasks:
-        file: tasks/model_config.yaml
-        apply:
-          tags: model-config
-          environment:
-            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-      tags: model-config
-
 
     - name: Management cluster upgrade
       ansible.builtin.include_tasks:

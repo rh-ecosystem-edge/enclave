@@ -1,0 +1,22 @@
+---
+name: nvidia-gpu
+type: addon
+order: 110
+mirror: plugin
+
+catalog: certified
+operators:
+  - name: gpu-operator-certified
+    version: 25.10.1
+    channel: v25.10
+    init_version: 25.10.1
+
+installOperators: false
+
+defaults: {}
+
+registries:
+  - location: "nvcr.io/nvidia"
+    mirror: "nvidia"
+  - location: "registry.connect.redhat.com/nvidia"
+    mirror: "nvidia"

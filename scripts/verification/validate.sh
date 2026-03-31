@@ -134,7 +134,6 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
-        "playbooks/06-day2.yaml:model-config:Model configurations"
         "playbooks/validate-schema.yaml:schema-validation:Include schema validation tasks"
     )
 

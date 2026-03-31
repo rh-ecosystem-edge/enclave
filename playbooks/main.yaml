@@ -31,7 +31,6 @@
 #   # Run specific phases
 #   ansible-playbook playbooks/04-post-install.yaml -e workingDir=/home/cloud-user
 #   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user
-#   ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user --tags model-config
 
 - name: Phase 1 - Prepare environment
   ansible.builtin.import_playbook: 01-prepare.yaml

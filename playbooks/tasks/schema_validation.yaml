@@ -28,12 +28,6 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/control_binaries.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
 
-- name: validate defaults/model_operators.yaml schema
-  ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', '../../defaults/model_operators.yaml') | from_yaml | to_json }}"
-    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/operators.yaml') | from_yaml | to_json }}"
-    engine: ansible.utils.jsonschema
-
 - name: validate defaults/operators.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/operators.yaml') | from_yaml | to_json }}"

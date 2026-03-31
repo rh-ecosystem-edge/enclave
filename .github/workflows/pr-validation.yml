@@ -233,7 +233,7 @@ jobs:
             echo "- download-content, download-control-binaries" >> $GITHUB_STEP_SUMMARY
             echo "- mirror-registry" >> $GITHUB_STEP_SUMMARY
             echo "- configure-abi, hardware, wait-deployment" >> $GITHUB_STEP_SUMMARY
-            echo "- operators, post-install-config, model-config" >> $GITHUB_STEP_SUMMARY
+            echo "- operators, post-install-config" >> $GITHUB_STEP_SUMMARY
           else
             echo "### ❌ Ansible tags validation failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY

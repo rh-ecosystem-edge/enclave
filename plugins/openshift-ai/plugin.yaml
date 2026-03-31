@@ -1,0 +1,154 @@
+---
+name: openshift-ai
+type: addon
+order: 100
+mirror: plugin
+
+operators:
+  - name: nfd
+    version: 4.20.0-202602261925
+    channel: stable
+    init_version: 4.20.0-202602261925
+  - name: limitador-operator
+    version: 1.3.0
+    channel: stable
+    init_version: 1.3.0
+  - name: authorino-operator
+    version: 1.3.0
+    channel: stable
+    init_version: 1.3.0
+  - name: dns-operator
+    version: 1.3.0
+    channel: stable
+    init_version: 1.3.0
+  - name: rhcl-operator
+    version: 1.3.0
+    channel: stable
+    init_version: 1.3.0
+  - name: leader-worker-set
+    version: 1.0.0
+    channel: stable-v1.0
+    init_version: 1.0.0
+  - name: rhods-operator
+    version: 3.3.0
+    channel: fast-3.x
+    init_version: 3.3.0
+  - name: servicemeshoperator3
+    version: 3.2.2
+    channel: stable
+    init_version: 3.2.2
+
+installOperators: false
+
+defaults: {}
+
+registries:
+  - location: "registry.redhat.io/rhcl-1"
+    mirror: "rhcl-1"
+  - location: "registry.redhat.io/leader-worker-set"
+    mirror: "leader-worker-set"
+  - location: "registry.redhat.io/rhoai"
+    mirror: "rhoai"
+  - location: "registry.redhat.io/rhods"
+    mirror: "rhods"
+  - location: "registry.redhat.io/rhelai1"
+    mirror: "rhelai1"
+  - location: "registry.redhat.io/rhaiis"
+    mirror: "rhaiis"
+  - location: "registry.redhat.io/openshift-service-mesh"
+    mirror: "openshift-service-mesh"
+
+blockedImages:
+  - registry.redhat.io/quay/quay-builder-qemu-rhcos-rhel8
+  - registry.redhat.io/quay/quay-builder-rhel8
+  - registry.redhat.io/rhaiis/vllm-cuda-rhel9
+  - registry.redhat.io/rhaiis/vllm-rocm-rhel9
+  - registry.redhat.io/rhaiis/vllm-spyre-rhel9
+  - registry.redhat.io/rhaiis/vllm-cpu-rhel9
+  - registry.redhat.io/rhelai1/instructlab-nvidia-rhel9
+  - registry.redhat.io/rhoai/odh-dashboard-rhel8
+  - registry.redhat.io/rhoai/odh-dashboard-rhel9
+  - registry.redhat.io/rhoai/odh-codeflare-operator-rhel9
+  - registry.redhat.io/rhoai/odh-codeflare-operator-rhel8
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-operator-controller-rhel8
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-operator-controller-rhel9
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-argo-argoexec-rhel9
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-argo-workflowcontroller-rhel9
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-argo-argoexec-rhel8
+  - registry.redhat.io/rhoai/odh-data-science-pipelines-argo-workflowcontroller-rhel8
+  - registry.redhat.io/rhoai/odh-kueue-controller-rhel8
+  - registry.redhat.io/rhoai/odh-kueue-controller-rhel9
+  - registry.redhat.io/rhoai/odh-modelmesh-serving-controller-rhel8
+  - registry.redhat.io/rhoai/odh-modelmesh-serving-controller-rhel9
+  - registry.redhat.io/rhoai/odh-kuberay-operator-controller-rhel8
+  - registry.redhat.io/rhoai/odh-kuberay-operator-controller-rhel9
+  - registry.redhat.io/rhoai/odh-training-cuda128-torch28-py312-rhel9
+  - registry.redhat.io/rhoai/odh-training-rocm62-torch24-py311-rhel9
+  - registry.redhat.io/rhoai/odh-training-cuda121-torch24-py311-rhel9
+  - registry.redhat.io/rhoai/odh-training-cuda124-torch25-py311-rhel9
+  - registry.redhat.io/rhoai/odh-training-rocm62-torch25-py311-rhel9
+  - registry.redhat.io/rhoai/odh-training-rocm64-torch28-py312-rhel9
+  - registry.redhat.io/rhoai/odh-training-operator-rhel8
+  - registry.redhat.io/rhoai/odh-training-operator-rhel9
+  - registry.redhat.io/rhoai/odh-trustyai-service-rhel8
+  - registry.redhat.io/rhoai/odh-trustyai-service-rhel9
+  - registry.redhat.io/rhoai/odh-trustyai-service-operator-rhel9
+  - registry.redhat.io/rhoai/odh-trustyai-service-operator-rhel8
+  - registry.redhat.io/rhoai/odh-trustyai-vllm-orchestrator-gateway-rhel9
+  - registry.redhat.io/rhoai/odh-trustyai-ragas-lls-provider-dsp-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-cuda-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-rocm-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-rocm-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-pytorch-cuda-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-pytorch-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-trustyai-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-minimal-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-pytorch-rocm-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-tensorflow-cuda-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-pytorch-rocm-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-tensorflow-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-tensorflow-rocm-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-trustyai-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-tensorflow-rocm-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-codeserver-datascience-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-datascience-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-codeserver-datascience-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-datascience-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-workbench-jupyter-pytorch-llmcompressor-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-feature-server-rhel9
+  - registry.redhat.io/rhoai/odh-guardrails-detector-huggingface-runtime-rhel9
+  - registry.redhat.io/rhoai/odh-llama-stack-core-rhel9
+  - registry.redhat.io/rhoai/odh-llama-stack-k8s-operator-rhel9
+  - registry.redhat.io/rhoai/odh-ta-lmes-job-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-pytorch-rocm-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-pytorch-cuda-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-tensorflow-rocm-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-tensorflow-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-tensorflow-rocm-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-minimal-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-pytorch-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-tensorflow-cuda-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-pytorch-rocm-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py311-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-datascience-cpu-py312-rhel9
+  - registry.redhat.io/rhoai/odh-pipeline-runtime-pytorch-llmcompressor-cuda-py312-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-cache-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-api-server-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-artifact-manager-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-persistenceagent-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-api-server-v2-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-persistenceagent-v2-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-api-server-v2-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-scheduledworkflow-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-persistenceagent-v2-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-scheduledworkflow-v2-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-scheduledworkflow-v2-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-driver-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-runtime-generic-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-launcher-rhel8
+  - registry.redhat.io/rhoai/odh-ml-pipelines-driver-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-launcher-rhel9
+  - registry.redhat.io/rhoai/odh-ml-pipelines-runtime-generic-rhel9

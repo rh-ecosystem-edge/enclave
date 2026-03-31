@@ -89,11 +89,20 @@ properties:
     description: >-
       How images are mirrored. core = included in the main oc-mirror run.
       plugin = plugin runs its own oc-mirror during deploy. none = no mirroring.
+  catalog:
+    type: string
+    description: The Operator catalog name to include in the image set.
+    enum:
+      - redhat
+      - certified
   operators:
     type: array
     description: List of OLM operators to install.
     items:
       $ref: "#/definitions/operator"
+  installOperators:
+    type: boolean
+    decsription: Install operators.
   defaults:
     type: object
     description: Default variables loaded into Ansible scope before plugin tasks run.
@@ -102,6 +111,18 @@ properties:
     description: Registry mirror entries for MCE custom-registries patching.
     items:
       $ref: "#/definitions/registry"
+  additionalImages:
+      type: array
+      description: The additional images configuration of the image set.
+      items:
+        type: string
+        description: The tag or digest of the image to mirror.
+  blockedImages:
+      type: array
+      description: The blocked images configuration of the image set.
+      items:
+        type: string
+        description: The full tag, digest, or pattern of images to block from mirroring.
 required:
   - name
   - type
