@@ -12,6 +12,7 @@ A plugin is a directory under `plugins/` with a single descriptor and optional t
 plugins/lvms/
   plugin.yaml              <- the descriptor (required) -- all data in one file
   tasks/
+    early-validate.yaml    <- custom validation before mirroring, no cluster access (optional)
     deploy.yaml            <- post-operator deployment logic
     quay.yaml              <- Quay storage integration
     pre-validate.yaml      <- pre-deployment checks (optional)
@@ -85,14 +86,15 @@ Here's what runs and in what order:
 1. Load plugin.yaml              <- always
 2. Load defaults                  <- from plugin.yaml defaults section
 3. Validate requirements          <- assert requires.vars and requires.files
-4. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
-5. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
-6. Install operators              <- from plugin.yaml operators list (if installOperators != false)
-7. tasks/deploy.yaml             <- "create my CRs"
-8. tasks/post-validate.yaml      <- "did it work?"
+4. tasks/early-validate.yaml     <- custom validation (no cluster access)
+5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
+6. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
+7. Install operators              <- from plugin.yaml operators list (if installOperators != false)
+8. tasks/deploy.yaml             <- "create my CRs"
+9. tasks/post-validate.yaml      <- "did it work?"
 ```
 
-Step 3 is the load-time validation gate. If any declared requirement is missing, the plugin fails immediately -- before mirroring, operator installation, or deployment.
+Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
 
 Separately, during Quay operator setup:
 
@@ -274,6 +276,42 @@ requires:
 
 Don't add `requires.vars` entries for variables that come from `plugin.defaults` -- those are always defined after defaults loading. Don't validate cluster state here (KUBECONFIG, CRDs) -- that's what `pre-validate` is for.
 
+## Validation-Only Plugins
+
+A plugin doesn't have to deploy anything. If a plugin has no `operators`, no `mirror` config, and no `tasks/deploy.yaml`, all deployment steps are skipped -- only validation runs. This is useful for pre-flight checks, config verification, or environment validation that should gate the pipeline.
+
+A validation-only plugin can hook into any of these checkpoints:
+
+| File | Pipeline phase | Cluster access | Auto-discovered |
+|------|---------------|----------------|-----------------|
+| `early-validate.yaml` | Phase 2 (Mirror) and Phase 5 (Operators) start | No | Yes -- any enabled plugin with `requires` |
+| `pre-install-validate.yaml` | Phase 3 (Deploy), before cluster install | No | Yes |
+| `pre-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
+| `post-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
+
+`pre-validate.yaml` and `post-validate.yaml` run inside `deploy_plugin.yaml`, which is only triggered automatically for `type: foundation` plugins (via `deploy_foundation_plugins.yaml`). Use `type: foundation` with an `order` field for validation-only plugins that need cluster access.
+
+Example -- a plugin that validates network config before mirroring:
+
+```yaml
+# plugins/check-network/plugin.yaml
+name: check-network
+type: foundation
+order: 1
+
+requires:
+  vars:
+    - name: externalGateway
+      description: "Gateway IP for external network"
+```
+
+```yaml
+# plugins/check-network/tasks/early-validate.yaml
+- name: Verify gateway is reachable
+  ansible.builtin.command: ping -c 1 -W 3 {{ externalGateway }}
+  changed_when: false
+```
+
 ## Adding a New Plugin
 
 1. Create `plugins/your-plugin/plugin.yaml` with `name` and `type`
@@ -281,10 +319,11 @@ Don't add `requires.vars` entries for variables that come from `plugin.defaults`
 3. Add `defaults` with your configurable parameters
 4. Add `registries` if disconnected mirroring is needed
 5. Add `requires` to declare variables or files that must exist at load time
-6. Add `tasks/deploy.yaml` with your post-operator setup logic
-7. Add `tasks/quay.yaml` if your plugin provides storage for Quay
-8. Run `make validate-plugins` to verify
-9. Add your plugin name to `enabled_plugins` in `config/global.yaml`
+6. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
+7. Add `tasks/deploy.yaml` with your post-operator setup logic
+8. Add `tasks/quay.yaml` if your plugin provides storage for Quay
+9. Run `make validate-plugins` to verify
+10. Add your plugin name to `enabled_plugins` in `config/global.yaml`
 
 No core files need to be modified.
 

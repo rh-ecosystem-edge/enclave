@@ -60,3 +60,11 @@
     - _vp_plugin.requires is defined
     - _vp_plugin.requires.files is defined
     - item.when | default(true) | bool
+
+# Optional custom validation script. Runs before mirroring and deployment,
+# so no cluster access (KUBECONFIG) is available. Use this for config format
+# checks, external connectivity validation, or other pre-flight logic.
+- name: "Validate {{ _vp_plugin.name }} | Run early-validate"
+  ansible.builtin.include_tasks:
+    file: "{{ _vp_plugin_dir }}/tasks/early-validate.yaml"
+  when: lookup('ansible.builtin.fileglob', _vp_plugin_dir ~ '/tasks/early-validate.yaml') | length > 0
