@@ -1,3 +1,7 @@
+- name: Collect plugin registries for registries.conf
+  ansible.builtin.include_tasks:
+    file: "../../playbooks/tasks/collect_plugin_registries.yaml"
+
 - name: Create Configmap for disconnected
   when: disconnected | default(true)
   kubernetes.core.k8s:
@@ -148,24 +152,6 @@
 
           [[registry]]
             prefix = ""
-            location = "registry.redhat.io/lvms4"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/lvms4"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/odf4"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/odf4"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhceph"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhceph"
-
-          [[registry]]
-            prefix = ""
             location = "registry.redhat.io/cert-manager"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/cert-manager"
@@ -277,6 +263,16 @@
             location = "quay.io/argoproj"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/argoproj"
+
+          {% for reg in (_core_plugin_registries | default([])) %}
+
+          [[registry]]
+            prefix = ""
+            location = "{{ reg.location }}"
+          [[registry.mirror]]
+            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/{{ reg.mirror }}"
+          {% endfor %}
+
   register: r_configmap_disconnected
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
