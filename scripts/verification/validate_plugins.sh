@@ -82,7 +82,8 @@ import yaml, sys
 filepath = sys.argv[1]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'mirror', 'catalog', 'operators', 'defaults',
-                'installOperators', 'registries', 'additionalImages', 'blockedImages']
+                'installOperators', 'registries', 'additionalImages', 'blockedImages',
+                'requires']
 
 try:
     with open(filepath) as f:

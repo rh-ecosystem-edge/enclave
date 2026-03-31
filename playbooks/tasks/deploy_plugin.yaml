@@ -60,6 +60,50 @@
   when: plugin.defaults is defined
   tags: always
 
+- name: Validate plugin requirements (vars)
+  ansible.builtin.assert:
+    that: "{{ item.name }} is defined"
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' requires variable '{{ item.name }}' but it is not defined.
+      {{ item.description | default('') }}
+  loop: "{{ plugin.requires.vars | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - plugin.requires is defined
+    - plugin.requires.vars is defined
+    - item.when | default(true) | bool
+  tags: always
+
+- name: Stat plugin required files
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/{{ item.path }}"
+  loop: "{{ plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: r_required_files
+  when:
+    - plugin.requires is defined
+    - plugin.requires.files is defined
+  tags: always
+
+- name: Validate plugin requirements (files)
+  ansible.builtin.assert:
+    that: r_required_files.results[ansible_loop.index0].stat.exists
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' requires file '{{ item.path }}' but it was not found at
+      {{ plugin_dir }}/{{ item.path }}.
+      {{ item.description | default('') }}
+  loop: "{{ plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+    extended: true
+  when:
+    - plugin.requires is defined
+    - plugin.requires.files is defined
+    - item.when | default(true) | bool
+  tags: always
+
 - name: Run pre-validate
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/pre-validate.yaml"

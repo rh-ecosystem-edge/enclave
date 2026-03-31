@@ -65,6 +65,38 @@ definitions:
       - location
       - mirror
 
+  requirement_var:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Ansible variable name that must be defined.
+      description:
+        type: string
+        description: Human-readable description shown on failure.
+      when:
+        type: string
+        description: Jinja2 condition — skip check if false.
+    required:
+      - name
+
+  requirement_file:
+    type: object
+    additionalProperties: false
+    properties:
+      path:
+        type: string
+        description: File path relative to plugin directory.
+      description:
+        type: string
+        description: Human-readable description shown on failure.
+      when:
+        type: string
+        description: Jinja2 condition — skip check if false.
+    required:
+      - path
+
 additionalProperties: false
 properties:
   name:
@@ -123,6 +155,21 @@ properties:
       items:
         type: string
         description: The full tag, digest, or pattern of images to block from mirroring.
+  requires:
+    type: object
+    description: Declarative requirements validated at plugin load time.
+    additionalProperties: false
+    properties:
+      vars:
+        type: array
+        description: Ansible variables that must be defined.
+        items:
+          $ref: "#/definitions/requirement_var"
+      files:
+        type: array
+        description: Files that must exist within the plugin directory.
+        items:
+          $ref: "#/definitions/requirement_file"
 required:
   - name
   - type

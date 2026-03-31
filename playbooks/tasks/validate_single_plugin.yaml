@@ -1,0 +1,62 @@
+---
+# Validate a single plugin's requirements (vars and files).
+#
+# Called from validate_enabled_plugins.yaml via include_tasks.
+#
+# Required loop variable:
+#   _vp_plugin: parsed plugin descriptor dict (from plugin.yaml)
+
+- name: "Validate {{ _vp_plugin.name }} | Set plugin directory"
+  ansible.builtin.set_fact:
+    _vp_plugin_dir: "{{ playbook_dir }}/../plugins/{{ _vp_plugin.name }}"
+
+# Load defaults so that variables provided by the plugin itself are in scope
+# before we check requires.vars.
+- name: "Validate {{ _vp_plugin.name }} | Load plugin defaults"  # noqa: var-naming[no-jinja]
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ _vp_plugin.defaults | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when: _vp_plugin.defaults is defined
+
+- name: "Validate {{ _vp_plugin.name }} | Validate required variables"
+  ansible.builtin.assert:
+    that: "{{ item.name }} is defined"
+    fail_msg: >-
+      Plugin '{{ _vp_plugin.name }}' requires variable '{{ item.name }}' but it is not defined.
+      {{ item.description | default('') }}
+  loop: "{{ _vp_plugin.requires.vars | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - _vp_plugin.requires is defined
+    - _vp_plugin.requires.vars is defined
+    - item.when | default(true) | bool
+
+- name: "Validate {{ _vp_plugin.name }} | Stat required files"
+  ansible.builtin.stat:
+    path: "{{ _vp_plugin_dir }}/{{ item.path }}"
+  loop: "{{ _vp_plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: _vp_required_files
+  when:
+    - _vp_plugin.requires is defined
+    - _vp_plugin.requires.files is defined
+
+- name: "Validate {{ _vp_plugin.name }} | Validate required files exist"
+  ansible.builtin.assert:
+    that: _vp_required_files.results[ansible_loop.index0].stat.exists
+    fail_msg: >-
+      Plugin '{{ _vp_plugin.name }}' requires file '{{ item.path }}' but it was not found at
+      {{ _vp_plugin_dir }}/{{ item.path }}.
+      {{ item.description | default('') }}
+  loop: "{{ _vp_plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+    extended: true
+  when:
+    - _vp_plugin.requires is defined
+    - _vp_plugin.requires.files is defined
+    - item.when | default(true) | bool
