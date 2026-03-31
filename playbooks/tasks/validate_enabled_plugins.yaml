@@ -1,0 +1,46 @@
+---
+# Early validation of all enabled plugins' requirements.
+#
+# Iterates over every enabled plugin that declares a `requires` block,
+# loads its defaults, and asserts that all required vars/files are present.
+# This runs BEFORE any mirroring or operator work, so failures surface
+# immediately instead of after 30+ minutes of oc-mirror.
+#
+# Include this task file at the start of any phase that consumes plugin data.
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: _vp_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  loop: "{{ _vp_find.files | map(attribute='path') | list }}"
+  register: _vp_slurp
+
+- name: Filter to enabled plugins with requirements
+  ansible.builtin.set_fact:
+    _vp_plugins_to_validate: >-
+      {{ _vp_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | selectattr('requires', 'defined')
+         | list }}
+
+- name: Display plugins to validate
+  ansible.builtin.debug:
+    msg: "Validating requirements for plugins: {{ _vp_plugins_to_validate | map(attribute='name') | list }}"
+
+- name: Validate plugin requirements
+  ansible.builtin.include_tasks: tasks/validate_single_plugin.yaml
+  loop: "{{ _vp_plugins_to_validate }}"
+  loop_control:
+    loop_var: _vp_plugin
+    label: "{{ _vp_plugin.name }}"
+  when: _vp_plugins_to_validate | length > 0

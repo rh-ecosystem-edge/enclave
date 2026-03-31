@@ -30,6 +30,17 @@
         msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
 
+    - name: Validate enabled plugin requirements
+      ansible.builtin.include_tasks:
+        file: tasks/validate_enabled_plugins.yaml
+        apply:
+          tags:
+            - foundation-plugins
+            - operators
+      tags:
+        - foundation-plugins
+        - operators
+
     - name: Disable default operator catalog sources
       when: disconnected | default(true) | bool
       ansible.builtin.command: |

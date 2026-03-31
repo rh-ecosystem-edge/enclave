@@ -47,6 +47,17 @@
         success_msg: "Running in disconnected mode - proceeding with mirroring"
       tags: mirror-registry
 
+    - name: Validate enabled plugin requirements
+      ansible.builtin.include_tasks:
+        file: tasks/validate_enabled_plugins.yaml
+        apply:
+          tags:
+            - mirror-registry
+            - mirror-plugins
+      tags:
+        - mirror-registry
+        - mirror-plugins
+
     - name: Collect plugin operators for imageset
       ansible.builtin.include_tasks:
         file: tasks/collect_core_plugin_operators.yaml

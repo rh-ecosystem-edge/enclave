@@ -28,6 +28,17 @@ operators:
       - odr-cluster-operator
       - odr-hub-operator
 
+requires:
+  vars:
+    - name: odfExternalConfig
+      when: "{{ storage_plugin == 'odf' }}"
+      description: "External Ceph cluster connection details from ceph-external-cluster-details-exporter.py"
+  files:
+    - path: "tasks/deploy.yaml"
+      description: "ODF deployment tasks"
+    - path: "tasks/quay.yaml"
+      description: "ODF Quay storage configuration"
+
 defaults:
   odfDefaults:
     defaultStorageClass: true

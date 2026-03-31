@@ -12,6 +12,13 @@ operators:
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
 
+requires:
+  files:
+    - path: "tasks/deploy.yaml"
+      description: "LVMS deployment tasks"
+    - path: "tasks/quay.yaml"
+      description: "LVMS Quay storage configuration"
+
 defaults:
   lvmsConfigDefaults:
     deviceSelector:
