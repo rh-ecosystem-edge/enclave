@@ -68,6 +68,7 @@ jobs:
       - name: Build tarball
         run: |
           tar --exclude='.git' --exclude='.gitignore' --exclude='.github' --exclude='scripts' \
+            --exclude='Makefile.ci' \
             -czvf /tmp/enclave.tar.gz .
           mv /tmp/enclave.tar.gz .
           ls -lh enclave.tar.gz
@@ -126,6 +127,7 @@ jobs:
           EXCLUDED_PATHS=(
             ".git/"
             ".github/"
+            "Makefile.ci"
           )
 
           for path in "${EXCLUDED_PATHS[@]}"; do
