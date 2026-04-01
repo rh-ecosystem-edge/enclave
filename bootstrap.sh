@@ -175,6 +175,12 @@ echo -p "Catalog source ACM policy .." -n1 -s
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
 
+echo -p "Model config.. " -n1 -s
+    ansible-playbook playbooks/deploy-plugin.yaml -e@$global_vars -e plugin_name=openshift-ai 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/deploy-plugin.yaml -e@$global_vars -e plugin_name=nvidia-gpu 2>&1 | tee -a ${log}
+echo -e "\e[38;5;10m Done...\033[0m"; date
+
+
 # Showing login information
 printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
   | cut -d= -f4- \
