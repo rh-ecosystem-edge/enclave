@@ -5,7 +5,7 @@ metadata:
     policy.open-cluster-management.io/categories: CM Configuration Management
     policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
     policy.open-cluster-management.io/standards: NIST SP 800-53
-  name: openshift-ai-configuration
+  name: model-prerequisites
   namespace: openshift-acm-policies
 spec:
   disabled: false
@@ -15,7 +15,7 @@ spec:
       apiVersion: policy.open-cluster-management.io/v1
       kind: ConfigurationPolicy
       metadata:
-        name: openshift-ai-configuration
+        name: model-prerequisites
       spec:
         evaluationInterval:
           compliant: 2h
@@ -303,33 +303,3 @@ spec:
               source: {{ mirror_rh_operator_catalog }}
               sourceNamespace: openshift-marketplace
               installPlanApproval: Automatic
-        # Create DataScienceCluster with KServe Only
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: datasciencecluster.opendatahub.io/v1
-            kind: DataScienceCluster
-            metadata:
-              name: default-dsc
-            spec:
-              components:
-                codeflare:
-                  managementState: Removed
-                dashboard:
-                  managementState: Removed
-                datasciencepipelines:
-                  managementState: Removed
-                kserve:
-                  managementState: Managed
-                kueue:
-                  managementState: Removed
-                modelmeshserving:
-                  managementState: Removed
-                ray:
-                  managementState: Removed
-                trainingoperator:
-                  managementState: Removed
-                trustyai:
-                  managementState: Removed
-                workbenches:
-                  managementState: Removed

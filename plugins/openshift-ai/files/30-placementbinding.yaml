@@ -10,4 +10,10 @@ placementRef:
 subjects:
 - apiGroup: policy.open-cluster-management.io
   kind: Policy
-  name: openshift-ai-configuration
+  name: model-prerequisites
+- apiGroup: policy.open-cluster-management.io
+  kind: Policy
+  name: model-operators-crd-ready
+- apiGroup: policy.open-cluster-management.io
+  kind: Policy
+  name: model-configuration
