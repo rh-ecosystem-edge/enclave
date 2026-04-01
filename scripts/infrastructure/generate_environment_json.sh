@@ -219,8 +219,8 @@ cat >> "$OUTPUT_FILE" <<EOF
       "role": "landing_zone",
       "state": "${LZ_STATE}",
       "specs": {
-        "memory_mb": 8192,
-        "vcpus": 4,
+        "memory_mb": 16384,
+        "vcpus": 16,
         "disk_gb": 60
       },
       "networks": {

@@ -25,3 +25,7 @@
     - k8s.yaml
   loop_control:
     loop_var: config_file
+
+- name: Ensure storage plugin is in enabled_plugins
+  ansible.builtin.set_fact:
+    enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"

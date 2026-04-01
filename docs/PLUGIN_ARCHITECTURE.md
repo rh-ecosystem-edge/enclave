@@ -225,10 +225,20 @@ Foundation plugins deploy before core operators (Quay, GitOps). This ordering en
 Plugins can be deployed independently:
 
 ```bash
-make deploy-plugin PLUGIN=lvms
+make deploy-plugin PLUGIN=openshift-ai
 # or directly:
-ansible-playbook playbooks/deploy-plugin.yaml -e plugin_name=lvms -e workingDir=/home/cloud-user
+./scripts/deployment/deploy_plugin.sh openshift-ai
+# or with Ansible:
+ansible-playbook playbooks/deploy-plugin.yaml -e plugin_name=openshift-ai -e workingDir=/home/cloud-user
 ```
+
+The `deploy_plugin.sh` script accepts the same environment variables as `deploy_phase.sh`:
+- `STORAGE_PLUGIN` -- overrides the storage plugin (e.g., `odf`)
+- `ENABLED_PLUGINS` -- comma-separated list of enabled plugins (e.g., `lvms,openshift-ai`)
+
+### Automatic `storage_plugin` Inclusion
+
+The `storage_plugin` value (set in `config/global.yaml`) is automatically unioned into `enabled_plugins` during variable loading. This ensures that even if a user overrides `enabled_plugins` without listing the storage plugin, it will still be mirrored and deployed. If the storage plugin is already in the list, no duplication occurs.
 
 ## Validation
 

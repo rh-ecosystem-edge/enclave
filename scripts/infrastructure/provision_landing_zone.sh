@@ -292,8 +292,8 @@ info "✓ Disk prepared in pool"
 info "Creating Landing Zone VM with virt-install..."
 sudo virt-install \
     --name "$LZ_VM_NAME" \
-    --memory 8192 \
-    --vcpus 4 \
+    --memory 16384 \
+    --vcpus 16 \
     --disk vol=${POOL_NAME}/${LZ_VM_NAME}.qcow2,bus=virtio \
     --disk "${LZ_WORKING_DIR}/cloud-init.iso,device=cdrom,bus=sata" \
     --network network=${BMC_NETWORK_NAME} \
