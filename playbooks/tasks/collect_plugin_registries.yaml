@@ -29,7 +29,7 @@
          | list }}
     _core: >-
       {{ (_enabled | rejectattr('mirror', 'defined') | list)
-         + (_enabled | selectattr('mirror', 'equalto', 'core') | list) }}
+         + (_enabled | selectattr('mirror', 'defined') | selectattr('mirror', 'equalto', 'core') | list) }}
   ansible.builtin.set_fact:
     _core_plugin_registries: >-
       {{ _core
