@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi9/ubi
+FROM registry.access.redhat.com/ubi10/ubi@sha256:1b616c4a90d6444b394d5c8f4bd9e15a394d95dd628925d0ec80c257fdc5099c
 
 # Configure DNS
 RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
@@ -6,11 +6,10 @@ RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
 
 # Install EPEL for additional packages like shellcheck
 RUN dnf install -y \
-    https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm && \
+    https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm && \
     dnf clean all
 
 # Install system dependencies
-# UBI9 comes with curl-minimal, replace it with full curl
 RUN dnf install -y --allowerasing \
     ca-certificates \
     curl \
@@ -32,14 +31,17 @@ RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-
 RUN pip3 install --no-cache-dir \
     yamllint \
     ansible-core \
-    ansible-lint \
-    jsonschema
+    ansible-lint
+
+# Install Python dependencies (kubernetes client, etc.)
+COPY ansible_pip_requirements.txt /tmp/ansible_pip_requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/ansible_pip_requirements.txt && \
+    rm /tmp/ansible_pip_requirements.txt
 
 # Pre-install Ansible Galaxy collections
-# Copy requirements.yml from repository root
-COPY requirements.yml /tmp/requirements.yml
-RUN ansible-galaxy collection install -r /tmp/requirements.yml && \
-    rm /tmp/requirements.yml
+COPY ansible_collections.txt /tmp/ansible_collections.txt
+RUN ansible-galaxy collection install -r /tmp/ansible_collections.txt && \
+    rm /tmp/ansible_collections.txt
 
 # Symlink collections to /usr/local for system-wide access
 RUN mkdir -p /usr/local/share/ansible/collections && \
@@ -50,9 +52,5 @@ ENV ANSIBLE_COLLECTIONS_PATH=/usr/local/share/ansible/collections:/root/.ansible
 
 # Set working directory
 WORKDIR /workspace
-
-# Configure DNS (in case it's needed at runtime)
-RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
-    echo "nameserver 8.8.4.4" >> /etc/resolv.conf
 
 CMD ["/bin/bash"]
