@@ -1,7 +1,7 @@
 name: E2E Deployment
 
 # This workflow performs end-to-end deployment testing from scratch:
-# make clean && make environment && make provision-landing-zone && make install-enclave && make deploy-cluster
+# make -f Makefile.ci clean && make -f Makefile.ci environment && make -f Makefile.ci provision-landing-zone && make -f Makefile.ci install-enclave && make -f Makefile.ci deploy-cluster
 #
 # Trigger methods:
 # 1. Automatic: Runs on every pull request (opened, updated, reopened)
@@ -83,6 +83,7 @@ jobs:
               - 'playbooks/**'
               - 'scripts/**'
               - 'Makefile'
+              - 'Makefile.ci'
               - 'config/**'
               - 'defaults/**'
               - 'schemas/**'
@@ -151,7 +152,7 @@ jobs:
 
       - name: Setup cluster-specific working directory
         run: |
-          make setup-working-dir
+          make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
       - name: Pre-flight checks
@@ -177,7 +178,7 @@ jobs:
           echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
-          make environment
+          make -f Makefile.ci environment
           echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
@@ -185,7 +186,7 @@ jobs:
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-          make provision-landing-zone
+          make -f Makefile.ci provision-landing-zone
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
@@ -193,7 +194,7 @@ jobs:
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
-          make install-enclave
+          make -f Makefile.ci install-enclave
           echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 1 - Prepare binaries and content
@@ -203,7 +204,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-prepare
+          make -f Makefile.ci deploy-cluster-prepare
 
           echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -215,7 +216,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Setting up local mirror registry (disconnected mode)..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-mirror
+          make -f Makefile.ci deploy-cluster-mirror
 
           echo "✅ Phase 2 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -226,7 +227,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Deploying OpenShift cluster (mode: $ENCLAVE_DEPLOYMENT_MODE)..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-install
+          make -f Makefile.ci deploy-cluster-install
 
           echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
 
@@ -237,7 +238,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Configuring cluster (secrets, certificates, API health)..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-post-install
+          make -f Makefile.ci deploy-cluster-post-install
 
           echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -248,7 +249,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing and configuring operators..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-operators
+          make -f Makefile.ci deploy-cluster-operators
 
           echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -259,7 +260,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Configuring advanced features and policies..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-day2
+          make -f Makefile.ci deploy-cluster-day2
 
           echo "✅ Phase 6 complete" >> $GITHUB_STEP_SUMMARY
 
@@ -270,13 +271,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Configuring hardware discovery infrastructure..." >> $GITHUB_STEP_SUMMARY
 
-          make deploy-cluster-discovery
+          make -f Makefile.ci deploy-cluster-discovery
 
           echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify cluster deployment
         id: verify_cluster
-        run: make verify-cluster
+        run: make -f Makefile.ci verify-cluster
 
       - name: Collect artifacts
         if: always()
@@ -343,7 +344,7 @@ jobs:
 
           # Run cleanup and capture output
           set +e
-          make clean 2>&1 | tee cleanup-logs/cleanup.log
+          make -f Makefile.ci clean 2>&1 | tee cleanup-logs/cleanup.log
           CLEANUP_EXIT_CODE=$?
           set -e
 

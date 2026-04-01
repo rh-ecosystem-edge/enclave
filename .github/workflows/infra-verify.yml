@@ -102,7 +102,7 @@ jobs:
 
           # Run command and capture all output
           set +e
-          make environment 2>&1 | tee -a step-logs/02-setup-infrastructure.log
+          make -f Makefile.ci environment 2>&1 | tee -a step-logs/02-setup-infrastructure.log
           EXIT_CODE=${PIPESTATUS[0]}
           set -e
 
@@ -127,7 +127,7 @@ jobs:
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-          make provision-landing-zone
+          make -f Makefile.ci provision-landing-zone
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab (Connected Mode)
@@ -137,13 +137,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Running in connected mode for faster testing..." >> $GITHUB_STEP_SUMMARY
 
-          ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave 2>&1 | tee step-logs/03-install-enclave.log
+          ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave 2>&1 | tee step-logs/03-install-enclave.log
 
       - name: Collect step logs
         if: always()
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
-        run: make collect-step-logs
+        run: make -f Makefile.ci collect-step-logs
 
       - name: Collect artifacts
         if: always()
@@ -170,7 +170,7 @@ jobs:
 
           # Run cleanup and capture exit code
           set +e
-          make clean 2>&1 | tee step-logs/03-cleanup.log
+          make -f Makefile.ci clean 2>&1 | tee step-logs/03-cleanup.log
           CLEANUP_EXIT_CODE=$?
           set -e
 

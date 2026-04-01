@@ -38,7 +38,7 @@ jobs:
           echo "## Shell Script Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-shell 2>&1 | tee shellcheck.log; then
+          if make -f Makefile.ci validate-shell 2>&1 | tee shellcheck.log; then
             echo "### ✅ Shell script validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -85,7 +85,7 @@ jobs:
           echo "## YAML Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-yaml 2>&1 | tee yamllint.log; then
+          if make -f Makefile.ci validate-yaml 2>&1 | tee yamllint.log; then
             echo "### ✅ YAML validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -132,7 +132,7 @@ jobs:
           echo "## JSON Schema Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-json-schema 2>&1 | tee json-schema.log; then
+          if make -f Makefile.ci validate-json-schema 2>&1 | tee json-schema.log; then
             echo "### ✅ JSON schema validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -179,7 +179,7 @@ jobs:
           echo "## Ansible Playbook Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-ansible 2>&1 | tee ansible-lint.log; then
+          if make -f Makefile.ci validate-ansible 2>&1 | tee ansible-lint.log; then
             echo "### ✅ Ansible playbook validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -226,7 +226,7 @@ jobs:
           echo "## Ansible Tags Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-tags 2>&1 | tee tags.log; then
+          if make -f Makefile.ci validate-tags 2>&1 | tee tags.log; then
             echo "### ✅ Ansible tags validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "All critical playbook tags work correctly:" >> $GITHUB_STEP_SUMMARY
@@ -275,7 +275,7 @@ jobs:
           echo "## Makefile Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-makefile 2>&1 | tee makefile.log; then
+          if make -f Makefile.ci validate-makefile 2>&1 | tee makefile.log; then
             echo "### ✅ Makefile validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -322,7 +322,7 @@ jobs:
           echo "## Plugin Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if make validate-plugins 2>&1 | tee plugins.log; then
+          if make -f Makefile.ci validate-plugins 2>&1 | tee plugins.log; then
             echo "### ✅ Plugin validation passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

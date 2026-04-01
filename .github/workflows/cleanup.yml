@@ -68,7 +68,7 @@ jobs:
           # Clean up Enclave test infrastructure using make clean
           if [ -d "$DEV_SCRIPTS_PATH" ]; then
             echo "Running: make clean" >> $GITHUB_STEP_SUMMARY
-            make clean || true
+            make -f Makefile.ci clean || true
             echo "✅ Standard cleanup complete" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ DEV_SCRIPTS_PATH not found: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
