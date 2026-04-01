@@ -182,13 +182,25 @@ validate_tags() {
 validate_makefile() {
     print_header "Validating Makefile syntax"
 
+    local failed=0
+
     if make -n help >/dev/null 2>&1; then
         print_success "Makefile syntax is valid"
-        return 0
     else
         print_error "Makefile syntax validation failed"
-        return 1
+        failed=1
     fi
+
+    if [ -f Makefile.ci ]; then
+        if make -f Makefile.ci -n help >/dev/null 2>&1; then
+            print_success "Makefile.ci syntax is valid"
+        else
+            print_error "Makefile.ci syntax validation failed"
+            failed=1
+        fi
+    fi
+
+    return $failed
 }
 
 validate_plugins() {

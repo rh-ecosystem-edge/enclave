@@ -3,9 +3,7 @@
 # Overrides deploy targets to use SSH-based scripts for remote Landing Zone execution
 # Adds CI-only infrastructure, validation, and image build targets
 
-include Makefile
-
-# CI Configuration (override LZ defaults)
+# CI Configuration (set before include so these defaults take precedence)
 DEV_SCRIPTS_PATH ?=
 WORKING_DIR ?= /opt/dev-scripts
 
@@ -18,6 +16,8 @@ CONFIG_NAME := config_$(ENCLAVE_CLUSTER_NAME).sh
 CI_IMAGE_NAME ?= quay.io/eerez/enclave-lab-ci
 CI_IMAGE_TAG ?= latest
 CI_IMAGE_FULL := $(CI_IMAGE_NAME):$(CI_IMAGE_TAG)
+
+include Makefile
 
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
         validate-tags validate-makefile validate-plugins \
@@ -238,11 +238,11 @@ build-ci-image:
 
 push-ci-image:
 	@echo "Pushing CI image: $(CI_IMAGE_FULL)"
-	@if [ -z "$(QUAY_USER)" ] || [ -z "$(QUAY_TOKEN)" ]; then \
+	@if [ -z "$$QUAY_USER" ] || [ -z "$$QUAY_TOKEN" ]; then \
 		echo "Error: QUAY_USER and QUAY_TOKEN environment variables must be set"; \
 		exit 1; \
 	fi
-	@echo "$(QUAY_TOKEN)" | podman login quay.io -u "$(QUAY_USER)" --password-stdin
+	@echo "$$QUAY_TOKEN" | podman login quay.io -u "$$QUAY_USER" --password-stdin
 	podman push $(CI_IMAGE_FULL)
 	@echo "CI image pushed successfully: $(CI_IMAGE_FULL)"
 
@@ -288,6 +288,10 @@ environment:
 	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
+	@if [ -z "$(DEV_SCRIPTS_PATH)" ]; then \
+		echo "Error: DEV_SCRIPTS_PATH is not set. Set it to the path of your dev-scripts installation."; \
+		exit 1; \
+	fi
 	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only && $(CURDIR)/scripts/infrastructure/configure_gpu_passthrough.sh"
 	@echo ""
 	@echo "Step 4: Verifying networks were created..."

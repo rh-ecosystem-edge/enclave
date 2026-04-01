@@ -123,7 +123,7 @@ deploy-plugin:
 		echo "Error: PLUGIN variable must be set. Usage: make deploy-plugin PLUGIN=<name>"; \
 		exit 1; \
 	fi
-	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e plugin_name=$(PLUGIN)
+	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e 'plugin_name=$(PLUGIN)'
 
 # Convenience targets
 bootstrap:

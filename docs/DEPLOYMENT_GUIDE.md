@@ -616,7 +616,33 @@ This ensures that the deployment continues running even if your SSH connection d
 
 ### Running Individual Phases
 
-You can run individual deployment phases using the modular playbooks:
+You can run individual deployment phases using `make`:
+
+```bash
+make deploy-cluster-prepare       # Phase 1: Download binaries and content
+make deploy-cluster-mirror        # Phase 2: Mirror registry (disconnected only)
+make deploy-cluster-pre-install-validate  # Validate servers are ready before install
+make deploy-cluster-install       # Phase 3: Deploy OpenShift cluster
+make deploy-cluster-post-install  # Phase 4: Post-install configuration
+make deploy-cluster-operators     # Phase 5: Install operators
+make deploy-cluster-day2          # Phase 6: Day-2 operations
+make deploy-cluster-discovery     # Phase 7: Hardware discovery
+
+# Deploy a single plugin
+make deploy-plugin PLUGIN=openshift-ai
+
+# Full deployment
+make deploy-cluster
+```
+
+Configuration can be customized via environment variables:
+
+```bash
+WORKING_DIR=/home/cloud-user make deploy-cluster
+DISCONNECTED=false make deploy-cluster    # Connected mode
+```
+
+Or use the raw `ansible-playbook` commands directly:
 
 ```bash
 # Phase 1: Download binaries and content (oc, RHCOS images, etc.)
