@@ -20,7 +20,7 @@
 #   make verify                           - Verify infrastructure is working
 #   make clean                            - Clean up infrastructure
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
+.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
 
 # Configuration
 DEV_SCRIPTS_PATH ?=
@@ -86,6 +86,9 @@ help:
 	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
+	@echo ""
+	@echo "Plugin deployment:"
+	@echo "  make deploy-plugin PLUGIN=<name>    - Deploy a single plugin (e.g., openshift-ai)"
 	@echo ""
 	@echo "Required configuration for CI targets:"
 	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
@@ -339,6 +342,14 @@ deploy-cluster-discovery:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
+
+# Deploy a single plugin
+deploy-plugin:
+	@echo "=========================================="
+	@echo "Deploying plugin: $(PLUGIN)"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
 
 # Verify infrastructure
 verify:
