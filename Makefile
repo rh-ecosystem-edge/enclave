@@ -1,413 +1,133 @@
 # Enclave Lab - Makefile
-#
-# Validation targets:
-#   make validate              - Run all validation checks
-#   make validate-shell        - Validate shell scripts with shellcheck
-#   make validate-yaml         - Validate YAML files with yamllint
-#   make validate-json-schema  - Validate JSON schema
-#   make validate-ansible      - Validate Ansible playbooks with ansible-lint
-#   make validate-tags         - Validate Ansible playbook tags
-#   make validate-makefile     - Validate Makefile syntax
-#   make validate-plugins      - Validate plugin directory structure
-#
-# CI Infrastructure targets:
-#   make environment                      - Create test infrastructure (VMs, networks, BMC)
-#   make provision-landing-zone           - Provision Landing Zone VM with CentOS Stream 10
-#   make verify-landing-zone              - Verify Landing Zone VM is properly configured
-#   make install-enclave                  - Install Enclave Lab on Landing Zone VM
-#   make verify-enclave-installation      - Verify Enclave Lab installation
-#   make deploy-cluster                   - Deploy OpenShift cluster using Enclave Lab
-#   make verify                           - Verify infrastructure is working
-#   make clean                            - Clean up infrastructure
+# Runs directly on the Landing Zone (no scripts/ dependency)
 
-.PHONY: help validate validate-shell validate-yaml validate-json-schema validate-ansible validate-tags validate-makefile validate-plugins build-ci-image push-ci-image test-ci-image build-push-ci-image environment provision-landing-zone verify-landing-zone install-enclave verify-enclave-installation deploy-cluster deploy-cluster-prepare deploy-cluster-mirror deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators deploy-cluster-day2 deploy-cluster-discovery deploy-plugin verify clean verify-cluster verify-cleanup generate-cluster-name setup-working-dir collect-step-logs preflight-checks collect-artifacts-basic collect-artifacts-deployment collect-artifacts-full ci-flow-connected ci-flow-disconnected
+.PHONY: help setup setup-env setup-ansible validate-config validate-schema \
+        deploy-cluster deploy-cluster-prepare deploy-cluster-mirror \
+        deploy-cluster-pre-install-validate \
+        deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators \
+        deploy-cluster-day2 deploy-cluster-discovery deploy-cluster-connected \
+        deploy-plugin bootstrap sync
 
 # Configuration
-DEV_SCRIPTS_PATH ?=
-WORKING_DIR ?= /opt/dev-scripts
+WORKING_DIR ?= $(HOME)
+DISCONNECTED ?= true
+PLUGIN ?=
+GLOBAL_VARS ?= config/global.yaml
+CERTS_VARS ?= config/certificates.yaml
+CLOUD_INFRA_VARS ?= config/cloud_infra.yaml
 
-# Cluster name for parallel execution isolation (can be overridden)
-ENCLAVE_CLUSTER_NAME ?= enclave-test
-ENVIRONMENT_JSON := $(WORKING_DIR)/environment-$(ENCLAVE_CLUSTER_NAME).json
-CONFIG_NAME := config_$(ENCLAVE_CLUSTER_NAME).sh
+# Ansible
+AP = ansible-playbook
+AP_FLAGS = -e workingDir=$(WORKING_DIR) -e disconnected=$(DISCONNECTED)
 
 # Default target
 help:
-	@echo "Enclave Lab - Makefile"
+	@echo "Enclave Lab - Landing Zone Makefile"
+	@echo ""
+	@echo "Setup targets:"
+	@echo "  make setup                            - Run full setup (setup-env + setup-ansible)"
+	@echo "  make setup-env                        - Install system packages and dependencies"
+	@echo "  make setup-ansible                    - Install Ansible collections and roles"
 	@echo ""
 	@echo "Validation targets:"
-	@echo "  make validate              - Run all validation checks"
-	@echo "  make validate-shell        - Validate shell scripts with shellcheck"
-	@echo "  make validate-yaml         - Validate YAML files with yamllint"
-	@echo "  make validate-json-schema  - Validate JSON schema"
-	@echo "  make validate-ansible      - Validate Ansible playbooks with ansible-lint"
-	@echo "  make validate-tags         - Validate Ansible playbook tags"
-	@echo "  make validate-makefile     - Validate Makefile syntax"
-	@echo "  make validate-plugins      - Validate plugin directory structure"
+	@echo "  make validate-config                  - Validate configuration files"
+	@echo "  make validate-schema                  - Validate configuration against JSON schemas"
 	@echo ""
-	@echo "CI Image targets:"
-	@echo "  make build-ci-image        - Build CI container image locally"
-	@echo "  make push-ci-image         - Push CI image to Quay.io"
-	@echo "  make test-ci-image         - Test CI image locally"
-	@echo "  make build-push-ci-image   - Build and push CI image"
-	@echo ""
-	@echo "CI Infrastructure targets:"
-	@echo "  make environment                      - Create test infrastructure (VMs, networks, BMC emulation)"
-	@echo "  make provision-landing-zone           - Provision Landing Zone VM with CentOS Stream 10"
-	@echo "  make verify-landing-zone              - Verify Landing Zone VM is properly configured"
-	@echo "  make install-enclave                  - Install Enclave Lab on Landing Zone VM"
-	@echo "  make verify-enclave-installation      - Verify Enclave Lab installation"
+	@echo "Deployment targets:"
 	@echo "  make deploy-cluster                   - Deploy OpenShift cluster (all phases)"
-	@echo "  make verify                           - Verify infrastructure setup"
-	@echo "  make clean                            - Clean up infrastructure"
-	@echo ""
-	@echo "CI Verification targets:"
-	@echo "  make verify-cluster                   - Verify OpenShift cluster deployment"
-	@echo "  make verify-cleanup                   - Verify infrastructure cleanup"
-	@echo ""
-	@echo "CI Helper targets:"
-	@echo "  make generate-cluster-name            - Generate unique cluster name (auto-called by setup-working-dir)"
-	@echo "  make setup-working-dir                - Setup cluster-specific working directory"
-	@echo "  make collect-step-logs                - Collect logs from dev-scripts and cluster"
-	@echo "  make preflight-checks                 - Run pre-flight environment checks"
-	@echo "  make collect-artifacts-basic          - Collect basic artifacts"
-	@echo "  make collect-artifacts-deployment     - Collect deployment artifacts"
-	@echo "  make collect-artifacts-full           - Collect all artifacts"
-	@echo ""
-	@echo "Local CI Testing targets:"
-	@echo "  make ci-flow-connected                - Run full CI flow locally (connected mode)"
-	@echo "  make ci-flow-disconnected             - Run full CI flow locally (disconnected mode)"
-	@echo ""
-	@echo "Deploy individual phases (for granular control):"
 	@echo "  make deploy-cluster-prepare           - Phase 1: Download binaries and content"
 	@echo "  make deploy-cluster-mirror            - Phase 2: Mirror registry setup (disconnected)"
+	@echo "  make deploy-cluster-pre-install-validate - Validate servers are ready before install"
 	@echo "  make deploy-cluster-install           - Phase 3: Deploy OpenShift cluster"
 	@echo "  make deploy-cluster-post-install      - Phase 4: Cluster configuration"
 	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
 	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
+	@echo "  make deploy-cluster-connected         - Deploy in connected mode (DISCONNECTED=false)"
 	@echo ""
 	@echo "Plugin deployment:"
-	@echo "  make deploy-plugin PLUGIN=<name>    - Deploy a single plugin (e.g., openshift-ai)"
+	@echo "  make deploy-plugin PLUGIN=<name>      - Deploy a single plugin (e.g., openshift-ai)"
 	@echo ""
-	@echo "Required configuration for CI targets:"
-	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
+	@echo "Convenience targets:"
+	@echo "  make bootstrap                        - Bootstrap the Landing Zone"
+	@echo "  make sync                             - Sync configuration to the Landing Zone"
 	@echo ""
-	@echo "Optional configuration:"
-	@echo "  WORKING_DIR       - Working directory (default: /opt/dev-scripts)"
+	@echo "Configuration variables:"
+	@echo "  WORKING_DIR      - Working directory (default: $$HOME)"
+	@echo "  DISCONNECTED     - Disconnected mode (default: true)"
+	@echo "  PLUGIN           - Plugin name for deploy-plugin target"
+	@echo "  GLOBAL_VARS      - Path to global vars file (default: config/global.yaml)"
+	@echo "  CERTS_VARS       - Path to certificates vars file (default: config/certificates.yaml)"
+	@echo "  CLOUD_INFRA_VARS - Path to cloud infra vars file (default: config/cloud_infra.yaml)"
 	@echo ""
 	@echo "Current values:"
-	@echo "  DEV_SCRIPTS_PATH=$(DEV_SCRIPTS_PATH)"
 	@echo "  WORKING_DIR=$(WORKING_DIR)"
-	@echo "  BASE_WORKING_DIR=$(BASE_WORKING_DIR)"
-	@if [ -n "$(ENCLAVE_CLUSTER_NAME)" ]; then \
-		echo "  ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME)"; \
-	else \
-		echo "  ENCLAVE_CLUSTER_NAME=(will be auto-generated)"; \
-	fi
+	@echo "  DISCONNECTED=$(DISCONNECTED)"
 	@echo ""
-	@echo "Example workflow (full deployment):"
-	@echo "  make validate                # Validate code quality"
-	@echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
-	@echo "  export BASE_WORKING_DIR=/opt/clusters"
-	@echo "  export CI_TOKEN=your-token"
-	@echo ""
-	@echo "  make environment                # Step 1: Create infrastructure (auto-generates cluster name)"
-	@echo "  make provision-landing-zone     # Step 2: Install OS on Landing Zone"
-	@echo "  make install-enclave            # Step 3: Install Enclave Lab"
-	@echo "  make deploy-cluster             # Step 4: Deploy OpenShift (all phases)"
-	@echo ""
-	@echo "  Or run the complete flow in one command:"
-	@echo "  make ci-flow-connected          # Runs all steps above automatically"
-	@echo ""
-	@echo "Example workflow (granular deployment):"
-	@echo "  # After install-enclave, deploy individual phases:"
-	@echo "  make deploy-cluster-prepare         # Phase 1: Prepare"
-	@echo "  make deploy-cluster-mirror          # Phase 2: Mirror (if disconnected)"
-	@echo "  make deploy-cluster-install         # Phase 3: Install cluster"
-	@echo "  make deploy-cluster-post-install    # Phase 4: Post-install config"
-	@echo "  make deploy-cluster-operators       # Phase 5: Operators"
-	@echo "  make deploy-cluster-day2            # Phase 6: Day-2 ops"
-	@echo "  make deploy-cluster-discovery       # Phase 7: Discovery"
-	@echo ""
-	@echo "Requirements for CI targets:"
-	@echo "  - dev-scripts with infra_only target support"
-	@echo "  - libvirt installed and running"
-	@echo "  - Sufficient resources (64GB+ RAM recommended)"
-	@echo "  - CI_TOKEN environment variable set"
+	@echo "Examples:"
+	@echo "  make deploy-cluster                                     # Full disconnected deployment"
+	@echo "  make deploy-cluster-connected                           # Full connected deployment"
+	@echo "  WORKING_DIR=/home/cloud-user make deploy-cluster        # Custom working directory"
+	@echo "  make deploy-plugin PLUGIN=openshift-ai                  # Deploy a plugin"
+
+# Setup targets
+setup: setup-env setup-ansible
+
+setup-env:
+	@sudo bash ./setup_env.sh
+
+setup-ansible:
+	@bash ./setup_ansible.sh
 
 # Validation targets
-validate:
-	@./scripts/verification/validate.sh all
+validate-config:
+	@bash ./validations.sh --global-vars $(GLOBAL_VARS) --certs-vars $(CERTS_VARS)
 
-validate-shell:
-	@./scripts/verification/validate.sh shell
+validate-schema:
+	@$(AP) playbooks/validate-schema.yaml -e@$(GLOBAL_VARS) -e@$(CERTS_VARS) --tags schema-validation
 
-validate-yaml:
-	@./scripts/verification/validate.sh yaml
-
-validate-json-schema:
-	@./scripts/verification/validate.sh json-schema
-
-validate-ansible:
-	@./scripts/verification/validate.sh ansible
-
-validate-tags:
-	@./scripts/verification/validate.sh tags
-
-validate-makefile:
-	@./scripts/verification/validate.sh makefile
-
-validate-plugins:
-	@./scripts/verification/validate.sh plugins
-
-# CI Image targets
-CI_IMAGE_NAME ?= quay.io/eerez/enclave-lab-ci
-CI_IMAGE_TAG ?= latest
-CI_IMAGE_FULL := $(CI_IMAGE_NAME):$(CI_IMAGE_TAG)
-
-build-ci-image:
-	@echo "Building CI image: $(CI_IMAGE_FULL)"
-	podman build -f .github/workflows/Dockerfile.ci -t $(CI_IMAGE_FULL) .
-	@echo "✅ CI image built successfully: $(CI_IMAGE_FULL)"
-
-push-ci-image:
-	@echo "Pushing CI image: $(CI_IMAGE_FULL)"
-	@if [ -z "$(QUAY_USER)" ] || [ -z "$(QUAY_TOKEN)" ]; then \
-		echo "Error: QUAY_USER and QUAY_TOKEN environment variables must be set"; \
-		exit 1; \
-	fi
-	@echo "$(QUAY_TOKEN)" | podman login quay.io -u "$(QUAY_USER)" --password-stdin
-	podman push $(CI_IMAGE_FULL)
-	@echo "✅ CI image pushed successfully: $(CI_IMAGE_FULL)"
-
-test-ci-image:
-	@echo "Testing CI image: $(CI_IMAGE_FULL)"
-	@echo ""
-	@echo "Test 1: Verify shellcheck is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) shellcheck --version
-	@echo ""
-	@echo "Test 2: Verify yamllint is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) yamllint --version
-	@echo ""
-	@echo "Test 3: Verify ansible-lint is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) ansible-lint --version
-	@echo ""
-	@echo "Test 4: Verify ansible-core is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) ansible --version
-	@echo ""
-	@echo "Test 5: Verify make is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) make --version
-	@echo ""
-	@echo "Test 6: Verify docker CLI is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) docker --version
-	@echo ""
-	@echo "✅ All CI image tests passed!"
-
-build-push-ci-image: build-ci-image push-ci-image
-	@echo "✅ CI image built and pushed successfully!"
-
-# Create test infrastructure
-environment:
-	@echo "=========================================="
-	@echo "Creating Enclave test environment"
-	@echo "=========================================="
-	@echo ""
-	@echo "Step 1: Validating prerequisites..."
-	@./scripts/setup/validate_prerequisites.sh
-	@echo ""
-	@echo "Step 2: Configuring dev-scripts environment..."
-	@./scripts/setup/configure_devscripts.sh
-	@echo ""
-	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
-	@echo "  (Using lock to prevent conflicts with parallel runners)"
-	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only && $(CURDIR)/scripts/infrastructure/configure_gpu_passthrough.sh"
-	@echo ""
-	@echo "Step 4: Verifying networks were created..."
-	@./scripts/infrastructure/verify_networks.sh
-	@echo ""
-	@echo "Step 5: Starting BMC emulation (sushy-tools)..."
-	@./scripts/infrastructure/start_sushy_tools.sh
-	@echo ""
-	@echo "Step 6: Generating environment metadata..."
-	@./scripts/infrastructure/generate_environment_json.sh
-	@echo ""
-	@echo "Step 7: Verifying infrastructure..."
-	@$(MAKE) verify
-	@echo ""
-	@echo "=========================================="
-	@echo "✅ Environment creation complete!"
-	@echo "=========================================="
-
-# Provision Landing Zone VM with CentOS Stream 10
-provision-landing-zone:
-	@echo "=========================================="
-	@echo "Provisioning Landing Zone VM"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/infrastructure/provision_landing_zone.sh
-	@echo ""
-	@echo "Verifying Landing Zone VM..."
-	@$(MAKE) verify-landing-zone
-	@echo ""
-	@echo "=========================================="
-	@echo "✅ Landing Zone VM provisioned!"
-	@echo "=========================================="
-
-# Verify Landing Zone VM
-verify-landing-zone:
-	@echo "=========================================="
-	@echo "Verifying Landing Zone VM"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/verification/verify_landing_zone.sh
-
-# Install Enclave Lab on Landing Zone VM
-install-enclave:
-	@echo "=========================================="
-	@echo "Installing Enclave Lab on Landing Zone"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/install_enclave.sh
-	@echo ""
-	@echo "Verifying Enclave Lab installation..."
-	@$(MAKE) verify-enclave-installation
-	@echo ""
-	@echo "=========================================="
-	@echo "✅ Enclave Lab installation complete!"
-	@echo "=========================================="
-
-# Verify Enclave Lab installation
-verify-enclave-installation:
-	@echo "=========================================="
-	@echo "Verifying Enclave Lab Installation"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/verification/verify_enclave_installation.sh
-
-# Deploy OpenShift cluster using Enclave Lab (all phases)
+# Deploy targets
 deploy-cluster:
-	@echo "=========================================="
-	@echo "Deploying OpenShift Cluster with Enclave Lab"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_cluster.sh
+	@$(AP) playbooks/main.yaml $(AP_FLAGS)
 
-# Deploy individual phases (for granular control in CI)
 deploy-cluster-prepare:
-	@echo "=========================================="
-	@echo "Phase 1: Prepare - Download binaries and content"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 01-prepare.yaml
+	@$(AP) playbooks/01-prepare.yaml $(AP_FLAGS)
 
 deploy-cluster-mirror:
-	@echo "=========================================="
-	@echo "Phase 2: Mirror - Set up local registry (disconnected only)"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml
+	@$(AP) playbooks/02-mirror.yaml $(AP_FLAGS)
+
+deploy-cluster-pre-install-validate:
+	@$(AP) playbooks/03-deploy.yaml $(AP_FLAGS) --tags pre-install-validate
 
 deploy-cluster-install:
-	@echo "=========================================="
-	@echo "Phase 3: Deploy - Deploy OpenShift cluster"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 03-deploy.yaml
+	@$(AP) playbooks/03-deploy.yaml $(AP_FLAGS)
 
 deploy-cluster-post-install:
-	@echo "=========================================="
-	@echo "Phase 4: Post-Install - Cluster configuration"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 04-post-install.yaml
+	@$(AP) playbooks/04-post-install.yaml $(AP_FLAGS)
 
 deploy-cluster-operators:
-	@echo "=========================================="
-	@echo "Phase 5: Operators - Install and configure operators"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 05-operators.yaml
+	@$(AP) playbooks/05-operators.yaml $(AP_FLAGS)
 
 deploy-cluster-day2:
-	@echo "=========================================="
-	@echo "Phase 6: Day-2 - Advanced features and policies"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 06-day2.yaml
+	@$(AP) playbooks/06-day2.yaml $(AP_FLAGS)
 
 deploy-cluster-discovery:
-	@echo "=========================================="
-	@echo "Phase 7: Configure Discovery - Hardware discovery (optional)"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
+	@$(AP) playbooks/07-configure-discovery.yaml $(AP_FLAGS) -e@$(CLOUD_INFRA_VARS)
 
-# Deploy a single plugin
+deploy-cluster-connected:
+	@$(MAKE) deploy-cluster DISCONNECTED=false
+
+# Plugin deployment
 deploy-plugin:
-	@echo "=========================================="
-	@echo "Deploying plugin: $(PLUGIN)"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "Error: PLUGIN variable must be set. Usage: make deploy-plugin PLUGIN=<name>"; \
+		exit 1; \
+	fi
+	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e plugin_name=$(PLUGIN)
 
-# Verify infrastructure
-verify:
-	@echo "Verifying infrastructure..."
-	@./scripts/verification/verify_infrastructure.sh
+# Convenience targets
+bootstrap:
+	@bash ./bootstrap.sh --global-vars $(GLOBAL_VARS) --certs-vars $(CERTS_VARS)
 
-# Clean up infrastructure
-clean:
-	@./scripts/cleanup/cleanup.sh
-
-# Verification targets
-verify-cluster:
-	@./scripts/verification/verify_cluster.sh
-
-verify-cleanup:
-	@./scripts/cleanup/verify_cleanup.sh
-
-# Helper targets
-generate-cluster-name:
-	@./scripts/setup/generate_cluster_name.sh
-
-setup-working-dir:
-	@./scripts/setup/setup_working_dir.sh
-
-collect-step-logs:
-	@./scripts/verification/collect_step_logs.sh step-logs
-
-preflight-checks:
-	@./scripts/setup/preflight_checks.sh
-
-# Artifact collection wrappers (use existing script)
-collect-artifacts-basic:
-	@./scripts/verification/collect_ci_artifacts.sh basic artifacts
-
-collect-artifacts-deployment:
-	@./scripts/verification/collect_ci_artifacts.sh deployment artifacts
-
-collect-artifacts-full:
-	@./scripts/verification/collect_ci_artifacts.sh full artifacts
-
-# Full CI flow for local testing
-ci-flow-connected:
-	@echo "=========================================="
-	@echo "Running full CI flow (connected mode)"
-	@echo "=========================================="
-	@echo ""
-	@$(MAKE) preflight-checks
-	@$(MAKE) setup-working-dir
-	@$(MAKE) environment
-	@$(MAKE) provision-landing-zone
-	@$(MAKE) install-enclave
-	@$(MAKE) deploy-cluster
-	@$(MAKE) verify-cluster
-	@echo ""
-	@echo "=========================================="
-	@echo "✅ CI flow complete!"
-	@echo "=========================================="
-
-ci-flow-disconnected:
-	@echo "Running full CI flow (disconnected mode)"
-	@ENCLAVE_DEPLOYMENT_MODE=disconnected $(MAKE) ci-flow-connected
+sync:
+	@bash ./sync.sh $(GLOBAL_VARS) $(CERTS_VARS)
