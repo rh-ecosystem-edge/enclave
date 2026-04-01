@@ -1,0 +1,65 @@
+name: Resolve CI Image
+
+on:
+  workflow_call:
+    secrets:
+      QUAY_USER:
+        required: false
+      QUAY_TOKEN:
+        required: false
+    outputs:
+      image:
+        description: CI image ref to use for validation jobs
+        value: ${{ jobs.resolve-image.outputs.image }}
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-image:
+    name: Resolve CI Image
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for CI image file changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            changed:
+              - '.github/workflows/Dockerfile.ci'
+              - 'ansible_collections.txt'
+              - 'ansible_pip_requirements.txt'
+
+      - name: Build CI image
+        if: steps.filter.outputs.changed == 'true'
+        run: make -f Makefile.ci build-ci-image CI_IMAGE_TAG=sha-${{ github.sha }} CI_IMAGE_LABELS=quay.expires-after=7d
+
+      - name: Test CI image
+        if: steps.filter.outputs.changed == 'true'
+        run: make -f Makefile.ci test-ci-image CI_IMAGE_TAG=sha-${{ github.sha }}
+
+      - name: Push CI image
+        if: steps.filter.outputs.changed == 'true'
+        env:
+          QUAY_USER: ${{ secrets.QUAY_USER }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+        run: make -f Makefile.ci push-ci-image CI_IMAGE_TAG=sha-${{ github.sha }}
+
+      - name: Set image output
+        id: resolve
+        run: |
+          if [[ "${{ steps.filter.outputs.changed }}" == "true" ]]; then
+            echo "image=quay.io/edge-infrastructure/enclave-lab-ci:sha-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=quay.io/edge-infrastructure/enclave-lab-ci:latest" >> "$GITHUB_OUTPUT"
+          fi

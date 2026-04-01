@@ -1,0 +1,39 @@
+name: CI Image Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-image:
+    name: CI Image Build
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build CI image
+        run: make -f Makefile.ci build-ci-image
+
+      - name: Test CI image
+        run: make -f Makefile.ci test-ci-image
+
+      - name: Push CI image
+        env:
+          QUAY_USER: ${{ secrets.QUAY_USER }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+        run: make -f Makefile.ci push-ci-image
