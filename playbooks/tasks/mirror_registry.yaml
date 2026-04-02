@@ -14,6 +14,11 @@
         {{ workingDir }}/bin/mirror-registry  install --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data --initPassword "{{ quayPassword }}" --initUser "{{ quayUser }}"
       register: r_mirror_registry
 
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
 - name: Generate pull secret for internal mirror
   no_log: true
   ansible.builtin.set_fact:

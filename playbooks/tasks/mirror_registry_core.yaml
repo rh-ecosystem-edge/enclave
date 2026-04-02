@@ -4,11 +4,6 @@
     src: ../../templates/imagesetconfiguration-core.yaml.j2
     dest: "{{ workingDir }}/config/imagesetconfiguration-core.yaml"
 
-- name: Change oc-mirror permissions
-  ansible.builtin.file:
-    path: "{{ workingDir }}/bin/oc-mirror"
-    mode: "0755"
-
 - name: Mirror core OpenShift installation images
   ansible.builtin.shell: >
     {{ workingDir }}/bin/oc-mirror --v2
