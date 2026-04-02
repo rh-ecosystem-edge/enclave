@@ -69,14 +69,3 @@
     checksum: "{{ control_binaries.clairctl.checksum }}"
     mode: "0750"
 
-- name: Download opm - CLI to interact with operator-registry and build indexes of operator content
-  ansible.builtin.get_url:
-    url: "{{ control_binaries.opm.url }}"
-    dest: "{{ workingDir }}/dist/opm.tar.gz"
-    checksum: "{{ control_binaries.opm.checksum }}"
-
-- name: Unarchive opm.tar.gz to {{ workingDir }}/bin/
-  ansible.builtin.unarchive:
-    src: "{{ workingDir }}/dist/opm.tar.gz"
-    dest: "{{ workingDir }}/bin/"
-    remote_src: true
