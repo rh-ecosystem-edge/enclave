@@ -99,10 +99,10 @@ jobs:
           | `/test validation` | Lint and validate (shell, YAML, Ansible, Makefile) | pr-validation |
           | `/test tarball` | Build and push tarball | pr-validation |
           | `/test infra` | Infrastructure verification | enclave-small |
-          | `/test e2e-connected` | E2E deployment (connected mode) | enclave-large |
-          | `/test e2e-disconnected` | E2E deployment (disconnected mode) | enclave-large |
+          | `/test e2e-connected` | Re-run E2E connected job | enclave-large |
+          | `/test e2e-disconnected` | Re-run E2E disconnected job | enclave-large |
           | `/test cleanup` | Run cleanup workflow | enclave-small |
-          | `/test all` | Run validation + tarball + infra + e2e-connected | multiple |
+          | `/test all` | Run validation + tarball + infra + e2e | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
           | `/retest` | Re-run all failed checks on this PR | — |
           | `/cancel <name>` | Cancel a running check (e.g. `/cancel e2e-connected`) | — |
@@ -207,31 +207,7 @@ jobs:
               rerun_pr_workflow e2e-deployment.yml; track_result "E2E Connected" $?
               ;;
             e2e-disconnected)
-              # Create a check run on the PR commit so it appears in Checks tab
-              CHECK_RUN_ID=$(gh api "repos/${REPO}/check-runs" \
-                -f name="E2E Disconnected" \
-                -f head_sha="${HEAD_SHA}" \
-                -f status="in_progress" \
-                -f "output[title]=E2E Deployment (disconnected)" \
-                -f "output[summary]=Triggered by \`/test e2e-disconnected\` — waiting for workflow to start..." \
-                --jq '.id')
-              if ! dispatch_workflow e2e-deployment.yml \
-                -f deployment_mode=disconnected \
-                -f cleanup_after=true \
-                -f check_run_id="${CHECK_RUN_ID}"; then
-                # Mark the check run as failed so it doesn't stay in_progress forever
-                if [ -n "${CHECK_RUN_ID}" ]; then
-                  gh api "repos/${REPO}/check-runs/${CHECK_RUN_ID}" \
-                    -X PATCH \
-                    -f status="completed" \
-                    -f conclusion="failure" \
-                    -f "output[title]=E2E Deployment (disconnected) — dispatch failed" \
-                    -f "output[summary]=Failed to dispatch the workflow." || true
-                fi
-                track_result "E2E Disconnected" 1
-              else
-                track_result "E2E Disconnected" 0
-              fi
+              rerun_pr_workflow e2e-deployment.yml; track_result "E2E Disconnected" $?
               ;;
             cleanup)
               dispatch_workflow cleanup.yml; track_result "Cleanup" $?
@@ -240,7 +216,7 @@ jobs:
               rerun_pr_workflow pr-validation.yml; track_result "PR Validation" $?
               rerun_pr_workflow build-push-tarball.yml; track_result "Build Tarball" $?
               rerun_pr_workflow infra-verify.yml; track_result "Infra Verify" $?
-              rerun_pr_workflow e2e-deployment.yml; track_result "E2E Connected" $?
+              rerun_pr_workflow e2e-deployment.yml; track_result "E2E" $?
               ;;
             *)
               gh pr comment "${PR_NUMBER}" -R "${REPO}" \

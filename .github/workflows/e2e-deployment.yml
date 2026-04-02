@@ -1,35 +1,30 @@
 name: E2E Deployment
 
-# This workflow performs end-to-end deployment testing from scratch:
-# make -f Makefile.ci clean && make -f Makefile.ci environment && make -f Makefile.ci provision-landing-zone && make -f Makefile.ci install-enclave && make -f Makefile.ci deploy-cluster
+# Unified end-to-end deployment testing for connected and disconnected modes.
 #
-# Trigger methods:
-# 1. Automatic: Runs on every pull request (opened, updated, reopened)
-# 2. Manual: Go to Actions tab -> "E2E Deployment" -> Run workflow
+# Runs two parallel jobs:
+#   - e2e-connected:    Fast deployment pulling from upstream registries
+#   - e2e-disconnected: Full air-gapped deployment with local mirror registry
 #
-# All deployments:
-# - Always start with clean infrastructure (no reuse)
-# - Deploy complete stack from scratch for full validation
-#
-# Automatic PR runs:
-# - Deployment mode: connected (faster feedback)
-# - Cleanup after: always (keep CI clean)
-#
-# Manual trigger options:
-# - Choose deployment mode: connected (fast) or disconnected (full mirror)
-# - Choose whether to cleanup after deployment
+# Both jobs run on every PR and nightly schedule. Manual dispatch allows
+# selecting which modes to run, skipping cleanup, and sending Slack notifications.
 
 on:
+  schedule:
+    # Run daily at 10:00 PM EST (03:00 UTC)
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      deployment_mode:
-        description: 'Deployment mode (connected or disconnected)'
-        required: true
-        default: 'connected'
-        type: choice
-        options:
-          - connected
-          - disconnected
+      run-connected:
+        description: 'Run connected mode E2E test'
+        required: false
+        type: boolean
+        default: true
+      run-disconnected:
+        description: 'Run disconnected mode E2E test'
+        required: false
+        type: boolean
+        default: true
       storage-plugin:
         description: 'Storage plugin to deploy (lvms or odf)'
         required: true
@@ -38,29 +33,24 @@ on:
         options:
           - lvms
           - odf
-      cleanup_after:
-        description: 'Cleanup infrastructure after deployment'
-        required: true
-        default: true
-        type: boolean
-      check_run_id:
-        description: 'Check run ID to update (set by slash command dispatcher)'
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
         required: false
-        type: string
+        type: boolean
+        default: false
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
     types: [checks_requested]
 
-# Allow parallel execution with unique cluster names per run
-# Each job gets isolated VMs, networks, and resources
 permissions:
   contents: read
   checks: write
-
-concurrency:
-  group: enclave-ci-${{ github.run_id }}
-  cancel-in-progress: false
 
 jobs:
   check-e2e-needed:
@@ -105,38 +95,46 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "▶️  Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            echo "Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Scheduled trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "▶️  Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            echo "Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "✓ E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            echo "E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "ℹ️  Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
+            echo "Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
-  e2e-deployment:
-    name: E2E Deployment Test
-    runs-on: [self-hosted, enclave-large]
-    timeout-minutes: ${{ (github.event.inputs.deployment_mode == 'disconnected' && 360) || 210 }}
+  # ---------------------------------------------------------------------------
+  # Connected mode E2E deployment
+  # ---------------------------------------------------------------------------
+  e2e-connected:
+    name: E2E Connected
     needs: check-e2e-needed
-    if: needs.check-e2e-needed.outputs.should_run == 'true'
+    if: >-
+      needs.check-e2e-needed.outputs.should_run == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.run-connected == true)
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 210
+
+    concurrency:
+      group: enclave-ci-connected-${{ github.run_id }}
+      cancel-in-progress: false
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
-      # Use manual input if available, otherwise default to 'connected' for PR runs
-      ENCLAVE_DEPLOYMENT_MODE: ${{ github.event.inputs.deployment_mode || 'connected' }}
-      # Use manual input if available, otherwise default to 'true' for PR runs
-      CLEANUP_AFTER: ${{ github.event.inputs.cleanup_after || 'true' }}
-      # Storage plugin for Quay backend (default: lvms for PRs, manual input for dispatch)
+      ENCLAVE_DEPLOYMENT_MODE: connected
+      CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
-      # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
       OPENSHIFT_CI: "true"
 
     steps:
@@ -147,7 +145,7 @@ jobs:
         uses: ./.github/actions/setup-cluster-name
         with:
           naming-strategy: hash
-          prefix: eci
+          prefix: ${{ github.event_name == 'schedule' && 'nc' || 'eci' }}
           run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
@@ -155,10 +153,19 @@ jobs:
           make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
+      - name: Workflow information
+        run: |
+          echo "## E2E Deployment - Connected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
       - name: Pre-flight checks
         uses: ./.github/actions/preflight-checks
         with:
-          title: E2E Deployment Pre-flight Checks
+          title: E2E Deployment - Connected Mode
           check-pull-secret: 'true'
           check-system-resources: 'true'
           check-libvirt: 'true'
@@ -179,7 +186,7 @@ jobs:
           echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
           make -f Makefile.ci environment
-          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
         run: |
@@ -187,7 +194,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci provision-landing-zone
-          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+          echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
         run: |
@@ -195,7 +202,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
-          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+          echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 1 - Prepare binaries and content
         id: deploy_prepare
@@ -206,30 +213,18 @@ jobs:
 
           make -f Makefile.ci deploy-cluster-prepare
 
-          echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Phase 2 - Mirror registry setup
-        if: env.ENCLAVE_DEPLOYMENT_MODE != 'connected'
-        id: deploy_mirror
-        run: |
-          echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Setting up local mirror registry (disconnected mode)..." >> $GITHUB_STEP_SUMMARY
-
-          make -f Makefile.ci deploy-cluster-mirror
-
-          echo "✅ Phase 2 complete" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 1 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 3 - Deploy OpenShift cluster
         id: deploy_install
         run: |
           echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Deploying OpenShift cluster (mode: $ENCLAVE_DEPLOYMENT_MODE)..." >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift cluster (mode: connected)..." >> $GITHUB_STEP_SUMMARY
 
           make -f Makefile.ci deploy-cluster-install
 
-          echo "✅ Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 4 - Post-install configuration
         id: deploy_post_install
@@ -240,7 +235,7 @@ jobs:
 
           make -f Makefile.ci deploy-cluster-post-install
 
-          echo "✅ Phase 4 complete" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 4 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 5 - Install operators
         id: deploy_operators
@@ -251,7 +246,7 @@ jobs:
 
           make -f Makefile.ci deploy-cluster-operators
 
-          echo "✅ Phase 5 complete" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 5 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 6 - Day-2 operations
         id: deploy_day2
@@ -262,7 +257,7 @@ jobs:
 
           make -f Makefile.ci deploy-cluster-day2
 
-          echo "✅ Phase 6 complete" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 6 complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Phase 7 - Configure hardware discovery
         id: deploy_discovery
@@ -273,9 +268,10 @@ jobs:
 
           make -f Makefile.ci deploy-cluster-discovery
 
-          echo "✅ Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
+          echo "Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify cluster deployment
+        if: success()
         id: verify_cluster
         run: make -f Makefile.ci verify-cluster
 
@@ -292,10 +288,10 @@ jobs:
           echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Use centralized artifact collection script with full level
-          ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
 
-          # Also run must-gather if cluster is accessible
           LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
           if [ -n "$LZ_IP" ]; then
             SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
@@ -311,111 +307,101 @@ jobs:
                  GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
               echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
 
-              # Copy must-gather archives
               scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
               scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
 
               if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
-                echo "✅ Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+                echo "Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
               else
-                echo "⚠️ Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+                echo "Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
               fi
             fi
           fi
 
       - name: Upload artifacts
         if: always()
+        id: upload_artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: deployment-artifacts-${{ github.run_id }}
+          name: e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}
           path: artifacts/
           retention-days: 7
           if-no-files-found: warn
 
+      - name: Get artifact download URL
+        if: always()
+        id: artifact_url
+        run: |
+          sleep 2
+
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+            --jq '.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
+            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          else
+            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Cleanup infrastructure
-        if: always() && (github.event.inputs.cleanup_after == 'true' || github.event.inputs.cleanup_after == true || github.event_name == 'pull_request' || github.event_name == 'merge_group')
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
 
-          # Create cleanup logs directory
           mkdir -p cleanup-logs
 
-          # Run cleanup and capture output
           set +e
           make -f Makefile.ci clean 2>&1 | tee cleanup-logs/cleanup.log
           CLEANUP_EXIT_CODE=$?
           set -e
 
-          # Check for any warnings in cleanup output
           if grep -q "WARNING:" cleanup-logs/cleanup.log; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
             grep "WARNING:" cleanup-logs/cleanup.log >> $GITHUB_STEP_SUMMARY
-            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
           elif [ $CLEANUP_EXIT_CODE -eq 0 ]; then
-            echo "✅ Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+            echo "Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
             echo "Check cleanup-logs/cleanup.log for details" >> $GITHUB_STEP_SUMMARY
           fi
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
 
       - name: Collect post-cleanup state
         if: always()
         run: |
           mkdir -p cleanup-state/libvirt cleanup-state/system
 
-          # Capture post-cleanup system state
           sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
           sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
           sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
           df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
 
-      - name: Verify cleanup
-        if: always()
-        run: |
-          echo "## Cleanup Verification" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Check for leftover resources
-          LEFTOVER_POOLS=$(sudo virsh pool-list --all --name | grep "^eci-" || true)
-          LEFTOVER_NETWORKS=$(sudo virsh net-list --all --name | grep "^eci-.*-[pe]$" || true)
-          LEFTOVER_VMS=$(sudo virsh list --all --name | grep "^eci-" || true)
-
-          # Save verification results to file (for artifacts)
-          {
-            echo "=== Cleanup Verification Results ==="
-            echo "Timestamp: $(date -u +"%Y%m%d-%H%M%S")"
-            echo ""
-            if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
-              echo "✅ No leftover resources detected"
-            else
-              echo "⚠️ Leftover resources detected:"
-              [ -n "$LEFTOVER_POOLS" ] && echo "- Pools: $LEFTOVER_POOLS"
-              [ -n "$LEFTOVER_NETWORKS" ] && echo "- Networks: $LEFTOVER_NETWORKS"
-              [ -n "$LEFTOVER_VMS" ] && echo "- VMs: $LEFTOVER_VMS"
-            fi
-          } | tee cleanup-logs/verification.txt
-
-          # Also report to step summary
-          if [ -z "$LEFTOVER_POOLS" ] && [ -z "$LEFTOVER_NETWORKS" ] && [ -z "$LEFTOVER_VMS" ]; then
-            echo "✅ No leftover resources detected" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "⚠️ **Leftover resources detected:**" >> $GITHUB_STEP_SUMMARY
-            [ -n "$LEFTOVER_POOLS" ] && echo "- **Pools**: $(echo $LEFTOVER_POOLS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
-            [ -n "$LEFTOVER_NETWORKS" ] && echo "- **Networks**: $(echo $LEFTOVER_NETWORKS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
-            [ -n "$LEFTOVER_VMS" ] && echo "- **VMs**: $(echo $LEFTOVER_VMS | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "These resources should be cleaned up manually or via the cleanup workflow." >> $GITHUB_STEP_SUMMARY
-          fi
-
       - name: Upload post-cleanup artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: post-cleanup-state-${{ github.run_id }}
+          name: post-cleanup-connected-${{ github.run_id }}
           path: |
             cleanup-logs/
             cleanup-state/
@@ -428,34 +414,447 @@ jobs:
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: $ENCLAVE_DEPLOYMENT_MODE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: Connected" >> $GITHUB_STEP_SUMMARY
           echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-      - name: Update PR check run
-        if: always() && inputs.check_run_id
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHECK_RUN_ID: ${{ inputs.check_run_id }}
-          JOB_STATUS: ${{ job.status }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      - name: Determine failed step
+        if: failure()
+        id: failed_step
         run: |
-          CONCLUSION="failure"
-          TITLE="E2E Deployment (disconnected) — failed"
-          if [ "${JOB_STATUS}" = "success" ]; then
-            CONCLUSION="success"
-            TITLE="E2E Deployment (disconnected) — passed"
-          elif [ "${JOB_STATUS}" = "cancelled" ]; then
-            CONCLUSION="cancelled"
-            TITLE="E2E Deployment (disconnected) — cancelled"
+          declare -A step_names=(
+            ["deploy_prepare"]="Phase 1: Prepare binaries and content"
+            ["deploy_install"]="Phase 3: Deploy OpenShift cluster"
+            ["deploy_post_install"]="Phase 4: Post-install configuration"
+            ["deploy_operators"]="Phase 5: Install operators"
+            ["deploy_day2"]="Phase 6: Day-2 operations"
+            ["deploy_discovery"]="Phase 7: Configure hardware discovery"
+            ["verify_cluster"]="Verify cluster deployment"
+          )
+
+          step_order=(
+            deploy_prepare
+            deploy_install
+            deploy_post_install
+            deploy_operators
+            deploy_day2
+            deploy_discovery
+            verify_cluster
+          )
+
+          FAILED_STEP=""
+          for step_id in "${step_order[@]}"; do
+            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            if [ "$outcome" == "failure" ]; then
+              FAILED_STEP="${step_names[$step_id]}"
+              break
+            fi
+          done
+
+          if [ -n "$FAILED_STEP" ]; then
+            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
           fi
 
-          gh api "repos/${{ github.repository }}/check-runs/${CHECK_RUN_ID}" \
-            -X PATCH \
-            -f status="completed" \
-            -f conclusion="${CONCLUSION}" \
-            -f "output[title]=${TITLE}" \
-            -f "output[summary]=See [workflow run](${RUN_URL}) for details." \
-            -f details_url="${RUN_URL}"
+      - name: Notify Slack
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: E2E Deployment - Connected
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
+
+  # ---------------------------------------------------------------------------
+  # Disconnected mode E2E deployment
+  # ---------------------------------------------------------------------------
+  e2e-disconnected:
+    name: E2E Disconnected
+    needs: check-e2e-needed
+    if: >-
+      needs.check-e2e-needed.outputs.should_run == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.run-disconnected == true)
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
+
+    concurrency:
+      group: enclave-ci-disconnected-${{ github.run_id }}
+      cancel-in-progress: false
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      ENCLAVE_DEPLOYMENT_MODE: disconnected
+      CLEANUP_AFTER: 'true'
+      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: ${{ github.event_name == 'schedule' && 'nd' || 'ecd' }}
+          run-id: ${{ github.run_id }}
+
+      - name: Setup cluster-specific working directory
+        run: |
+          make -f Makefile.ci setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Workflow information
+        run: |
+          echo "## E2E Deployment - Disconnected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: E2E Deployment - Disconnected Mode
+          check-pull-secret: 'true'
+          check-system-resources: 'true'
+          check-libvirt: 'true'
+
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci environment
+          echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Provision Landing Zone
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci provision-landing-zone
+          echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci install-enclave
+          echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 1 - Prepare binaries and content
+        id: deploy_prepare
+        run: |
+          echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-prepare
+
+          echo "Phase 1 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2 - Mirror registry setup
+        id: deploy_mirror
+        run: |
+          echo "## Phase 2: Mirror Registry" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Setting up local mirror registry (disconnected mode)..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-mirror
+
+          echo "Phase 2 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 3 - Deploy OpenShift cluster
+        id: deploy_install
+        run: |
+          echo "## Phase 3: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying OpenShift cluster (mode: disconnected)..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-install
+
+          echo "Phase 3 complete - Cluster deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 4 - Post-install configuration
+        id: deploy_post_install
+        run: |
+          echo "## Phase 4: Post-Install Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring cluster (secrets, certificates, API health)..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-post-install
+
+          echo "Phase 4 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 5 - Install operators
+        id: deploy_operators
+        run: |
+          echo "## Phase 5: Operators" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing and configuring operators..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-operators
+
+          echo "Phase 5 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 6 - Day-2 operations
+        id: deploy_day2
+        run: |
+          echo "## Phase 6: Day-2 Operations" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring advanced features and policies..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-day2
+
+          echo "Phase 6 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 7 - Configure hardware discovery
+        id: deploy_discovery
+        run: |
+          echo "## Phase 7: Hardware Discovery" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Configuring hardware discovery infrastructure..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-discovery
+
+          echo "Phase 7 complete - Full deployment complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify cluster deployment
+        if: success()
+        id: verify_cluster
+        run: |
+          make -f Makefile.ci verify-cluster
+
+          # Additional verification for disconnected mode - check mirror registry
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
+          ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
+
+      - name: Collect full diagnostics on failure
+        if: failure()
+        run: |
+          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          if [ -n "$LZ_IP" ]; then
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/scripts/diagnostics/gather.sh" 2>/dev/null; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
+
+              mkdir -p artifacts/must-gather
+              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+                "cd /home/cloud-user/enclave/scripts/diagnostics && \
+                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
+              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
+
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+
+              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
+                echo "Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        id: upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Get artifact download URL
+        if: always()
+        id: artifact_url
+        run: |
+          sleep 2
+
+          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+            --jq '.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
+            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          else
+            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Cleanup infrastructure
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+          mkdir -p cleanup-logs
+
+          set +e
+          make -f Makefile.ci clean 2>&1 | tee cleanup-logs/cleanup.log
+          CLEANUP_EXIT_CODE=$?
+          set -e
+
+          if grep -q "WARNING:" cleanup-logs/cleanup.log; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep "WARNING:" cleanup-logs/cleanup.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          elif [ $CLEANUP_EXIT_CODE -eq 0 ]; then
+            echo "Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "Check cleanup-logs/cleanup.log for details" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+      - name: Collect post-cleanup state
+        if: always()
+        run: |
+          mkdir -p cleanup-state/libvirt cleanup-state/system
+
+          sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
+          sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
+          sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
+          df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
+
+      - name: Upload post-cleanup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-cleanup-disconnected-${{ github.run_id }}
+          path: |
+            cleanup-logs/
+            cleanup-state/
+          retention-days: 7
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: Disconnected (Air-gapped)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Determine failed step
+        if: failure()
+        id: failed_step
+        run: |
+          declare -A step_names=(
+            ["deploy_prepare"]="Phase 1: Prepare binaries and content"
+            ["deploy_mirror"]="Phase 2: Setup mirror registry"
+            ["deploy_install"]="Phase 3: Deploy OpenShift cluster"
+            ["deploy_post_install"]="Phase 4: Post-install configuration"
+            ["deploy_operators"]="Phase 5: Install operators"
+            ["deploy_day2"]="Phase 6: Day-2 operations"
+            ["deploy_discovery"]="Phase 7: Configure hardware discovery"
+            ["verify_cluster"]="Verify cluster deployment"
+          )
+
+          step_order=(
+            deploy_prepare
+            deploy_mirror
+            deploy_install
+            deploy_post_install
+            deploy_operators
+            deploy_day2
+            deploy_discovery
+            verify_cluster
+          )
+
+          FAILED_STEP=""
+          for step_id in "${step_order[@]}"; do
+            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            if [ "$outcome" == "failure" ]; then
+              FAILED_STEP="${step_names[$step_id]}"
+              break
+            fi
+          done
+
+          if [ -n "$FAILED_STEP" ]; then
+            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: E2E Deployment - Disconnected
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}

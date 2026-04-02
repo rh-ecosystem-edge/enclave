@@ -1,7 +1,6 @@
 # Red Hat Sovereign Enclave
 
-[![Nightly E2E - Connected Mode](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-connected.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-connected.yml)
-[![Nightly E2E - Disconnected Mode](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-disconnected.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/nightly-e2e-disconnected.yml)
+[![E2E Deployment](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/e2e-deployment.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/e2e-deployment.yml)
 [![Build and Push Tarball](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/build-push-tarball.yml/badge.svg?branch=main)](https://github.com/rh-ecosystem-edge/enclave/actions/workflows/build-push-tarball.yml)
 
 The Red Hat Sovereign Enclave (RHSE) is an optionally disconnected, infrastructure platform that delivers a cloud-like experience based on OpenShift. It consumes standards-based bare metal hosts and simplifies deployment by the Infrastructure Operator, requiring only low-touch participation.
@@ -492,15 +491,16 @@ Tests infrastructure setup without full cluster deployment:
 
 **Trigger**: Manual or add `test-infra` label to PR
 
-#### 3. E2E Connected Mode (Manual/Label/Scheduled)
+#### 3. E2E Deployment (Automatic/Scheduled/Manual)
 
-Full end-to-end cluster deployment testing:
-- Complete infrastructure setup
-- Deploy OpenShift cluster
+Full end-to-end cluster deployment testing in both connected and disconnected modes:
+- Two parallel jobs: connected and disconnected
+- Complete infrastructure setup per mode
+- Deploy OpenShift cluster (with mirror registry for disconnected)
 - Verify cluster health
-- Collect artifacts (kubeconfig, logs)
+- Collect artifacts, Slack notifications on nightly runs
 
-**Trigger**: Manual, add `test-e2e` label to PR, or weekly schedule (Sunday 2 AM UTC)
+**Trigger**: Automatic on PR, nightly schedule (03:00 UTC daily), or manual dispatch
 
 #### 4. Cleanup (Manual/Scheduled)
 

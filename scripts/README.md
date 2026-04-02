@@ -259,8 +259,7 @@ Scripts use `set -euo pipefail` for strict error handling:
 
 Scripts are used by GitHub Actions workflows:
 
-- `.github/workflows/e2e-deployment.yml` - End-to-end deployment workflow
-- `.github/workflows/nightly-e2e-disconnected.yml` - Nightly disconnected mode testing
+- `.github/workflows/e2e-deployment.yml` - End-to-end deployment workflow (connected and disconnected modes)
 
 Custom GitHub Actions in `.github/actions/`:
 - `allocate-subnet` - Allocate unique subnet for parallel runs

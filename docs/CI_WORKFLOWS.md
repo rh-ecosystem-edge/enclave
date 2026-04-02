@@ -8,7 +8,7 @@ Enclave Lab uses GitHub Actions for automated testing and validation with four m
 
 1. **PR Validation** - Fast code quality checks on every PR
 2. **Infrastructure Verification** - Test infrastructure setup
-3. **E2E Connected Mode** - Full cluster deployment testing
+3. **E2E Deployment** - Full cluster deployment testing (connected and disconnected modes)
 4. **Cleanup** - Infrastructure maintenance
 
 ## Workflow 1: PR Validation
@@ -125,90 +125,72 @@ make validate
 
 ---
 
-## Workflow 3: E2E Connected Mode
+## Workflow 3: E2E Deployment
 
-**Purpose**: Full end-to-end cluster deployment testing
+**Purpose**: Full end-to-end cluster deployment testing in both connected and disconnected modes
 
 **Trigger**:
+- Automatic on every PR (both modes run in parallel)
+- Nightly schedule (03:00 UTC daily)
 - Manual dispatch (Actions tab)
-- PR with `test-e2e` label
-- Weekly schedule (Sunday 2 AM UTC)
+- Merge queue
 
-**Duration**: ~90-120 minutes
+**Duration**: ~90-120 minutes (connected), ~180-360 minutes (disconnected)
 
-**Runs on**: Self-hosted runner (CI machine)
+**Runs on**: Self-hosted runner (`enclave-large`)
+
+### Jobs
+
+The workflow runs two parallel jobs:
+
+| Job | Mode | Description |
+|-----|------|-------------|
+| `e2e-connected` | Connected | Fast deployment pulling from upstream registries |
+| `e2e-disconnected` | Disconnected | Full air-gapped deployment with local mirror registry |
+
+Both jobs appear as separate checks on PRs, so you can see which mode failed.
 
 ### What It Does
 
-1. ✅ Pre-flight checks
-2. ✅ Create/reuse infrastructure
-3. ✅ Provision Landing Zone
-4. ✅ Install Enclave Lab (connected mode)
-5. ✅ Deploy OpenShift cluster (`make deploy-cluster`)
-6. ✅ Verify cluster health
-7. ✅ Collect artifacts (kubeconfig, logs)
-8. ✅ Optional cleanup
+1. Pre-flight checks
+2. Create infrastructure
+3. Provision Landing Zone
+4. Install Enclave Lab
+5. Deploy cluster through all phases (1-7)
+6. Verify cluster health
+7. Collect artifacts and diagnostics
+8. Cleanup infrastructure
+9. Slack notification (nightly/manual)
 
 ### How to Use
 
-**Option 1: Manual Dispatch**
+**Automatic (PR)**:
+Both connected and disconnected jobs run automatically on every PR with E2E-relevant file changes.
+
+**Manual Dispatch**:
 
 1. Go to Actions tab
-2. Select "E2E Connected Mode"
+2. Select "E2E Deployment"
 3. Click "Run workflow"
 4. Configure options:
-   - **cleanup_strategy**: `on_failure` / `always` / `never`
-   - **reuse_infrastructure**: `true` / `false`
+   - **run-connected**: Run connected mode (default: true)
+   - **run-disconnected**: Run disconnected mode (default: true)
+   - **storage-plugin**: lvms or odf (default: lvms)
+   - **skip-cleanup**: Leave infrastructure running (default: false)
+   - **send-slack-notification**: Send Slack notification (default: false)
 
-**Option 2: PR Label**
-
-1. Add label `test-e2e` to your PR
-2. Workflow runs automatically
-
-**Option 3: Scheduled**
-
-Runs automatically every Sunday at 2 AM UTC for regression testing.
-
-### Reuse Infrastructure
-
-**Enabled (recommended)**:
-- Reuses existing VMs if available
-- Faster runs
-- Good for iterative testing
-
-**Disabled**:
-- Creates fresh infrastructure every time
-- Slower but ensures clean state
-- Good for validating from scratch
+**Slash Commands**:
+- `/test e2e-connected` - Re-run the connected job
+- `/test e2e-disconnected` - Re-run the disconnected job
 
 ### Cluster Verification
 
 The workflow checks:
-- ✅ Nodes are ready
-- ✅ Cluster operators are available
-- ✅ No degraded operators
-- ✅ Kubeconfig is accessible
-
-### Artifacts Collected
-
-- `environment.json` - Infrastructure metadata
-- `vm-status.txt` - Virtual machine status
-- `network-status.txt` - Network configuration
-- `deployment.log` - Deployment logs
-- `kubeconfig` - Cluster access configuration
-- `config/global.yaml` - Enclave Lab configuration
-
-### Accessing the Cluster
-
-After successful E2E run:
-
-1. Download `kubeconfig` artifact
-2. Use it to access the cluster:
-   ```bash
-   export KUBECONFIG=./kubeconfig
-   oc get nodes
-   oc get co
-   ```
+- Nodes are ready
+- Cluster operators are available
+- No degraded operators
+- Kubeconfig is accessible
+- Mirror registry status (disconnected mode only)
 
 ---
 
