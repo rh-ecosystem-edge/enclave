@@ -33,4 +33,4 @@
   - name: Save async job ID for later reference
     ansible.builtin.copy:
       content: "{{ r_oc_mirror_post.ansible_job_id }}"
-      dest: "{{ workingDir }}/logs/mirror_registry_post.async_job_id"
+      dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"

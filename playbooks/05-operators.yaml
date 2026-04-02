@@ -41,6 +41,18 @@
         - foundation-plugins
         - operators
 
+    - name: Wait for the async task mirror_registry_post
+      when: disconnected | default(true) | bool
+      ansible.builtin.include_tasks:
+        file: tasks/wait_operator_mirror.yaml
+        apply:
+          tags:
+            - foundation-plugins
+            - operators
+      tags:
+        - foundation-plugins
+        - operators
+
     - name: Disable default operator catalog sources
       when: disconnected | default(true) | bool
       ansible.builtin.command: |
