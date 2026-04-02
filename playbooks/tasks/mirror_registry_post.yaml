@@ -31,7 +31,7 @@
   async: 14400 # 4 hours timeout
   poll: 0      # Start immediately, don't wait
 
-  - name: Save async job ID for later reference
-    ansible.builtin.copy:
-      content: "{{ r_oc_mirror_post.ansible_job_id }}"
-      dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"
+- name: Save async job ID for later reference
+  ansible.builtin.copy:
+    content: "{{ r_oc_mirror_post.ansible_job_id }}"
+    dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"
