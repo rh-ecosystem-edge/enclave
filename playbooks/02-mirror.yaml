@@ -83,13 +83,21 @@
       ansible.builtin.include_tasks:
         file: tasks/mirror_registry_core.yaml
         apply:
-          tags: mirror-registry
-      tags: mirror-registry
+          tags:
+            - mirror-registry
+            - mirror-registry-core
+      tags:
+        - mirror-registry
+        - mirror-registry-core
 
     # Post-installation mirror - operators, additional images, and day-2 components
     - name: Include tasks for post-installation mirroring (operators and additional images)
       ansible.builtin.include_tasks:
         file: tasks/mirror_registry_post.yaml
         apply:
-          tags: mirror-registry
-      tags: mirror-registry
+          tags:
+            - mirror-registry
+            - mirror-registry-post
+      tags:
+        - mirror-registry
+        - mirror-registry-post
