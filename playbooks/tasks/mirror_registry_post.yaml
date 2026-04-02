@@ -1,0 +1,27 @@
+---
+- name: Copy post-installation imagesetconfiguration.yaml
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration-post.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration-post.yaml"
+
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
+- name: Mirror post-installation operators and additional images
+  ansible.builtin.shell: >
+    {{ workingDir }}/bin/oc-mirror --v2
+    --log-level {{ ocMirrorLogLevel }}
+    --authfile {{ pullSecretPath }}
+    --dest-tls-verify=false
+    -c {{ workingDir }}/config/imagesetconfiguration-post.yaml
+    --workspace file://{{ workingDir }}/config/oc-mirror-workspace
+    --parallel-images 10 --parallel-layers 10
+    --retry-times 10 --retry-delay 0
+    docker://{{ quayHostname }}:8443
+    > {{ workingDir }}/logs/oc-mirror-post.progress.$(date +%s).log 2>&1
+  retries: 10
+  delay: 10
+  register: r_oc_mirror_post
+  until: r_oc_mirror_post is success

@@ -5,14 +5,14 @@
 # Performs:
 # - Deploy local Quay registry (mirror-registry)
 # - Generate combined pull secret
-# - Run oc-mirror to mirror OpenShift images and operator catalogs
+# - Run oc-mirror to mirror OpenShift images and operator catalogs (split approach)
 # - Mirror additional images (Vault, ArgoCD, etc.)
 # - Mirror images to datacenter cache (optional)
 #
 # IMPORTANT: This phase requires significant disk space (~150GB+) and time (~30+ minutes)
 #
 # Usage:
-#   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user --tags mirror-registry
 #
 #   # Mirror images to datacenter cache
 #   ansible-playbook playbooks/02-mirror.yaml -e workingDir=/home/cloud-user --tags mirror-cache
@@ -69,9 +69,20 @@
         - mirror-registry
         - mirror-plugins
 
-    - name: Include tasks for mirror-registry
+    # Core installation mirror - only platform images needed for basic OpenShift installation
+    # This must run first as it sets up the registry and basic infrastructure
+    - name: Include tasks for core OpenShift installation mirroring
       ansible.builtin.include_tasks:
-        file: tasks/mirror_registry.yaml
+        file: tasks/mirror_registry_core.yaml
+        apply:
+          tags: mirror-registry
+      tags: mirror-registry
+
+    # Post-installation mirror - operators, additional images, and day-2 components
+    # Can be run separately after cluster installation is complete
+    - name: Include tasks for post-installation mirroring (operators and additional images)
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_registry_post.yaml
         apply:
           tags: mirror-registry
       tags: mirror-registry
