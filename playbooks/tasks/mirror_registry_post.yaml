@@ -4,6 +4,7 @@
     src: ../../templates/imagesetconfiguration-post.yaml.j2
     dest: "{{ workingDir }}/config/imagesetconfiguration-post.yaml"
 
+## ALERT ALERT We need to merge output of both oc-mirror
 - name: Mirror post-installation operators and additional images
   ansible.builtin.shell: >
     retry=1
@@ -15,7 +16,7 @@
       --authfile {{ pullSecretPath }}
       --dest-tls-verify=false
       -c {{ workingDir }}/config/imagesetconfiguration-post.yaml
-      --workspace file://{{ workingDir }}/config/oc-mirror-workspace
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-post
       --parallel-images 10 --parallel-layers 10
       --retry-times 10 --retry-delay 0
       docker://{{ quayHostname }}:8443
