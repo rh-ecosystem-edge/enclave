@@ -192,7 +192,7 @@ Adding a new storage option requires creating `plugins/<name>/tasks/quay.yaml` w
 
 ### Early Validation
 
-Before any phase that consumes plugin data, `validate_enabled_plugins.yaml` runs. It discovers all enabled plugins that declare a `requires` block, loads their defaults, and asserts that required variables and files are present. This happens at the start of both Phase 2 (Mirror) and Phase 5 (Operators), so a missing requirement fails the run immediately instead of after 30+ minutes of mirroring.
+Before mirroring begins, `validate_enabled_plugins.yaml` runs. It discovers all enabled plugins that declare a `requires` block, loads their defaults, and asserts that required variables and files are present. This happens at the start of Phase 2 (Mirror), so a missing requirement fails the run immediately instead of after 30+ minutes of mirroring.
 
 The per-plugin validation in `deploy_plugin.yaml` remains as defense-in-depth during individual plugin deployment.
 
@@ -211,13 +211,12 @@ Before cluster installation, plugins with `tasks/pre-install-validate.yaml` run 
 Foundation plugins deploy before core operators (Quay, GitOps). This ordering ensures storage is available when Quay creates its PVCs.
 
 ```
-1. Validate enabled plugin requirements (early gate)
-2. Disable default CatalogSources (disconnected)
-3. Deploy foundation plugins (sorted by order):
+1. Disable default CatalogSources (disconnected)
+2. Deploy foundation plugins (sorted by order):
    -> load defaults -> validate requirements -> pre-validate -> mirror -> operators -> deploy -> post-validate
-4. Install core operators
+3. Install core operators
    -> Quay includes plugins/{storage_plugin}/tasks/quay.yaml
-5. Deploy addon plugins (sorted by order)
+4. Deploy addon plugins (sorted by order)
 ```
 
 ### Standalone Deploy
@@ -255,7 +254,7 @@ Every plugin is validated at two levels:
 
 Plugins can declare requirements in the `requires` block. These are validated at two points:
 
-1. **Early validation** (`validate_enabled_plugins.yaml`) -- runs at the start of Phase 2 (Mirror) and Phase 5 (Operators), before any mirroring or operator work begins. This is the primary gate that prevents wasting time on long-running operations when a requirement is missing.
+1. **Early validation** (`validate_enabled_plugins.yaml`) -- runs at the start of Phase 2 (Mirror), before any mirroring begins. This is the primary gate that prevents wasting time on long-running operations when a requirement is missing.
 2. **Per-plugin validation** (`deploy_plugin.yaml`) -- runs when each plugin is individually deployed. Acts as defense-in-depth.
 
 If a requirement isn't met, the run fails with a clear error message.
@@ -294,7 +293,7 @@ A validation-only plugin can hook into any of these checkpoints:
 
 | File | Pipeline phase | Cluster access | Auto-discovered |
 |------|---------------|----------------|-----------------|
-| `early-validate.yaml` | Phase 2 (Mirror) and Phase 5 (Operators) start | No | Yes -- any enabled plugin with `requires` |
+| `early-validate.yaml` | Phase 2 (Mirror) start | No | Yes -- any enabled plugin with `requires` |
 | `pre-install-validate.yaml` | Phase 3 (Deploy), before cluster install | No | Yes |
 | `pre-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
 | `post-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
