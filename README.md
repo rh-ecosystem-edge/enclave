@@ -8,7 +8,7 @@ The Red Hat Sovereign Enclave (RHSE) is an optionally disconnected, infrastructu
 
 RHSE provisions and maintains a local point of management (including ACM and Quay) with controls on the ingress of software and related artifacts into the environment.
 
-This is an Open Source project. Contributions are welcome! (Contribution guide coming soon)
+This is an Open Source project. Contributions are welcome! See the [Contributing](#contributing) section below.
 
 Check [Topo.png](docs/Topo.png) for expected hardware setup and [ArchMap.png](docs/ArchMap.png) for intended deployment model.
 
@@ -45,7 +45,7 @@ make deploy-cluster
 
 **With custom vars file:**
 ```bash
-VARS_FILE=config/custom-global.yaml make deploy-cluster
+GLOBAL_VARS=config/custom-global.yaml make deploy-cluster
 ```
 
 **Common use cases:**
@@ -61,10 +61,10 @@ cp config/global.yaml config/dev-global.yaml
 vim config/dev-global.yaml  # Modify as needed
 
 # Deploy with custom vars
-VARS_FILE=config/dev-global.yaml make deploy-cluster
+GLOBAL_VARS=config/dev-global.yaml make deploy-cluster
 ```
 
-**Note:** The custom vars file must be relative to the enclave directory on the Landing Zone (e.g., `config/custom-global.yaml`). If you need to use an absolute path, set `VARS_FILE=/absolute/path/to/global.yaml`.
+**Note:** The custom vars file must be relative to the enclave directory on the Landing Zone (e.g., `config/custom-global.yaml`). If you need to use an absolute path, set `GLOBAL_VARS=/absolute/path/to/global.yaml`.
 
 ### Deployment Modes
 
@@ -81,7 +81,9 @@ Skips mirror registry setup for faster deployments in environments with internet
 
 **Usage:**
 ```bash
-ENCLAVE_DEPLOYMENT_MODE=connected make deploy-cluster
+make deploy-cluster-connected
+# or equivalently:
+DISCONNECTED=false make deploy-cluster
 ```
 
 **What happens:**
@@ -106,8 +108,7 @@ Full air-gapped deployment with local mirror registry for production environment
 **Usage:**
 ```bash
 make deploy-cluster
-# or explicitly:
-ENCLAVE_DEPLOYMENT_MODE=disconnected make deploy-cluster
+# Disconnected is the default (DISCONNECTED=true)
 ```
 
 **What happens:**
@@ -140,52 +141,16 @@ Comprehensive documentation is available in the `docs/` folder:
 
 ### Make Targets Reference
 
-#### Validation Targets
-```bash
-make validate              # Run all validation checks
-make validate-shell        # Validate shell scripts with shellcheck
-make validate-yaml         # Validate YAML files with yamllint
-make validate-ansible      # Validate Ansible playbooks with ansible-lint
-make validate-makefile     # Validate Makefile syntax
-```
+There are two Makefiles:
+- **`Makefile`** — runs directly on the Landing Zone (deploy, bootstrap, sync)
+- **`Makefile.ci`** — CI infrastructure and validation targets (use `make -f Makefile.ci <target>`)
 
-#### Infrastructure Targets
+#### Landing Zone Targets (`Makefile`)
+
 ```bash
-make environment                     # Create test infrastructure
-make provision-landing-zone          # Provision Landing Zone VM
-make verify-landing-zone             # Verify Landing Zone VM configuration
-make install-enclave                 # Install Enclave Lab
-make verify-enclave-installation     # Verify Enclave Lab installation
+# Deployment
 make deploy-cluster                  # Deploy OpenShift cluster (all phases)
-make verify                          # Verify infrastructure setup
-make clean                           # Clean up all infrastructure
-```
-
-#### Verification Targets
-```bash
-make verify-cluster                  # Verify OpenShift cluster deployment
-make verify-cleanup                  # Verify infrastructure cleanup
-```
-
-#### Helper Targets
-```bash
-make generate-cluster-name           # Generate unique cluster name (auto-called)
-make setup-working-dir               # Setup cluster-specific working directory
-make collect-step-logs               # Collect logs from dev-scripts and cluster
-make preflight-checks                # Run pre-flight environment checks
-make collect-artifacts-basic         # Collect basic artifacts
-make collect-artifacts-deployment    # Collect deployment artifacts
-make collect-artifacts-full          # Collect all artifacts
-```
-
-#### Local CI Testing Targets
-```bash
-make ci-flow-connected               # Run full CI flow locally (connected mode)
-make ci-flow-disconnected            # Run full CI flow locally (disconnected mode)
-```
-
-#### Deploy Individual Phases (for granular control)
-```bash
+make deploy-cluster-connected        # Deploy in connected mode (DISCONNECTED=false)
 make deploy-cluster-prepare          # Phase 1: Download binaries
 make deploy-cluster-mirror           # Phase 2: Mirror registry (disconnected)
 make deploy-cluster-install          # Phase 3: Deploy cluster
@@ -193,6 +158,43 @@ make deploy-cluster-post-install     # Phase 4: Cluster configuration
 make deploy-cluster-operators        # Phase 5: Install operators
 make deploy-cluster-day2             # Phase 6: Day-2 operations
 make deploy-cluster-discovery        # Phase 7: Configure hardware discovery
+make deploy-plugin PLUGIN=<name>     # Deploy a single plugin
+
+# Setup & utilities
+make bootstrap                       # Bootstrap the Landing Zone
+make sync                            # Sync configuration
+make setup                           # Install system packages and Ansible deps
+make validate-config                 # Validate configuration files
+make validate-schema                 # Validate configuration against JSON schemas
+```
+
+#### CI Targets (`Makefile.ci`)
+
+```bash
+# Validation
+make -f Makefile.ci validate              # Run all validation checks
+make -f Makefile.ci validate-shell        # Validate shell scripts with shellcheck
+make -f Makefile.ci validate-yaml         # Validate YAML files with yamllint
+make -f Makefile.ci validate-ansible      # Validate Ansible playbooks with ansible-lint
+make -f Makefile.ci validate-makefile     # Validate Makefile syntax
+
+# Infrastructure
+make -f Makefile.ci environment                     # Create test infrastructure
+make -f Makefile.ci provision-landing-zone          # Provision Landing Zone VM
+make -f Makefile.ci install-enclave                 # Install Enclave Lab
+make -f Makefile.ci clean                           # Clean up all infrastructure
+
+# Verification
+make -f Makefile.ci verify-cluster                  # Verify OpenShift cluster deployment
+make -f Makefile.ci verify-cleanup                  # Verify infrastructure cleanup
+
+# Full CI flows
+make -f Makefile.ci ci-flow-connected               # Run full CI flow locally (connected)
+make -f Makefile.ci ci-flow-disconnected            # Run full CI flow locally (disconnected)
+
+# Helpers
+make -f Makefile.ci collect-artifacts-full          # Collect all artifacts
+make -f Makefile.ci preflight-checks                # Run pre-flight environment checks
 ```
 
 ### Common Testing Workflows
@@ -269,7 +271,7 @@ make provision-landing-zone
 **Connected Mode (Recommended for Development):**
 ```bash
 # No mirroring, uses upstream registries
-ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
+DISCONNECTED=false make install-enclave
 ```
 
 **Disconnected Mode (Production Validation):**
@@ -296,7 +298,7 @@ make environment
 make provision-landing-zone
 
 # 3. Install Enclave Lab - Choose mode:
-ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave  # Connected mode
+DISCONNECTED=false make install-enclave  # Connected mode
 # OR
 make install-enclave  # Disconnected mode
 
@@ -307,232 +309,22 @@ make deploy-cluster
 make clean
 ```
 
-### Component-Specific Testing
-
-#### Test Only Validation
-```bash
-# All validators
-make validate
-
-# Individual validators
-make validate-shell      # Only shell scripts
-make validate-yaml       # Only YAML files
-make validate-ansible    # Only Ansible playbooks
-make validate-makefile   # Only Makefile syntax
-```
-
-#### Test Only Infrastructure
-```bash
-# Create infrastructure and stop
-make environment
-
-# Manual verification
-virsh list --all              # Check VMs created
-virsh net-list               # Check networks active
-curl http://100.64.1.1:8000/redfish/v1/Systems  # Check BMC emulation
-```
-
-#### Test Only Landing Zone
-```bash
-# Assumes infrastructure exists from 'make environment'
-make provision-landing-zone
-
-# Manual verification
-ssh cloud-user@<landing-zone-ip>
-# Check: CentOS Stream 10, podman installed, network configured
-```
-
-#### Test Only Enclave Installation
-```bash
-# Assumes Landing Zone is provisioned
-make install-enclave
-make verify-enclave-installation
-
-# Manual verification
-ssh cloud-user@<landing-zone-ip>
-ls -la /home/cloud-user/enclave
-cat /home/cloud-user/enclave/config/global.yaml
-cat /home/cloud-user/enclave/config/certificates.yaml
-cat /home/cloud-user/enclave/config/cloud_infra.yaml
-```
-
-#### Test Only Cluster Deployment
-```bash
-# Assumes Enclave Lab is installed
-make deploy-cluster
-
-# Monitor progress
-ssh cloud-user@<landing-zone-ip>
-tail -f /home/cloud-user/enclave/deployment.log
-```
-
-### Troubleshooting Local Tests
-
-**Infrastructure creation fails:**
-```bash
-# Check dev-scripts path
-echo $DEV_SCRIPTS_PATH
-ls -la $DEV_SCRIPTS_PATH
-
-# Check libvirt
-sudo systemctl status libvirtd
-virsh list --all
-
-# Check resources
-free -h  # Need 64GB+ RAM
-df -h    # Need 100GB+ disk
-```
-
-**Landing Zone provisioning fails:**
-```bash
-# Check VM state
-virsh list --all | grep landingzone
-
-# Check console
-virsh console enclave-test_landingzone_0
-
-# Check logs on Landing Zone
-ssh cloud-user@<ip> journalctl -xef
-```
-
-**Enclave installation fails:**
-```bash
-# Check Landing Zone connectivity
-ping <landing-zone-ip>
-ssh cloud-user@<landing-zone-ip>
-
-# Check installation logs
-make verify-enclave-installation
-
-# Re-run with fresh state
-ssh cloud-user@<landing-zone-ip>
-rm -rf /home/cloud-user/enclave
-# Then re-run: make install-enclave
-```
-
-**Cluster deployment fails:**
-```bash
-# Check deployment logs
-ssh cloud-user@<landing-zone-ip>
-tail -100 /home/cloud-user/enclave/deployment.log
-
-# Check cluster state
-ssh cloud-user@<landing-zone-ip>
-export KUBECONFIG=/home/cloud-user/enclave/auth/kubeconfig
-oc get nodes
-oc get co  # Cluster operators
-```
-
-**Cleanup issues:**
-```bash
-# Force cleanup
-make clean
-
-# Manual cleanup if needed
-cd $DEV_SCRIPTS_PATH
-CONFIG=config_enclave.sh make clean
-
-# Nuclear option (removes everything)
-virsh list --all | grep enclave-test | awk '{print $2}' | xargs -I {} virsh destroy {}
-virsh list --all | grep enclave-test | awk '{print $2}' | xargs -I {} virsh undefine {}
-```
-
-### Development Best Practices
-
-✅ **DO:**
-- Run `make validate` before every commit
-- Test in connected mode for faster iteration during development
-- Use disconnected mode for final validation before PR
-- Clean up infrastructure regularly to free resources
-- Check logs when tests fail before asking for help
-- Test your changes in isolation first
-
-❌ **DON'T:**
-- Skip validation (CI will catch it anyway)
-- Commit without testing locally
-- Leave infrastructure running when not in use
-- Test in disconnected mode for every small change
-- Forget to set required environment variables
-
-**Typical Development Cycle:**
-1. Make code changes
-2. Run `make validate` ✅
-3. Test specific component if needed
-4. Commit and push
-5. GitHub Actions validates automatically
+For component-specific testing, troubleshooting, and development best practices, see [Local Testing Guide](docs/LOCAL_TESTING.md).
 
 ## Continuous Integration
 
-Enclave Lab uses GitHub Actions for automated testing and validation with four main workflows. All CI workflows use the same Makefile targets that you can run locally, ensuring consistency between local testing and CI.
+GitHub Actions workflows:
 
-### Available Workflows
+1. **PR Validation** (automatic) — shellcheck, yamllint, ansible-lint, Makefile syntax. Test locally: `make -f Makefile.ci validate`
+2. **Infrastructure Verification** (manual / `test-infra` label) — infra setup without full cluster deploy
+3. **E2E Connected Mode** (manual / `test-e2e` label / weekly) — full end-to-end cluster deployment
+4. **Cleanup** (manual / weekly) — infrastructure teardown
 
-#### 1. PR Validation (Automatic)
+The `main` branch requires passing PR validation, code review approval, and an up-to-date branch.
 
-Every pull request automatically runs:
-- ✅ Shell script validation (shellcheck)
-- ✅ YAML linting (yamllint)
-- ✅ Ansible playbook validation (ansible-lint)
-- ✅ Makefile syntax checking
+Pull requests are automatically reviewed by [CodeRabbit AI](https://coderabbit.ai) for security and code quality.
 
-**Test locally before pushing:**
-```bash
-make validate
-```
-
-Runs on GitHub-hosted runners for fast feedback.
-
-#### 2. Infrastructure Verification (Manual/Label)
-
-Tests infrastructure setup without full cluster deployment:
-- Create test infrastructure
-- Provision Landing Zone
-- Install Enclave Lab (connected mode)
-- Verify installation
-
-**Trigger**: Manual or add `test-infra` label to PR
-
-#### 3. E2E Connected Mode (Manual/Label/Scheduled)
-
-Full end-to-end cluster deployment testing:
-- Complete infrastructure setup
-- Deploy OpenShift cluster
-- Verify cluster health
-- Collect artifacts (kubeconfig, logs)
-
-**Trigger**: Manual, add `test-e2e` label to PR, or weekly schedule (Sunday 2 AM UTC)
-
-#### 4. Cleanup (Manual/Scheduled)
-
-Infrastructure cleanup and maintenance:
-- Standard: Clean Enclave infrastructure
-- Deep: Force remove stuck resources
-- Full: Complete reset
-
-**Trigger**: Manual or weekly schedule (Sunday 4 AM UTC)
-
-### CI Documentation
-
-For detailed information about using and troubleshooting CI workflows:
-- **[CI Workflows Guide](docs/CI_WORKFLOWS.md)**: How to use each workflow
-- **[CI Runner Setup](docs/CI_RUNNER_SETUP.md)**: Self-hosted runner configuration
-- **[CI Troubleshooting](docs/CI_TROUBLESHOOTING.md)**: Common issues and solutions
-
-### Branch Protection
-
-The `main` branch is protected and requires:
-- ✅ PR validation checks to pass
-- ✅ Code review approval
-- ✅ Up-to-date branch with main
-
-### Automated Code Review
-
-Pull requests are automatically reviewed by [CodeRabbit AI](https://coderabbit.ai) for:
-- JIRA task ID validation in PR titles and commits
-- Security checks (credentials, hardcoded paths, secrets)
-- Best practices and code quality
-
-CodeRabbit provides inline suggestions and auto-generates JIRA issue links in PR summaries.
+For details see **[CI Workflows Guide](docs/CI_WORKFLOWS.md)** and **[CI Runner Setup](docs/CI_RUNNER_SETUP.md)**.
 
 ## Architecture
 
