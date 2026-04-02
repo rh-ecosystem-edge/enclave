@@ -49,14 +49,23 @@ The following Red Hat operators are automatically installed and configured:
 
 | Operator | Namespace | Purpose |
 |----------|-----------|---------|
-| **LVMS Operator** | `openshift-storage` | Provides local volume management and storage |
 | **Quay Operator** | `quay-enterprise` | Container registry management |
+| **Multicluster Engine** | `multicluster-engine` | Cluster lifecycle management |
 | **Advanced Cluster Management** | `open-cluster-management` | Multi-cluster management |
-| **OpenShift GitOps** | `openshift-operators` | GitOps workflow management (ArgoCD) |
-| **OpenShift Pipelines** | `openshift-operators` | CI/CD pipeline automation |
-| **NetObserv Operator** | `openshift-operators` | Network observability |
+| **Cincinnati Operator** | `openshift-update-service` | Update service for cluster upgrades |
+| **OpenShift GitOps** | `openshift-gitops-operator` | GitOps workflow management (ArgoCD) |
+| **OpenShift Pipelines** | `openshift-pipelines` | CI/CD pipeline automation |
+| **NetObserv Operator** | `openshift-netobserv-operator` | Network observability |
+| **Cluster Logging** | `openshift-logging` | Cluster log collection and forwarding |
+| **Loki Operator** | `openshift-operators-redhat` | Log storage backend |
 | **Red Hat OADP** | `openshift-oadp` | Backup and restore operations |
 | **OpenShift Cert Manager** | `cert-manager-operator` | Certificate management |
+| **Cluster Observability** | `openshift-cluster-observability-operator` | Monitoring and observability |
+| **External Secrets Operator** | `external-secrets-operator` | External secrets management |
+| **Compliance Operator** | `openshift-compliance` | Compliance scanning and remediation |
+| **MetalLB Operator** | `metallb-system` | Load balancer for bare metal |
+
+**Note:** Storage operators (LVMS, ODF) and addon operators (e.g., OpenShift AI) are managed via the plugin system, not through the core operator list. See [Plugin Architecture](PLUGIN_ARCHITECTURE.md).
 
 ### 4. Post-Install Configuration
 
@@ -137,92 +146,55 @@ Configuration is split across multiple files for better organization:
 **Default configuration files** (in `defaults/` directory):
 - `defaults/operators.yaml` - General cluster operators
 - `defaults/platforms.yaml` - Available OpenShift versions
-- `defaults/storage_operators.yaml` - Storage operators (ODF, LVMS)
+- `defaults/deployment.yaml` - Deployment behavior defaults
+- `defaults/k8s.yaml` - Kubernetes resource defaults
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
 - `defaults/content_images.yaml` - RHCOS images and ISOs
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
 - `defaults/mirror_registry.yaml` - Quay hostname and CA path defaults
 - `defaults/quay_operator.yaml` - Quay feature flags and backend storage defaults
-- `defaults/lvms_operator.yaml` - LVMS device selector defaults
+
+**Note:** Storage operators (LVMS, ODF) are configured via the plugin system in `plugins/<name>/plugin.yaml`. See [Plugin Architecture](PLUGIN_ARCHITECTURE.md).
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime.
 
 ## Deployment Workflow
 
-The deployment follows this sequence (defined in `playbooks/main-disconnected.yaml`):
+The deployment is split into seven phase playbooks (orchestrated by `playbooks/main.yaml`):
 
+```text
+Phase 1: Prepare (01-prepare.yaml)
+  Download binaries and RHCOS content
+         ↓
+Phase 2: Mirror (02-mirror.yaml)          ← disconnected only
+  Deploy mirror registry, mirror images
+         ↓
+Phase 3: Deploy (03-deploy.yaml)
+  Generate ISO, boot servers via Redfish, wait for cluster install
+         ↓
+Phase 4: Post-Install (04-post-install.yaml)
+  Apply SSL certificates, configure registry, cluster settings
+         ↓
+Phase 5: Operators (05-operators.yaml)
+  Install and configure cluster operators
+         ↓
+Phase 6: Day-2 (06-day2.yaml)
+  Clair, ACM policies, model config, plugin deployment
+         ↓
+Phase 7: Discovery (07-configure-discovery.yaml)
+  Configure hardware discovery for additional nodes
 ```
-1. Download Content (RHCOS images)
-   ↓
-2. Download Control Binaries (oc, helm, etc.)
-   ↓
-3. Mirror Registry Setup
-   ↓
-4. OCP ABI Configuration (ISO generation)
-   ↓
-5. Hardware Configuration (Redfish boot)
-   ↓
-6. Wait for Deployment (cluster installation)
-   ↓
-7. Operator Installation
-   ↓
-8. Post-Install Configuration
-```
 
-### Step-by-Step Process
+### Bootstrap
 
-1. **Bootstrap** (`bootstrap.sh`):
-   - Validates configuration
-   - Sets up environment
-   - Downloads dependencies
-   - Builds local cache
+Before running the deployment phases, run `bootstrap.sh` to:
+- Validate configuration
+- Install system packages and Ansible dependencies
+- Set up the environment
 
-2. **Download Content** (`download-content` tag):
-   - Downloads RHCOS live rootfs images
-   - Downloads RHCOS live ISOs
-   - Files are stored in `/var/www/html/`
+### Phase Details
 
-3. **Download Control Binaries** (`download-control-binaries` tag):
-   - Creates necessary directories (`bin/`, `dist/`, `config/`, `logs/`)
-   - Downloads and extracts OpenShift CLI (`oc`)
-   - Downloads Helm CLI
-   - Downloads and extracts mirror-registry
-   - Downloads and extracts oc-mirror
-
-4. **Mirror Registry** (`mirror-registry` tag):
-   - Deploys Quay registry container
-   - Configures pull secrets
-   - Mirrors OpenShift and operator images
-
-5. **OCP ABI Configuration** (`configure-abi` tag):
-   - Generates SSH keys
-   - Extracts `openshift-install` binary
-   - Creates `install-config.yaml` and `agent-config.yaml`
-   - Generates installation ISO
-   - Serves ISO via HTTP
-
-6. **Hardware Configuration** (`hardware` tag):
-   - Ejects existing virtual media
-   - Mounts ISO via Redfish
-   - Configures UEFI boot
-   - Reboots servers
-
-7. **Wait for Deployment** (`wait-deployment` tag):
-   - Waits for bootstrap completion
-   - Waits for installation completion
-   - Disables default operator catalogs
-
-8. **Operator Installation** (`operators` tag):
-   - Creates namespaces
-   - Creates OperatorGroups
-   - Creates Subscriptions
-   - Waits for CSV installation
-   - Applies operator-specific configurations
-
-9. **Post-Install Configuration** (`post-install-config` tag):
-   - Applies SSL certificates to API server
-   - Applies SSL certificates to Ingress
-   - Configures registry settings
+See the [Running Individual Phases](#running-individual-phases) section for the exact `make` and `ansible-playbook` commands for each phase.
 
 ## Configuration Examples
 
@@ -382,42 +354,48 @@ Operators are configured in `defaults/operators.yaml`:
 
 ```yaml
 operators:
+  # Container Registry
+  - name: quay-operator
+    channel: stable-3.15
+    namespace: quay-enterprise
+    source: cs-redhat-operator-index-v4-20
+
   # Advanced Cluster Management
   - name: advanced-cluster-management
     channel: release-2.15
     namespace: open-cluster-management
-    source: cs-redhat-operator-index-v4-19
+    source: cs-redhat-operator-index-v4-20
 
   # OpenShift GitOps (ArgoCD)
   - name: openshift-gitops-operator
-    channel: latest
-    namespace: openshift-operators
-    source: cs-redhat-operator-index-v4-19
+    channel: gitops-1.19
+    namespace: openshift-gitops-operator
+    source: cs-redhat-operator-index-v4-20
 
   # OpenShift Pipelines (Tekton)
   - name: openshift-pipelines-operator-rh
-    channel: latest
-    namespace: openshift-operators
-    source: cs-redhat-operator-index-v4-19
+    channel: pipelines-1.20
+    namespace: openshift-pipelines
+    source: cs-redhat-operator-index-v4-20
 
   # Network Observability
   - name: netobserv-operator
     channel: stable
-    namespace: openshift-operators
-    source: cs-redhat-operator-index-v4-19
+    namespace: openshift-netobserv-operator
+    source: cs-redhat-operator-index-v4-20
 
   # Backup and Restore
   - name: redhat-oadp-operator
     channel: stable
     namespace: openshift-oadp
-    source: cs-redhat-operator-index-v4-19
+    source: cs-redhat-operator-index-v4-20
 
   # Certificate Manager
   - name: openshift-cert-manager-operator
     channel: stable-v1
     namespace: cert-manager-operator
-    source: cs-redhat-operator-index-v4-19
-  [...]
+    source: cs-redhat-operator-index-v4-20
+  # ... and more (see defaults/operators.yaml for full list)
 ```
 
 ### SSL Certificate Configuration
@@ -657,7 +635,8 @@ ansible-playbook playbooks/03-deploy.yaml -e workingDir=/home/cloud-user
 # Phase 4: Post-install configuration (cluster config, secrets, certificates)
 ansible-playbook playbooks/04-post-install.yaml -e workingDir=/home/cloud-user
 
-# Phase 5: Install and configure operators (LVMS, ODF, Quay, etc.)
+# Phase 5: Install and configure operators (Quay, ACM, GitOps, etc.)
+# Note: Storage operators (LVMS, ODF) are deployed via the plugin system in this phase
 ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user
 
 # Phase 6: Day-2 operations (Clair, ACM policies, model config)
@@ -672,7 +651,7 @@ ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
 
 ## Troubleshooting
 
-For diagnostic log collection, see the [Log Collection Tool](../lz-gather-logs/README.md).
+For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnostics/README.md).
 
 ### Common Issues
 
