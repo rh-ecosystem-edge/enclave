@@ -79,20 +79,6 @@ properties:
         - url
         - checksum
         additionalProperties: false
-      opm:
-        type: object
-        properties:
-          url:
-            type: string
-            description: URL to download opm binary.
-          checksum:
-            type: string
-            description: SHA256 checksum for the binary.
-            pattern: "^sha256:[0-9a-f]{64}$"
-        required:
-        - url
-        - checksum
-        additionalProperties: false
     additionalProperties: false
 required:
 - control_binaries
