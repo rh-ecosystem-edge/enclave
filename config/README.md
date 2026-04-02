@@ -32,6 +32,10 @@ Contains cloud infrastructure configuration, including the list of worker nodes 
 - These files contain sensitive credentials and private keys
 - The `.gitignore` is configured to exclude them
 
+## Storage Operators
+
+Storage operators (LVMS, ODF) are configured via the plugin system. See `docs/PLUGIN_ARCHITECTURE.md`.
+
 ## Getting Help
 - See `docs/DEPLOYMENT_GUIDE.md` for step-by-step deployment instructions
 - See `docs/CONFIGURATION_REFERENCE.md` for detailed parameter documentation
