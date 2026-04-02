@@ -180,8 +180,8 @@ Both connected and disconnected jobs run automatically on every PR with E2E-rele
    - **send-slack-notification**: Send Slack notification (default: false)
 
 **Slash Commands**:
-- `/test e2e-connected` - Re-run the connected job
-- `/test e2e-disconnected` - Re-run the disconnected job
+- `/test e2e-connected` - Dispatch connected mode only
+- `/test e2e-disconnected` - Dispatch disconnected mode only
 
 ### Cluster Verification
 
@@ -263,10 +263,10 @@ Runs automatically every Sunday at 4 AM UTC with standard cleanup.
 3. Look for error messages in logs
 4. If infrastructure is stuck, run cleanup workflow
 
-### Weekly Regression Testing
+### Nightly Regression Testing
 
-E2E workflow runs automatically every Sunday at 2 AM UTC.
-Reviews results Monday morning.
+E2E workflow runs automatically every day at 03:00 UTC (both connected and disconnected modes).
+Review results the following morning.
 
 ### Infrastructure Maintenance
 

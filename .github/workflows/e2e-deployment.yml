@@ -332,10 +332,15 @@ jobs:
         if: always()
         id: artifact_url
         run: |
-          sleep 2
-
-          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-            --jq '.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+          ARTIFACT_ID=""
+          for attempt in 1 2 3 4 5; do
+            sleep $((attempt * 2))
+            ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+              --jq '.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+            if [ -n "$ARTIFACT_ID" ]; then
+              break
+            fi
+          done
 
           if [ -n "$ARTIFACT_ID" ]; then
             ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
@@ -426,6 +431,8 @@ jobs:
       - name: Determine failed step
         if: failure()
         id: failed_step
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
             ["deploy_prepare"]="Phase 1: Prepare binaries and content"
@@ -449,7 +456,7 @@ jobs:
 
           FAILED_STEP=""
           for step_id in "${step_order[@]}"; do
-            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            outcome=$(printf '%s' "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
             if [ "$outcome" == "failure" ]; then
               FAILED_STEP="${step_names[$step_id]}"
               break
@@ -715,10 +722,15 @@ jobs:
         if: always()
         id: artifact_url
         run: |
-          sleep 2
-
-          ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-            --jq '.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+          ARTIFACT_ID=""
+          for attempt in 1 2 3 4 5; do
+            sleep $((attempt * 2))
+            ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+              --jq '.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+            if [ -n "$ARTIFACT_ID" ]; then
+              break
+            fi
+          done
 
           if [ -n "$ARTIFACT_ID" ]; then
             ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
@@ -809,6 +821,8 @@ jobs:
       - name: Determine failed step
         if: failure()
         id: failed_step
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
             ["deploy_prepare"]="Phase 1: Prepare binaries and content"
@@ -834,7 +848,7 @@ jobs:
 
           FAILED_STEP=""
           for step_id in "${step_order[@]}"; do
-            outcome=$(echo '${{ toJSON(steps) }}' | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            outcome=$(printf '%s' "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
             if [ "$outcome" == "failure" ]; then
               FAILED_STEP="${step_names[$step_id]}"
               break
