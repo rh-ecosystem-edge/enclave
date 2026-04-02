@@ -131,6 +131,20 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
+# Set ODF external config from environment (CI secrets)
+if [ -n "${ODF_EXTERNAL_CONFIG:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}odfExternalConfig: '${ODF_EXTERNAL_CONFIG}'
+"
+    info "ODF external config: set from environment"
+fi
+
+if [ -n "${QUAY_BACKEND_RGW_CONFIG:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}quayBackend: RadosGWStorage
+quayBackendRGWConfiguration: ${QUAY_BACKEND_RGW_CONFIG}
+"
+    info "Quay backend: RadosGWStorage (from environment)"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
