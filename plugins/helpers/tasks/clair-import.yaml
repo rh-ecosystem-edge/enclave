@@ -1,0 +1,74 @@
+---
+- name: Ensure {{ workingDir }}/helpers/clair-import/ exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/helpers/clair-import/"
+    state: directory
+
+- name: Generate Clair Import resources
+  ansible.builtin.copy:
+    dest: "{{ workingDir }}/helpers/clair-import/tekton.yaml"
+    content: |
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        name: clair-import
+        namespace: quay-enterprise
+      rules:
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list"]
+        - apiGroups: [""]
+          resources: ["pods/exec"]
+          verbs: ["create"]
+      ---
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: clair-import
+        namespace: quay-enterprise
+      subjects:
+        - kind: ServiceAccount
+          name: clair-import
+          namespace: openshift-pipelines
+      roleRef:
+        kind: Role
+        name: clair-import
+        apiGroup: rbac.authorization.k8s.io
+      ---
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: clair-import
+        namespace: openshift-pipelines
+      ---
+      apiVersion: tekton.dev/v1
+      kind: Task
+      metadata:
+        name: clair-import
+        namespace: openshift-pipelines
+      spec:
+        results:
+          - name: exit-code
+            description: "Success of clair import (exit code)"
+          - name: status-report
+            description: "Report of clair import"
+        steps:
+          - name: clair-import
+            image: "{{ oc_cli_image }}"
+            script: |
+                #!/bin/bash
+                set -uo pipefail
+
+                clair_pod_name=$(oc get pods -n quay-enterprise -l quay-component=clair-app --field-selector=status.phase=Running -o name | cut -d/ -f2 | head -1)
+                if oc exec -n quay-enterprise "$clair_pod_name" -- \
+                /bin/sh -c "
+                  curl -L -o /tmp/updates.json.gz http://{{ quayHostname }}/clair/updates.json.gz
+                  /usr/bin/clairctl --config /clair/config.yaml import-updaters /tmp/updates.json.gz
+                " > "$(results.status-report.path)" 2>&1; then
+                  rc=0
+                else
+                  rc=$?
+                fi
+                echo "$rc" > "$(results.exit-code.path)"
+                exit "$rc"

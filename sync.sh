@@ -83,7 +83,3 @@ echo -e "\e[38;5;10m Done...\033[0m"; date
 echo -p "ACM ClusterImageSets .." -n1 -s
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-cis 2>&1 | tee -a ${log}
 echo -e "\e[38;5;10m Done...\033[0m"; date
-
-echo -p "OpenShift Pipelines .." -n1 -s
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags openshift-pipelines 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
