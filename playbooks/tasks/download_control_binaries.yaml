@@ -68,4 +68,3 @@
     dest: "{{ workingDir }}/bin/clairctl"
     checksum: "{{ control_binaries.clairctl.checksum }}"
     mode: "0750"
-
