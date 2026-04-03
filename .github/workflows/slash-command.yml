@@ -100,7 +100,9 @@ jobs:
           | `/test tarball` | Build and push tarball | pr-validation |
           | `/test infra` | Infrastructure verification | enclave-small |
           | `/test e2e-connected` | Dispatch E2E (connected only) | enclave-large |
+          | `/test e2e-connected-odf` | Dispatch E2E connected with ODF storage | enclave-large |
           | `/test e2e-disconnected` | Dispatch E2E (disconnected only) | enclave-large |
+          | `/test e2e-disconnected-odf` | Dispatch E2E disconnected with ODF storage | enclave-large |
           | `/test cleanup` | Run cleanup workflow | enclave-small |
           | `/test all` | Run validation + tarball + infra + e2e (both modes) | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
@@ -209,11 +211,25 @@ jobs:
                 -f run-disconnected=false
               track_result "E2E Connected" $?
               ;;
+            e2e-connected-odf)
+              dispatch_workflow e2e-deployment.yml \
+                -f run-connected=true \
+                -f run-disconnected=false \
+                -f storage-plugin=odf
+              track_result "E2E Connected ODF" $?
+              ;;
             e2e-disconnected)
               dispatch_workflow e2e-deployment.yml \
                 -f run-connected=false \
                 -f run-disconnected=true
               track_result "E2E Disconnected" $?
+              ;;
+            e2e-disconnected-odf)
+              dispatch_workflow e2e-deployment.yml \
+                -f run-connected=false \
+                -f run-disconnected=true \
+                -f storage-plugin=odf
+              track_result "E2E Disconnected ODF" $?
               ;;
             cleanup)
               dispatch_workflow cleanup.yml; track_result "Cleanup" $?
@@ -323,7 +339,9 @@ jobs:
               tarball)              echo "build-push-tarball.yml" ;;
               infra)                echo "infra-verify.yml" ;;
               e2e-connected)        echo "e2e-deployment.yml" ;;
+              e2e-connected-odf)    echo "e2e-deployment.yml" ;;
               e2e-disconnected)     echo "e2e-deployment.yml" ;;
+              e2e-disconnected-odf) echo "e2e-deployment.yml" ;;
               cleanup)              echo "cleanup.yml" ;;
               *) return 1 ;;
             esac

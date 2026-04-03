@@ -120,7 +120,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.run-connected == true)
-    runs-on: [self-hosted, enclave-large]
+    runs-on: ${{ (github.event.inputs.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]')) || fromJSON('["self-hosted", "enclave-large"]') }}
     timeout-minutes: 210
 
     concurrency:
@@ -136,6 +136,8 @@ jobs:
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
+      ODF_EXTERNAL_CONFIG: ${{ secrets.ODF_EXTERNAL_CONFIG }}
+      QUAY_BACKEND_RGW_CONFIG: ${{ secrets.QUAY_BACKEND_RGW_CONFIG }}
 
     steps:
       - name: Checkout code
@@ -169,6 +171,13 @@ jobs:
           check-pull-secret: 'true'
           check-system-resources: 'true'
           check-libvirt: 'true'
+
+      - name: Verify Ceph cluster health
+        if: env.STORAGE_PLUGIN == 'odf'
+        run: |
+          echo "## Ceph Cluster Health Check" >> $GITHUB_STEP_SUMMARY
+          CEPH_HOST_IP="${{ vars.CEPH_HOST_IP }}" ./scripts/infrastructure/verify_ceph.sh
+          echo "Ceph cluster verified" >> $GITHUB_STEP_SUMMARY
 
       - name: Allocate unique subnet for cluster
         uses: ./.github/actions/allocate-subnet
@@ -490,7 +499,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.run-disconnected == true)
-    runs-on: [self-hosted, enclave-large]
+    runs-on: ${{ (github.event.inputs.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]')) || fromJSON('["self-hosted", "enclave-large"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
     concurrency:
@@ -506,6 +515,8 @@ jobs:
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
+      ODF_EXTERNAL_CONFIG: ${{ secrets.ODF_EXTERNAL_CONFIG }}
+      QUAY_BACKEND_RGW_CONFIG: ${{ secrets.QUAY_BACKEND_RGW_CONFIG }}
 
     steps:
       - name: Checkout code
@@ -539,6 +550,13 @@ jobs:
           check-pull-secret: 'true'
           check-system-resources: 'true'
           check-libvirt: 'true'
+
+      - name: Verify Ceph cluster health
+        if: env.STORAGE_PLUGIN == 'odf'
+        run: |
+          echo "## Ceph Cluster Health Check" >> $GITHUB_STEP_SUMMARY
+          CEPH_HOST_IP="${{ vars.CEPH_HOST_IP }}" ./scripts/infrastructure/verify_ceph.sh
+          echo "Ceph cluster verified" >> $GITHUB_STEP_SUMMARY
 
       - name: Allocate unique subnet for cluster
         uses: ./.github/actions/allocate-subnet

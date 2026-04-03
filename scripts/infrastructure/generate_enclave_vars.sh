@@ -253,6 +253,13 @@ cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 discovery_hosts: []
 EOF
 
+# Override storage plugin and quay backend when STORAGE_PLUGIN=odf
+if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
+    sed -i 's/^storage_plugin: lvms$/storage_plugin: odf/' "$GLOBAL_VARS_OUTPUT"
+    sed -i 's/^quayBackend: LocalStorage$/quayBackend: RadosGWStorage/' "$GLOBAL_VARS_OUTPUT"
+    info "Storage plugin overridden to ODF with RadosGWStorage backend"
+fi
+
 info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
 echo ""
 info "Configuration summary:"
