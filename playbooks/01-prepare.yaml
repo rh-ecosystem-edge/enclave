@@ -24,6 +24,13 @@
           tags: always
       tags: always
 
+    - name: Validate enabled plugin requirements
+      ansible.builtin.include_tasks:
+        file: tasks/validate_enabled_plugins.yaml
+        apply:
+          tags: always
+      tags: always
+
     - name: Download content
       ansible.builtin.include_tasks:
         file: tasks/download_content.yaml
