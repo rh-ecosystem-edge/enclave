@@ -24,6 +24,10 @@ operators:
         namespaceSelector:
           matchLabels:
             kubernetes.io/metadata.name: open-cluster-management
+      - name: console
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: openshift-console
 
   - name: advanced-cluster-management
     version: 2.15.1
@@ -85,6 +89,11 @@ operators:
     global: true
     csvNames:
       - network-observability-operator
+    allowIngressFrom:
+      - name: console
+        namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: openshift-console
 
   - name: cluster-logging
     version: 6.4.2
