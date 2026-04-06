@@ -61,6 +61,8 @@ definitions:
             name:
               type: string
               description: Identifier used to name the NetworkPolicy (allow-ingress-from-<name>).
+              pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+              maxLength: 253
             namespaceSelector:
               type: object
               additionalProperties: false
@@ -70,6 +72,9 @@ definitions:
                 matchLabels:
                   type: object
                   description: Label selector to match source namespaces.
+                  minProperties: 1
+                  additionalProperties:
+                    type: string
     if:
       required:
         - disableDefaultNetworkPolicies
