@@ -12,6 +12,11 @@ operators:
     namespace: openshift-storage
     source: cs-redhat-operator-index-v4-20
     csvMirror: true
+    allowIngressFrom:
+      - name: ingress
+        namespaceSelector:
+          matchLabels:
+            network.openshift.io/policy-group: ingress
     csvNames:
       - odf-operator
       - odf-dependencies

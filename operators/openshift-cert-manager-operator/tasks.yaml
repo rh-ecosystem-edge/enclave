@@ -1,4 +1,61 @@
 ---
+- name: "Ensure same-namespace NetworkPolicy exists in cert-manager"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-from-same-namespace
+        namespace: cert-manager
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - podSelector: {}
+        policyTypes:
+          - Ingress
+
+- name: "Ensure monitoring can reach cert-manager"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-monitoring
+        namespace: cert-manager
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    network.openshift.io/policy-group: monitoring
+        policyTypes:
+          - Ingress
+
+- name: "Ensure kube-apiserver can reach cert-manager webhook"
+  when: not (operator.disableDefaultNetworkPolicies | default(false))
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-ingress-from-kube-apiserver
+        namespace: cert-manager
+      spec:
+        podSelector: {}
+        ingress:
+          - from:
+              - ipBlock:
+                  cidr: "{{ machineNetwork }}"
+        policyTypes:
+          - Ingress
+
 - name: Patch CertManager to set resources
   kubernetes.core.k8s:
     state: patched
