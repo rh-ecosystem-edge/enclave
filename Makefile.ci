@@ -13,14 +13,15 @@ ENVIRONMENT_JSON := $(WORKING_DIR)/environment-$(ENCLAVE_CLUSTER_NAME).json
 CONFIG_NAME := config_$(ENCLAVE_CLUSTER_NAME).sh
 
 # CI Image
-CI_IMAGE_NAME ?= quay.io/eerez/enclave-lab-ci
+CI_IMAGE_NAME ?= quay.io/edge-infrastructure/enclave-lab-ci
 CI_IMAGE_TAG ?= latest
 CI_IMAGE_FULL := $(CI_IMAGE_NAME):$(CI_IMAGE_TAG)
+CI_IMAGE_LABELS ?=
 
 include Makefile
 
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
-        validate-tags validate-makefile validate-plugins \
+        validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-pre-install-validate \
         environment provision-landing-zone verify-landing-zone \
@@ -50,6 +51,8 @@ help:
 	@echo "  make -f Makefile.ci validate-json-schema  - Validate JSON schema"
 	@echo "  make -f Makefile.ci validate-ansible      - Validate Ansible playbooks with ansible-lint"
 	@echo "  make -f Makefile.ci validate-tags         - Validate Ansible playbook tags"
+	@echo "  make -f Makefile.ci validate-templates    - Validate template rendering"
+	@echo "  make -f Makefile.ci validate-mirror       - Phase 2.5: Validate mirror artifacts"
 	@echo "  make -f Makefile.ci validate-makefile     - Validate Makefile syntax"
 	@echo "  make -f Makefile.ci validate-plugins      - Validate plugin directory structure"
 	@echo ""
@@ -223,6 +226,16 @@ validate-ansible:
 validate-tags:
 	@./scripts/verification/validate.sh tags
 
+validate-templates:
+	@./scripts/verification/validate.sh templates
+
+validate-mirror:
+	@echo "=========================================="
+	@echo "Phase 2.5: Validate mirror artifacts"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_phase.sh validation/validate-mirror.yaml
+
 validate-makefile:
 	@./scripts/verification/validate.sh makefile
 
@@ -233,18 +246,25 @@ validate-plugins:
 
 build-ci-image:
 	@echo "Building CI image: $(CI_IMAGE_FULL)"
-	podman build -f .github/workflows/Dockerfile.ci -t $(CI_IMAGE_FULL) .
+	podman build $(if $(CI_IMAGE_LABELS),--label $(CI_IMAGE_LABELS),) -f .github/workflows/Dockerfile.ci -t $(CI_IMAGE_FULL) .
 	@echo "CI image built successfully: $(CI_IMAGE_FULL)"
 
 push-ci-image:
-	@echo "Pushing CI image: $(CI_IMAGE_FULL)"
 	@if [ -z "$$QUAY_USER" ] || [ -z "$$QUAY_TOKEN" ]; then \
 		echo "Error: QUAY_USER and QUAY_TOKEN environment variables must be set"; \
 		exit 1; \
 	fi
 	@echo "$$QUAY_TOKEN" | podman login quay.io -u "$$QUAY_USER" --password-stdin
-	podman push $(CI_IMAGE_FULL)
-	@echo "CI image pushed successfully: $(CI_IMAGE_FULL)"
+	@set -e; \
+	sha=$$(git rev-parse --short HEAD); \
+	sha_image=$(CI_IMAGE_NAME):$$sha; \
+	echo "Tagging $(CI_IMAGE_FULL) as $$sha_image"; \
+	podman tag $(CI_IMAGE_FULL) $$sha_image; \
+	echo "Pushing $(CI_IMAGE_FULL)"; \
+	podman push $(CI_IMAGE_FULL); \
+	echo "Pushing $$sha_image"; \
+	podman push $$sha_image; \
+	echo "CI image pushed successfully: $(CI_IMAGE_FULL), $$sha_image"
 
 test-ci-image:
 	@echo "Testing CI image: $(CI_IMAGE_FULL)"

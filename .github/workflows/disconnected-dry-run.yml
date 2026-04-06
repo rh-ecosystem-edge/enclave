@@ -1,0 +1,208 @@
+name: Disconnected Dry-Run
+
+# This workflow validates disconnected/mirror configuration without downloading images.
+# It runs infrastructure setup, Phase 1 (prepare), and Phase 2 (mirror) with --dry-run,
+# which validates the mirroring configuration without actual image downloads.
+#
+# Trigger methods:
+# 1. Manual: Go to Actions tab -> "Disconnected Dry-Run" -> Run workflow
+# 2. Automatic: On every PR
+# 3. Scheduled: Daily at 11:00 PM EST (04:00 UTC)
+
+on:
+  schedule:
+    # Run daily at 11:00 PM EST (04:00 UTC)
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+    inputs:
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/disconnected-dry-run.yml'
+      - 'Makefile'
+      - 'scripts/**'
+      - 'playbooks/**'
+      - 'defaults/**'
+      - 'plugins/**'
+      - 'templates/**'
+
+permissions:
+  contents: read
+
+# Allow parallel execution with unique cluster names per run
+concurrency:
+  group: disconnected-dry-run-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  disconnected-dry-run:
+    name: Disconnected Dry-Run Test
+    runs-on: [self-hosted, enclave-small]
+    timeout-minutes: 60
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      ENCLAVE_DEPLOYMENT_MODE: disconnected
+      ENCLAVE_MIRROR_DRY_RUN: "true"
+      OPENSHIFT_CI: "true"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: eci
+          run-id: ${{ github.run_id }}
+
+      - name: Setup cluster-specific working directory
+        run: |
+          make -f Makefile.ci setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: Disconnected Dry-Run Pre-flight Checks
+          check-pull-secret: 'true'
+          check-system-resources: 'true'
+          check-libvirt: 'true'
+
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci environment
+          echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Provision Landing Zone
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci provision-landing-zone
+          echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci install-enclave
+          echo "✅ Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 1 - Prepare binaries and content
+        run: |
+          echo "## Phase 1: Prepare" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Downloading OpenShift binaries and content..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-prepare
+
+          echo "✅ Phase 1 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2 - Mirror registry (dry-run)
+        run: |
+          echo "## Phase 2: Mirror Registry (dry-run)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Running mirror registry setup with --dry-run (no image downloads)..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci deploy-cluster-mirror
+
+          echo "✅ Phase 2 complete (dry-run)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Phase 2.5 - Validate mirror artifacts
+        run: |
+          echo "## Phase 2.5: Validate Mirror Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Validating mirror registry, pull secret, workspace manifests, and TLS certificate..." >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci validate-mirror
+
+          echo "✅ Mirror artifacts validated" >> $GITHUB_STEP_SUMMARY
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
+
+      - name: Upload artifacts
+        if: always()
+        id: upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-artifacts-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Determine failed step
+        if: always()
+        id: failed_step
+        run: |
+          # Check steps in reverse order to find the last failed step
+          if [ "${{ steps.upload_artifacts.outcome }}" = "failure" ]; then
+            echo "FAILED_STEP=Upload artifacts" >> $GITHUB_OUTPUT
+          elif [ "${{ job.status }}" = "failure" ]; then
+            echo "FAILED_STEP=Phase 2/2.5 - Mirror registry or validation" >> $GITHUB_OUTPUT
+          else
+            echo "FAILED_STEP=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Cleanup infrastructure
+        if: always()
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          set +e
+          make -f Makefile.ci clean 2>&1 | tee cleanup.log
+          CLEANUP_EXIT_CODE=$?
+          set -e
+
+          if [ $CLEANUP_EXIT_CODE -eq 0 ]; then
+            echo "✅ Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify Slack
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: Disconnected Dry-Run
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Disconnected Dry-Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: disconnected (dry-run)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY

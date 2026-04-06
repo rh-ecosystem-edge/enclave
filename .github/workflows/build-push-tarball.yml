@@ -12,16 +12,23 @@ on:
   merge_group:
     types: [checks_requested]
 
+permissions:
+  contents: read
+
 jobs:
+  # Job 0: Resolve CI image — build SHA-tagged image if Dockerfile.ci changed
+  resolve-image:
+    uses: ./.github/workflows/resolve-ci-image.yml
+    secrets: inherit
+
   build-push-tarball:
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       volumes:
         - /var/run/docker.sock:/var/run/docker.sock
       options: --user root
-    permissions:
-      contents: read
     defaults:
       run:
         shell: bash

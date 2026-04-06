@@ -16,12 +16,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Job 0: Resolve CI image — build SHA-tagged image if Dockerfile.ci changed
+  resolve-image:
+    uses: ./.github/workflows/resolve-ci-image.yml
+    secrets: inherit
+
   # Job 1: Shell script validation
   shellcheck:
     name: Shell Script Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -66,9 +72,10 @@ jobs:
   # Job 2: YAML validation
   yamllint:
     name: YAML Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -113,9 +120,10 @@ jobs:
   # Job 3: JSON schema validation
   json-schema:
     name: JSON Schema Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -160,9 +168,10 @@ jobs:
   # Job 4: Ansible playbook validation
   ansible-lint:
     name: Ansible Playbook Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -207,9 +216,10 @@ jobs:
   # Job 5: Ansible playbook tags validation
   ansible-tags:
     name: Ansible Tags Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -253,12 +263,60 @@ jobs:
           path: tags.log
           retention-days: 7
 
-  # Job 6: Makefile validation
-  makefile:
-    name: Makefile Validation
+  # Job 6: Template rendering validation
+  template-rendering:
+    name: Template Rendering Validation
     runs-on: [self-hosted, pr-validation]
+    permissions:
+      contents: read
     container:
       image: quay.io/eerez/enclave-lab-ci:latest
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run template rendering validation
+        run: |
+          set -o pipefail
+          echo "## Template Rendering Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make -f Makefile.ci validate-templates 2>&1 | tee template-rendering.log; then
+            echo "### ✅ Template rendering validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All templates render valid YAML with correct structure." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Template rendering validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "One or more templates failed to render or produced invalid output:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 template-rendering.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload template rendering log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: template-rendering-log
+          path: template-rendering.log
+          retention-days: 7
+
+  # Job 7: Makefile validation
+  makefile:
+    name: Makefile Validation
+    needs: resolve-image
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
@@ -303,9 +361,10 @@ jobs:
   # Job 7: Plugin validation
   plugins:
     name: Plugin Validation
+    needs: resolve-image
     runs-on: [self-hosted, pr-validation]
     container:
-      image: quay.io/eerez/enclave-lab-ci:latest
+      image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
     timeout-minutes: 5
     defaults:
