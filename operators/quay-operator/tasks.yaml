@@ -71,14 +71,6 @@
     file: "{{ playbook_dir }}/../plugins/{{ storage_plugin }}/tasks/quay.yaml"
   when: lookup('ansible.builtin.fileglob', playbook_dir ~ '/../plugins/' ~ storage_plugin ~ '/tasks/quay.yaml') | length > 0
 
-- name: Configure DNS for Quay route in /etc/hosts using ingress VIP
-  ansible.builtin.lineinfile:
-    path: /etc/hosts
-    line: "{{ ingressVIP }} registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
-    regexp: ".*registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}.*"
-    state: present
-  become: true
-
 - name: Wait for QuayRegistry to be available
   kubernetes.core.k8s_info:
     api_version: quay.redhat.com/v1
