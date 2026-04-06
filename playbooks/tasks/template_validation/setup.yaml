@@ -1,0 +1,61 @@
+---
+# Template Validation Setup
+# Loads variables, plugin descriptors, creates temp directory and fixture files.
+
+- name: Include deployment defaults
+  ansible.builtin.include_vars: ../../defaults/deployment.yaml
+
+- name: Include common configuration
+  ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
+  loop:
+    - content_images.yaml
+    - control_binaries.yaml
+    - operators.yaml
+    - platforms.yaml
+    - catalogs.yaml
+    - mirror_registry.yaml
+    - quay_operator.yaml
+    - k8s.yaml
+  loop_control:
+    loop_var: config_file
+
+- name: Load lvms plugin descriptor
+  ansible.builtin.set_fact:
+    plugin_lvms: "{{ lookup('ansible.builtin.file', '../../plugins/lvms/plugin.yaml') | from_yaml }}"
+
+- name: Load odf plugin descriptor
+  ansible.builtin.set_fact:
+    plugin_odf: "{{ lookup('ansible.builtin.file', '../../plugins/odf/plugin.yaml') | from_yaml }}"
+
+- name: Create temporary directory for rendered templates
+  ansible.builtin.tempfile:
+    state: directory
+    prefix: template_validation_
+  register: temp_dir
+
+- name: Create dummy pull secret file
+  ansible.builtin.copy:
+    content: '{"auths":{}}'
+    dest: "{{ temp_dir.path }}/pull-secret.json"
+
+- name: Create dummy SSH public key file
+  ansible.builtin.copy:
+    content: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ test@test"
+    dest: "{{ temp_dir.path }}/ssh-pub-key"
+
+- name: Create dummy CA certificate file
+  ansible.builtin.copy:
+    content: |
+      -----BEGIN CERTIFICATE-----
+      MIIBkTCB+wIJALRiMLAh3IIJMA0GCSqGSIb3DQEBCwUAMBExDzANBgNVBAMMBnRl
+      c3RjYTAeFw0yNDAxMDEwMDAwMDBaFw0yNTAxMDEwMDAwMDBaMBExDzANBgNVBAMM
+      BnRlc3RjYTBcMA0GCSqGSIb3DQEBAQUAAwtJADBGAkEA0Z3VS5JJcds3xf0GPI9U
+      -----END CERTIFICATE-----
+    dest: "{{ temp_dir.path }}/rootCA.pem"
+
+- name: Override file paths for validation
+  ansible.builtin.set_fact:
+    pullSecretPath: "{{ temp_dir.path }}/pull-secret.json"
+    sshPubPath: "{{ temp_dir.path }}/ssh-pub-key"
+    quayCAPath: "{{ temp_dir.path }}/rootCA.pem"
+    workingDir: "{{ temp_dir.path }}"

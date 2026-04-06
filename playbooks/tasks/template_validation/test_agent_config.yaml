@@ -1,0 +1,19 @@
+---
+# Template Validation: agent-config.yaml
+
+- name: Render agent-config.yaml
+  ansible.builtin.template:
+    src: ../../templates/agent-config.yaml.j2
+    dest: "{{ temp_dir.path }}/agent-config.yaml"
+
+- name: Read rendered agent-config.yaml
+  ansible.builtin.slurp:
+    src: "{{ temp_dir.path }}/agent-config.yaml"
+  register: agent_config_raw
+
+- name: Validate agent-config.yaml YAML parsing
+  ansible.builtin.assert:
+    that:
+      - agent_config_raw.content | b64decode | from_yaml is mapping
+    fail_msg: "agent-config.yaml is not valid YAML"
+    success_msg: "agent-config.yaml parsed successfully"

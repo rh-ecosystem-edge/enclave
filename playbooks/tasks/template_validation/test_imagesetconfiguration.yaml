@@ -1,0 +1,187 @@
+---
+# Template Validation: imagesetconfiguration.yaml
+# Renders for each storage backend and validates structure and package entries.
+
+- name: Render imagesetconfiguration.yaml for each storage backend
+  vars:
+    _core_plugin_operators: "{{ item.operators }}"
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration.yaml.j2
+    dest: "{{ temp_dir.path }}/imagesetconfiguration-{{ item.name }}.yaml"
+  loop:
+    - "{{ plugin_lvms }}"
+    - "{{ plugin_odf }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Read rendered imagesetconfiguration files
+  ansible.builtin.slurp:
+    src: "{{ temp_dir.path }}/imagesetconfiguration-{{ item }}.yaml"
+  register: imageset_raw
+  loop:
+    - lvms
+    - odf
+
+- name: Validate imagesetconfiguration YAML parsing
+  ansible.builtin.assert:
+    that:
+      - item.content | b64decode | from_yaml is mapping
+    fail_msg: "imagesetconfiguration-{{ item.item }}.yaml is not valid YAML"
+    success_msg: "imagesetconfiguration-{{ item.item }}.yaml parsed successfully"
+  loop: "{{ imageset_raw.results }}"
+  loop_control:
+    label: "imagesetconfiguration-{{ item.item }}.yaml"
+
+- name: Load imagesetconfiguration (lvms) for assertions
+  ansible.builtin.set_fact:
+    imageset_lvms: "{{ lookup('file', temp_dir.path + '/imagesetconfiguration-lvms.yaml') | from_yaml }}"
+
+- name: Load imagesetconfiguration (odf) for assertions
+  ansible.builtin.set_fact:
+    imageset_odf: "{{ lookup('file', temp_dir.path + '/imagesetconfiguration-odf.yaml') | from_yaml }}"
+
+- name: Validate imagesetconfiguration structure
+  ansible.builtin.assert:
+    that:
+      - item.mirror is defined
+      - item.mirror.platform is defined
+      - item.mirror.platform.channels is defined
+      - item.mirror.platform.channels | length > 0
+      - item.mirror.operators is defined
+      - item.mirror.operators | length > 0
+      - item.mirror.additionalImages is defined
+      - item.mirror.blockedImages is defined
+    fail_msg: "imagesetconfiguration is missing required top-level structure"
+    success_msg: "imagesetconfiguration has valid top-level structure"
+  loop:
+    - "{{ imageset_lvms }}"
+    - "{{ imageset_odf }}"
+  loop_control:
+    label: "imagesetconfiguration structure check"
+
+- name: Collect all operator packages from imagesetconfiguration (lvms)
+  ansible.builtin.set_fact:
+    all_packages_lvms: "{{ imageset_lvms.mirror.operators | map(attribute='packages') | flatten }}"
+
+- name: Collect all operator packages from imagesetconfiguration (odf)
+  ansible.builtin.set_fact:
+    all_packages_odf: "{{ imageset_odf.mirror.operators | map(attribute='packages') | flatten }}"
+
+- name: Identify versioned packages (have defaultChannel) vs bare mirror packages (lvms)
+  ansible.builtin.set_fact:
+    versioned_packages_lvms: "{{ all_packages_lvms | selectattr('defaultChannel', 'defined') | list }}"
+    bare_packages_lvms: "{{ all_packages_lvms | rejectattr('defaultChannel', 'defined') | list }}"
+
+- name: Identify versioned packages (have defaultChannel) vs bare mirror packages (odf)
+  ansible.builtin.set_fact:
+    versioned_packages_odf: "{{ all_packages_odf | selectattr('defaultChannel', 'defined') | list }}"
+    bare_packages_odf: "{{ all_packages_odf | rejectattr('defaultChannel', 'defined') | list }}"
+
+- name: Validate versioned packages have defaultChannel and channels (lvms)
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.defaultChannel is defined
+      - item.channels is defined
+      - item.channels | length > 0
+    fail_msg: "Package '{{ item.name | default('unnamed-package') }}' is missing name, defaultChannel, or channels"
+    success_msg: "Package '{{ item.name | default('unnamed-package') }}' has defaultChannel and channels"
+  loop: "{{ versioned_packages_lvms }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed-package') }}"
+
+- name: Validate versioned packages have defaultChannel and channels (odf)
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.defaultChannel is defined
+      - item.channels is defined
+      - item.channels | length > 0
+    fail_msg: "Package '{{ item.name | default('unnamed-package') }}' is missing name, defaultChannel, or channels"
+    success_msg: "Package '{{ item.name | default('unnamed-package') }}' has defaultChannel and channels"
+  loop: "{{ versioned_packages_odf }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed-package') }}"
+
+- name: Validate bare mirror packages only have name key (lvms)
+  ansible.builtin.assert:
+    that:
+      - item.keys() | list | length == 1
+      - item.name is defined
+    fail_msg: "Bare package '{{ item.name | default('unnamed-package') }}' has unexpected keys: {{ item.keys() | list }}"
+    success_msg: "Bare package '{{ item.name | default('unnamed-package') }}' is correctly a name-only entry"
+  loop: "{{ bare_packages_lvms }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed-package') }}"
+  when: bare_packages_lvms | length > 0
+
+- name: Validate bare mirror packages only have name key (odf)
+  ansible.builtin.assert:
+    that:
+      - item.keys() | list | length == 1
+      - item.name is defined
+    fail_msg: "Bare package '{{ item.name | default('unnamed-package') }}' has unexpected keys: {{ item.keys() | list }}"
+    success_msg: "Bare package '{{ item.name | default('unnamed-package') }}' is correctly a name-only entry"
+  loop: "{{ bare_packages_odf }}"
+  loop_control:
+    label: "{{ item.name | default('unnamed-package') }}"
+  when: bare_packages_odf | length > 0
+
+- name: Collect extraMirrorPackages per backend
+  ansible.builtin.set_fact:
+    extra_mirror_names_lvms: >-
+      {{ (operators + plugin_lvms.operators)
+         | selectattr('extraMirrorPackages', 'defined')
+         | map(attribute='extraMirrorPackages')
+         | flatten
+         | list }}
+    extra_mirror_names_odf: >-
+      {{ (operators + plugin_odf.operators)
+         | selectattr('extraMirrorPackages', 'defined')
+         | map(attribute='extraMirrorPackages')
+         | flatten
+         | list }}
+
+- name: Validate extraMirrorPackages are bare entries without version constraints (lvms)
+  ansible.builtin.assert:
+    that:
+      - matching_packages | length > 0
+      - matching_packages | map('dict2items') | map('length') | reject('equalto', 1) | list | length == 0
+    fail_msg: >-
+      extraMirrorPackage '{{ item }}' has entries with version constraints in the
+      rendered imageset: {{ matching_packages }}
+    success_msg: "extraMirrorPackage '{{ item }}' is correctly a bare entry"
+  vars:
+    matching_packages: "{{ all_packages_lvms | selectattr('name', 'equalto', item) | list }}"
+  loop: "{{ extra_mirror_names_lvms }}"
+  when: extra_mirror_names_lvms | length > 0
+
+- name: Validate extraMirrorPackages are bare entries without version constraints (odf)
+  ansible.builtin.assert:
+    that:
+      - matching_packages | length > 0
+      - matching_packages | map('dict2items') | map('length') | reject('equalto', 1) | list | length == 0
+    fail_msg: >-
+      extraMirrorPackage '{{ item }}' has entries with version constraints in the
+      rendered imageset: {{ matching_packages }}
+    success_msg: "extraMirrorPackage '{{ item }}' is correctly a bare entry"
+  vars:
+    matching_packages: "{{ all_packages_odf | selectattr('name', 'equalto', item) | list }}"
+  loop: "{{ extra_mirror_names_odf }}"
+  when: extra_mirror_names_odf | length > 0
+
+- name: Check no overlap between additionalImages and blockedimages
+  ansible.builtin.assert:
+    that:
+      - additional_names | intersect(blocked_names) | length == 0
+    fail_msg: "Overlap found between additionalImages and blockedimages ({{ backend }}): {{ additional_names | intersect(blocked_names) }}"
+    success_msg: "No overlap between additionalImages and blockedimages ({{ backend }})"
+  vars:
+    additional_names: "{{ item.mirror.additionalImages | map(attribute='name') | list }}"
+    blocked_names: "{{ item.mirror.blockedImages | map(attribute='name') | list }}"
+    backend: "{{ 'lvms' if item == imageset_lvms else 'odf' }}"
+  loop:
+    - "{{ imageset_lvms }}"
+    - "{{ imageset_odf }}"
+  loop_control:
+    label: "{{ backend }}"

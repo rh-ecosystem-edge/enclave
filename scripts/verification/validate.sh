@@ -64,7 +64,7 @@ validate_yaml() {
 validate_json_schema() {
     print_header "Validating JSON schema"
 
-    if ansible-playbook playbooks/validate-schema.yaml; then
+    if ansible-playbook playbooks/validation/validate-schema.yaml -e@config/global.example.yaml; then
         print_success "JSON schema validation passed"
         return 0
     else
@@ -134,8 +134,9 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Configure operators"
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
-        "playbooks/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
-        "playbooks/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:schema-validation:Include defaults schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:schema-validation:Include variables schema validation tasks"
+        "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
     )
 
     for test in "${tag_tests[@]}"; do
@@ -179,6 +180,18 @@ validate_tags() {
     fi
 }
 
+validate_templates() {
+    print_header "Validating template rendering"
+
+    if ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.validation.yaml; then
+        print_success "Template rendering validation passed"
+        return 0
+    else
+        print_error "Template rendering validation failed"
+        return 1
+    fi
+}
+
 validate_makefile() {
     print_header "Validating Makefile syntax"
 
@@ -215,6 +228,18 @@ validate_plugins() {
     fi
 }
 
+validate_mirror() {
+    print_header "Validating mirror artifacts on Landing Zone"
+
+    if make validate-mirror; then
+        print_success "Mirror artifact validation passed"
+        return 0
+    else
+        print_error "Mirror artifact validation failed"
+        return 1
+    fi
+}
+
 # Main function
 validate_all() {
     local failed=0
@@ -230,6 +255,7 @@ validate_all() {
     validate_json_schema || failed=1
     validate_ansible || failed=1
     validate_tags || failed=1
+    validate_templates || failed=1
     validate_makefile || failed=1
     validate_plugins || failed=1
 
@@ -265,17 +291,23 @@ case "${1:-all}" in
     tags)
         validate_tags
         ;;
+    templates)
+        validate_templates
+        ;;
     makefile)
         validate_makefile
         ;;
     plugins)
         validate_plugins
         ;;
+    mirror)
+        validate_mirror
+        ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|makefile|plugins}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins}"
         exit 1
         ;;
 esac

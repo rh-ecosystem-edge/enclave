@@ -1,0 +1,30 @@
+---
+# Template Validation: install-config.yaml (connected and disconnected variants)
+
+- name: Render install-config-connected.yaml
+  ansible.builtin.template:
+    src: ../../templates/install-config-connected.yaml.j2
+    dest: "{{ temp_dir.path }}/install-config-connected.yaml"
+
+- name: Render install-config-disconnected.yaml
+  ansible.builtin.template:
+    src: ../../templates/install-config-disconnected.yaml.j2
+    dest: "{{ temp_dir.path }}/install-config-disconnected.yaml"
+
+- name: Read rendered install-config files
+  ansible.builtin.slurp:
+    src: "{{ temp_dir.path }}/{{ item }}"
+  register: install_configs_raw
+  loop:
+    - install-config-connected.yaml
+    - install-config-disconnected.yaml
+
+- name: Validate install-config YAML parsing
+  ansible.builtin.assert:
+    that:
+      - item.content | b64decode | from_yaml is mapping
+    fail_msg: "{{ item.item }} is not valid YAML"
+    success_msg: "{{ item.item }} parsed successfully"
+  loop: "{{ install_configs_raw.results }}"
+  loop_control:
+    label: "{{ item.item }}"

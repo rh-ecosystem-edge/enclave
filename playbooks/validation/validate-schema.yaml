@@ -3,7 +3,7 @@
 # Validates all config files against their JSON schemas
 #
 # Usage:
-#   ansible-playbook playbooks/validate-schema.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/validation/validate-schema.yaml -e workingDir=/home/cloud-user
 
 - name: Schema Validation
   hosts: localhost

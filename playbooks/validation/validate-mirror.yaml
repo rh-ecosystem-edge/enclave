@@ -1,0 +1,33 @@
+---
+# Mirror Artifact Validation Playbook
+# Validates artifacts produced by Phase 2 (mirror registry setup):
+# - Mirror registry health (Quay container and API)
+# - Combined pull secret structure and mirror auth entry
+# - oc-mirror workspace manifests (IDMS, ITMS, CatalogSource)
+# - CatalogSource references point to local mirror
+# - IDMS contains expected OCP release mirror entries
+# - Mirror registry TLS certificate validity
+# - Rendered imagesetconfiguration.yaml
+#
+# Usage (on Landing Zone after Phase 2):
+#   ansible-playbook playbooks/validation/validate-mirror.yaml -e @phase_vars.yaml
+
+- name: Validate Mirror Artifacts
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: ../common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Include mirror validation tasks
+      ansible.builtin.include_tasks:
+        file: ../tasks/mirror_validation.yaml
+        apply:
+          tags: mirror-validation
+      tags: mirror-validation
