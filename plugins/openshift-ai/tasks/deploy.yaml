@@ -9,13 +9,37 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_model_config is success
 
+- name: Create ACM Policy for Model prerequisites
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_model_prerequisites
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_prerequisites is success
+
+- name: Create ACM Policy for Model operators CRD readiness
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/11-policy-crd-ready.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_model_crd_ready
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_crd_ready is success
+
 - name: Create ACM Policy for Model configuration
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:
     state: present
     namespace: openshift-acm-policies
-    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy.yaml.j2') | from_yaml }}"
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/12-policy-datasciencecluster.yaml.j2') | from_yaml }}"
   register: r_acm_policy_model_config
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
