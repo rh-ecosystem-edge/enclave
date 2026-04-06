@@ -67,12 +67,17 @@ properties:
       scopes:
         type: string
         description: Space-separated list of OAuth scopes
-    required:
-      - enabled
-      - name
-      - organization
-      - redirect_uri
-      - scopes
+    allOf:
+      - if:
+          properties:
+            enabled:
+              const: true
+        then:
+          required:
+            - name
+            - organization
+            - redirect_uri
+            - scopes
 
 required:
   - quayFeatureProxyStorage
@@ -80,4 +85,3 @@ required:
   - quayMaximumLayerSize
   - quayBackendDefaults
   - quayBackendRGWDefaults
-  - quayOAuthApp
