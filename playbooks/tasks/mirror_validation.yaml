@@ -1,0 +1,345 @@
+---
+# Mirror Artifact Validation Tasks
+# Validates all artifacts produced by Phase 2 (mirror registry setup).
+# Catches misconfigurations that would otherwise only surface during
+# a full disconnected deployment (Phase 3+).
+
+# ------------------------------------------------------------------
+# Validation 1: Mirror registry is healthy
+# ------------------------------------------------------------------
+- name: "Validation 1: Check Quay container is running"
+  containers.podman.podman_container_info:
+    name: quay-app
+  register: r_quay_container
+
+- name: Assert Quay container is running
+  ansible.builtin.assert:
+    that:
+      - r_quay_container.containers | default([]) | length > 0
+      - r_quay_container.containers[0].State.Running | default(false)
+    fail_msg: >-
+      Mirror registry (quay-app) container is not running.
+      Run 'podman ps -a --filter name=quay-app' to diagnose.
+
+- name: Check registry API responds
+  ansible.builtin.uri:
+    url: "https://{{ quayHostname }}:8443/api/v1/discovery"
+    validate_certs: false
+    return_content: false
+    status_code: 200
+  register: r_registry_api
+
+- name: Assert registry API is healthy
+  ansible.builtin.assert:
+    that:
+      - r_registry_api.status == 200
+    fail_msg: >-
+      Mirror registry API at https://{{ quayHostname }}:8443 did not return 200.
+      Status: {{ r_registry_api.status | default('unreachable') }}
+
+# ------------------------------------------------------------------
+# Validation 2: Combined pull secret is valid
+# ------------------------------------------------------------------
+- name: "Validation 2: Check pull secret file exists"
+  ansible.builtin.stat:
+    path: "{{ pullSecretPath }}"
+  register: r_pull_secret_stat
+
+- name: Assert pull secret file exists
+  ansible.builtin.assert:
+    that:
+      - r_pull_secret_stat.stat.exists
+    fail_msg: >-
+      Combined pull secret not found at {{ pullSecretPath }}.
+      Phase 2 should have created this file.
+
+- name: Read pull secret file
+  ansible.builtin.slurp:
+    src: "{{ pullSecretPath }}"
+  register: r_pull_secret_content
+
+- name: Parse pull secret JSON
+  ansible.builtin.set_fact:
+    pull_secret_json: "{{ r_pull_secret_content.content | b64decode | from_json }}"
+
+- name: Assert pull secret contains mirror auth entry
+  ansible.builtin.assert:
+    that:
+      - pull_secret_json.auths is defined
+      - "quayHostname + ':8443' in pull_secret_json.auths"
+    fail_msg: >-
+      Pull secret at {{ pullSecretPath }} is missing auth entry for
+      {{ quayHostname }}:8443. The mirror registry credentials were
+      not merged into the pull secret.
+
+- name: Validate mirror auth is base64-decodable
+  ansible.builtin.set_fact:
+    mirror_auth_decoded: "{{ pull_secret_json.auths[quayHostname + ':8443'].auth | b64decode }}"
+
+- name: Assert mirror auth contains colon-separated credentials
+  ansible.builtin.assert:
+    that:
+      - "':' in mirror_auth_decoded"
+    fail_msg: >-
+      Mirror auth entry for {{ quayHostname }}:8443 does not decode
+      to a valid user:password format.
+
+# ------------------------------------------------------------------
+# Validations 3-5: oc-mirror workspace manifests (skipped in dry-run)
+# oc-mirror v2 --dry-run prints the list of images that would be
+# mirrored but does NOT generate cluster-resources (IDMS, ITMS,
+# CatalogSource). These validations only run after a real mirror run.
+# ------------------------------------------------------------------
+- name: Note that workspace manifest validations are skipped in dry-run mode
+  ansible.builtin.debug:
+    msg: >-
+      Skipping workspace manifest validations (3-5): oc-mirror --dry-run
+      does not generate IDMS/ITMS/CatalogSource cluster-resources.
+  when: mirror_dry_run | default(false) | bool
+
+- name: Validate oc-mirror workspace manifests and IDMS/CatalogSource content
+  when: not (mirror_dry_run | default(false) | bool)
+  block:
+    # ----------------------------------------------------------------
+    # Validation 3: oc-mirror workspace manifests exist and are valid
+    # ----------------------------------------------------------------
+    - name: "Validation 3: Define workspace manifest paths"
+      ansible.builtin.set_fact:
+        oc_mirror_workspace: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources"
+
+    - name: Check IDMS manifest exists
+      ansible.builtin.stat:
+        path: "{{ oc_mirror_workspace }}/idms-oc-mirror.yaml"
+      register: r_idms_stat
+
+    - name: Assert IDMS manifest exists
+      ansible.builtin.assert:
+        that:
+          - r_idms_stat.stat.exists
+        fail_msg: >-
+          IDMS manifest not found at {{ oc_mirror_workspace }}/idms-oc-mirror.yaml.
+          oc-mirror may have failed or produced output in an unexpected location.
+
+    - name: Read IDMS manifest
+      ansible.builtin.slurp:
+        src: "{{ oc_mirror_workspace }}/idms-oc-mirror.yaml"
+      register: r_idms_content
+
+    - name: Parse IDMS manifest
+      ansible.builtin.set_fact:
+        idms_manifest: "{{ r_idms_content.content | b64decode | from_yaml }}"
+
+    - name: Check ITMS manifest exists
+      ansible.builtin.stat:
+        path: "{{ oc_mirror_workspace }}/itms-oc-mirror.yaml"
+      register: r_itms_stat
+
+    - name: Assert ITMS manifest exists
+      ansible.builtin.assert:
+        that:
+          - r_itms_stat.stat.exists
+        fail_msg: >-
+          ITMS manifest not found at {{ oc_mirror_workspace }}/itms-oc-mirror.yaml.
+          oc-mirror may have failed or produced output in an unexpected location.
+
+    - name: Read ITMS manifest
+      ansible.builtin.slurp:
+        src: "{{ oc_mirror_workspace }}/itms-oc-mirror.yaml"
+      register: r_itms_content
+
+    - name: Parse ITMS manifest
+      ansible.builtin.set_fact:
+        itms_manifest: "{{ r_itms_content.content | b64decode | from_yaml }}"
+
+    - name: Find CatalogSource manifest
+      ansible.builtin.find:
+        paths: "{{ oc_mirror_workspace }}"
+        patterns: "cs-*.yaml"
+      register: r_cs_files
+
+    - name: Assert at least one CatalogSource manifest exists
+      ansible.builtin.assert:
+        that:
+          - r_cs_files.files | length > 0
+        fail_msg: >-
+          No CatalogSource manifests (cs-*.yaml) found in
+          {{ oc_mirror_workspace }}. oc-mirror should have generated
+          at least one CatalogSource for the mirrored operator index.
+
+    - name: Read CatalogSource manifests
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ r_cs_files.files }}"
+      register: r_cs_contents
+
+    - name: Parse CatalogSource manifests
+      ansible.builtin.set_fact:
+        cs_manifests: "{{ r_cs_contents.results | map(attribute='content') | map('b64decode') | map('from_yaml') | list }}"
+
+    # ----------------------------------------------------------------
+    # Validation 4: CatalogSource references are correct
+    # ----------------------------------------------------------------
+    - name: "Validation 4: Assert CatalogSource images point to local mirror"
+      ansible.builtin.assert:
+        that:
+          - item.spec.image is defined
+          - "item.spec.image.startswith(quayHostname + ':8443/')"
+          - item.spec.sourceType == 'grpc'
+        fail_msg: >-
+          CatalogSource {{ item.metadata.name | default('unknown') }} has invalid configuration.
+          spec.image: {{ item.spec.image | default('missing') }}
+          (expected to start with {{ quayHostname }}:8443/)
+          spec.sourceType: {{ item.spec.sourceType | default('missing') }}
+          (expected 'grpc')
+      loop: "{{ cs_manifests }}"
+      loop_control:
+        label: "{{ item.metadata.name | default('unknown') }}"
+
+    # ----------------------------------------------------------------
+    # Validation 5: IDMS contains expected mirror entries
+    # ----------------------------------------------------------------
+    - name: "Validation 5: Extract IDMS mirror sources"
+      ansible.builtin.set_fact:
+        idms_sources: "{{ idms_manifest.spec.imageDigestMirrors | default([]) | map(attribute='source') | list }}"
+
+    - name: Assert IDMS has mirror entries
+      ansible.builtin.assert:
+        that:
+          - idms_manifest.spec.imageDigestMirrors | default([]) | length > 0
+        fail_msg: >-
+          IDMS manifest has no imageDigestMirrors entries.
+          oc-mirror should have generated mirror mappings for OCP release images.
+
+    - name: Assert IDMS mirrors OCP release images
+      ansible.builtin.assert:
+        that:
+          - idms_sources | select('match', 'quay.io/openshift-release-dev/ocp-release') | list | length > 0
+        fail_msg: >-
+          IDMS is missing mirror entry for quay.io/openshift-release-dev/ocp-release.
+          This is required for the disconnected OCP installation.
+
+    - name: Assert IDMS mirrors OCP art-dev images
+      ansible.builtin.assert:
+        that:
+          - idms_sources | select('match', 'quay.io/openshift-release-dev/ocp-v4.0-art-dev') | list | length > 0
+        fail_msg: >-
+          IDMS is missing mirror entry for quay.io/openshift-release-dev/ocp-v4.0-art-dev.
+          This is required for the disconnected OCP installation.
+
+    - name: Assert IDMS mirror destinations point to local registry
+      ansible.builtin.assert:
+        that:
+          - item.mirrors | default([]) | select('match', quayHostname + ':8443/.*') | list | length > 0
+        fail_msg: >-
+          IDMS entry for {{ item.source }} has no mirror destination pointing
+          to {{ quayHostname }}:8443. Mirrors: {{ item.mirrors | default([]) }}
+      loop: "{{ idms_manifest.spec.imageDigestMirrors | default([]) }}"
+      loop_control:
+        label: "{{ item.source }}"
+
+# ------------------------------------------------------------------
+# Validation 6: Mirror registry TLS certificate
+# ------------------------------------------------------------------
+- name: "Validation 6: Check CA certificate file exists"
+  ansible.builtin.stat:
+    path: "{{ quayCAPath }}"
+  register: r_ca_cert_stat
+
+- name: Assert CA certificate file exists
+  ansible.builtin.assert:
+    that:
+      - r_ca_cert_stat.stat.exists
+    fail_msg: >-
+      Mirror registry CA certificate not found at {{ quayCAPath }}.
+      The mirror-registry installation should have created this file.
+
+- name: Get certificate info
+  community.crypto.x509_certificate_info:
+    path: "{{ quayCAPath }}"
+  register: r_ca_cert_info
+
+- name: Assert certificate is not expired
+  ansible.builtin.assert:
+    that:
+      - not r_ca_cert_info.expired
+    fail_msg: >-
+      Mirror registry CA certificate at {{ quayCAPath }} is expired.
+      Expired on: {{ r_ca_cert_info.not_after }}
+
+- name: Assert certificate subject contains expected hostname
+  ansible.builtin.assert:
+    that:
+      - quayHostname in (r_ca_cert_info.subject_alt_name | default([]) | join(','))
+        or quayHostname in (r_ca_cert_info.subject.commonName | default(''))
+    fail_msg: >-
+      Mirror registry CA certificate subject does not match expected
+      hostname '{{ quayHostname }}'.
+      Subject CN: {{ r_ca_cert_info.subject.commonName | default('none') }}
+      SANs: {{ r_ca_cert_info.subject_alt_name | default([]) }}
+
+# ------------------------------------------------------------------
+# Validation 7: Rendered imagesetconfiguration.yaml
+# ------------------------------------------------------------------
+- name: "Validation 7: Check imagesetconfiguration.yaml exists"
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+  register: r_isc_stat
+
+- name: Assert imagesetconfiguration.yaml exists
+  ansible.builtin.assert:
+    that:
+      - r_isc_stat.stat.exists
+    fail_msg: >-
+      imagesetconfiguration.yaml not found at
+      {{ workingDir }}/config/imagesetconfiguration.yaml.
+      Phase 2 should have rendered this template.
+
+- name: Read imagesetconfiguration.yaml
+  ansible.builtin.slurp:
+    src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+  register: r_isc_content
+
+- name: Parse imagesetconfiguration.yaml
+  ansible.builtin.set_fact:
+    isc_manifest: "{{ r_isc_content.content | b64decode | from_yaml }}"
+
+- name: Assert imagesetconfiguration has platform channels
+  ansible.builtin.assert:
+    that:
+      - isc_manifest.mirror.platform.channels | default([]) | length > 0
+    fail_msg: >-
+      imagesetconfiguration.yaml has no platform channels defined.
+      At least one OpenShift release channel should be configured.
+
+- name: Assert imagesetconfiguration has operator catalogs
+  ansible.builtin.assert:
+    that:
+      - isc_manifest.mirror.operators | default([]) | length > 0
+    fail_msg: >-
+      imagesetconfiguration.yaml has no operator catalogs defined.
+      At least one operator catalog should be configured for mirroring.
+
+- name: All mirror artifact validations passed (full mirror run)
+  ansible.builtin.debug:
+    msg: >-
+      All mirror artifact validations passed successfully:
+      1. Mirror registry (quay-app) is running and API is healthy
+      2. Combined pull secret contains mirror auth entry
+      3. oc-mirror workspace manifests (IDMS, ITMS, CatalogSource) are valid
+      4. CatalogSource images point to local mirror ({{ quayHostname }}:8443)
+      5. IDMS contains expected OCP release mirror entries
+      6. Mirror registry TLS certificate is valid and not expired
+      7. imagesetconfiguration.yaml is properly rendered
+  when: not (mirror_dry_run | default(false) | bool)
+
+- name: All mirror artifact validations passed (dry-run mode)
+  ansible.builtin.debug:
+    msg: >-
+      All mirror artifact validations passed successfully (dry-run mode):
+      1. Mirror registry (quay-app) is running and API is healthy
+      2. Combined pull secret contains mirror auth entry
+      3-5. Workspace manifests skipped - oc-mirror --dry-run does not generate
+      IDMS/ITMS/CatalogSource cluster-resources
+      6. Mirror registry TLS certificate is valid and not expired
+      7. imagesetconfiguration.yaml is properly rendered
+  when: mirror_dry_run | default(false) | bool

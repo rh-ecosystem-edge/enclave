@@ -49,6 +49,7 @@
 - name: Start oc-mirror process
   ansible.builtin.shell: >
     {{ workingDir }}/bin/oc-mirror --v2
+    {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }}
     --log-level {{ ocMirrorLogLevel }}
     --authfile {{ pullSecretPath }}
     --dest-tls-verify=false
@@ -58,7 +59,7 @@
     --retry-times 10 --retry-delay 0
     docker://{{ quayHostname }}:8443
     > {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log 2>&1
-  retries: 10
-  delay: 10
+  retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else 10 }}"
+  delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else 10 }}"
   register: r_oc_mirror
   until: r_oc_mirror is success

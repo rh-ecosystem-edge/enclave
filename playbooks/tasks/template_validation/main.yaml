@@ -1,0 +1,21 @@
+---
+# Template Rendering Validation - Entry Point
+# Includes all validation sub-tasks in order.
+
+- name: Setup validation environment
+  ansible.builtin.include_tasks: setup.yaml
+
+- name: Validate imagesetconfiguration templates
+  ansible.builtin.include_tasks: test_imagesetconfiguration.yaml
+
+- name: Validate agent-config template
+  ansible.builtin.include_tasks: test_agent_config.yaml
+
+- name: Validate install-config templates
+  ansible.builtin.include_tasks: test_install_config.yaml
+
+- name: Validate registries.conf template
+  ansible.builtin.include_tasks: test_registries_conf.yaml
+
+- name: Teardown validation environment
+  ansible.builtin.include_tasks: teardown.yaml

@@ -1,0 +1,8 @@
+---
+# Template Validation Teardown
+# Removes the temporary directory created during setup.
+
+- name: Remove temporary directory
+  ansible.builtin.file:
+    path: "{{ temp_dir.path }}"
+    state: absent

@@ -1,6 +1,7 @@
 *.tar
 config/*.yaml
 !config/*.example.yaml
+!config/*.validation.yaml
 debug.yaml
 .claude
 CLAUDE.md
