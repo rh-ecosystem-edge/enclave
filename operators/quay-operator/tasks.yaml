@@ -65,19 +65,94 @@
     - r_quay_user is defined
     - r_quay_user.status | default(0) == 200 or r_quay_user.json.message | default("") == "Cannot initialize user in a non-empty database"
 
-- name: Extract initial user access token
+- name: Extract initial user access token from initialize response
   no_log: true
   ansible.builtin.set_fact:
-    quay_initial_token: "{{ r_quay_user.json.access_token | default('') }}"
+    quay_initial_token: "{{ r_quay_user.json.access_token }}"
   when:
-    - quayOAuthApp.enabled | default(true)
     - r_quay_user.status == 200
     - r_quay_user.json.access_token is defined
+    - r_quay_user.json.access_token | length > 0
+
+- name: Store initial user token in Kubernetes Secret
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: quay-initial-user-token
+        namespace: quay-enterprise
+        labels:
+          app: quay
+          component: initial-user
+      type: Opaque
+      stringData:
+        username: "{{ quayUser }}"
+        access-token: "{{ quay_initial_token }}"
+  when:
+    - quay_initial_token is defined
+    - quay_initial_token | length > 0
+  register: r_quay_initial_user_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_initial_user_secret is success
+
+- name: Read stored initial user token Secret
+  no_log: true
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: quay-initial-user-token
+    namespace: quay-enterprise
+  register: r_quay_initial_user_secret_info
+  when:
+    - quay_initial_token is not defined or quay_initial_token | length == 0
+
+- name: Extract initial user access token from Kubernetes Secret
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_initial_token: "{{ r_quay_initial_user_secret_info.resources[0].data['access-token'] | b64decode }}"
+  when:
+    - quay_initial_token is not defined or quay_initial_token | length == 0
+    - r_quay_initial_user_secret_info.resources is defined
+    - r_quay_initial_user_secret_info.resources | length > 0
+    - r_quay_initial_user_secret_info.resources[0].data is defined
+    - r_quay_initial_user_secret_info.resources[0].data['access-token'] is defined
+
+- name: Create Quay organization for OAuth application
+  ansible.builtin.uri:
+    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/organization/"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ quay_initial_token }}"
+      Content-Type: application/json
+    validate_certs: false
+    return_content: yes
+    status_code:
+      - 200
+      - 201
+      - 400
+    body_format: json
+    body:
+      name: "{{ quayOAuthApp.organization }}"
+      email: "{{ quayUser }}@{{ baseDomain }}"
+  register: r_quay_org
+  retries: 3
+  delay: 5
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_initial_token is defined
+    - quay_initial_token | length > 0
+  until:
+    - r_quay_org is defined
+    - r_quay_org.status in [200, 201, 400]
 
 - name: Create OAuth application
   no_log: true
   ansible.builtin.uri:
-    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/user/applications"
+    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/organization/{{ quayOAuthApp.organization }}/applications"
     method: POST
     headers:
       Authorization: "Bearer {{ quay_initial_token }}"
@@ -112,8 +187,30 @@
   when:
     - quayOAuthApp.enabled | default(true)
     - r_quay_oauth_app is defined
+    - r_quay_oauth_app is not skipped
+    - r_quay_oauth_app.status is defined
     - r_quay_oauth_app.status in [200, 201]
     - r_quay_oauth_app.json.client_id is defined
+
+# Capture quay-app Deployment state BEFORE config update
+- name: Get current quay-app Deployment state before config update
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: registry-quay-app
+    namespace: quay-enterprise
+  register: r_quay_app_deployment_before
+  when:
+    - quayOAuthApp.enabled | default(true)
+
+- name: Store current deployment generation and replica count
+  ansible.builtin.set_fact:
+    quay_app_generation_before: "{{ r_quay_app_deployment_before.resources[0].metadata.generation | default(0) }}"
+    quay_app_replicas: "{{ r_quay_app_deployment_before.resources[0].spec.replicas | default(1) }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_app_deployment_before.resources is defined
+    - r_quay_app_deployment_before.resources | length > 0
 
 # Update quay-config Secret with OAuth client ID in whitelist
 - name: Update quay-config Secret with OAuth client ID whitelist
@@ -133,41 +230,30 @@
     - quay_oauth_client_id | length > 0
   until: r_quay_config_secret_oauth is success
 
-- name: Wait for QuayRegistry to start reconciling after config update
+# Wait for quay-app Deployment rolling update to COMPLETE
+- name: Wait for quay-app Deployment rolling update to complete
   kubernetes.core.k8s_info:
-    api_version: quay.redhat.com/v1
-    kind: QuayRegistry
-    name: registry
+    api_version: apps/v1
+    kind: Deployment
+    name: registry-quay-app
     namespace: quay-enterprise
-  register: r_quay_registry_reconciling
-  retries: 30
-  delay: 5
-  when:
-    - quayOAuthApp.enabled | default(true)
-    - r_quay_config_secret_oauth is changed
-  until:
-    - r_quay_registry_reconciling.resources is defined
-    - r_quay_registry_reconciling.resources | length > 0
-    - r_quay_registry_reconciling.resources[0].status.conditions is defined
-    - r_quay_registry_reconciling.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | selectattr('status', 'equalto', 'False') | list | length > 0
-
-- name: Wait for QuayRegistry to complete reconciliation after config update
-  kubernetes.core.k8s_info:
-    api_version: quay.redhat.com/v1
-    kind: QuayRegistry
-    name: registry
-    namespace: quay-enterprise
-  register: r_quay_registry_available
+  register: r_quay_app_deployment
   retries: 60
   delay: 10
   when:
     - quayOAuthApp.enabled | default(true)
     - r_quay_config_secret_oauth is changed
   until:
-    - r_quay_registry_available.resources is defined
-    - r_quay_registry_available.resources | length > 0
-    - r_quay_registry_available.resources[0].status.conditions is defined
-    - r_quay_registry_available.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | selectattr('status', 'equalto', 'True') | list | length > 0
+    - r_quay_app_deployment.resources is defined
+    - r_quay_app_deployment.resources | length > 0
+    - r_quay_app_deployment.resources[0].status is defined
+    - r_quay_app_deployment.resources[0].status.observedGeneration is defined
+    - r_quay_app_deployment.resources[0].status.observedGeneration == r_quay_app_deployment.resources[0].metadata.generation
+    - r_quay_app_deployment.resources[0].metadata.generation | default(0) > (quay_app_generation_before | int)
+    - r_quay_app_deployment.resources[0].status.updatedReplicas | default(0) == (quay_app_replicas | int)
+    - r_quay_app_deployment.resources[0].status.readyReplicas | default(0) == (quay_app_replicas | int)
+    - r_quay_app_deployment.resources[0].status.availableReplicas | default(0) == (quay_app_replicas | int)
+    - r_quay_app_deployment.resources[0].status.unavailableReplicas | default(0) == 0
 
 - name: Generate OAuth application token
   no_log: true
@@ -206,6 +292,8 @@
   when:
     - quayOAuthApp.enabled | default(true)
     - r_quay_oauth_token is defined
+    - r_quay_oauth_token is not skipped
+    - r_quay_oauth_token.status is defined
     - r_quay_oauth_token.location is defined
 
 - name: Store OAuth application credentials in Kubernetes Secret

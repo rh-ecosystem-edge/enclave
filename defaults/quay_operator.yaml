@@ -21,5 +21,6 @@ quayBackendRGWDefaults:
 quayOAuthApp:
   enabled: true
   name: "default-application"
+  organization: "default-org"
   redirect_uri: "http://localhost:8080/callback"
   scopes: "repo:read repo:write repo:admin repo:create user:read"

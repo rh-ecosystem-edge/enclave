@@ -56,6 +56,10 @@ properties:
       name:
         type: string
         description: Name of the OAuth application
+      organization:
+        type: string
+        description: Organization name for OAuth application
+        pattern: "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
       redirect_uri:
         type: string
         description: Redirect URI for OAuth application
@@ -66,6 +70,7 @@ properties:
     required:
       - enabled
       - name
+      - organization
       - redirect_uri
       - scopes
 
