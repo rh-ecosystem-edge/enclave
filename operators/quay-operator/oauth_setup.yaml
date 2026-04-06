@@ -52,7 +52,6 @@
     status_code:
       - 200
       - 201
-      - 409
     body_format: json
     body:
       name: "{{ quayOAuthApp.name }}"
@@ -66,58 +65,20 @@
     - quay_initial_token | length > 0
   until:
     - r_quay_oauth_app is defined
-    - r_quay_oauth_app.status in [200, 201, 409]
+    - r_quay_oauth_app.status in [200, 201]
 
 - name: Extract OAuth application credentials from create response
   no_log: true
   ansible.builtin.set_fact:
-    quay_oauth_client_id: "{{ r_quay_oauth_app.json.client_id | default('') }}"
-    quay_oauth_client_secret: "{{ r_quay_oauth_app.json.client_secret | default('') }}"
+    quay_oauth_client_id: "{{ r_quay_oauth_app.json.client_id }}"
+    quay_oauth_client_secret: "{{ r_quay_oauth_app.json.client_secret }}"
   when:
     - r_quay_oauth_app is defined
     - r_quay_oauth_app is not skipped
     - r_quay_oauth_app.status is defined
-    - r_quay_oauth_app.status in [200, 201, 409]
+    - r_quay_oauth_app.status in [200, 201]
     - r_quay_oauth_app.json.client_id is defined
     - r_quay_oauth_app.json.client_secret is defined
-
-- name: Fetch existing OAuth application credentials when app already exists
-  no_log: true
-  ansible.builtin.uri:
-    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/organization/{{ quayOAuthApp.organization }}/applications/{{ quayOAuthApp.name }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ quay_initial_token }}"
-      Content-Type: application/json
-    validate_certs: false
-    return_content: yes
-    status_code:
-      - 200
-  register: r_quay_oauth_app_get
-  retries: 3
-  delay: 5
-  when:
-    - r_quay_oauth_app is defined
-    - r_quay_oauth_app is not skipped
-    - r_quay_oauth_app.status is defined
-    - r_quay_oauth_app.status == 409
-    - quay_oauth_client_id is not defined or quay_oauth_client_id | length == 0
-  until:
-    - r_quay_oauth_app_get is defined
-    - r_quay_oauth_app_get.status == 200
-
-- name: Extract OAuth application credentials from GET response
-  no_log: true
-  ansible.builtin.set_fact:
-    quay_oauth_client_id: "{{ r_quay_oauth_app_get.json.client_id }}"
-    quay_oauth_client_secret: "{{ r_quay_oauth_app_get.json.client_secret }}"
-  when:
-    - r_quay_oauth_app_get is defined
-    - r_quay_oauth_app_get is not skipped
-    - r_quay_oauth_app_get.status is defined
-    - r_quay_oauth_app_get.status == 200
-    - r_quay_oauth_app_get.json.client_id is defined
-    - r_quay_oauth_app_get.json.client_secret is defined
 
 - name: Get current quay-app Deployment state before config update
   kubernetes.core.k8s_info:
