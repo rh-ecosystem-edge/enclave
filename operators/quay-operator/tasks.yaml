@@ -1,66 +1,11 @@
+# Create initial quay-config Secret with empty OAuth whitelist
 - name: Create or update quay-config Secret
   no_log: true
   kubernetes.core.k8s:
     state: present
-    definition:
-      apiVersion: v1
-      kind: Secret
-      metadata:
-        name: quay-config
-        namespace: quay-enterprise
-      type: Opaque
-      stringData:
-        config.yaml: |
-          ALLOW_PULLS_WITHOUT_STRICT_LOGGING: false
-          AUTHENTICATION_TYPE: Database
-          DEFAULT_TAG_EXPIRATION: 2w
-          FEATURE_USER_INITIALIZE: true
-          SUPER_USERS:
-            - quayadmin
-          BROWSER_API_CALLS_XHR_ONLY: false
-          FEATURE_USER_CREATION: false
-          CREATE_NAMESPACE_ON_PUSH: true
-          DISTRIBUTED_STORAGE_CONFIG:
-            local_us:
-              - {{ quayBackend }}
-              - {{ ((quayBackendDefaults
-                   | combine(quayBackendRGWDefaults)
-                   | combine(quayBackendRGWConfiguration))
-                   if quayBackend == 'RadosGWStorage'
-                   else (quayBackendDefaults
-                   | combine(quayBackendLocalStorageConfiguration | default({})))
-                   if quayBackend == 'LocalStorage'
-                   else quayBackendDefaults)
-                   | to_yaml }}
-          DISTRIBUTED_STORAGE_DEFAULT_LOCATIONS:
-            - local_us
-
-          ENTERPRISE_LOGO_URL: /static/img/RH_Logo_Quay_Black_UX-horizontal.svg
-          FEATURE_BUILD_SUPPORT: false
-          FEATURE_DIRECT_LOGIN: true
-          FEATURE_MAILING: false
-          REGISTRY_TITLE: Red Hat Quay
-          REGISTRY_TITLE_SHORT: Red Hat Quay
-          SETUP_COMPLETE: true
-          TAG_EXPIRATION_OPTIONS:
-            - 2w
-          TEAM_RESYNC_STALE_TIME: 60m
-          TESTING: false
-          FEATURE_PROXY_STORAGE: {{ quayFeatureProxyStorage | bool | lower }}
-          FEATURE_QUOTA_MANAGEMENT: {{ quayFeatureQuotaManagement | bool | lower }}
-          MAXIMUM_LAYER_SIZE: {{ quayMaximumLayerSize }}
-        clair-config.yaml: |
-          indexer:
-            airgap: true
-            scanner:
-              repo:
-                rhel-repository-scanner:
-                  repo2cpe_mapping_file: "/data/repository-to-cpe.json"
-              package:
-                rhel_containerscanner:
-                  name2repos_mapping_file: "/data/container-name-repos-map.json"
-          matcher:
-            disable_updaters: true
+    definition: "{{ lookup('template', 'templates/quay-config-secret.yaml.j2') | from_yaml }}"
+  vars:
+    oauth_client_ids: []
   register: r_quay_config_secret
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -119,6 +64,179 @@
   until:
     - r_quay_user is defined
     - r_quay_user.status | default(0) == 200 or r_quay_user.json.message | default("") == "Cannot initialize user in a non-empty database"
+
+- name: Extract initial user access token
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_initial_token: "{{ r_quay_user.json.access_token | default('') }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_user.status == 200
+    - r_quay_user.json.access_token is defined
+
+- name: Create OAuth application
+  no_log: true
+  ansible.builtin.uri:
+    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/api/v1/user/applications"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ quay_initial_token }}"
+      Content-Type: application/json
+    validate_certs: false
+    return_content: yes
+    status_code:
+      - 200
+      - 201
+      - 409
+    body_format: json
+    body:
+      name: "{{ quayOAuthApp.name }}"
+      redirect_uri: "{{ quayOAuthApp.redirect_uri }}"
+      description: "Automated OAuth application for Enclave operations"
+  register: r_quay_oauth_app
+  retries: 5
+  delay: 10
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_initial_token is defined
+    - quay_initial_token | length > 0
+  until:
+    - r_quay_oauth_app is defined
+    - r_quay_oauth_app.status in [200, 201, 409]
+
+- name: Extract OAuth application credentials
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_oauth_client_id: "{{ r_quay_oauth_app.json.client_id | default('') }}"
+    quay_oauth_client_secret: "{{ r_quay_oauth_app.json.client_secret | default('') }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_oauth_app is defined
+    - r_quay_oauth_app.status in [200, 201]
+    - r_quay_oauth_app.json.client_id is defined
+
+# Update quay-config Secret with OAuth client ID in whitelist
+- name: Update quay-config Secret with OAuth client ID whitelist
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('template', 'templates/quay-config-secret.yaml.j2') | from_yaml }}"
+  vars:
+    oauth_client_ids:
+      - "{{ quay_oauth_client_id }}"
+  register: r_quay_config_secret_oauth
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_oauth_client_id is defined
+    - quay_oauth_client_id | length > 0
+  until: r_quay_config_secret_oauth is success
+
+- name: Wait for QuayRegistry to start reconciling after config update
+  kubernetes.core.k8s_info:
+    api_version: quay.redhat.com/v1
+    kind: QuayRegistry
+    name: registry
+    namespace: quay-enterprise
+  register: r_quay_registry_reconciling
+  retries: 30
+  delay: 5
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_config_secret_oauth is changed
+  until:
+    - r_quay_registry_reconciling.resources is defined
+    - r_quay_registry_reconciling.resources | length > 0
+    - r_quay_registry_reconciling.resources[0].status.conditions is defined
+    - r_quay_registry_reconciling.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | selectattr('status', 'equalto', 'False') | list | length > 0
+
+- name: Wait for QuayRegistry to complete reconciliation after config update
+  kubernetes.core.k8s_info:
+    api_version: quay.redhat.com/v1
+    kind: QuayRegistry
+    name: registry
+    namespace: quay-enterprise
+  register: r_quay_registry_available
+  retries: 60
+  delay: 10
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_config_secret_oauth is changed
+  until:
+    - r_quay_registry_available.resources is defined
+    - r_quay_registry_available.resources | length > 0
+    - r_quay_registry_available.resources[0].status.conditions is defined
+    - r_quay_registry_available.resources[0].status.conditions | selectattr('type', 'equalto', 'Available') | selectattr('status', 'equalto', 'True') | list | length > 0
+
+- name: Generate OAuth application token
+  no_log: true
+  ansible.builtin.uri:
+    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/oauth/authorizeapp"
+    method: POST
+    url_username: "{{ quayUser }}"
+    url_password: "{{ quayPassword }}"
+    force_basic_auth: yes
+    validate_certs: false
+    follow_redirects: none
+    status_code:
+      - 302
+      - 303
+    body_format: form-urlencoded
+    body:
+      response_type: token
+      client_id: "{{ quay_oauth_client_id }}"
+      redirect_uri: "{{ quayOAuthApp.redirect_uri }}"
+      scope: "{{ quayOAuthApp.scopes }}"
+  register: r_quay_oauth_token
+  retries: 5
+  delay: 10
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_oauth_client_id is defined
+    - quay_oauth_client_id | length > 0
+  until:
+    - r_quay_oauth_token is defined
+    - r_quay_oauth_token.status in [302, 303]
+
+- name: Extract OAuth token from Location header
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_oauth_token: "{{ r_quay_oauth_token.location | regex_search('#access_token=([^&]+)', '\\1') | first }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - r_quay_oauth_token is defined
+    - r_quay_oauth_token.location is defined
+
+- name: Store OAuth application credentials in Kubernetes Secret
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: quay-oauth-credentials
+        namespace: quay-enterprise
+        labels:
+          app: quay
+          component: oauth
+      type: Opaque
+      stringData:
+        client-id: "{{ quay_oauth_client_id }}"
+        client-secret: "{{ quay_oauth_client_secret }}"
+        access-token: "{{ quay_oauth_token }}"
+        application-name: "{{ quayOAuthApp.name }}"
+        redirect-uri: "{{ quayOAuthApp.redirect_uri }}"
+        scopes: "{{ quayOAuthApp.scopes }}"
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_oauth_client_id is defined
+    - quay_oauth_token is defined
+  register: r_quay_oauth_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_oauth_secret is success
 
 - name: Generate pull secret for internal mirror
   no_log: true
