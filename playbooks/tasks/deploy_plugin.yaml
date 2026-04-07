@@ -169,8 +169,8 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_catalog_sources
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
+  retries: 24
+  delay: 10
   until: >-
     r_catalog_sources.resources | default([])
     | selectattr('status', 'defined')
