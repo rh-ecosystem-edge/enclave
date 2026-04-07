@@ -1,0 +1,30 @@
+name: E2E ODF (Scheduled)
+
+# Weekly ODF E2E test. Dispatches the main e2e-deployment workflow with
+# storage-plugin=odf so no cron-matching logic is needed.
+
+on:
+  schedule:
+    # Run daily at 05:00 UTC
+    - cron: '0 5 * * *'
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch-odf:
+    name: Dispatch ODF E2E
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 5
+    steps:
+      - name: Trigger E2E Deployment with ODF
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run e2e-deployment.yml \
+            --ref "${{ github.ref }}" \
+            -f run-connected=true \
+            -f run-disconnected=true \
+            -f storage-plugin=odf \
+            -R "${{ github.repository }}"
+          echo "Dispatched E2E Deployment with ODF storage plugin" | tee -a $GITHUB_STEP_SUMMARY
