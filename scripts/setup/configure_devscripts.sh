@@ -84,6 +84,16 @@ else
     MASTER_MEMORY_VAL=32768    # 32 GB for disconnected
 fi
 
+# ODF requires additional resources for Ceph/Rook operators, noobaa, and CSI daemons
+STORAGE_PLUGIN="${STORAGE_PLUGIN:-lvms}"
+MASTER_VCPU_VAL=12
+LANDINGZONE_DISK_VAL=60
+if [ "$STORAGE_PLUGIN" = "odf" ]; then
+    MASTER_VCPU_VAL=16              # 16 vCPUs (up from 12)
+    MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 8192))  # +8 GB RAM
+    LANDINGZONE_DISK_VAL=500        # Ceph OSDs store mirrored images on the LZ disk
+fi
+
 # Create configuration file
 cat > "$CONFIG_FILE" <<EOF
 #!/bin/bash
@@ -119,7 +129,7 @@ export NUM_EXTRA_WORKERS=0
 # Master VMs need resources for OpenShift control plane nodes
 export MASTER_MEMORY=${MASTER_MEMORY_VAL}
 export MASTER_DISK=120  # 120 GB disk
-export MASTER_VCPU=12   # 12 vCPUs
+export MASTER_VCPU=${MASTER_VCPU_VAL}
 
 # Extra disks for storage (used by LVMS for PersistentVolumes)
 export VM_EXTRADISKS=true
@@ -132,7 +142,7 @@ export VM_EXTRADISKS_SIZE="${VM_EXTRADISKS_SIZE_VAL}"
 
 # Landing Zone VM runs Enclave Lab and deployment tools
 export LANDINGZONE_MEMORY=8192    # 8 GB RAM
-export LANDINGZONE_DISK=60        # 60 GB disk
+export LANDINGZONE_DISK=${LANDINGZONE_DISK_VAL}
 export LANDINGZONE_VCPU=4         # 4 vCPUs
 
 # =============================================================================
