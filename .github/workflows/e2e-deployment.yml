@@ -59,6 +59,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
+      storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
 
     steps:
       - name: Checkout code
@@ -89,24 +90,42 @@ jobs:
               - 'bootstrap.sh'
               - 'validations.sh'
               - 'setup_*.sh'
+            odf:
+              - 'plugins/odf/**'
+              - 'scripts/infrastructure/setup_ceph*'
+              - 'scripts/infrastructure/verify_ceph*'
+              - 'scripts/lib/odf.sh'
 
       - name: Make decision
         id: decision
         run: |
+          # Determine whether to run and which storage plugins to test.
+          # storage_plugins is a JSON array consumed by the job matrix.
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "Manual trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
+            echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
+            echo "Manual trigger - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Scheduled trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            if [[ "${{ steps.filter.outputs.odf }}" == "true" ]]; then
+              echo "storage_plugins=[\"lvms\",\"odf\"]" >> $GITHUB_OUTPUT
+              echo "E2E-relevant files changed (including ODF) - both LVMS and ODF will run" | tee -a $GITHUB_STEP_SUMMARY
+            else
+              echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
+              echo "E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
+            fi
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
@@ -115,7 +134,7 @@ jobs:
   # Connected mode E2E deployment
   # ---------------------------------------------------------------------------
   e2e-connected:
-    name: E2E Connected
+    name: E2E Connected (${{ matrix.storage-plugin }})
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
@@ -123,8 +142,13 @@ jobs:
     runs-on: [self-hosted, enclave-large]
     timeout-minutes: 210
 
+    strategy:
+      fail-fast: false
+      matrix:
+        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins) }}
+
     concurrency:
-      group: enclave-ci-connected-${{ github.run_id }}
+      group: enclave-ci-connected-${{ matrix.storage-plugin }}-${{ github.run_id }}
       cancel-in-progress: false
 
     env:
@@ -133,8 +157,8 @@ jobs:
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
       CLEANUP_AFTER: 'true'
-      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
-      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
+      ENABLED_PLUGINS: ${{ matrix.storage-plugin }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -210,6 +234,14 @@ jobs:
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Ceph on Landing Zone
+        if: env.STORAGE_PLUGIN == 'odf'
+        id: setup_ceph
+        run: |
+          echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci setup-ceph
+          echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
 
       - name: Bootstrap - Setup environment
         id: bootstrap_setup
@@ -453,6 +485,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
             ["bootstrap_download_content"]="Bootstrap: Download content"
@@ -468,6 +501,7 @@ jobs:
           )
 
           step_order=(
+            setup_ceph
             bootstrap_setup
             bootstrap_validate
             bootstrap_download_content
@@ -513,7 +547,7 @@ jobs:
   # Disconnected mode E2E deployment
   # ---------------------------------------------------------------------------
   e2e-disconnected:
-    name: E2E Disconnected
+    name: E2E Disconnected (${{ matrix.storage-plugin }})
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
@@ -521,8 +555,13 @@ jobs:
     runs-on: [self-hosted, enclave-large]
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
+    strategy:
+      fail-fast: false
+      matrix:
+        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins) }}
+
     concurrency:
-      group: enclave-ci-disconnected-${{ github.run_id }}
+      group: enclave-ci-disconnected-${{ matrix.storage-plugin }}-${{ github.run_id }}
       cancel-in-progress: false
 
     env:
@@ -531,8 +570,8 @@ jobs:
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: disconnected
       CLEANUP_AFTER: 'true'
-      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
-      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
+      ENABLED_PLUGINS: ${{ matrix.storage-plugin }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -608,6 +647,14 @@ jobs:
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup Ceph on Landing Zone
+        if: env.STORAGE_PLUGIN == 'odf'
+        id: setup_ceph
+        run: |
+          echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci setup-ceph
+          echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
 
       - name: Bootstrap - Setup environment
         id: bootstrap_setup
@@ -860,6 +907,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
             ["bootstrap_download_content"]="Bootstrap: Download content"
@@ -875,6 +923,7 @@ jobs:
           )
 
           step_order=(
+            setup_ceph
             bootstrap_setup
             bootstrap_validate
             bootstrap_download_content

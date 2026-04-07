@@ -26,7 +26,7 @@ include Makefile
         deploy-cluster-pre-install-validate \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
         environment provision-landing-zone verify-landing-zone \
-        install-enclave verify-enclave-installation \
+        install-enclave verify-enclave-installation setup-ceph verify-ceph \
         trust-custom-ca \
         verify clean verify-cluster verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
@@ -70,6 +70,8 @@ help:
 	@echo "  make -f Makefile.ci verify-landing-zone              - Verify Landing Zone VM is properly configured"
 	@echo "  make -f Makefile.ci install-enclave                  - Install Enclave Lab on Landing Zone VM"
 	@echo "  make -f Makefile.ci verify-enclave-installation      - Verify Enclave Lab installation"
+	@echo "  make -f Makefile.ci setup-ceph                       - Setup Ceph on Landing Zone (ODF only)"
+	@echo "  make -f Makefile.ci verify-ceph                      - Verify Ceph health on Landing Zone (ODF only)"
 	@echo "  make -f Makefile.ci deploy-cluster                   - Deploy OpenShift cluster (all phases, via SSH)"
 	@echo "  make -f Makefile.ci verify                           - Verify infrastructure setup"
 	@echo "  make -f Makefile.ci clean                            - Clean up infrastructure"
@@ -401,6 +403,30 @@ verify-enclave-installation:
 	@echo ""
 	@./scripts/verification/verify_enclave_installation.sh
 
+# Setup Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
+setup-ceph:
+	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \
+		echo "=========================================="; \
+		echo "Setting up Ceph on Landing Zone for ODF"; \
+		echo "=========================================="; \
+		echo ""; \
+		./scripts/infrastructure/setup_ceph_on_lz.sh; \
+	else \
+		echo "Skipping Ceph setup (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
+	fi
+
+# Verify Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
+verify-ceph:
+	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \
+		echo "=========================================="; \
+		echo "Verifying Ceph on Landing Zone"; \
+		echo "=========================================="; \
+		echo ""; \
+		./scripts/infrastructure/verify_ceph_on_lz.sh; \
+	else \
+		echo "Skipping Ceph verification (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
+	fi
+
 # Verify infrastructure
 verify:
 	@echo "Verifying infrastructure..."
@@ -451,6 +477,7 @@ ci-flow-connected:
 	@$(MAKE) -f Makefile.ci environment
 	@$(MAKE) -f Makefile.ci provision-landing-zone
 	@$(MAKE) -f Makefile.ci install-enclave
+	@$(MAKE) -f Makefile.ci setup-ceph
 	@$(MAKE) -f Makefile.ci deploy-cluster
 	@$(MAKE) -f Makefile.ci verify-cluster
 	@echo ""
