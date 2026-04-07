@@ -12,6 +12,7 @@
 #
 # Functions:
 #   setup_ssh_config IP_ADDRESS       - Set SSH variables for Landing Zone (LZ_SSH, SSH_OPTS, etc.)
+#   resolve_lz_home                   - Resolve LZ_HOME via SSH (call after ssh_test_connection)
 #   ssh_exec COMMAND                  - Execute command on Landing Zone
 #   ssh_test_connection               - Test SSH connectivity to Landing Zone
 #   ssh_file_exists REMOTE_PATH       - Check if file exists on Landing Zone
@@ -24,7 +25,7 @@ LZ_USER="cloud-user"
 
 # Setup SSH configuration for Landing Zone connection
 # Args: $1 = Landing Zone IP address
-# Sets: LZ_SSH, LZ_ENCLAVE_DIR, CLUSTER_IP
+# Sets: LZ_SSH, LZ_HOME, LZ_ENCLAVE_DIR, CLUSTER_IP
 # Example: setup_ssh_config "192.168.1.10"
 setup_ssh_config() {
     local lz_ip="$1"
@@ -34,10 +35,32 @@ setup_ssh_config() {
         return 1
     fi
 
-    # Export for use in scripts
+    # Export for use in scripts (LZ_HOME/LZ_ENCLAVE_DIR can be overridden via env)
     export CLUSTER_IP="$lz_ip"
     export LZ_SSH="${LZ_USER}@${lz_ip}"
-    export LZ_ENCLAVE_DIR="/home/${LZ_USER}/enclave"
+    export LZ_HOME="${LZ_HOME:-/home/${LZ_USER}}"
+    export LZ_ENCLAVE_DIR="${LZ_ENCLAVE_DIR:-${LZ_HOME}/enclave}"
+}
+
+# Resolve LZ_HOME by querying the remote user's home directory via SSH.
+# Call this after ssh_test_connection to get the actual home path
+# (handles root, non-standard homes, etc.)
+# Sets: LZ_HOME, LZ_ENCLAVE_DIR (preserves LZ_ENCLAVE_DIR if already overridden)
+# Example: resolve_lz_home
+resolve_lz_home() {
+    if [ -z "${LZ_SSH:-}" ]; then
+        echo "ERROR: SSH not configured. Call setup_ssh_config first." >&2
+        return 1
+    fi
+
+    # shellcheck disable=SC2086
+    local remote_home
+    remote_home=$(ssh $SSH_OPTS "$LZ_SSH" 'echo $HOME')
+
+    if [ -n "$remote_home" ]; then
+        export LZ_HOME="$remote_home"
+        export LZ_ENCLAVE_DIR="${LZ_HOME}/enclave"
+    fi
 }
 
 # Execute a command on the Landing Zone via SSH
