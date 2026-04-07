@@ -132,8 +132,10 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
 fi
 
 # Load ODF external config and Quay RGW config (from env vars or LZ files)
-source "${ENCLAVE_DIR}/scripts/lib/odf.sh"
-append_odf_extra_vars
+if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
+    source "${ENCLAVE_DIR}/scripts/lib/odf.sh"
+    append_odf_extra_vars
+fi
 
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT

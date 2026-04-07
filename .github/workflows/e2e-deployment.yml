@@ -60,6 +60,7 @@ jobs:
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
       storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
+      storage_plugins_connected: ${{ steps.decision.outputs.storage_plugins_connected }}
 
     steps:
       - name: Checkout code
@@ -101,24 +102,33 @@ jobs:
         run: |
           # Determine whether to run and which storage plugins to test.
           # storage_plugins is a JSON array consumed by the job matrix.
+          # ODF only runs in disconnected mode. Connected always uses lvms.
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
             echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
+            if [[ "$PLUGIN" == "odf" ]]; then
+              echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
+            else
+              echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
+            fi
             echo "Manual trigger - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
+            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Scheduled trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
+            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             if [[ "${{ steps.filter.outputs.odf }}" == "true" ]]; then
-              echo "storage_plugins=[\"lvms\",\"odf\"]" >> $GITHUB_OUTPUT
-              echo "E2E-relevant files changed (including ODF) - both LVMS and ODF will run" | tee -a $GITHUB_STEP_SUMMARY
+              echo "storage_plugins=[\"odf\"]" >> $GITHUB_OUTPUT
+              echo "E2E-relevant files changed (including ODF) - ODF disconnected will run" | tee -a $GITHUB_STEP_SUMMARY
             else
               echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
               echo "E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
@@ -126,6 +136,7 @@ jobs:
           else
             echo "should_run=false" >> $GITHUB_OUTPUT
             echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
+            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
@@ -145,7 +156,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins) }}
+        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins_connected) }}
 
     concurrency:
       group: enclave-ci-connected-${{ matrix.storage-plugin }}-${{ github.run_id }}
@@ -552,7 +563,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.run-disconnected == true)
-    runs-on: [self-hosted, enclave-large]
+    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]') || fromJSON('["self-hosted", "enclave-large"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
     strategy:

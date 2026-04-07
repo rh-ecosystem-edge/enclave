@@ -84,13 +84,16 @@ else
     MASTER_MEMORY_VAL=32768    # 32 GB for disconnected
 fi
 
-# ODF requires additional resources for Ceph/Rook operators, noobaa, and CSI daemons
+# ODF requires additional resources for Ceph/Rook operators, noobaa, and CSI daemons.
+# With ODF, storage is provided by Ceph on the LZ -- not local LVMS disks on masters --
+# so masters need smaller extra disks while the LZ needs a larger disk for Ceph OSDs.
 STORAGE_PLUGIN="${STORAGE_PLUGIN:-lvms}"
 MASTER_VCPU_VAL=12
 LANDINGZONE_DISK_VAL=60
 if [ "$STORAGE_PLUGIN" = "odf" ]; then
     MASTER_VCPU_VAL=16              # 16 vCPUs (up from 12)
-    MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 8192))  # +8 GB RAM
+    MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 16384)) # +16 GB RAM (ODF/rook/noobaa + Quay)
+    VM_EXTRADISKS_SIZE_VAL="60G"    # Masters don't need large LVMS disks with ODF
     LANDINGZONE_DISK_VAL=500        # Ceph OSDs store mirrored images on the LZ disk
 fi
 

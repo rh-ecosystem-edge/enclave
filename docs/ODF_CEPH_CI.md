@@ -6,7 +6,7 @@ This document describes the containerized Ceph cluster used to provide external 
 
 ODF in external mode connects to a pre-existing Ceph cluster rather than deploying its own. For CI, we run a single-node Ceph cluster on the Landing Zone VM using cephadm. All Ceph daemons run as podman containers on the LZ, which shares the same libvirt network as the OpenShift nodes.
 
-```
+```text
 CI Runner Machine (runs: [self-hosted, enclave-large])
 ├── libvirt VMs
 │   ├── Landing Zone VM (192.168.X.2)
@@ -32,7 +32,7 @@ CI Runner Machine (runs: [self-hosted, enclave-large])
 
 Cephadm filters out raw loop devices, so each OSD uses an LVM stack:
 
-```
+```text
 Sparse file (20GB)          Loop device          LVM
 osd-0.img  ──────────>  /dev/loop0  ──────>  ceph-vg0/ceph-lv0  ──> OSD.0
 osd-1.img  ──────────>  /dev/loop1  ──────>  ceph-vg1/ceph-lv1  ──> OSD.1
@@ -69,7 +69,7 @@ osd-2.img  ──────────>  /dev/loop2  ──────>  cep
 
 Ceph runs on the Landing Zone VM, which is on the same libvirt cluster network as the OpenShift master nodes. All communication is direct:
 
-```
+```text
 Master node (192.168.X.10) -> Landing Zone (192.168.X.2:9283/7480) -- same L2 network
 ```
 
@@ -77,7 +77,7 @@ No firewall configuration is needed. No gateway routing. No SDN workarounds.
 
 ## How ODF Config Flows to the Cluster
 
-```
+```text
 setup_ceph.sh runs on LZ (via SSH from CI runner)
   ↓ writes files to ~/ceph-config/
   ├── odf_external_config.json
@@ -104,7 +104,7 @@ The `ODF_EXTERNAL_CONFIG` and `QUAY_BACKEND_RGW_CONFIG` environment variables ar
 
 ### Runner Labels
 
-ODF runs use the same runner labels as LVMS: `[self-hosted, enclave-large]`. No special `odf` runner label is required since Ceph is deployed dynamically on the Landing Zone.
+ODF runs use the runner labels `[self-hosted, enclave-large, odf]`. The `odf` label ensures ODF jobs are routed to runners with sufficient disk space for Ceph loopback OSDs.
 
 ### Ceph Setup Step
 
@@ -121,7 +121,6 @@ This step is conditional on `STORAGE_PLUGIN == 'odf'` and is skipped for LVMS ru
 
 | Command | Description |
 |---------|-------------|
-| `/test e2e-connected-odf` | Connected mode E2E with ODF storage |
 | `/test e2e-disconnected-odf` | Disconnected mode E2E with ODF storage |
 
 ## Setup
