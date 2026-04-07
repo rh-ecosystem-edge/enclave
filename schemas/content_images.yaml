@@ -7,25 +7,8 @@ additionalProperties: false
 properties:
   content_images:
     type: object
-    description: URLs and checksums for RHCOS images.
+    description: URLs and checksums for RHCOS ISO images.
     properties:
-      imgs:
-        type: array
-        description: List of rootfs images (used by agent-based installer).
-        items:
-          type: object
-          required:
-          - url
-          - checksum
-          properties:
-            url:
-              type: string
-              description: URL to download the rootfs image.
-            checksum:
-              type: string
-              description: SHA256 checksum for the image.
-              pattern: "^sha256:[0-9a-f]{64}$"
-          additionalProperties: false
       isos:
         type: array
         description: List of ISO images (used for traditional installation).

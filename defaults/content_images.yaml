@@ -1,8 +1,5 @@
 ---
 content_images:
-  imgs:
-    - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.20/4.20.0/rhcos-4.20.0-x86_64-live-rootfs.x86_64.img"
-      checksum: "sha256:4d2e74921d95d4132b12d1088693a1b93b556a7846f93c4a6d6af32cecd10d2c"
   isos:
     - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.20/4.20.0/rhcos-4.20.0-x86_64-live-iso.x86_64.iso"
       checksum: "sha256:7a47d0c7a9bf5edb143d52809e793af2d74731567b95d91c6225171a1c49b5ab"

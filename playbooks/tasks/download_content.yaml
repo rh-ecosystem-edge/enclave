@@ -1,20 +1,10 @@
 ---
-- name: Download live rootfs images
+- name: Download RHCOS live ISOs
   become: true
   ansible.builtin.get_url:
-    url: "{{ rootfs_img.url }}"
-    dest: "/var/www/html/{{ (rootfs_img.url | ansible.builtin.split('/'))[-1] }}"
-    checksum: "{{ rootfs_img.checksum }}"
-  loop: "{{ content_images.imgs }}"
-  loop_control:
-    loop_var: rootfs_img
-
-- name: Download live rootfs isos
-  become: true
-  ansible.builtin.get_url:
-    url: "{{ rootfs_iso.url }}"
-    dest: "/var/www/html/{{ (rootfs_iso.url | ansible.builtin.split('/'))[-1] }}"
-    checksum: "{{ rootfs_iso.checksum }}"
+    url: "{{ iso_item.url }}"
+    dest: "/var/www/html/{{ (iso_item.url | ansible.builtin.split('/'))[-1] }}"
+    checksum: "{{ iso_item.checksum }}"
   loop: "{{ content_images.isos }}"
   loop_control:
-    loop_var: rootfs_iso
+    loop_var: iso_item
