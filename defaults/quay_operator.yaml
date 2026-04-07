@@ -15,3 +15,12 @@ quayBackendRGWDefaults:
   minimum_chunk_size_mb: 100
   maximum_chunk_size_mb: 500
   server_side_assembly: true
+
+# OAuth application configuration
+# Enable automatic OAuth application creation during initial setup
+quayOAuthApp:
+  enabled: true
+  name: "default-application"
+  organization: "default-org"
+  redirect_uri: "http://localhost:8080/callback"
+  scopes: "repo:read repo:write repo:admin repo:create user:read"

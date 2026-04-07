@@ -45,6 +45,39 @@ properties:
       - minimum_chunk_size_mb
       - maximum_chunk_size_mb
       - server_side_assembly
+  quayOAuthApp:
+    type: object
+    description: OAuth application configuration for Quay
+    additionalProperties: false
+    properties:
+      enabled:
+        type: boolean
+        description: Enable automatic OAuth application creation during initial setup
+      name:
+        type: string
+        description: Name of the OAuth application
+      organization:
+        type: string
+        description: Organization name for OAuth application
+        pattern: "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
+      redirect_uri:
+        type: string
+        description: Redirect URI for OAuth application
+        pattern: "^https?://.+"
+      scopes:
+        type: string
+        description: Space-separated list of OAuth scopes
+    allOf:
+      - if:
+          properties:
+            enabled:
+              const: true
+        then:
+          required:
+            - name
+            - organization
+            - redirect_uri
+            - scopes
 
 required:
   - quayFeatureProxyStorage
