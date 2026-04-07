@@ -49,6 +49,14 @@ utilities:
       - 'scripts/lib/**/*'
       - 'scripts/utils/**/*'
 
+plugins:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'plugins/**/*'
+      - 'playbooks/tasks/*plugin*.yaml'
+      - 'playbooks/deploy-plugin.yaml'
+      - 'schemas/plugin.yaml'
+
 diagnostics:
   - changed-files:
     - any-glob-to-any-file:
