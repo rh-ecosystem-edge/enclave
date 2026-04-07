@@ -1,66 +1,11 @@
+# Create initial quay-config Secret with empty OAuth whitelist
 - name: Create or update quay-config Secret
   no_log: true
   kubernetes.core.k8s:
     state: present
-    definition:
-      apiVersion: v1
-      kind: Secret
-      metadata:
-        name: quay-config
-        namespace: quay-enterprise
-      type: Opaque
-      stringData:
-        config.yaml: |
-          ALLOW_PULLS_WITHOUT_STRICT_LOGGING: false
-          AUTHENTICATION_TYPE: Database
-          DEFAULT_TAG_EXPIRATION: 2w
-          FEATURE_USER_INITIALIZE: true
-          SUPER_USERS:
-            - quayadmin
-          BROWSER_API_CALLS_XHR_ONLY: false
-          FEATURE_USER_CREATION: false
-          CREATE_NAMESPACE_ON_PUSH: true
-          DISTRIBUTED_STORAGE_CONFIG:
-            local_us:
-              - {{ quayBackend }}
-              - {{ ((quayBackendDefaults
-                   | combine(quayBackendRGWDefaults)
-                   | combine(quayBackendRGWConfiguration))
-                   if quayBackend == 'RadosGWStorage'
-                   else (quayBackendDefaults
-                   | combine(quayBackendLocalStorageConfiguration | default({})))
-                   if quayBackend == 'LocalStorage'
-                   else quayBackendDefaults)
-                   | to_yaml }}
-          DISTRIBUTED_STORAGE_DEFAULT_LOCATIONS:
-            - local_us
-
-          ENTERPRISE_LOGO_URL: /static/img/RH_Logo_Quay_Black_UX-horizontal.svg
-          FEATURE_BUILD_SUPPORT: false
-          FEATURE_DIRECT_LOGIN: true
-          FEATURE_MAILING: false
-          REGISTRY_TITLE: Red Hat Quay
-          REGISTRY_TITLE_SHORT: Red Hat Quay
-          SETUP_COMPLETE: true
-          TAG_EXPIRATION_OPTIONS:
-            - 2w
-          TEAM_RESYNC_STALE_TIME: 60m
-          TESTING: false
-          FEATURE_PROXY_STORAGE: {{ quayFeatureProxyStorage | bool | lower }}
-          FEATURE_QUOTA_MANAGEMENT: {{ quayFeatureQuotaManagement | bool | lower }}
-          MAXIMUM_LAYER_SIZE: {{ quayMaximumLayerSize }}
-        clair-config.yaml: |
-          indexer:
-            airgap: true
-            scanner:
-              repo:
-                rhel-repository-scanner:
-                  repo2cpe_mapping_file: "/data/repository-to-cpe.json"
-              package:
-                rhel_containerscanner:
-                  name2repos_mapping_file: "/data/container-name-repos-map.json"
-          matcher:
-            disable_updaters: true
+    definition: "{{ lookup('template', 'templates/quay-config-secret.yaml.j2') | from_yaml }}"
+  vars:
+    oauth_client_ids: []
   register: r_quay_config_secret
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -111,6 +56,72 @@
   until:
     - r_quay_user is defined
     - r_quay_user.status | default(0) == 200 or r_quay_user.json.message | default("") == "Cannot initialize user in a non-empty database"
+
+- name: Extract initial user access token from initialize response
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_initial_token: "{{ r_quay_user.json.access_token }}"
+  when:
+    - r_quay_user.status == 200
+    - r_quay_user.json.access_token is defined
+    - r_quay_user.json.access_token | length > 0
+
+- name: Store initial user token in Kubernetes Secret
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: quay-initial-user-token
+        namespace: quay-enterprise
+        labels:
+          app: quay
+          component: initial-user
+      type: Opaque
+      stringData:
+        username: "{{ quayUser }}"
+        access-token: "{{ quay_initial_token }}"
+  when:
+    - quay_initial_token is defined
+    - quay_initial_token | length > 0
+  register: r_quay_initial_user_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_initial_user_secret is success
+
+- name: Read stored initial user token Secret
+  no_log: true
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: quay-initial-user-token
+    namespace: quay-enterprise
+  register: r_quay_initial_user_secret_info
+  when:
+    - quay_initial_token is not defined or quay_initial_token | length == 0
+
+- name: Extract initial user access token from Kubernetes Secret
+  no_log: true
+  ansible.builtin.set_fact:
+    quay_initial_token: "{{ r_quay_initial_user_secret_info.resources[0].data['access-token'] | b64decode }}"
+  when:
+    - quay_initial_token is not defined or quay_initial_token | length == 0
+    - r_quay_initial_user_secret_info.resources is defined
+    - r_quay_initial_user_secret_info.resources | length > 0
+    - r_quay_initial_user_secret_info.resources[0].data is defined
+    - r_quay_initial_user_secret_info.resources[0].data['access-token'] is defined
+
+# Configure OAuth application (organization, app, token generation)
+# This is extracted to a separate file for better maintainability
+- name: Configure OAuth application for Quay
+  ansible.builtin.include_tasks:
+    file: oauth_setup.yaml
+  when:
+    - quayOAuthApp.enabled | default(true)
+    - quay_initial_token is defined
+    - quay_initial_token | length > 0
 
 - name: Generate pull secret for internal mirror
   no_log: true
