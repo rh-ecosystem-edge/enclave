@@ -23,8 +23,8 @@ jobs:
         run: |
           gh workflow run e2e-deployment.yml \
             --ref "${{ github.ref }}" \
-            -f run-connected=true \
+            -f run-connected=false \
             -f run-disconnected=true \
             -f storage-plugin=odf \
             -R "${{ github.repository }}"
-          echo "Dispatched E2E Deployment with ODF storage plugin" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Dispatched E2E Disconnected with ODF storage plugin" | tee -a $GITHUB_STEP_SUMMARY

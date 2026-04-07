@@ -137,10 +137,15 @@ info "Step 1: Installing cephadm and ceph-common (release: $CEPH_RELEASE)..."
 if command -v cephadm &>/dev/null; then
     info "cephadm already installed"
 else
-    # Download cephadm directly from the Ceph project
-    info "Downloading cephadm from Ceph project..."
-    curl --silent --remote-name --location \
-        "https://raw.githubusercontent.com/ceph/ceph/${CEPH_RELEASE}/src/cephadm/cephadm.py"
+    # Download cephadm from the official Ceph download server
+    info "Downloading cephadm from download.ceph.com..."
+    curl --silent --location -o cephadm.py \
+        "https://download.ceph.com/rpm-${CEPH_RELEASE}/el9/noarch/cephadm" || {
+        # Fallback to GitHub if the official server doesn't have this release
+        warn "Official download server failed, falling back to GitHub..."
+        curl --silent --remote-name --location \
+            "https://raw.githubusercontent.com/ceph/ceph/${CEPH_RELEASE}/src/cephadm/cephadm.py"
+    }
 
     # Try to add repo and install via package manager
     if python3 cephadm.py add-repo --release "$CEPH_RELEASE" 2>/dev/null; then
@@ -320,8 +325,11 @@ wait_for_rgw
 
 # Enable MGR prometheus module for monitoring endpoint (port 9283, required by ODF)
 info "Enabling MGR prometheus module for monitoring metrics..."
-cephadm shell -- ceph mgr module enable prometheus 2>/dev/null || true
-success "MGR prometheus module enabled (port 9283)"
+if cephadm shell -- ceph mgr module enable prometheus 2>/dev/null; then
+    success "MGR prometheus module enabled (port 9283)"
+else
+    warn "MGR prometheus module enable failed - monitoring metrics may be unavailable"
+fi
 
 # Step 8: Create S3 user and bucket
 info "Step 8: Creating S3 user and bucket..."
@@ -345,21 +353,28 @@ S3_SECRET_KEY=$(cephadm shell -- radosgw-admin user info --uid="$S3_USER" 2>/dev
 if cephadm shell -- radosgw-admin bucket stats --bucket="$S3_BUCKET" &>/dev/null; then
     info "Bucket '$S3_BUCKET' already exists"
 else
+    S3_ACCESS_KEY="$S3_ACCESS_KEY" \
+    S3_SECRET_KEY="$S3_SECRET_KEY" \
+    CEPH_HOST_IP="$CEPH_HOST_IP" \
+    RGW_PORT="$RGW_PORT" \
+    S3_BUCKET="$S3_BUCKET" \
     python3 -c "
-import urllib.request, hmac, hashlib, base64, datetime
-host = '${CEPH_HOST_IP}:${RGW_PORT}'
-bucket = '${S3_BUCKET}'
+import os, urllib.request, hmac, hashlib, base64, datetime
+host = os.environ['CEPH_HOST_IP'] + ':' + os.environ['RGW_PORT']
+bucket = os.environ['S3_BUCKET']
+access_key = os.environ['S3_ACCESS_KEY']
+secret_key = os.environ['S3_SECRET_KEY']
 date = datetime.datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S +0000')
 string_to_sign = 'PUT\n\n\n' + date + '\n/' + bucket
 sig = base64.b64encode(hmac.new(
-    '${S3_SECRET_KEY}'.encode(), string_to_sign.encode(), hashlib.sha1
+    secret_key.encode(), string_to_sign.encode(), hashlib.sha1
 ).digest()).decode()
 req = urllib.request.Request(
     'http://' + host + '/' + bucket,
     method='PUT',
     headers={
         'Date': date,
-        'Authorization': 'AWS ${S3_ACCESS_KEY}:' + sig,
+        'Authorization': 'AWS ' + access_key + ':' + sig,
     }
 )
 urllib.request.urlopen(req)
@@ -434,16 +449,26 @@ print(','.join(addrs))
     # Note: rook-csi-rbd-node and rook-csi-rbd-provisioner are NOT included here.
     # Rook creates these secrets itself using the admin credentials. Including them
     # causes a type conflict: ODF creates them as Opaque, rook expects kubernetes.io/rook.
-    ODF_EXTERNAL_CONFIG=$(python3 -c "
-import json
+    ODF_EXTERNAL_CONFIG=$(
+        FSID="$FSID" \
+        MON_HOSTS="$MON_HOSTS" \
+        ADMIN_KEY="$ADMIN_KEY" \
+        CEPH_HOST_IP="$CEPH_HOST_IP" \
+        RGW_PORT="$RGW_PORT" \
+        RBD_POOL="$RBD_POOL" \
+        RGW_ACCESS_KEY="$RGW_ACCESS_KEY" \
+        RGW_SECRET_KEY="$RGW_SECRET_KEY" \
+        python3 -c "
+import os, json
+e = os.environ
 data = [
-    {'name': 'rook-ceph-mon-endpoints', 'kind': 'ConfigMap', 'data': {'data': '${FSID}=${MON_HOSTS}', 'maxMonId': '0', 'mapping': '{}'}},
-    {'name': 'rook-ceph-mon', 'kind': 'Secret', 'data': {'admin-secret': 'admin-secret', 'fsid': '${FSID}', 'mon-secret': 'mon-secret'}},
-    {'name': 'rook-ceph-operator-creds', 'kind': 'Secret', 'data': {'userID': 'client.admin', 'userKey': '${ADMIN_KEY}'}},
-    {'name': 'monitoring-endpoint', 'kind': 'CephCluster', 'data': {'MonitoringEndpoint': '${CEPH_HOST_IP}', 'MonitoringPort': '9283'}},
-    {'name': 'ceph-rbd', 'kind': 'StorageClass', 'data': {'pool': '${RBD_POOL}'}},
-    {'name': 'ceph-rgw', 'kind': 'StorageClass', 'data': {'endpoint': '${CEPH_HOST_IP}:${RGW_PORT}', 'poolPrefix': 'default'}},
-    {'name': 'rgw-admin-ops-user', 'kind': 'Secret', 'data': {'accessKey': '${RGW_ACCESS_KEY}', 'secretKey': '${RGW_SECRET_KEY}'}}
+    {'name': 'rook-ceph-mon-endpoints', 'kind': 'ConfigMap', 'data': {'data': e['FSID']+'='+e['MON_HOSTS'], 'maxMonId': '0', 'mapping': '{}'}},
+    {'name': 'rook-ceph-mon', 'kind': 'Secret', 'data': {'admin-secret': 'admin-secret', 'fsid': e['FSID'], 'mon-secret': 'mon-secret'}},
+    {'name': 'rook-ceph-operator-creds', 'kind': 'Secret', 'data': {'userID': 'client.admin', 'userKey': e['ADMIN_KEY']}},
+    {'name': 'monitoring-endpoint', 'kind': 'CephCluster', 'data': {'MonitoringEndpoint': e['CEPH_HOST_IP'], 'MonitoringPort': '9283'}},
+    {'name': 'ceph-rbd', 'kind': 'StorageClass', 'data': {'pool': e['RBD_POOL']}},
+    {'name': 'ceph-rgw', 'kind': 'StorageClass', 'data': {'endpoint': e['CEPH_HOST_IP']+':'+e['RGW_PORT'], 'poolPrefix': 'default'}},
+    {'name': 'rgw-admin-ops-user', 'kind': 'Secret', 'data': {'accessKey': e['RGW_ACCESS_KEY'], 'secretKey': e['RGW_SECRET_KEY']}}
 ]
 print(json.dumps(data))
 ")
@@ -522,7 +547,7 @@ else
 fi
 
 # ============================================================================
-# Output GitHub Secrets
+# Output Summary (credentials redacted)
 # ============================================================================
 echo ""
 echo "============================================================================"
@@ -531,28 +556,24 @@ echo "==========================================================================
 echo ""
 echo "Ceph cluster is running on $CEPH_HOST_IP"
 echo ""
-echo "--- GitHub Actions Variable ---"
+echo "  FSID:       $(cephadm shell -- ceph fsid 2>/dev/null || echo 'unknown')"
+echo "  MON:        $CEPH_HOST_IP:3300,6789"
+echo "  RGW:        http://$CEPH_HOST_IP:$RGW_PORT"
+echo "  Metrics:    http://$CEPH_HOST_IP:9283"
+echo "  RBD pool:   $RBD_POOL"
+echo "  S3 bucket:  $S3_BUCKET"
+echo "  S3 user:    $S3_USER"
 echo ""
-echo "  CEPH_HOST_IP=$CEPH_HOST_IP"
+if [ -n "$CEPH_CONFIG_DIR" ]; then
+    echo "Config files: $CEPH_CONFIG_DIR/"
+    echo "  - odf_external_config.json"
+    echo "  - quay_backend_rgw_config.yaml"
+else
+    echo "Credentials (set as GitHub secrets for manual use):"
+    echo "  ODF_EXTERNAL_CONFIG:     <use CEPH_CONFIG_DIR to write to file>"
+    echo "  QUAY_BACKEND_RGW_CONFIG: <use CEPH_CONFIG_DIR to write to file>"
+fi
 echo ""
-echo "--- GitHub Actions Secrets ---"
-echo ""
-echo "Set the following as repository secrets:"
-echo ""
-echo "1) ODF_EXTERNAL_CONFIG:"
-echo ""
-echo "$ODF_EXTERNAL_CONFIG"
-echo ""
-echo "2) QUAY_BACKEND_RGW_CONFIG:"
-echo ""
-
-# Build YAML object for Quay RGW configuration
-cat <<EOF
-{access_key: ${S3_ACCESS_KEY}, secret_key: ${S3_SECRET_KEY}, bucket_name: ${S3_BUCKET}, hostname: ${CEPH_HOST_IP}, port: ${RGW_PORT}, is_secure: false}
-EOF
-
-echo ""
-echo "============================================================================"
 echo "To verify:"
 echo "  ceph health"
 echo "  curl http://${CEPH_HOST_IP}:${RGW_PORT}/"

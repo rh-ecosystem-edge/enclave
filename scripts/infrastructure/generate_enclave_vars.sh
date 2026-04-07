@@ -321,10 +321,15 @@ echo ""
 # Calculate worker IP range for informational message
 WORKER_IP_START=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".20"}')
 WORKER_IP_END=$(echo "$CLUSTER_NETWORK" | awk -F. -v count=$MASTER_COUNT '{print $1"."$2"."$3"."20+count-1}')
+ACTIVE_STORAGE="${STORAGE_PLUGIN:-lvms}"
+ACTIVE_REGISTRY="LocalStorage"
+if [ "$ACTIVE_STORAGE" = "odf" ]; then
+    ACTIVE_REGISTRY="RadosGWStorage"
+fi
 info "Generated configuration uses:"
 info "  - Worker IPs: ${WORKER_IP_START}-${WORKER_IP_END} (will be assigned during deployment)"
-info "  - Storage: LVMS with /dev/vda root disk"
-info "  - Registry: LocalStorage"
+info "  - Storage: ${ACTIVE_STORAGE} with /dev/vda root disk"
+info "  - Registry: ${ACTIVE_REGISTRY}"
 info "  - Pull secret: Embedded in config/global.yaml (written to pullSecretPath at runtime)"
 info "  - SSL certificates: Self-signed (generated for CI/testing)"
 echo ""
