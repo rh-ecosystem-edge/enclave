@@ -15,7 +15,6 @@
 - name: Include common configuration
   ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
   loop:
-    - content_images.yaml
     - control_binaries.yaml
     - operators.yaml
     - platforms.yaml

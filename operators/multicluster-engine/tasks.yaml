@@ -300,6 +300,14 @@
   until: r_configmap_assisted_service is success
 
 - name: Create AgentServiceConfig for disconnected environment
+  vars:
+    _osimages: |
+      {% for v in openshift_versions %}
+      - cpuArchitecture: x86_64
+        openshiftVersion: "{{ v.version }}"
+        url: "http://{{ quayHostname }}/rhcos-{{ v.version }}-x86_64-live-iso.x86_64.iso"
+        version: "{{ iso_version_facts[v.version] }}"
+      {% endfor %}
   kubernetes.core.k8s:
     state: present
     definition:
@@ -325,11 +333,7 @@
           resources:
             requests:
               storage: 40Gi
-        osImages:
-        - cpuArchitecture: x86_64
-          openshiftVersion: "4.20"
-          url: "http://{{ quayHostname }}/rhcos-4.20.0-x86_64-live-iso.x86_64.iso"
-          version: 9.6.20251023-0
+        osImages: "{{ _osimages | from_yaml }}"
   register: r_agentserviceconfig
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"

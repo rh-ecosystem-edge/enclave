@@ -149,7 +149,6 @@ Configuration is split across multiple files for better organization:
 - `defaults/deployment.yaml` - Deployment behavior defaults
 - `defaults/k8s.yaml` - Kubernetes resource defaults
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
-- `defaults/content_images.yaml` - RHCOS images and ISOs
 - `defaults/catalogs.yaml` - Operator catalog source name mappings
 - `defaults/mirror_registry.yaml` - Quay hostname and CA path defaults
 - `defaults/quay_operator.yaml` - Quay feature flags and backend storage defaults
@@ -445,14 +444,6 @@ control_binaries:
   oc_mirror:
     url: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/4.19.17/oc-mirror.tar.gz"
     checksum: "sha256:..."
-```
-
-**`defaults/content_images.yaml`** - RHCOS ISO images:
-```yaml
-content_images:
-  isos:
-    - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-iso.x86_64.iso"
-      checksum: "sha256:..."
 ```
 
 ## Detailed Configuration Reference
