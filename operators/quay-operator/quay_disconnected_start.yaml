@@ -1,0 +1,79 @@
+---
+# Quay disconnected tasks: imageset for oc-mirror and mirror run.
+# This file is included only when disconnected | default(true).
+
+- name: Collect plugin registries for registries.conf
+  ansible.builtin.include_tasks:
+    file: "../../playbooks/tasks/collect_plugin_registries.yaml"
+
+- name: Copy imagesetconfiguration to imagesetconfiguration.internal.yaml
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+    dest: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
+
+- name: Replace registry.redhat.io with internal quay
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
+    regexp: 'catalog: {{ rh_operator_catalog }}'
+    replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_rh_operator_catalog }}"
+
+- name: Ensure .config/containers/ exists
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/"
+    state: directory
+
+- name: Generate registries.conf for the oc-mirror process
+  ansible.builtin.template:
+    src: "../../templates/registries.conf.j2"
+    dest: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+
+- name: Ensure oc-mirror log directory exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: Set oc-mirror log path
+  ansible.builtin.set_fact:
+    _oc_mirror_quay_log: "{{ workingDir }}/logs/oc-mirror.progress.quay.{{ lookup('pipe', 'date +%s') }}.log"
+
+- name: Show oc-mirror log path
+  ansible.builtin.debug:
+    msg: "oc-mirror log file: {{ _oc_mirror_quay_log }}"
+
+- name: Start oc-mirror process to Quay
+  ansible.builtin.shell: |
+    _retry=1
+    _max_retries="{{ ocMirrorAnsibleRetries }}"
+    _delay="{{ ocMirrorAnsibleDelay }}"
+    until {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile {{ workingDir }}/config/pull-secret.quay.json \
+      -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-quay \
+      docker://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }} \
+      --dest-tls-verify=false \
+      --src-tls-verify=false \
+      --parallel-images {{ ocMirrorParallelImages }} \
+      --parallel-layers {{ ocMirrorParallelLayersLocalStorage if quayBackend == 'LocalStorage' else ocMirrorParallelLayers }} \
+      --retry-times {{ ocMirrorRetryTimes }} \
+      --retry-delay {{ ocMirrorRetryDelay }} \
+      --image-timeout {{ ocMirrorImageTimeout }} \
+      > {{ _oc_mirror_quay_log }} 2>&1
+    do
+      if [ $_retry -ge $_max_retries ]; then
+        echo "Max retries reached"
+        exit 1
+      fi
+      echo "Some images failed to mirror. Retrying ($_retry of $_max_retries)"
+      _retry=$((_retry+1))
+      sleep $_delay
+    done
+  register: r_oc_mirror_quay
+  # Async run
+  async: 14400 # 4 hours timeout
+  poll: 0      # Start immediately, don't wait
+
+- name: Save async job ID for later reference
+  ansible.builtin.copy:
+    content: "{{ r_oc_mirror_quay.ansible_job_id }}"
+    dest: "{{ workingDir }}/logs/quay-mirror.async_job_id"
