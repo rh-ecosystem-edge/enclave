@@ -447,12 +447,9 @@ control_binaries:
     checksum: "sha256:..."
 ```
 
-**`defaults/content_images.yaml`** - Content images (RHCOS ISO and rootfs):
+**`defaults/content_images.yaml`** - RHCOS ISO images:
 ```yaml
 content_images:
-  imgs:
-    - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-rootfs.x86_64.img"
-      checksum: "sha256:..."
   isos:
     - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-iso.x86_64.iso"
       checksum: "sha256:..."

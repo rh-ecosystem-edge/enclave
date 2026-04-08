@@ -1133,7 +1133,7 @@ Core operators are defined in `defaults/operators.yaml`. Plugin operators are de
 
 Content configuration is stored in the `defaults/` directory:
 - `defaults/control_binaries.yaml` - Binary downloads (oc, helm, mirror-registry, oc-mirror)
-- `defaults/content_images.yaml` - RHCOS images and ISOs
+- `defaults/content_images.yaml` - RHCOS ISO images
 
 ### Control Binaries
 
@@ -1186,17 +1186,13 @@ control_binaries:
 **Example**:
 ```yaml
 content_images:
-  imgs:
-    - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-rootfs.x86_64.img"
-      checksum: "sha256:4d2e74921d95d4132b12d1088693a1b93b556a7846f93c4a6d6af32cecd10d2c"
   isos:
     - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-iso.x86_64.iso"
       checksum: "sha256:7a47d0c7a9bf5edb143d52809e793af2d74731567b95d91c6225171a1c49b5ab"
 ```
 
 **Fields**:
-- `imgs`: List of rootfs images (used by agent-based installer)
-- `isos`: List of ISO images (used for traditional installation)
+- `isos`: List of ISO images (used for cluster deployment)
 
 **Notes**:
 - Version should match OCP version
