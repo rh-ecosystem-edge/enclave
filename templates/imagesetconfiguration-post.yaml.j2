@@ -1,0 +1,35 @@
+---
+kind: ImageSetConfiguration
+apiVersion: mirror.openshift.io/v2alpha1
+mirror:
+  operators:
+    - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
+      packages:
+        # KubeVirt for virtualization workloads
+        - name: kubevirt-hyperconverged
+{% for operator in operators + (_core_plugin_operators | default([])) %}
+{% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
+{% for operator_name in [operator.name] + additional_operator_names %}
+        - name: {{ operator_name }}
+          defaultChannel: {{ operator.channel }}
+          channels:
+            - name: {{ operator.channel }}
+              minVersion: {{ operator.init_version }}
+              maxVersion: {{ operator.version }}
+{% endfor %}
+{% for pkg in operator.extraMirrorPackages | default([]) %}
+        - name: {{ pkg }}
+{% endfor %}
+{% endfor %}
+
+  additionalImages:
+    - name: registry.redhat.io/ubi8/ubi:latest
+    - name: quay.io/argoproj/argocd:v2.2.2
+    - name: registry.connect.redhat.com/hashicorp/vault-csi-provider:1.6.0-ubi
+    - name: registry.connect.redhat.com/hashicorp/vault-enterprise:1.20.4-ent-ubi
+    - name: registry.connect.redhat.com/hashicorp/vault-k8s:1.7.0-ubi
+    - name: registry.connect.redhat.com/hashicorp/vault:1.20.4-ubi
+
+  blockedImages:
+    - name: registry.redhat.io/quay/quay-builder-qemu-rhcos-rhel8
+    - name: registry.redhat.io/quay/quay-builder-rhel8

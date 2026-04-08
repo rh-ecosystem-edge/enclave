@@ -126,7 +126,9 @@ validate_tags() {
     local tag_tests=(
         "playbooks/01-prepare.yaml:download-content:Download content"
         "playbooks/01-prepare.yaml:download-control-binaries:Download control binaries"
-        "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror-registry"
+        "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror registry setup"
+        "playbooks/02-mirror.yaml:mirror-registry-core:Include tasks for core OpenShift installation mirroring"
+        "playbooks/02-mirror.yaml:mirror-registry-post:Include tasks for post-installation mirroring (operators and additional images)"
         "playbooks/03-deploy.yaml:configure-abi:Include tasks for OCP ABI"
         "playbooks/03-deploy.yaml:hardware:Configure and boot hosts via Ironic"
         "playbooks/03-deploy.yaml:wait-deployment:Wait for deployment"
