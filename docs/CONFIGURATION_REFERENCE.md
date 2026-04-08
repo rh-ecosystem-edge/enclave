@@ -1177,7 +1177,7 @@ RHCOS ISOs are automatically extracted from OpenShift release images during the 
 
 1. Queries the release image for the `machine-os-images` component
 2. Extracts the ISO from the machine-os-images container
-3. Determines the ISO volume ID using `isoinfo`
+3. Determines the ISO volume ID using `blkid`
 4. Stores the ISO at `/var/www/html/rhcos-<version>-x86_64-live-iso.x86_64.iso`
 
 ## Complete Example

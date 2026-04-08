@@ -1,10 +1,4 @@
 ---
-- name: Ensure isoinfo is available
-  become: true
-  ansible.builtin.package:
-    name: genisoimage
-    state: present
-
 - name: Initialize ISO version facts dictionary
   ansible.builtin.set_fact:
     iso_version_facts: {}
