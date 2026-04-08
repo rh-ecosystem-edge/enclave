@@ -13,7 +13,7 @@
 # explicitly before any delegated tasks.
 - name: Wait for rendezvous node to become reachable
   ansible.builtin.wait_for_connection:
-    timeout: 900
+    timeout: 600
     sleep: 10
   delegate_to: rendezvous
 

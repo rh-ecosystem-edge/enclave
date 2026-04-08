@@ -136,6 +136,7 @@ jobs:
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
+      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
 
     steps:
       - name: Checkout code
@@ -506,6 +507,7 @@ jobs:
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
+      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
 
     steps:
       - name: Checkout code
