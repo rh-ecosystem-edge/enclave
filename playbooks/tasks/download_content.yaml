@@ -1,8 +1,4 @@
 ---
-- name: Initialize ISO version facts dictionary
-  ansible.builtin.set_fact:
-    iso_version_facts: {}
-
 - name: Extract RHCOS ISOs from OpenShift release images
   ansible.builtin.include_tasks:
     file: download_content_single_version.yaml

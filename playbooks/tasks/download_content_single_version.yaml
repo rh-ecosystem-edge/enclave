@@ -39,22 +39,9 @@
         remote_src: true
         mode: '0644'
 
+  always:
     - name: Clean up temporary extraction directory
       ansible.builtin.file:
         path: "{{ temp_extract_dir.path }}"
         state: absent
-
-- name: Get ISO volume ID for {{ version_item.version }}
-  become: true
-  ansible.builtin.command:
-    cmd: blkid -s LABEL -o value /var/www/html/rhcos-{{ version_item.version }}-x86_64-live-iso.x86_64.iso
-  register: blkid_output
-  changed_when: false
-
-- name: Set volume ID from blkid output
-  ansible.builtin.set_fact:
-    volume_id: "{{ blkid_output.stdout | trim }}"
-
-- name: Store volume ID in facts dictionary
-  ansible.builtin.set_fact:
-    iso_version_facts: "{{ iso_version_facts | combine({version_item.version: volume_id}) }}"
+      when: temp_extract_dir is defined

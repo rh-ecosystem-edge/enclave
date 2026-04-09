@@ -306,7 +306,7 @@
       - cpuArchitecture: x86_64
         openshiftVersion: "{{ v.version }}"
         url: "http://{{ quayHostname }}/rhcos-{{ v.version }}-x86_64-live-iso.x86_64.iso"
-        version: "{{ iso_version_facts[v.version] }}"
+        version: "{{ lookup('pipe', 'blkid -s LABEL -o value /var/www/html/rhcos-' + v.version + '-x86_64-live-iso.x86_64.iso') | trim }}"
       {% endfor %}
   kubernetes.core.k8s:
     state: present
