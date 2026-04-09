@@ -173,3 +173,7 @@
   when: disconnected | default(true)
   ansible.builtin.include_tasks:
     file: quay_disconnected.yaml
+
+- name: Clair validations
+  ansible.builtin.include_tasks:
+    file: clair_validations.yaml

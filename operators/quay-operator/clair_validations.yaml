@@ -1,0 +1,45 @@
+---
+- name: Get the name of the first Clair pod
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: quay-enterprise
+    label_selectors:
+      - quay-component=clair-app
+  register: clair_pods
+
+- name: Set clair pod name fact
+  ansible.builtin.set_fact:
+    clair_pod_name: "{{ clair_pods.resources[0].metadata.name }}"
+
+- name: Check for repository-to-cpe.json in the pod
+  kubernetes.core.k8s_exec:
+    namespace: quay-enterprise
+    pod: "{{ clair_pod_name }}"
+    command: ls /data/repository-to-cpe.json
+  register: cpe_file_check
+
+- name: Check for container-name-repos-map.json in the pod
+  kubernetes.core.k8s_exec:
+    namespace: quay-enterprise
+    pod: "{{ clair_pod_name }}"
+    command: ls /data/container-name-repos-map.json
+  register: repo_map_check
+
+- name: Fail if files are missing
+  fail:
+    msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
+  when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
+
+- name: Validate that Clair postgres config Secret exists
+  kubernetes.core.k8s_info:
+    kind: Secret
+    name: clairpostgres-config-secret
+    namespace: quay-enterprise
+  register: clair_postgres_config_secret
+
+- name: Fail if Secret is missing
+  ansible.builtin.assert:
+    that:
+      - clair_postgres_config_secret.resources | length > 0
+    fail_msg: "Validation Failed: Secret clairpostgres-config-secret was not found in namespace quay-enterprise."
+    success_msg: "Validation Passed: Secret clairpostgres-config-secret is present in namespace quay-enterprise."
