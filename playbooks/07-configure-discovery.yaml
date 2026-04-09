@@ -6,6 +6,10 @@
     - name: Load common variables
       ansible.builtin.include_tasks: common/load-vars.yaml
 
+    - name: Enable persistent Metal3 deployment
+      ansible.builtin.set_fact:
+        metal3_persistent: true
+
     - name: Deploy Metal3 common resources
       ansible.builtin.include_tasks: "../playbooks/tasks/deploy_metal3_common.yaml"
 

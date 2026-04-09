@@ -1,0 +1,26 @@
+[Unit]
+Description=Metal3 Baremetal Operator container
+After=metal3-ironic-api.service
+
+[Container]
+ContainerName=baremetal-operator
+Image={{ metal3_baremetal_operator_image }}
+Pull=never
+User=65532:65532
+DropCapability=ALL
+NoNewPrivileges=true
+Secret=metal3-kubeconfig,type=mount,target=/kubeconfig/config,uid=65532,gid=65532,mode=0400
+Secret=metal3-ironic-username,type=mount,target=/auth/ironic/username,uid=65532,gid=65532,mode=0400
+Secret=metal3-ironic-password,type=mount,target=/auth/ironic/password,uid=65532,gid=65532,mode=0400
+Environment=KUBECONFIG=/kubeconfig/config
+Environment=IRONIC_ENDPOINT=http://{{ lzBmcIP }}:6385/v1/
+Environment=WATCH_NAMESPACE=infraenv
+Environment=LIVE_ISO_FORCE_PERSISTENT_BOOT_DEVICE=Never
+Environment=METAL3_AUTH_ROOT_DIR=/auth
+Exec=/baremetal-operator --webhook-port=0 --metrics-addr=0 --health-addr=0 --dev --enable-leader-election=false
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,100 @@
+---
+# Ironic persistent deployment via quadlet units
+
+- name: Ensure /etc/containers/systemd/ directory exists
+  become: true
+  ansible.builtin.file:
+    path: /etc/containers/systemd
+    state: directory
+    mode: '0755'
+
+- name: Deploy metal3-ironic pod quadlet
+  become: true
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/quadlets/metal3-ironic.pod.j2"
+    dest: /etc/containers/systemd/metal3-ironic.pod
+    mode: '0644'
+  register: r_ironic_pod_quadlet
+
+- name: Deploy metal3-ironic-api container quadlet
+  become: true
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/quadlets/metal3-ironic-api.container.j2"
+    dest: /etc/containers/systemd/metal3-ironic-api.container
+    mode: '0644'
+  register: r_ironic_api_quadlet
+
+- name: Deploy metal3-httpd container quadlet
+  become: true
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/quadlets/metal3-httpd.container.j2"
+    dest: /etc/containers/systemd/metal3-httpd.container
+    mode: '0644'
+  register: r_httpd_quadlet
+
+- name: Reload systemd daemon
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start metal3-ironic-pod service
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-ironic-pod.service
+    state: started
+    enabled: true
+
+- name: Restart metal3-ironic-pod service if quadlet changed
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-ironic-pod.service
+    state: restarted
+  when: r_ironic_pod_quadlet is changed or r_ironic_api_quadlet is changed or r_httpd_quadlet is changed
+
+- name: Enable and start metal3-ironic-api service
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-ironic-api.service
+    state: started
+    enabled: true
+
+- name: Enable and start metal3-httpd service
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-httpd.service
+    state: started
+    enabled: true
+
+- name: Restart metal3-ironic-api service if quadlet changed
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-ironic-api.service
+    state: restarted
+  when: r_ironic_api_quadlet is changed
+
+- name: Restart metal3-httpd service if quadlet changed
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-httpd.service
+    state: restarted
+  when: r_httpd_quadlet is changed
+
+- name: Wait for metal3-ironic-api service to be active
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-ironic-api.service
+  register: r_ironic_api_svc
+  retries: 60
+  delay: 5
+  until: r_ironic_api_svc.status.ActiveState == 'active'
+  changed_when: false
+
+- name: Wait for metal3-httpd service to be active
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-httpd.service
+  register: r_httpd_svc
+  retries: 60
+  delay: 5
+  until: r_httpd_svc.status.ActiveState == 'active'
+  changed_when: false
