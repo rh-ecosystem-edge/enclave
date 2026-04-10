@@ -6,17 +6,10 @@
   ansible.builtin.include_tasks:
     file: "../../playbooks/tasks/collect_plugin_registries.yaml"
 
-- name: Merge core and post imagesetconfiguration
-  vars:
-    imageset_core: "{{ lookup('file', workingDir ~ '/config/imagesetconfiguration-core.yaml') | from_yaml }}"
-    imageset_post: "{{ lookup('file', workingDir ~ '/config/imagesetconfiguration-post.yaml') | from_yaml }}"
-  set_fact:
-    imageset_internal: "{{ imageset_core | combine(imageset_post, recursive=True, list_merge='append') }}"
-
-- name: Write merged imagesetconfiguration to imagesetconfiguration.internal.yaml
-  copy:
-    content: "{{ imageset_internal | to_nice_yaml }}"
-    dest: "{{ workingDir}}/config/imagesetconfiguration.internal.yaml"
+- name: Copy imagesetconfiguration to imagesetconfiguration.internal.yaml
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+    dest: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
 
 - name: Replace registry.redhat.io with internal quay
   ansible.builtin.replace:
