@@ -59,6 +59,11 @@ getValue(){
         | jq -r $1
 }
 
+step_done(){
+    echo -e "\e[38;5;10m Done...\033[0m" | tee -a ${log}
+    date | tee -a ${log}
+}
+
 if [ ! -f "$global_vars" ]; then
     echo "Error: $global_vars not found."
     echo "Copy config/global.example.yaml to $global_vars and fill in your values."
@@ -108,7 +113,7 @@ fi
 mkdir -p "$(dirname $log)"
 date > "$log"
 
-echo -p "Check Config .. " -n1 -s | tee -a ${log}
+echo "Check Config .. " | tee -a ${log}
 FList="ansible.cfg  bootstrap.sh  playbooks/main.yaml  playbooks/  \
         setup_ansible.sh  setup_env.sh $global_vars $certs_vars $cloud_infra_vars"
 for x in $FList; do
@@ -119,61 +124,61 @@ for x in $FList; do
     fi
 done
 
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Configuring environment .. " -n1 -s  | tee -a ${log}
+echo "Configuring environment .. "  | tee -a ${log}
     sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
     bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Validating Config .. " -n1 -s  | tee -a ${log}
+echo "Validating Config .. "  | tee -a ${log}
     ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Downloading Deps Content .. " -n1 -s
+echo "Downloading Deps Content .. " | tee -a ${log}
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-content 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Building local cache .. " -n1 -s
+echo "Building local cache .. " | tee -a ${log}
     # get oc / helm / mirror content etc
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
     ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags configure-abi 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Sanity lockdown .. " -n1 -s
-	# firewall work as needed
+#echo "Sanity lockdown .. " | tee -a ${log}
+    # firewall work as needed
     # check state on LZ machine, lock down users, network NAT disable etc
-echo -e "\e[38;5;10m Done...\033[0m"; date
+#step_done
 
-echo -p "Acquiring Hardware .. " -n1 -s
+echo "Acquiring Hardware .. " | tee -a ${log}
     # setup content for and boot machines
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags hardware,pre-install-validate 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Deploying management cluster .. " -n1 -s
+echo "Deploying management cluster .. " | tee -a ${log}
     # deploy Red Hat payload cluster
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags wait-deployment 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Post install config.. " -n1 -s
+echo "Post install config.. " | tee -a ${log}
     # Apply SSL certificates
     ansible-playbook playbooks/04-post-install.yaml -e@$global_vars -e@$certs_vars --tags post-install-config 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Deploying management apps  .. " -n1 -s
+echo "Deploying management apps  .. " | tee -a ${log}
     # deploy Red Hat payload cluster
     ansible-playbook playbooks/05-operators.yaml -e@$global_vars -e@$certs_vars --tags operators 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Clair disconnected .." -n1 -s
+echo "Clair disconnected .." | tee -a ${log}
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags clair-disconnected 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Catalog source ACM policy .." -n1 -s
+echo "Catalog source ACM policy .." | tee -a ${log}
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
 # Showing login information
 printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
@@ -181,23 +186,23 @@ printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
   | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
 /g' -e 's/\\"/"/g')"
 
-echo -p "Start discovering nodes.. " -n1 -s
+echo "Start discovering nodes.. " | tee -a ${log}
     if [ -f $cloud_infra_vars ]; then
-        if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml; then
-            echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml"
+        if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml 2>&1 | tee -a ${log}; then
+            echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml" | tee -a ${log}
         fi
     fi
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-echo -p "Deploying Partner OverLay .. " -n1 -s
+echo "Deploying Partner OverLay .. " | tee -a ${log}
     if [ -f ./partner-install/start.sh ]; then
-        bash ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 >> ${log}
+        bash ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 | tee -a ${log}
     else
-        echo "Partner OverLay not found, skipping"
+        echo "Partner OverLay not found, skipping" | tee -a ${log}
     fi
-echo -e "\e[38;5;10m Done...\033[0m"; date
+step_done
 
-#echo -p "Service Validation and HealthCheck ..TBD " -n1 -s  | tee -a ${log}
-#echo -e "\e[38;5;10m Done...\033[0m"; date
+#echo "Service Validation and HealthCheck ..TBD " | tee -a ${log}
+#step_done
 
 # teardown / cleanout
