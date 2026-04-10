@@ -49,12 +49,13 @@
 - name: Copy custom manifests from mirror registry to the ABI directory
   when: disconnected | default(true)
   ansible.builtin.copy:
-    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/{{ item }}"
+    src: "{{ workingDir }}/config/oc-mirror-workspace-manifests/working-dir/cluster-resources/{{ item }}"
     dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item }}"
   loop:
     - idms-oc-mirror.yaml
     - itms-oc-mirror.yaml
     - signature-configmap.yaml
+    - cs-redhat-operator-index-v4-20.yaml
 
 - name: Enable diskEncryption if set
   when: diskEncryption | default(false) == true

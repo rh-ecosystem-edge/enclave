@@ -1,0 +1,18 @@
+---
+# JAVI - Dont do like that. We should either combine core and post imagesetconfiguration
+# or have the full one and generate core/post out of it
+- name: Copy full imagesetconfiguration.yaml
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+
+- name: Generate IDMS/ITMS/etc manifests with oc-mirror
+  ansible.builtin.shell: |
+    /tmp/bin/oc-mirror --v2 \
+    --authfile {{ pullSecretPath }} \
+    --dest-tls-verify=false \
+    -c {{ workingDir }}/config/imagesetconfiguration.yaml \
+    --workspace file://{{ workingDir }}/config/oc-mirror-workspace-manifests \
+    --cluster-resources-only \
+    docker://{{ quayHostname }}:8443 \
+    > {{ workingDir }}/logs/oc-mirror-manifests.progress.$(date +%s).log 2>&1

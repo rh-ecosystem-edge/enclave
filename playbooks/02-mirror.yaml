@@ -67,6 +67,18 @@
           tags: mirror-registry
       tags: mirror-registry
 
+    # Generate all mirror manifests
+    - name: Include tasks for generating all mirror manifests
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_registry_manifests.yaml
+        apply:
+          tags:
+            - mirror-registry
+            - mirror-registry-manifests
+      tags:
+        - mirror-registry
+        - mirror-registry-manifests
+
     # Core installation mirror - only platform images needed for basic OpenShift installation
     - name: Include tasks for core OpenShift installation mirroring
       ansible.builtin.include_tasks:
