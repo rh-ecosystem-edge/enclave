@@ -2,6 +2,18 @@
 - name: Configure operators
   block:
 
+    - name: Include install_operator
+      ansible.builtin.include_tasks: install_operator.yaml
+      loop: "{{ operators }}"
+      loop_control:
+        loop_var: operator
+
+    - name: Include approve_operator
+      ansible.builtin.include_tasks: approve_operator.yaml
+      loop: "{{ operators }}"
+      loop_control:
+        loop_var: operator
+
     - name: Include configure_operator
       ansible.builtin.include_tasks: configure_operator.yaml
       loop: "{{ operators }}"
