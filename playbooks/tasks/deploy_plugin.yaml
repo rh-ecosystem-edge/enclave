@@ -201,6 +201,36 @@
 
 - name: Install plugin operators
   ansible.builtin.include_tasks:
+    file: tasks/install_operator.yaml
+    apply:
+      tags: operators
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ plugin.operators }}"
+  loop_control:
+    loop_var: operator
+  when:
+    - plugin.operators is defined
+    - plugin.installOperators | default(true)
+  tags: operators
+
+- name: Install plugin operators
+  ansible.builtin.include_tasks:
+    file: tasks/approve_operator.yaml
+    apply:
+      tags: operators
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ plugin.operators }}"
+  loop_control:
+    loop_var: operator
+  when:
+    - plugin.operators is defined
+    - plugin.installOperators | default(true)
+  tags: operators
+
+- name: Install plugin operators
+  ansible.builtin.include_tasks:
     file: tasks/configure_operator.yaml
     apply:
       tags: operators

@@ -1,0 +1,47 @@
+---
+- name: "Wait for Install Plan ({{ operator.name }})"
+  when:
+    - o_sub_check[operator.name].resources | length == 0
+    - operator.namespace != "openshift-operators"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator.name }}"
+    namespace: "{{ operator.namespace }}"
+  register: r_subscription
+  retries: 30
+  delay: 10
+  until:
+  - r_subscription.resources[0].status.installplan is defined
+  - r_subscription.resources[0].status.installplan | length > 0
+
+- name: "Approve Install Plan ({{ operator.name }})"
+  when:
+    - o_sub_check[operator.name].resources | length == 0
+    - operator.namespace != "openshift-operators"
+  ansible.builtin.shell: |
+    python ../helpers/operator-update/approve_installplans.py "{{ [operator] }}" "False"
+  register: operator_update_result
+
+- name: Print the output
+  when:
+    - o_sub_check[operator.name].resources | length == 0
+    - operator.namespace != "openshift-operators"
+  ansible.builtin.debug:
+    var: operator_update_result.stdout_lines
+
+- name: "Get Installed CSV ({{ operator.name }})"
+  when:
+    - o_sub_check[operator.name].resources | length == 0
+    - operator.namespace == "openshift-operators"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator.name }}"
+    namespace: "{{ operator.namespace }}"
+  register: r_subscription
+  retries: 30
+  delay: 10
+  until:
+  - r_subscription.resources[0].status.currentCSV is defined
+  - r_subscription.resources[0].status.currentCSV | length > 0
