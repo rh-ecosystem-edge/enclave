@@ -75,9 +75,13 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
+- name: Store subscription results in a dictionary
+  set_fact:
+    o_sub_check: "{{ o_sub_check | default({}) | combine({ operator.name: r_sub_check }) }}"
+
 - name: "Ensure Subscription exists (Automatic)"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace == "openshift-operators"
   kubernetes.core.k8s:
     state: present
@@ -100,7 +104,7 @@
 
 - name: "Ensure Subscription exists (Manual)"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace != "openshift-operators"
   kubernetes.core.k8s:
     state: present

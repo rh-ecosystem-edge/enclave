@@ -17,6 +17,8 @@
   gather_facts: false
   environment:
     PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+  vars:
+    o_sub_check: {}
   tasks:
     - name: Load common variables
       ansible.builtin.include_tasks:

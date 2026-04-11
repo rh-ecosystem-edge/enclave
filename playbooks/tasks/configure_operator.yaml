@@ -1,7 +1,7 @@
 ---
 - name: "Wait until CSV is installed"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace == "openshift-operators"
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1

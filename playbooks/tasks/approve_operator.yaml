@@ -1,7 +1,7 @@
 ---
 - name: "Wait for Install Plan ({{ operator.name }})"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace != "openshift-operators"
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
@@ -17,7 +17,7 @@
 
 - name: "Approve Install Plan ({{ operator.name }})"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.shell: |
     python ../helpers/operator-update/approve_installplans.py "{{ [operator] }}" "False"
@@ -25,14 +25,14 @@
 
 - name: Print the output
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.debug:
     var: operator_update_result.stdout_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
-    - r_sub_check.resources | length == 0
+    - o_sub_check[operator.name].resources | length == 0
     - operator.namespace == "openshift-operators"
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
