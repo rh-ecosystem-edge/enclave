@@ -1,0 +1,47 @@
+---
+- name: Check if ISO already exists for {{ version_item.version }}
+  ansible.builtin.stat:
+    path: "/var/www/html/rhcos-{{ version_item.version }}-x86_64-live-iso.x86_64.iso"
+  register: iso_exists
+
+- name: Extract ISO for {{ version_item.version }}
+  when: not iso_exists.stat.exists
+  block:
+    - name: Get machine-os-images digest for {{ version_item.version }}
+      ansible.builtin.command:
+        cmd: >
+          oc adm release info
+          --image-for=machine-os-images
+          quay.io/openshift-release-dev/ocp-release:{{ version_item.version }}-x86_64
+      register: machine_os_image
+      changed_when: false
+
+    - name: Create temporary extraction directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: "rhcos-extract-{{ version_item.version }}-"
+      register: temp_extract_dir
+
+    - name: Extract ISO from machine-os-images container
+      ansible.builtin.command:
+        cmd: >
+          oc image extract
+          --registry-config={{ pullSecretPath }}
+          {{ machine_os_image.stdout }}
+          --path /coreos/coreos-x86_64.iso:{{ temp_extract_dir.path }}/
+      changed_when: true
+
+    - name: Move ISO to final location with version-specific name
+      become: true
+      ansible.builtin.copy:
+        src: "{{ temp_extract_dir.path }}/coreos-x86_64.iso"
+        dest: "/var/www/html/rhcos-{{ version_item.version }}-x86_64-live-iso.x86_64.iso"
+        remote_src: true
+        mode: '0644'
+
+  always:
+    - name: Clean up temporary extraction directory
+      ansible.builtin.file:
+        path: "{{ temp_extract_dir.path }}"
+        state: absent
+      when: temp_extract_dir is defined

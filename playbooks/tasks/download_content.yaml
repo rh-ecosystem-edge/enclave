@@ -1,10 +1,7 @@
 ---
-- name: Download RHCOS live ISOs
-  become: true
-  ansible.builtin.get_url:
-    url: "{{ iso_item.url }}"
-    dest: "/var/www/html/{{ (iso_item.url | ansible.builtin.split('/'))[-1] }}"
-    checksum: "{{ iso_item.checksum }}"
-  loop: "{{ content_images.isos }}"
+- name: Extract RHCOS ISOs from OpenShift release images
+  ansible.builtin.include_tasks:
+    file: download_content_single_version.yaml
+  loop: "{{ openshift_versions }}"
   loop_control:
-    loop_var: iso_item
+    loop_var: version_item

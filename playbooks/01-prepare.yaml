@@ -31,16 +31,16 @@
           tags: always
       tags: always
 
-    - name: Download content
-      ansible.builtin.include_tasks:
-        file: tasks/download_content.yaml
-        apply:
-          tags: download-content
-      tags: download-content
-
     - name: Download control binaries
       ansible.builtin.include_tasks:
         file: tasks/download_control_binaries.yaml
         apply:
           tags: download-control-binaries
       tags: download-control-binaries
+
+    - name: Download content
+      ansible.builtin.include_tasks:
+        file: tasks/download_content.yaml
+        apply:
+          tags: download-content
+      tags: download-content

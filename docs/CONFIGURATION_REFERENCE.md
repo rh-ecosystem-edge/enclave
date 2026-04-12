@@ -15,7 +15,6 @@ Configuration is split across multiple files for better organization and maintai
 | `defaults/platforms.yaml` | Available OpenShift versions |
 | `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
-| `defaults/content_images.yaml` | RHCOS images and ISOs configuration |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
 | `defaults/mirror_registry.yaml` | Quay hostname and CA path defaults |
 | `defaults/k8s.yaml` | Kubernetes retry settings for k8s module calls |
@@ -1133,7 +1132,6 @@ Core operators are defined in `defaults/operators.yaml`. Plugin operators are de
 
 Content configuration is stored in the `defaults/` directory:
 - `defaults/control_binaries.yaml` - Binary downloads (oc, helm, mirror-registry, oc-mirror)
-- `defaults/content_images.yaml` - RHCOS ISO images
 
 ### Control Binaries
 
@@ -1173,31 +1171,14 @@ control_binaries:
 - URLs should point to official Red Hat sources
 - Update version numbers as needed
 
-### Content Images
+### RHCOS ISOs
 
-#### `content_images`
+RHCOS ISOs are automatically extracted from OpenShift release images during the prepare phase. For each version defined in `defaults/platforms.yaml`, the system:
 
-**Description**: URLs and checksums for RHCOS images.
-
-**Location**: `defaults/content_images.yaml`
-
-**Type**: Dictionary
-
-**Example**:
-```yaml
-content_images:
-  isos:
-    - url: "https://mirror.openshift.com/pub/openshift-v4/dependencies/rhcos/4.19/4.19.10/rhcos-4.19.10-x86_64-live-iso.x86_64.iso"
-      checksum: "sha256:7a47d0c7a9bf5edb143d52809e793af2d74731567b95d91c6225171a1c49b5ab"
-```
-
-**Fields**:
-- `isos`: List of ISO images (used for cluster deployment)
-
-**Notes**:
-- Version should match OCP version
-- Checksums are verified after download
-- Multiple entries allowed (for different architectures)
+1. Queries the release image for the `machine-os-images` component
+2. Extracts the ISO from the machine-os-images container
+3. Determines the ISO volume ID using `blkid`
+4. Stores the ISO at `/var/www/html/rhcos-<version>-x86_64-live-iso.x86_64.iso`
 
 ## Complete Example
 
