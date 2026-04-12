@@ -323,7 +323,7 @@ jobs:
         id: upload_artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}
+          name: e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
           path: artifacts/
           retention-days: 7
           if-no-files-found: warn
@@ -336,7 +336,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             sleep $((attempt * 2))
             ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-              --jq '.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+              --jq '.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}") | .id')
             if [ -n "$ARTIFACT_ID" ]; then
               break
             fi
@@ -713,7 +713,7 @@ jobs:
         id: upload_artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}
+          name: e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
           path: artifacts/
           retention-days: 7
           if-no-files-found: warn
@@ -726,7 +726,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             sleep $((attempt * 2))
             ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-              --jq '.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}") | .id')
+              --jq '.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}") | .id')
             if [ -n "$ARTIFACT_ID" ]; then
               break
             fi
