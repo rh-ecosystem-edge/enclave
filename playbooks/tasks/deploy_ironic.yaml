@@ -160,6 +160,11 @@
     command:
       - /bin/runironic
     state: started
+    healthcheck: "python3 -c \"import socket; s=socket.create_connection(('localhost', 6385), 5); s.close()\""
+    healthcheck_interval: 30s
+    healthcheck_timeout: 10s
+    healthcheck_retries: 3
+    healthcheck_start_period: 60s
 
 - name: Run httpd container
   containers.podman.podman_container:
@@ -182,6 +187,11 @@
     command:
       - /bin/runhttpd
     state: started
+    healthcheck: "python3 -c \"import socket; s=socket.create_connection(('localhost', 6180), 5); s.close()\""
+    healthcheck_interval: 30s
+    healthcheck_timeout: 10s
+    healthcheck_retries: 3
+    healthcheck_start_period: 60s
 
 - name: Wait for metal3-ironic pod and containers to be running
   containers.podman.podman_pod_info:
@@ -195,6 +205,28 @@
     - r_pod_ready.pods[0].Containers | selectattr('Name', 'equalto', 'httpd') | selectattr('State', 'equalto', 'running') | list | length == 1
   changed_when: false
   # Note: Checks that both ironic and httpd containers are running (infra container state is ignored)
+
+- name: Wait for ironic container health check to pass
+  containers.podman.podman_container_info:
+    name: ironic
+  register: r_ironic_health
+  retries: 30
+  delay: 10
+  until:
+    - r_ironic_health.containers | length > 0
+    - r_ironic_health.containers[0].State.Health.Status | default('starting') == 'healthy'
+  changed_when: false
+
+- name: Wait for httpd container health check to pass
+  containers.podman.podman_container_info:
+    name: httpd
+  register: r_httpd_health
+  retries: 30
+  delay: 10
+  until:
+    - r_httpd_health.containers | length > 0
+    - r_httpd_health.containers[0].State.Health.Status | default('starting') == 'healthy'
+  changed_when: false
 
 - name: Verify HTTP server accessibility
   ansible.builtin.uri:

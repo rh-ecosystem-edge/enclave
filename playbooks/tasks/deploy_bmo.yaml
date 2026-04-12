@@ -58,10 +58,15 @@
       - /baremetal-operator
       - --webhook-port=0
       - --metrics-addr=0
-      - --health-addr=0
+      - --health-addr=:9440
       - --dev
       - --enable-leader-election=false
     state: started
+    healthcheck: "bash -c 'echo > /dev/tcp/localhost/9440'"
+    healthcheck_interval: 30s
+    healthcheck_timeout: 10s
+    healthcheck_retries: 3
+    healthcheck_start_period: 60s
 
 - name: Wait for baremetal-operator container to be running
   containers.podman.podman_container_info:
@@ -74,6 +79,17 @@
     r_bmo_ready.containers[0].State.Status == 'running'
   changed_when: false
 
+- name: Wait for baremetal-operator health check to pass
+  containers.podman.podman_container_info:
+    name: baremetal-operator
+  register: r_bmo_health
+  retries: 30
+  delay: 10
+  until:
+    - r_bmo_health.containers | length > 0
+    - r_bmo_health.containers[0].State.Health.Status | default('starting') == 'healthy'
+  changed_when: false
+
 - name: Display baremetal-operator container status
   containers.podman.podman_container_info:
     name: baremetal-operator
@@ -81,5 +97,5 @@
 
 - name: Show baremetal-operator status
   ansible.builtin.debug:
-    msg: "Container: {{ r_bmo_status.containers[0].Name }} | State: {{ r_bmo_status.containers[0].State.Status }}"
+    msg: "Container: {{ r_bmo_status.containers[0].Name }} | State: {{ r_bmo_status.containers[0].State.Status }} | Health: {{ r_bmo_status.containers[0].State.Health.Status | default('N/A') }}"
   when: r_bmo_status.containers | length > 0
