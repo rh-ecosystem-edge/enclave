@@ -42,7 +42,7 @@
       --retry-times 10 \
       --retry-delay 0 \
       --image-timeout 40m0s \
-      > {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log 2>&1
+      2>&1 | tee {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log | grep "ERROR"
 
   retries: 10
   delay: 10

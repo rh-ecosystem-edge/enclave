@@ -45,7 +45,7 @@
     --parallel-images 10 --parallel-layers 10
     --retry-times 10 --retry-delay 0
     docker://{{ dc_cache_address }}
-    > {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log 2>&1
+    2>&1 | tee {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log | grep "ERROR"
   retries: 5
   delay: 10
   register: __r_oc_mirror_cache
