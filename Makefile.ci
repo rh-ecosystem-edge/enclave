@@ -387,7 +387,7 @@ clean:
 
 # Verification targets
 verify-cluster:
-	@./scripts/verification/verify_cluster.sh
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_cluster.sh
 
 verify-cleanup:
 	@./scripts/cleanup/verify_cleanup.sh
