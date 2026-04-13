@@ -42,6 +42,25 @@ requires:
 defaults:
   odfDefaults:
     defaultStorageClass: true
+  components:
+    postgres:
+      overrides:
+        resources:
+          limits:
+            cpu: 1
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 2Gi
+    clairpostgres:
+      overrides:
+        resources:
+          limits:
+            cpu: 1
+            memory: 4Gi
+          requests:
+            cpu: 500m
+            memory: 2Gi
 
 registries:
   - location: "registry.redhat.io/odf4"
