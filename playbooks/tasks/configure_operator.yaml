@@ -128,6 +128,17 @@
   - r_csv.resources[0].status.phase | length > 0
   - r_csv.resources[0].status.phase == "Succeeded"
 
+- name: Patch Subscription install plan approval to Manual
+  kubernetes.core.k8s:
+    state: patched
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: Subscription
+      metadata:
+        name: "{{ operator.name }}"
+        namespace: "{{ operator.namespace }}"
+      spec:
+        installPlanApproval: Manual
 
 - name: Include specific tasks for the operator
   ansible.builtin.include_tasks: "{{ item }}"
