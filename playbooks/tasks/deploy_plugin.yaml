@@ -195,7 +195,7 @@
     plugin_registries_entries: "{{ plugin.registries }}"
   when:
     - plugin.registries is defined
-    - plugin.mirror | default('none') in ['core', 'plugin']
+    - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(true) | bool
   tags: mirror
 
