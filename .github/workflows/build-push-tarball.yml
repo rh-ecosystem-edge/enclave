@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - 0-rc
     tags:
       - '*'
   pull_request:
@@ -71,6 +72,12 @@ jobs:
           registry: quay.io
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Exit if image exists
+        run: |
+          if oras manifest fetch quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }} > /dev/null 2>&1; then
+            exit 0
+          fi
 
       - name: Build tarball
         run: |
