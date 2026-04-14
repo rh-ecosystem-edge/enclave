@@ -1,0 +1,28 @@
+# A temporary action to mirror main to 0-rc
+# Useful until main and 0-rc diverge
+name: Mirror main to 0-rc
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: mirror-main-0-rc
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  mirror-branch:
+    runs-on: [self-hosted, pr-validation]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+    
+    steps:
+      - name: Sync 0-rc with main
+        run: |
+          gh api -X PATCH repos/$REPO/git/refs/heads/0-rc -f sha="$SHA"
