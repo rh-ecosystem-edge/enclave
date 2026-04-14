@@ -30,6 +30,10 @@
           {{ machine_os_image.stdout }}
           --path /coreos/coreos-x86_64.iso:{{ temp_extract_dir.path }}/
       changed_when: true
+      register: iso_extraction
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until: iso_extraction is success
 
     - name: Move ISO to final location with version-specific name
       become: true
