@@ -1,0 +1,77 @@
+---
+- name: Check if async job ID file exists
+  when: async_quay_job_id is not defined
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/logs/quay-mirror.async_job_id"
+  register: async_quay_job_id_file_stat
+
+- name: Read async job ID from file
+  when:
+    - async_quay_job_id is not defined
+    - async_quay_job_id_file_stat.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ workingDir }}/logs/quay-mirror.async_job_id"
+  register: async_quay_job_id_file_content
+
+- name: Set async job ID from file
+  when:
+    - async_quay_job_id is not defined
+    - async_quay_job_id_file_stat.stat.exists
+    - async_quay_job_id_file_content.content is defined
+  ansible.builtin.set_fact:
+    async_quay_job_id: "{{ async_quay_job_id_file_content.content | b64decode | trim }}"
+
+- name: Get async job ID from user input or fail
+  when: async_quay_job_id is not defined
+  ansible.builtin.fail:
+    msg: |
+      No async job ID found. Please either:
+      1. Provide the async job ID with: -e async_quay_job_id=<JOB_ID>
+      2. Run 02-mirror.yaml first to generate the job ID file
+
+      The job ID was displayed when you ran 02-mirror.yaml
+
+- name: Wait for quay mirroring async task to complete
+  when: async_quay_job_id is defined
+  ansible.builtin.async_status:
+    jid: "{{ async_quay_job_id }}"
+  register: quay_mirror_result
+  until: quay_mirror_result.finished
+  retries: 480  # 4 hours maximum (480 * 30 seconds)
+  delay: 30
+
+- name: Display quay mirroring results
+  when: async_quay_job_id is defined
+  ansible.builtin.debug:
+    msg: |
+      Operator mirroring async task has completed.
+      Status: {{ 'Success' if quay_mirror_result.rc == 0 else 'Failed' }}
+      Exit code: {{ quay_mirror_result.rc | default('unknown') }}
+      Duration: {{ quay_mirror_result.delta | default('unknown') }}
+
+- name: Show quay mirroring output on failure
+  when:
+    - async_quay_job_id is defined
+    - quay_mirror_result.rc != 0
+  ansible.builtin.debug:
+    msg: |
+      Operator mirroring failed with output:
+      STDOUT: {{ quay_mirror_result.stdout | default('none') }}
+      STDERR: {{ quay_mirror_result.stderr | default('none') }}
+
+- name: Fail if quay mirroring failed
+  when:
+    - async_quay_job_id is defined
+    - quay_mirror_result.rc != 0
+  ansible.builtin.fail:
+    msg: "Operator mirroring failed with exit code {{ quay_mirror_result.rc }}"
+
+- name: Clean up async job ID file on success
+  when:
+    - async_quay_job_id is defined
+    - quay_mirror_result.rc == 0
+    - async_quay_job_id_file_stat.stat.exists is defined
+    - async_quay_job_id_file_stat.stat.exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/quay-mirror.async_job_id"
+    state: absent
