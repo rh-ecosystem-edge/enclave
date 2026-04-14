@@ -2,7 +2,7 @@
 name: openshift-ai
 type: addon
 order: 100
-mirror: plugin
+mirror: core
 
 operators:
   - name: nfd
