@@ -147,11 +147,61 @@
     - disconnected | default(true) | bool
   tags: mirror
 
-- name: Apply updated mirror manifests to cluster
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc apply \
-      -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
-      --server-side --force-conflicts
+# ---------- Phase A: Apply non-disruptive manifests (CatalogSources + signature-configmap) ----------
+- name: Find CatalogSource manifests in cluster-resources
+  ansible.builtin.find:
+    paths: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources"
+    patterns: "cs-*.yaml"
+  register: r_cs_plugin_files
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Apply CatalogSource manifests
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - -f
+      - "{{ item.path }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ r_cs_plugin_files.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - r_cs_plugin_files.files | default([]) | length > 0
+  tags: mirror
+
+- name: Check signature-configmap exists
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/signature-configmap.yaml"
+  register: r_sig_configmap_stat
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Apply signature-configmap
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/signature-configmap.yaml"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
@@ -159,6 +209,411 @@
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
+    - r_sig_configmap_stat.stat.exists | default(false)
+  tags: mirror
+
+# ---------- Phase B: Conditional IDMS/ITMS apply (only when plugin.applyMirrors is true) ----------
+# Most plugins don't need IDMS/ITMS on the hub: operators are installed on spoke clusters,
+# and the CatalogSource already points directly to the Quay mirror URL.
+# Plugins that pull images on the management cluster (e.g. IBM) must set applyMirrors: true.
+- name: Skip IDMS/ITMS apply (applyMirrors not set)
+  ansible.builtin.debug:
+    msg: >-
+      Skipping IDMS/ITMS apply for plugin '{{ plugin.name }}' (applyMirrors={{ plugin.applyMirrors | default(false) }}).
+      Set applyMirrors: true in plugin.yaml if the plugin requires pulling images on the management cluster.
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - not (plugin.applyMirrors | default(false) | bool)
+  tags: mirror
+
+- name: Check generated IDMS manifest exists
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/idms-oc-mirror.yaml"
+  register: r_gen_idms_stat
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+  tags: mirror
+
+- name: Read generated IDMS manifest
+  ansible.builtin.slurp:
+    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/idms-oc-mirror.yaml"
+  register: r_gen_idms_content
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_idms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Parse generated IDMS manifest
+  ansible.builtin.set_fact:
+    gen_idms: "{{ r_gen_idms_content.content | b64decode | from_yaml }}"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_idms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Read current IDMS from cluster
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ImageDigestMirrorSet
+    name: "{{ gen_idms.metadata.name }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_cluster_idms
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_idms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Compare IDMS entries
+  ansible.builtin.set_fact:
+    idms_changed: >-
+      {{
+        (r_cluster_idms.resources | default([]) | length == 0)
+        or
+        (
+          (r_cluster_idms.resources[0].spec.imageDigestMirrors | default([]) | sort(attribute='source'))
+          !=
+          (gen_idms.spec.imageDigestMirrors | default([]) | sort(attribute='source'))
+        )
+      }}
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_idms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Check generated ITMS manifest exists
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/itms-oc-mirror.yaml"
+  register: r_gen_itms_stat
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+  tags: mirror
+
+- name: Read generated ITMS manifest
+  ansible.builtin.slurp:
+    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/itms-oc-mirror.yaml"
+  register: r_gen_itms_content
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_itms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Parse generated ITMS manifest
+  ansible.builtin.set_fact:
+    gen_itms: "{{ r_gen_itms_content.content | b64decode | from_yaml }}"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_itms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Read current ITMS from cluster
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ImageTagMirrorSet
+    name: "{{ gen_itms.metadata.name }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_cluster_itms
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_itms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Compare ITMS entries
+  ansible.builtin.set_fact:
+    itms_changed: >-
+      {{
+        (r_cluster_itms.resources | default([]) | length == 0)
+        or
+        (
+          (r_cluster_itms.resources[0].spec.imageTagMirrors | default([]) | sort(attribute='source'))
+          !=
+          (gen_itms.spec.imageTagMirrors | default([]) | sort(attribute='source'))
+        )
+      }}
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_itms_stat.stat.exists | default(false)
+  tags: mirror
+
+- name: Set mirrors_changed fact
+  ansible.builtin.set_fact:
+    mirrors_changed: "{{ (idms_changed | default(false) | bool) or (itms_changed | default(false) | bool) }}"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+  tags: mirror
+
+- name: Log IDMS/ITMS comparison result
+  ansible.builtin.debug:
+    msg: >-
+      IDMS changed: {{ idms_changed | default(false) }},
+      ITMS changed: {{ itms_changed | default(false) }},
+      mirrors_changed: {{ mirrors_changed | default(false) }}
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+  tags: mirror
+
+- name: Apply IDMS to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/idms-oc-mirror.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_idms_stat.stat.exists | default(false)
+    - idms_changed | default(false) | bool
+  tags: mirror
+
+- name: Apply ITMS to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - --server-side
+      - --force-conflicts
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/itms-oc-mirror.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_gen_itms_stat.stat.exists | default(false)
+    - itms_changed | default(false) | bool
+  tags: mirror
+
+# ---------- Phase C: MCP stability gate (only when plugin.applyMirrors is true) ----------
+# Part 1: Post-apply wait -- only if IDMS/ITMS were changed
+- name: Pause 30s for MCO to detect IDMS/ITMS change
+  ansible.builtin.pause:
+    seconds: 30
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - mirrors_changed | default(false) | bool
+  tags: mirror
+
+- name: Wait for all MachineConfigPools to finish rollout after IDMS/ITMS change
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_post_apply
+  retries: 80
+  delay: 30
+  until: >-
+    r_mcp_post_apply.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updated')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'True')
+    | list | length == 0
+    and
+    r_mcp_post_apply.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updating')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+    and
+    r_mcp_post_apply.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Degraded')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - mirrors_changed | default(false) | bool
+  tags: mirror
+
+# Part 2: Pre-operator MCP health check -- always runs when applyMirrors is true
+# Handles retry scenario: previous run applied IDMS/ITMS but failed mid-rollout;
+# on retry IDMS/ITMS match cluster state, but MCP may still be rolling out.
+- name: Quick MCP health check before operator install
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_precheck
+  retries: 3
+  delay: 10
+  until: >-
+    r_mcp_precheck.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updated')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'True')
+    | list | length == 0
+    and
+    r_mcp_precheck.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updating')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+    and
+    r_mcp_precheck.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Degraded')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+  ignore_errors: true
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+  tags: mirror
+
+- name: Wait for MachineConfigPools to stabilize (rollout in progress from previous run)
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_full_wait
+  retries: 80
+  delay: 30
+  until: >-
+    r_mcp_full_wait.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updated')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'True')
+    | list | length == 0
+    and
+    r_mcp_full_wait.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Updating')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+    and
+    r_mcp_full_wait.resources | default([])
+    | rejectattr('status.conditions', 'undefined')
+    | selectattr('status.conditions', 'defined')
+    | list
+    | map(attribute='status.conditions')
+    | map('selectattr', 'type', 'equalto', 'Degraded')
+    | map('map', attribute='status')
+    | map('first')
+    | reject('equalto', 'False')
+    | list | length == 0
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - plugin.applyMirrors | default(false) | bool
+    - r_mcp_precheck is failed
   tags: mirror
 
 - name: Wait for updated CatalogSource to be ready
