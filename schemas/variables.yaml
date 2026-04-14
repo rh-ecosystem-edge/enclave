@@ -11,39 +11,7 @@ properties:
     maxItems: 3
     description: List of exactly 3 control plane nodes
     items:
-      type: object
-      properties:
-        bmcSystemId:
-          type: string
-          description: Redfish system ID path component, defaults to '1'
-        ipAddress:
-          "$ref": "#/definitions/ipv4Address"
-        macAddress:
-          "$ref": "#/definitions/macAddress"
-        mapInterfaces:
-          type: object
-          description: Interface mapping configuration
-        name:
-          "$ref": "#/definitions/nonEmptyString"
-        networkConfig:
-          type: object
-          description: Network configuration
-        redfish:
-          "$ref": "#/definitions/ipv4Address"
-        redfishPassword:
-          "$ref": "#/definitions/nonEmptyString"
-        redfishUser:
-          "$ref": "#/definitions/nonEmptyString"
-        rootDisk:
-          "$ref": "#/definitions/nonEmptyString"
-      required:
-        - ipAddress
-        - macAddress
-        - name
-        - redfish
-        - redfishPassword
-        - redfishUser
-        - rootDisk
+      "$ref": "#/definitions/hostEntry"
   apiVIP:
     "$ref": "#/definitions/ipv4Address"
   baseDomain:
@@ -70,6 +38,11 @@ properties:
     description: Network prefix length (subnet mask bits)
   disconnected:
     "$ref": "#/definitions/disconnected"
+  discovery_hosts:
+    type: array
+    description: List of discovery hosts for hardware discovery
+    items:
+      "$ref": "#/definitions/hostEntry"
   masterMaxPods:
     "$ref": "#/definitions/masterMaxPods"
   diskEncryption:
@@ -141,6 +114,21 @@ properties:
     "$ref": "#/definitions/ipv4Address"
   sshPubPath:
     "$ref": "#/definitions/nonEmptyString"
+  sslAPICertificateFullChain:
+    type: string
+    description: PEM-encoded full certificate chain for API server
+  sslAPICertificateKey:
+    type: string
+    description: PEM-encoded private key for API server certificate
+  sslCACertificate:
+    type: string
+    description: PEM-encoded root CA certificate
+  sslIngressCertificateFullChain:
+    type: string
+    description: PEM-encoded full certificate chain for ingress wildcard certificate
+  sslIngressCertificateKey:
+    type: string
+    description: PEM-encoded private key for ingress wildcard certificate
   workingDir:
     "$ref": "#/definitions/nonEmptyString"
 
@@ -179,3 +167,25 @@ allOf:
     then:
       required:
         - odfExternalConfig
+  - if:
+      properties:
+        sslAPICertificateFullChain:
+          type: string
+          minLength: 1
+      required:
+        - sslAPICertificateFullChain
+    then:
+      required:
+        - sslAPICertificateKey
+        - sslIngressCertificateFullChain
+        - sslIngressCertificateKey
+      properties:
+        sslAPICertificateKey:
+          type: string
+          minLength: 1
+        sslIngressCertificateFullChain:
+          type: string
+          minLength: 1
+        sslIngressCertificateKey:
+          type: string
+          minLength: 1
