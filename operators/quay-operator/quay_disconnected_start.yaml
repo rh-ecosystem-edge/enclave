@@ -27,9 +27,12 @@
     src: "../../templates/registries.conf.j2"
     dest: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
 
-- name: Start oc-mirror process
+- name: Start oc-mirror process to Quay
   ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc-mirror --v2 \
+    _retry=1
+    _max_retries=10
+    _delay=10
+    until {{ workingDir }}/bin/oc-mirror --v2 \
       --log-level {{ ocMirrorLogLevel }} \
       --authfile {{ workingDir }}/config/pull-secret.quay.json \
       -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
@@ -43,23 +46,21 @@
       --retry-delay 0 \
       --image-timeout 40m0s \
       > {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log 2>&1
-
-  retries: 10
-  delay: 10
+    do
+      if [ $_retry -ge $_max_retries ]; then
+        echo "Max retries reached"
+        exit 1
+      fi
+      echo "Some images failed to mirror. Retrying ($_retry of $_max_retries)"
+      _retry=$((_retry+1))
+      sleep $_delay
+    done
   register: r_oc_mirror_quay
-  until: r_oc_mirror_quay is succeeded
+  # Async run
+  async: 14400 # 4 hours timeout
+  poll: 0      # Start immediately, don't wait
 
-- name: Delete registries.conf for the oc-mirror process
-  ansible.builtin.file:
-    path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
-    state: absent
-
-- name: Apply release signature ConfigMap
-  ansible.builtin.command:
-    cmd: |
-      {{ workingDir }}/bin/oc apply -f {{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml
-
-# Apply oc-mirror-generated IDMS/ITMS to the cluster (fallback to internal Quay when LZ fails)
-# and add the Quay registry CA to image.config so nodes trust the registry for image pulls.
-- name: Apply Quay mirrors and trust registry CA for image pulls
-  ansible.builtin.include_tasks: quay_disconnected_mirrors.yaml
+- name: Save async job ID for later reference
+  ansible.builtin.copy:
+    content: "{{ r_oc_mirror_quay.ansible_job_id }}"
+    dest: "{{ workingDir }}/logs/quay-mirror.async_job_id"
