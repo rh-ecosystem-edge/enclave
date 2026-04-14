@@ -15,6 +15,8 @@
   ansible.builtin.command:
     cmd: |
       {{ workingDir }}/bin/oc apply -f {{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
 
 # Apply oc-mirror-generated IDMS/ITMS to the cluster (fallback to internal Quay when LZ fails)
 # and add the Quay registry CA to image.config so nodes trust the registry for image pulls.
