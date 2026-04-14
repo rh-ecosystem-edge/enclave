@@ -147,38 +147,14 @@
     - disconnected | default(true) | bool
   tags: mirror
 
-- name: Apply updated mirror manifests to cluster
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc apply \
-      -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
-      --server-side --force-conflicts
+- name: Apply Quay mirrors and trust registry CA for image pulls
+  ansible.builtin.include_tasks:
+    file: ../../operators/quay-operator/quay_disconnected_mirrors.yaml
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.mirror | default('none') == 'plugin'
-    - disconnected | default(true) | bool
-    - r_plugin_mirror is defined
-    - r_plugin_mirror is success
-  tags: mirror
-
-- name: Wait for updated CatalogSource to be ready
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    namespace: openshift-marketplace
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_catalog_sources
-  retries: 24
-  delay: 10
-  until: >-
-    r_catalog_sources.resources | default([])
-    | selectattr('status', 'defined')
-    | selectattr('status.connectionState', 'defined')
-    | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
-    | list | length >= (r_catalog_sources.resources | length)
-  when:
-    - plugin.mirror | default('none') == 'plugin'
+    - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
