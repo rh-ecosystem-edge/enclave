@@ -35,3 +35,18 @@
             requests:
               cpu: 20m
               memory: 32Mi
+
+- name: Wait for cert-manager webhook to be available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: cert-manager-webhook
+    namespace: cert-manager
+  register: r_cert_manager_webhook
+  retries: 60
+  delay: 10
+  until:
+    - r_cert_manager_webhook.resources is defined
+    - r_cert_manager_webhook.resources | length > 0
+    - r_cert_manager_webhook.resources[0].status.availableReplicas is defined
+    - r_cert_manager_webhook.resources[0].status.availableReplicas >= 3
