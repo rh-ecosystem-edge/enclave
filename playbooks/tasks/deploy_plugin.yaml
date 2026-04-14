@@ -147,11 +147,11 @@
     - disconnected | default(true) | bool
   tags: mirror
 
-- name: Apply updated mirror manifests to cluster
+- name: Apply updated CatalogSource manifests to cluster (skip IDMS/ITMS to avoid node reboots)
   ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc apply \
-      -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
-      --server-side --force-conflicts
+    find {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
+      -name '*.yaml' ! -name 'idms-*' ! -name 'itms-*' \
+      -exec {{ workingDir }}/bin/oc apply --server-side --force-conflicts -f {} +
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
