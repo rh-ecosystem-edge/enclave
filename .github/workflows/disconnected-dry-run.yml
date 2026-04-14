@@ -52,6 +52,7 @@ jobs:
       ENCLAVE_DEPLOYMENT_MODE: disconnected
       ENCLAVE_MIRROR_DRY_RUN: "true"
       OPENSHIFT_CI: "true"
+      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
 
     steps:
       - name: Checkout code

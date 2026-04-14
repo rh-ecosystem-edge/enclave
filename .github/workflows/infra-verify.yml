@@ -25,6 +25,7 @@ jobs:
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       # Bypass CI_TOKEN requirement (we only use dev-scripts for infra, not cluster install)
       OPENSHIFT_CI: "true"
+      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
 
     steps:
       - name: Checkout code

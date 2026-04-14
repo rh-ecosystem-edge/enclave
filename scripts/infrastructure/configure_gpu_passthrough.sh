@@ -4,7 +4,8 @@
 # This script auto-detects an NVIDIA GPU on the host and attaches it
 # to the first master VM via PCI passthrough. It is designed to be
 # called as part of `make environment` and exits silently (exit 0)
-# when no GPU or no IOMMU is available.
+# when ENCLAVE_ENABLE_GPU_PASSTHROUGH is not set to "true", no GPU
+# is detected, or no IOMMU is available.
 #
 # Prerequisites (manual, one-time on GPU host):
 #   1. BIOS: VT-d (Intel) or AMD-Vi must be enabled
@@ -24,6 +25,17 @@ source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 load_devscripts_config
+
+# GPU passthrough is opt-in via ENCLAVE_ENABLE_GPU_PASSTHROUGH=true.
+# When disabled (default), the script exits early and no GPU is attached.
+# Set this env var in CI workflow env blocks or export it before running
+# `make environment` to enable GPU passthrough for a specific job.
+if [ "${ENCLAVE_ENABLE_GPU_PASSTHROUGH:-false}" != "true" ]; then
+    info "GPU passthrough not enabled (set ENCLAVE_ENABLE_GPU_PASSTHROUGH=true to enable)"
+    exit 0
+fi
+
+info "GPU passthrough enabled (ENCLAVE_ENABLE_GPU_PASSTHROUGH=true)"
 
 if [ -z "${CLUSTER_NAME:-}" ]; then
     error "CLUSTER_NAME not set after loading config"
@@ -65,13 +77,29 @@ BUS=$(echo "$GPU_PCI_ADDRESS" | cut -d: -f2)
 SLOT=$(echo "$GPU_PCI_ADDRESS" | cut -d: -f3 | cut -d. -f1)
 FUNC=$(echo "$GPU_PCI_ADDRESS" | cut -d: -f3 | cut -d. -f2)
 
-VM_NAME="${CLUSTER_NAME}_master_0"
+# Check if the GPU is already assigned to another VM (running or defined).
+# A physical GPU can only be passed through to one VM at a time, so when
+# multiple OCP deployments share the same host, only the first one gets it.
+# This prevents subsequent cluster deployment failures but only one deployment
+# will hold the GPU.
+# We check all VMs (not just running) because the GPU is attached via --config
+# before the VM starts, so parallel jobs would both see it as available.
+mapfile -t _all_vms < <(sudo virsh list --all --name)
+GPU_IN_USE_BY=
+for vm in "${_all_vms[@]}"; do
+    [ -z "$vm" ] && continue
+    if sudo virsh dumpxml "$vm" 2>/dev/null | grep -q "bus='0x${BUS}'.*slot='0x${SLOT}'.*function='0x${FUNC}'"; then
+        GPU_IN_USE_BY="$vm"
+        break
+    fi
+done
 
-# Check if GPU is already attached (idempotency)
-if sudo virsh dumpxml "$VM_NAME" 2>/dev/null | grep -q "bus='0x${BUS}'.*slot='0x${SLOT}'.*function='0x${FUNC}'"; then
-    info "GPU already attached to $VM_NAME, skipping"
+if [ -n "$GPU_IN_USE_BY" ]; then
+    warning "GPU $GPU_PCI_ADDRESS is already in use by VM '$GPU_IN_USE_BY', skipping passthrough"
     exit 0
 fi
+
+VM_NAME="${CLUSTER_NAME}_master_0"
 
 info "Attaching GPU to VM: $VM_NAME"
 
