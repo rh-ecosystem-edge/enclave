@@ -156,6 +156,7 @@
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.mirror | default('none') == 'plugin'
+    - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -179,6 +180,7 @@
     | list | length >= (r_catalog_sources.resources | length)
   when:
     - plugin.mirror | default('none') == 'plugin'
+    - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
