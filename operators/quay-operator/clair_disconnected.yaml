@@ -24,6 +24,10 @@
 - name: Export vulnerability data on Landing Zone
   ansible.builtin.shell: |
     {{ workingDir }}/bin/clairctl --config {{ workingDir }}/data/clair/config.yaml export-updaters {{ workingDir }}/data/clair/updates.json.gz
+  register: r_clair_export
+  retries: 3
+  delay: 30
+  until: r_clair_export is success
 
 - name: Ensure directory /var/www/html/clair/
   become: true
