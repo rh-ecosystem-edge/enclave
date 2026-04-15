@@ -302,40 +302,25 @@ if [ "$PULL_SECRET_FOUND" = true ]; then
 
     info "  Validated pull secret contains registry.redhat.io credentials"
 
-    # Copy to Landing Zone
-    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ROOT_DIR}/config"
-    scp $SSH_OPTS "$PULL_SECRET_SOURCE" "${LZ_SSH}:${LZ_ROOT_DIR}/config/pull-secret.json"
-
-    success "Pull secret copied to Landing Zone"
-
     # Step 6.5: Update config/global.yaml with actual pull secret content
+    # The pull secret file at pullSecretPath will be created by 01-prepare.yaml
     info "Step 6.5: Embedding pull secret in config/global.yaml..."
 
-    # Read pull secret from Landing Zone and update config/global.yaml
-    ssh $SSH_OPTS "$LZ_SSH" bash <<'EOSSH'
-# Use Python to update config/global.yaml with actual pull secret
-python3 <<'PYEOF'
-import yaml
-import json
-
-# Read the pull secret
-with open('/home/cloud-user/config/pull-secret.json', 'r') as f:
+    # Copy pull secret to a temp file on the LZ, embed it into global.yaml, then remove.
+    # This avoids exposing the secret in command arguments or shell history.
+    scp $SSH_OPTS "$PULL_SECRET_SOURCE" "${LZ_SSH}:/tmp/_pull_secret.json"
+    ssh $SSH_OPTS "$LZ_SSH" python3 - "${LZ_ENCLAVE_DIR}/config/global.yaml" <<'EOPY'
+import yaml, json, sys
+config_path = sys.argv[1]
+with open("/tmp/_pull_secret.json") as f:
     pull_secret = json.load(f)
-
-# Read config/global.yaml
-with open('/home/cloud-user/enclave/config/global.yaml', 'r') as f:
+with open(config_path) as f:
     vars_data = yaml.safe_load(f)
-
-# Update pullSecret with actual credentials
-vars_data['pullSecret'] = pull_secret
-
-# Write back to config/global.yaml
-with open('/home/cloud-user/enclave/config/global.yaml', 'w') as f:
+vars_data["pullSecret"] = pull_secret
+with open(config_path, "w") as f:
     yaml.dump(vars_data, f, default_flow_style=False, sort_keys=False)
-
-print("✓ Updated config/global.yaml with pull secret")
-PYEOF
-EOSSH
+EOPY
+    ssh $SSH_OPTS "$LZ_SSH" rm -f /tmp/_pull_secret.json
 
     success "Pull secret embedded in config/global.yaml"
 

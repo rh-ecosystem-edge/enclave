@@ -31,6 +31,21 @@
           tags: always
       tags: always
 
+    - name: Ensure pull secret directory exists
+      ansible.builtin.file:
+        path: "{{ pullSecretPath | dirname }}"
+        state: directory
+        mode: "0700"
+      tags: always
+
+    - name: Write pull secret to file
+      no_log: true
+      ansible.builtin.copy:
+        content: "{{ pullSecret | to_json }}"
+        dest: "{{ pullSecretPath }}"
+        mode: "0600"
+      tags: always
+
     - name: Download control binaries
       ansible.builtin.include_tasks:
         file: tasks/download_control_binaries.yaml

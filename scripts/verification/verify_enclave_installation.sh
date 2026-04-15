@@ -242,13 +242,13 @@ else
     warning "SSH key not found (will be generated during Enclave Lab run)"
 fi
 
-# Test 8: Pull secret
+# Test 8: Pull secret embedded in config/global.yaml
 info "Test 8: Checking pull secret..."
-if ssh $SSH_OPTS "$LZ_SSH" "test -f ~/config/pull-secret.json"; then
-    success "Pull secret exists at ~/config/pull-secret.json"
+if ssh $SSH_OPTS "$LZ_SSH" "python3 -c \"import yaml; d=yaml.safe_load(open('$LZ_ENCLAVE_DIR/config/global.yaml')); assert 'auths' in d.get('pullSecret', {})\"" 2>/dev/null; then
+    success "Pull secret is embedded in config/global.yaml"
 else
-    warning "Pull secret not found at ~/config/pull-secret.json"
-    info "  You will need to provide a valid OpenShift pull secret before running Enclave Lab"
+    fail "Pull secret not found in config/global.yaml"
+    info "  Re-run 'make install-enclave' to embed the pull secret"
 fi
 
 # Test 9: Directory structure
@@ -330,7 +330,7 @@ info "  SSH Access: ssh $LZ_SSH"
 echo ""
 info "Before running Enclave Lab:"
 info "  1. Review configuration vars: ssh $LZ_SSH 'cat $LZ_ENCLAVE_DIR/config/global.yaml'"
-info "  2. Update pull secret: ssh $LZ_SSH 'vi ~/config/pull-secret.json'"
+info "  2. Verify pull secret is embedded in config/global.yaml"
 info "  3. Adjust any other settings in config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml as needed"
 echo ""
 info "To run Enclave Lab:"
