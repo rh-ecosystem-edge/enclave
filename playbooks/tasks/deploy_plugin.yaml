@@ -286,6 +286,7 @@
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.mirror | default('none') == 'plugin'
+    - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
