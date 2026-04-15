@@ -1,7 +1,8 @@
 ---
 # Fixture: RadosGWStorage + lvms with all optional fields set
 # Exercises: disconnected, diskEncryption, ocMirrorLogLevel, defaultNtpServers,
-# lvmsConfig, bmcSystemId, and all optional quayBackendRGWConfiguration overrides.
+# lvmsConfig, bmcSystemId, all optional quayBackendRGWConfiguration overrides,
+# discovery_hosts (with bmcSystemId), and all SSL certificate variables.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -42,6 +43,42 @@ lvmsConfig:
       - /dev/disk/by-path/pci-0000:00:11.4-ata-3.0
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
+sslAPICertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_API_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslAPICertificateKey: |
+  -----BEGIN DUMMY KEY-----
+  DUMMY_API_KEY
+  -----END DUMMY KEY-----
+sslCACertificate: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_CA_CERT
+  -----END CERTIFICATE-----
+sslIngressCertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_INGRESS_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslIngressCertificateKey: |
+  -----BEGIN DUMMY KEY-----
+  DUMMY_INGRESS_KEY
+  -----END DUMMY KEY-----
+discovery_hosts:
+  - name: discovery-host-01
+    macAddress: 0c:c4:7a:62:ff:01
+    ipAddress: 192.168.2.30
+    redfish: 192.168.1.201
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: password
+    bmcSystemId: "2"
+  - name: discovery-host-02
+    macAddress: 0c:c4:7a:62:ff:02
+    ipAddress: 192.168.2.31
+    redfish: 192.168.1.202
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: password
 agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec

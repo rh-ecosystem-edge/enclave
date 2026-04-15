@@ -58,4 +58,39 @@ definitions:
     type: string
     pattern: "^/"
     description: Path for backend storage
+  hostEntry:
+    type: object
+    description: Host entry for cluster or discovery nodes
+    properties:
+      bmcSystemId:
+        type: string
+        description: Redfish system ID path component, defaults to '1'
+      ipAddress:
+        "$ref": "#/definitions/ipv4Address"
+      macAddress:
+        "$ref": "#/definitions/macAddress"
+      mapInterfaces:
+        type: object
+        description: Interface mapping configuration
+      name:
+        "$ref": "#/definitions/nonEmptyString"
+      networkConfig:
+        type: object
+        description: Network configuration
+      redfish:
+        "$ref": "#/definitions/ipv4Address"
+      redfishPassword:
+        "$ref": "#/definitions/nonEmptyString"
+      redfishUser:
+        "$ref": "#/definitions/nonEmptyString"
+      rootDisk:
+        "$ref": "#/definitions/nonEmptyString"
+    required:
+      - ipAddress
+      - macAddress
+      - name
+      - redfish
+      - redfishPassword
+      - redfishUser
+      - rootDisk
 
