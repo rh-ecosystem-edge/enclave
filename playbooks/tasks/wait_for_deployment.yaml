@@ -25,6 +25,8 @@
 - name: Verify pod Capacity on all master nodes
   block:
     - name: Wait for KubeletConfig to be recognized by the cluster
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       kubernetes.core.k8s_info:
         kind: KubeletConfig
         name: set-master-max-pods
@@ -36,6 +38,8 @@
         - kubeconfig_status.resources | length > 0
 
     - name: Wait until master nodes report expected maxPods
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       kubernetes.core.k8s_info:
         kind: Node
         label_selectors:

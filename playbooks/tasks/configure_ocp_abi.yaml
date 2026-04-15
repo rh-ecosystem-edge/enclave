@@ -48,7 +48,7 @@
 
 - name: Create KubeletConfig manifest for master max pods
   ansible.builtin.copy:
-    dest: "{{ workingDir }}/ocp-cluster/openshift/99-worker-max-pods.yaml"
+    dest: "{{ workingDir }}/ocp-cluster/openshift/99-master-max-pods.yaml"
     content: |
       apiVersion: machineconfiguration.openshift.io/v1
       kind: KubeletConfig
