@@ -8,13 +8,30 @@ usage() {
     echo "Options:"
     echo "  --global-vars FILE    Path to global vars file (default: config/global.yaml)"
     echo "  --certs-vars FILE     Path to certificates vars file (default: config/certificates.yaml)"
+    echo "  --step STEP           Run a single step instead of all steps"
+    echo "  --non-interactive     Skip interactive prompts"
     echo "  -h, --help            Show this help message"
+    echo ""
+    echo "Available steps:"
+    echo "  setup               Configure environment (setup_env + setup_ansible)"
+    echo "  validate            Validate configuration (schema + validations)"
+    echo "  download-content    Download dependency content (Phase 1a)"
+    echo "  build-cache         Build local cache (Phase 1b + Phase 2 + configure-abi)"
+    echo "  acquire-hardware    Acquire and validate hardware (Phase 3a)"
+    echo "  deploy              Deploy management cluster (Phase 3b)"
+    echo "  post-install        Post-install configuration (Phase 4)"
+    echo "  operators           Deploy management apps (Phase 5)"
+    echo "  day2                Day-2 operations (Phase 6)"
+    echo "  discovery           Discover nodes (Phase 7)"
+    echo "  partner-overlay     Deploy partner overlay (optional)"
     exit "${1:-0}"
 }
 
 global_vars=config/global.yaml
 certs_vars=config/certificates.yaml
 cloud_infra_vars=config/cloud_infra.yaml
+run_step=""
+non_interactive=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -26,6 +43,14 @@ while [[ $# -gt 0 ]]; do
             certs_vars="$2"
             shift 2
             ;;
+        --step)
+            run_step="$2"
+            shift 2
+            ;;
+        --non-interactive)
+            non_interactive=true
+            shift
+            ;;
         -h|--help)
             usage
             ;;
@@ -35,6 +60,23 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate --step value if provided
+valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+if [ -n "$run_step" ]; then
+    step_valid=false
+    for s in $valid_steps; do
+        if [ "$s" = "$run_step" ]; then
+            step_valid=true
+            break
+        fi
+    done
+    if [ "$step_valid" = false ]; then
+        echo "Error: Unknown step '$run_step'"
+        echo "Valid steps: $valid_steps"
+        exit 1
+    fi
+fi
 
 echo " "
 echo " ██████╗░███████╗██████╗░  ██╗░░██╗░█████╗░████████╗"
@@ -92,7 +134,9 @@ _cleanup(){
     rm -fr "${lck}"
 }
 
-read -rp "Press Enter to start .. " -n1 -s
+if [ "$non_interactive" = false ]; then
+    read -rp "Press Enter to start .. " -n1 -s
+fi
 
 if [ -e ${lck} ]; then
     echo "Existing lock ${lck} found, exiting"
@@ -126,83 +170,120 @@ done
 
 step_done
 
-echo "Configuring environment .. "  | tee -a ${log}
+# --- Step functions ---
+
+step_setup() {
+    echo "Configuring environment .. "  | tee -a ${log}
     sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
     bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Validating Config .. "  | tee -a ${log}
+step_validate() {
+    echo "Validating Config .. "  | tee -a ${log}
     ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Downloading Deps Content .. " | tee -a ${log}
+step_download_content() {
+    echo "Downloading Deps Content .. " | tee -a ${log}
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-content 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Building local cache .. " | tee -a ${log}
+step_build_cache() {
+    echo "Building local cache .. " | tee -a ${log}
     # get oc / helm / mirror content etc
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
     ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags configure-abi 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-#echo "Sanity lockdown .. " | tee -a ${log}
-    # firewall work as needed
-    # check state on LZ machine, lock down users, network NAT disable etc
-#step_done
-
-echo "Acquiring Hardware .. " | tee -a ${log}
+step_acquire_hardware() {
+    echo "Acquiring Hardware .. " | tee -a ${log}
     # setup content for and boot machines
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags hardware,pre-install-validate 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Deploying management cluster .. " | tee -a ${log}
+step_deploy() {
+    echo "Deploying management cluster .. " | tee -a ${log}
     # deploy Red Hat payload cluster
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags wait-deployment 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Post install config.. " | tee -a ${log}
+step_post_install() {
+    echo "Post install config.. " | tee -a ${log}
     # Apply SSL certificates
     ansible-playbook playbooks/04-post-install.yaml -e@$global_vars -e@$certs_vars --tags post-install-config 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Deploying management apps  .. " | tee -a ${log}
+step_operators() {
+    echo "Deploying management apps  .. " | tee -a ${log}
     # deploy Red Hat payload cluster
     ansible-playbook playbooks/05-operators.yaml -e@$global_vars -e@$certs_vars --tags operators 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-echo "Clair disconnected .." | tee -a ${log}
+step_day2() {
+    echo "Clair disconnected .." | tee -a ${log}
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags clair-disconnected 2>&1 | tee -a ${log}
-step_done
+    step_done
 
-echo "Catalog source ACM policy .." | tee -a ${log}
+    echo "Catalog source ACM policy .." | tee -a ${log}
     ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
-step_done
+    step_done
+}
 
-# Showing login information
-printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
-  | cut -d= -f4- \
-  | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
+step_discovery() {
+    # Showing login information
+    printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
+      | cut -d= -f4- \
+      | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
 /g' -e 's/\\"/"/g')"
 
-echo "Start discovering nodes.. " | tee -a ${log}
+    echo "Start discovering nodes.. " | tee -a ${log}
     if [ -f $cloud_infra_vars ]; then
         if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml 2>&1 | tee -a ${log}; then
             echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml" | tee -a ${log}
         fi
     fi
-step_done
+    step_done
+}
 
-echo "Deploying Partner OverLay .. " | tee -a ${log}
+step_partner_overlay() {
+    echo "Deploying Partner OverLay .. " | tee -a ${log}
     if [ -f ./partner-install/start.sh ]; then
         bash ./partner-install/start.sh ${workingDir}/ocp-cluster/auth/kubeconfig ${global_vars} ${certs_vars} 2>&1 | tee -a ${log}
     else
         echo "Partner OverLay not found, skipping" | tee -a ${log}
     fi
-step_done
+    step_done
+}
 
-#echo "Service Validation and HealthCheck ..TBD " | tee -a ${log}
-#step_done
+# --- Execution ---
+
+if [ -n "${run_step}" ]; then
+    # Single step mode: convert step name to function name (e.g., download-content -> step_download_content)
+    func_name="step_${run_step//-/_}"
+    "$func_name"
+else
+    # Full run mode: execute all steps sequentially
+    step_setup
+    step_validate
+    step_download_content
+    step_build_cache
+    step_acquire_hardware
+    step_deploy
+    step_post_install
+    step_operators
+    step_day2
+    step_discovery
+    step_partner_overlay
+fi
 
 # teardown / cleanout
