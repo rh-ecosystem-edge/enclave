@@ -146,14 +146,6 @@ touch ${lck}
 
 trap _cleanup EXIT
 
-echo 'Runtime Host:'
-cat /etc/redhat-release
-echo ' - '
-if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:redhat:enterprise_linux:10(\.?.*)?\" ]]; then
-    echo "RHEL 10 Check Failed"
-    exit 1
-fi
-
 mkdir -p "$(dirname $log)"
 date > "$log"
 
@@ -173,6 +165,14 @@ step_done
 # --- Step functions ---
 
 step_setup() {
+    echo 'Runtime Host:' | tee -a ${log}
+    cat /etc/redhat-release | tee -a ${log}
+    echo ' - '
+    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:(redhat:enterprise_linux|centos:centos):10(\.?.*)?\" ]]; then
+        echo "RHEL 10 / CentOS Stream 10 Check Failed"
+        exit 1
+    fi
+
     echo "Configuring environment .. "  | tee -a ${log}
     sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
     bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
