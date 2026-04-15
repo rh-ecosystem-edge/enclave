@@ -14,6 +14,7 @@ defaultPrefix: 24
 rendezvousIP: 192.168.2.24
 lzBmcIP: 100.64.1.10
 disconnected: false
+masterMaxPods: 250
 diskEncryption: true
 ocMirrorLogLevel: trace
 defaultNtpServers:

@@ -70,6 +70,8 @@ properties:
     description: Network prefix length (subnet mask bits)
   disconnected:
     "$ref": "#/definitions/disconnected"
+  masterMaxPods:
+    "$ref": "#/definitions/masterMaxPods"
   diskEncryption:
     "$ref": "#/definitions/diskEncryption"
   ingressVIP:
