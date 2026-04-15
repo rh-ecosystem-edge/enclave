@@ -8,7 +8,7 @@
 
 - name: Find valid fixtures
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../schemas/fixtures/valid"
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/valid"
     patterns: "*.yaml"
   register: valid_fixtures
 
@@ -23,7 +23,7 @@
 
 - name: Find invalid fixtures
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../schemas/fixtures/invalid"
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/invalid"
     patterns: "*.yaml"
   register: invalid_fixtures
 

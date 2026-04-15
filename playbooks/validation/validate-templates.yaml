@@ -4,7 +4,7 @@
 # Catches broken templates, missing variables, and structural issues.
 #
 # Usage:
-#   ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.validation.yaml
+#   ansible-playbook playbooks/validation/validate-templates.yaml -e@test-fixtures/templates/global.yaml
 
 - name: Template Rendering Validation
   hosts: localhost

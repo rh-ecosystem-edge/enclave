@@ -183,7 +183,7 @@ validate_tags() {
 validate_templates() {
     print_header "Validating template rendering"
 
-    if ansible-playbook playbooks/validation/validate-templates.yaml -e@config/global.validation.yaml; then
+    if ansible-playbook playbooks/validation/validate-templates.yaml -e@test-fixtures/templates/global.yaml; then
         print_success "Template rendering validation passed"
         return 0
     else
