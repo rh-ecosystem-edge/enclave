@@ -1206,6 +1206,7 @@ lzBmcIP: 100.64.1.10
 
 # OpenShift Deployment Configuration (optional — uncomment only to override defaults)
 # disconnected: false  # Default: true (set to false for connected deployments)
+# masterMaxPods: 250 # Default: 500
 # diskEncryption: true  # Default: false (set to true to enable TPM v2 encryption)
 # ocMirrorLogLevel: debug  # Default: info
 # defaultNtpServers:  # No additional servers by default

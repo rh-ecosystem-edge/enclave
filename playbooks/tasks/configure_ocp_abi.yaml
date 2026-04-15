@@ -46,6 +46,22 @@
     src: "../../templates/agent-config.yaml.j2"
     dest: "{{ workingDir }}/ocp-cluster/agent-config.yaml"
 
+- name: Create KubeletConfig manifest for master max pods
+  ansible.builtin.copy:
+    dest: "{{ install_dir }}/openshift/99-worker-max-pods.yaml"
+    content: |
+      apiVersion: machineconfiguration.openshift.io/v1
+      kind: KubeletConfig
+      metadata:
+        name: set-master-max-pods
+      spec:
+        machineConfigPoolSelector:
+          matchLabels:
+            pools.operator.machineconfiguration.openshift.io/master: ""
+        kubeletConfig:
+          maxPods: {{ masterMaxPods }}
+    mode: '0644'
+
 - name: Copy custom manifests from mirror registry to the ABI directory
   when: disconnected | default(true)
   ansible.builtin.copy:
