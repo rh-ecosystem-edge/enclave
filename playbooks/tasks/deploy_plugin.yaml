@@ -186,6 +186,111 @@
     - r_plugin_mirror is success
   tags: mirror
 
+# --- Mirror addon plugin images to Quay Enterprise ---
+# Addon plugins (mirror: plugin) are mirrored to the LZ registry above, but
+# spoke clusters pull from Quay Enterprise. Re-mirror from LZ to Quay Enterprise
+# following the same pattern as quay_disconnected.yaml.
+
+- name: Copy plugin imageset to internal version for Quay Enterprise mirror
+  ansible.builtin.copy:
+    src: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.yaml"
+    dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.internal.yaml"
+    remote_src: true
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Replace upstream catalog with LZ registry in internal plugin imageset
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.internal.yaml"
+    regexp: 'catalog: registry.redhat.io'
+    replace: "catalog: {{ quayHostname }}:8443"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Ensure .config/containers/ exists for plugin registries.conf
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/"
+    state: directory
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Generate registries.conf for plugin Quay Enterprise mirror
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/../templates/registries.conf.j2"
+    dest: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+  vars:
+    _core_plugin_registries: "{{ plugin.registries | default([]) }}"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Run oc-mirror for plugin (Quay Enterprise)
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc-mirror --v2 \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile {{ workingDir }}/config/pull-secret.quay.json \
+      -c {{ workingDir }}/plugin-{{ plugin_name }}-imageset.internal.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-quay \
+      docker://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }} \
+      --dest-tls-verify=false \
+      --src-tls-verify=false \
+      --parallel-images 10 \
+      --parallel-layers {{ 1 if quayBackend == 'LocalStorage' else 10 }} \
+      --retry-times 10 \
+      --retry-delay 0 \
+      --image-timeout 40m0s \
+      > {{ workingDir }}/logs/oc-mirror-plugin-{{ plugin_name }}-quay.progress.$(date +%s).log 2>&1
+  retries: 10
+  delay: 10
+  register: r_plugin_mirror_quay
+  until: r_plugin_mirror_quay is success
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Delete registries.conf after plugin Quay Enterprise mirror
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+    state: absent
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Apply Quay Enterprise mirrors for plugin
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/../operators/quay-operator/quay_disconnected_mirrors.yaml"
+    apply:
+      tags: mirror
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.mirror | default('none') == 'plugin'
+    - disconnected | default(true) | bool
+    - r_plugin_mirror_quay is defined
+    - r_plugin_mirror_quay is success
+  tags: mirror
+
 - name: Patch MCE custom-registries with plugin entries
   ansible.builtin.include_tasks:
     file: tasks/patch_mce_registries.yaml
