@@ -2,6 +2,9 @@
 # Default deployment mode. Override in config/global.yaml to deploy in connected mode.
 disconnected: true
 
+# Configure High Density Pod Limits for ABI. Override in config/global.yaml.
+masterMaxPods: 500
+
 # Default disk encryption setting. Override in config/global.yaml to enable TPM v2 encryption.
 diskEncryption: false
 

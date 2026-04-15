@@ -21,6 +21,11 @@ definitions:
     description: >-
       Whether the deployment is disconnected (air-gapped). Default: true.
       Set to false for connected deployments.
+  masterMaxPods:
+    type: integer
+    minimum: 1
+    description: >-
+      Configure High Density Pod Limits for ABI. Default: 500.
   diskEncryption:
     type: boolean
     description: >-
