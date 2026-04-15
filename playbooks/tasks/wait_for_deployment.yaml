@@ -35,17 +35,29 @@
         - kubeconfig_status.resources is defined
         - kubeconfig_status.resources | length > 0
 
-    - name: Get master node capacities
+    - name: Wait until master nodes report expected maxPods
       kubernetes.core.k8s_info:
         kind: Node
         label_selectors:
-          - pools.operator.machineconfiguration.openshift.io/master
+          - node-role.kubernetes.io/master
       register: master_nodes
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until:
+        - master_nodes.resources is defined
+        - master_nodes.resources | length > 0
+        - (master_nodes.resources | map(attribute='status.capacity.pods') | map('int') | list | unique) == [masterMaxPods | int]
+
+    - name: Ensure master nodes were discovered
+      ansible.builtin.assert:
+        that:
+          - master_nodes.resources | length > 0
+        fail_msg: "No master nodes matched the selector; cannot validate maxPods."
 
     - name: Assert that all master nodes report the correct maxPods
       ansible.builtin.assert:
         that:
-          - item.status.capacity.pods == {{ masterMaxPods }}
+          - (item.status.capacity.pods | int) == (masterMaxPods | int)
         fail_msg: "Node {{ item.metadata.name }} reports {{ item.status.capacity.pods }} pods, expected {{ masterMaxPods }}"
         success_msg: "Node {{ item.metadata.name }} correctly reports {{ masterMaxPods }} pods."
       loop: "{{ master_nodes.resources }}"
