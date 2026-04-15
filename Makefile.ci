@@ -24,6 +24,7 @@ include Makefile
         validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-pre-install-validate \
+        deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation \
         verify clean verify-cluster verify-cleanup \
@@ -89,15 +90,17 @@ help:
 	@echo "  make -f Makefile.ci ci-flow-connected                - Run full CI flow locally (connected mode)"
 	@echo "  make -f Makefile.ci ci-flow-disconnected             - Run full CI flow locally (disconnected mode)"
 	@echo ""
-	@echo "Deploy individual phases (via SSH to Landing Zone):"
-	@echo "  make -f Makefile.ci deploy-cluster-prepare           - Phase 1: Download binaries and content"
-	@echo "  make -f Makefile.ci deploy-cluster-mirror            - Phase 2: Mirror registry setup (disconnected)"
-	@echo "  make -f Makefile.ci deploy-cluster-pre-install-validate - Validate servers are ready"
-	@echo "  make -f Makefile.ci deploy-cluster-install           - Phase 3: Deploy OpenShift cluster"
-	@echo "  make -f Makefile.ci deploy-cluster-post-install      - Phase 4: Cluster configuration"
-	@echo "  make -f Makefile.ci deploy-cluster-operators         - Phase 5: Install operators"
-	@echo "  make -f Makefile.ci deploy-cluster-day2              - Phase 6: Day-2 operations"
-	@echo "  make -f Makefile.ci deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
+	@echo "Deploy individual phases via bootstrap.sh (via SSH to Landing Zone):"
+	@echo "  make -f Makefile.ci deploy-cluster-setup             - Setup environment on LZ"
+	@echo "  make -f Makefile.ci deploy-cluster-validate          - Validate configuration"
+	@echo "  make -f Makefile.ci deploy-cluster-prepare           - Download dependency content"
+	@echo "  make -f Makefile.ci deploy-cluster-mirror            - Build local cache (mirror registry)"
+	@echo "  make -f Makefile.ci deploy-cluster-acquire-hardware  - Acquire and validate hardware"
+	@echo "  make -f Makefile.ci deploy-cluster-install           - Deploy OpenShift cluster"
+	@echo "  make -f Makefile.ci deploy-cluster-post-install      - Post-install configuration"
+	@echo "  make -f Makefile.ci deploy-cluster-operators         - Install operators"
+	@echo "  make -f Makefile.ci deploy-cluster-day2              - Day-2 operations"
+	@echo "  make -f Makefile.ci deploy-cluster-discovery         - Configure hardware discovery"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -147,61 +150,75 @@ deploy-cluster:
 	@echo ""
 	@./scripts/deployment/deploy_cluster.sh
 
-deploy-cluster-prepare:
+deploy-cluster-setup:
 	@echo "=========================================="
-	@echo "Phase 1: Prepare - Download binaries and content"
+	@echo "Setup environment on Landing Zone"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 01-prepare.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh setup
+
+deploy-cluster-validate:
+	@echo "=========================================="
+	@echo "Validate configuration"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_bootstrap_step.sh validate
+
+deploy-cluster-prepare:
+	@echo "=========================================="
+	@echo "Phase 1: Prepare - Download dependency content"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/deployment/deploy_bootstrap_step.sh download-content
 
 deploy-cluster-mirror:
 	@echo "=========================================="
-	@echo "Phase 2: Mirror - Set up local registry (disconnected only)"
+	@echo "Phase 2: Mirror - Build local cache"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 02-mirror.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh build-cache
 
-deploy-cluster-pre-install-validate:
+deploy-cluster-acquire-hardware:
 	@echo "=========================================="
-	@echo "Pre-Install Validate - Check servers are ready"
+	@echo "Phase 3a: Acquire and validate hardware"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 03-deploy.yaml --tags pre-install-validate
+	@./scripts/deployment/deploy_bootstrap_step.sh acquire-hardware
 
 deploy-cluster-install:
 	@echo "=========================================="
-	@echo "Phase 3: Deploy - Deploy OpenShift cluster"
+	@echo "Phase 3b: Deploy OpenShift cluster"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 03-deploy.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh deploy
 
 deploy-cluster-post-install:
 	@echo "=========================================="
 	@echo "Phase 4: Post-Install - Cluster configuration"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 04-post-install.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh post-install
 
 deploy-cluster-operators:
 	@echo "=========================================="
 	@echo "Phase 5: Operators - Install and configure operators"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 05-operators.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh operators
 
 deploy-cluster-day2:
 	@echo "=========================================="
 	@echo "Phase 6: Day-2 - Advanced features and policies"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 06-day2.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh day2
 
 deploy-cluster-discovery:
 	@echo "=========================================="
-	@echo "Phase 7: Configure Discovery - Hardware discovery (optional)"
+	@echo "Phase 7: Configure Discovery - Hardware discovery"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh 07-configure-discovery.yaml
+	@./scripts/deployment/deploy_bootstrap_step.sh discovery
 
 deploy-plugin:
 	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
