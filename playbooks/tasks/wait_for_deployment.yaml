@@ -31,7 +31,9 @@
       register: kubeconfig_status
       retries: "{{ k8s_retries }}"
       delay: "{{ k8s_delay }}"
-      until: kubeconfig_status.resources | length > 0
+      until:
+        - kubeconfig_status.resources is defined
+        - kubeconfig_status.resources | length > 0
 
     - name: Get master node capacities
       kubernetes.core.k8s_info:
