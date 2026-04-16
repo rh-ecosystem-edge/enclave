@@ -34,19 +34,29 @@
     path: "{{ workingDir }}/bin/oc-mirror"
     mode: "0755"
 
-- name: Start oc-mirror process
-  ansible.builtin.shell: >
-    {{ workingDir }}/bin/oc-mirror --v2
-    --log-level {{ ocMirrorLogLevel }}
-    --authfile {{ workingDir }}/config/pull-secret-cache.json
-    --dest-tls-verify=false
-    -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml
-    --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace
-    --parallel-images 10 --parallel-layers 10
-    --retry-times 10 --retry-delay 0
-    docker://{{ dc_cache_address }}
-    > {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log 2>&1
-  retries: 5
-  delay: 10
-  register: __r_oc_mirror_cache
-  until: __r_oc_mirror_cache is success
+- name: Reset list of normalized extra ImageSetConfiguration paths
+  ansible.builtin.set_fact:
+    __mirror_cache_extra_imageset_normalized: []
+
+- name: Normalize each extra ImageSetConfiguration path for datacenter cache
+  ansible.builtin.set_fact:
+    __mirror_cache_extra_imageset_normalized: "{{ __mirror_cache_extra_imageset_normalized + [_normalized] }}"
+  vars:
+    _trimmed: "{{ item | string | trim }}"
+    _normalized: "{{ _trimmed if (_trimmed[0:1] == '/') else (workingDir + '/config/' + _trimmed) }}"
+  loop: "{{ dc_cache_extra_imageset_configs | default([]) }}"
+  when: _trimmed | length > 0
+  loop_control:
+    label: "{{ _normalized }}"
+
+- name: Build ImageSetConfiguration path list for datacenter cache oc-mirror
+  ansible.builtin.set_fact:
+    __oc_mirror_imageset_configs: "{{ [workingDir + '/config/imagesetconfiguration-cache.yaml'] + __mirror_cache_extra_imageset_normalized }}"
+
+- name: Run oc-mirror for each ImageSetConfiguration (datacenter cache)
+  ansible.builtin.include_tasks:
+    file: tasks/mirror_cache_oc_mirror_item.yaml
+  loop: "{{ __oc_mirror_imageset_configs }}"
+  loop_control:
+    loop_var: __mirror_cache_imageset_path
+    label: "{{ __mirror_cache_imageset_path | basename }}"

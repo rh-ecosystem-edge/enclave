@@ -928,6 +928,25 @@ dc_cache_password: YourSecurePassword
 
 **Security Note**: Consider using Ansible Vault to encrypt this value.
 
+#### `dc_cache_extra_imageset_configs`
+
+**Description**: Additional OpenShift ImageSetConfiguration files to mirror into the Datacenter Cache. Each file is processed in a separate `oc-mirror` run (after the generated `imagesetconfiguration-cache.yaml`), using the same mirror options, destination, and workspace. Paths that do not start with `/` are resolved under `{{ workingDir }}/config/`.
+
+**Type**: List of strings
+
+**Default**: `[]` (omit or set to an empty list to mirror only the default cache imageset)
+
+**Example**:
+```yaml
+dc_cache_extra_imageset_configs:
+  - imagesetconfiguration-cache-operators.yaml
+  - /opt/enclave/config/imagesetconfiguration-cache-day2.yaml
+```
+
+**Notes**:
+- Each run writes its own log under `{{ workingDir }}/logs/`, named from the configuration file basename.
+- Ensure any extra files exist on the host before the mirror-cache phase runs (for example by copying or templating them into `{{ workingDir }}/config/`).
+
 ### Operator Catalog Configuration
 
 #### `certified_operator_catalog`
