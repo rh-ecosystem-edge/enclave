@@ -60,3 +60,14 @@ spec:
             spec:
               image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:v{{ short_version_dot }}
               sourceType: grpc
+        - complianceType: musthave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: redhat-operators
+              namespace: openshift-marketplace
+            status:
+              connectionState:
+                lastObservedState: READY
