@@ -194,7 +194,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           gh pr comment "${PR_NUMBER}" -R "${REPO}" \
-            --body "Tarball created: quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }}"
+            --body "Tarball created: quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }} (this is a merge commit sha)"
 
       - name: Clean up
         if: always()
