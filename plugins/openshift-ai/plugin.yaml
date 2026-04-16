@@ -36,7 +36,7 @@ operators:
   - name: servicemeshoperator3
     version: 3.2.2
     channel: stable
-    init_version: 3.2.2
+    init_version: 3.1.0
 
 installOperators: false
 
