@@ -209,6 +209,22 @@ spec:
               source: {{ mirror_rh_operator_catalog }}
               sourceNamespace: openshift-marketplace
         # Install Service Mesh Operator
+        # the ingress-operator creates a servicemeshoperator3 Subscription
+        # with source: redhat-operators, which doesn't exist in disconnected mode.
+        # The ingress-operator actively manages the subscription spec and overwrites any
+        # changes, so instead of fighting it we create a CatalogSource alias that makes
+        # the existing subscription resolve to the mirrored catalog.
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: redhat-operators
+              namespace: openshift-marketplace
+            spec:
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:v{{ short_version_dot }}
+              sourceType: grpc
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
