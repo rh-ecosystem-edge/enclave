@@ -43,15 +43,3 @@ spec:
             spec:
               image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/redhat-operator-index:v{{ short_version_dot }}
               sourceType: grpc
-
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: CatalogSource
-            metadata:
-              name: {{ mirror_certified_rh_operator_catalog }}
-              namespace: openshift-marketplace
-            spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/certified-operator-index:v{{ short_version_dot }}
-              sourceType: grpc
