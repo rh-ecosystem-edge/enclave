@@ -57,6 +57,10 @@ registries:
     mirror: "rhaiis"
   - location: "registry.redhat.io/openshift-service-mesh"
     mirror: "openshift-service-mesh"
+  - location: "registry.redhat.io/openshift-service-mesh-tech-preview"
+    mirror: "openshift-service-mesh-tech-preview"
+  - location: "registry.redhat.io/openshift-service-mesh-dev-preview-beta"
+    mirror: "openshift-service-mesh-dev-preview-beta"
 
 blockedImages:
   - registry.redhat.io/quay/quay-builder-qemu-rhcos-rhel8
