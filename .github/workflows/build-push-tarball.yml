@@ -191,7 +191,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.issue.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           gh pr comment "${PR_NUMBER}" -R "${REPO}" \
             --body "Tarball created: quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }}"
