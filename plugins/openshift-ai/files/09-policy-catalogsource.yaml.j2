@@ -31,7 +31,7 @@ spec:
               name: {{ mirror_rh_operator_catalog }}-openshift-ai
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:v{{ short_version_dot }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:{{ rh_operator_catalog_version }}
               sourceType: grpc
         - complianceType: musthave
           metadataComplianceType: musthave
