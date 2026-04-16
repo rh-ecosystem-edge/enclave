@@ -130,6 +130,22 @@ DSTAMP=$(date +%Y%m%d_%H%M%S)
 logdir=${workingDir}/logs
 log="$logdir/${DSTAMP}"
 
+# Determine deployment mode: env var takes precedence, then config file
+is_connected=false
+if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "connected" ]; then
+    is_connected=true
+elif [ "$(getValue .disconnected 2>/dev/null)" = "false" ]; then
+    is_connected=true
+fi
+
+EXTRA_VARS=""
+if [ "$is_connected" = true ]; then
+    # Use --extra-vars= with JSON to pass boolean false (not string "false")
+    # The key=value syntax (-e disconnected=false) passes a string, which
+    # Jinja2 evaluates as truthy, breaking template selection.
+    EXTRA_VARS='--extra-vars={"disconnected":false}'
+fi
+
 _cleanup(){
     rm -fr "${lck}"
 }
@@ -181,7 +197,7 @@ step_setup() {
 
 step_validate() {
     echo "Validating Config .. "  | tee -a ${log}
-    ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags schema-validation 2>&1 | tee -a ${log}
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
     step_done
 }
@@ -189,53 +205,57 @@ step_validate() {
 step_download_content() {
     echo "Downloading Deps Content .. " | tee -a ${log}
     # Download control binaries (oc, helm, etc.) first - required by download-content tasks
-    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
-    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-content 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags download-control-binaries 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags download-content 2>&1 | tee -a ${log}
     step_done
 }
 
 step_build_cache() {
     echo "Building local cache .. " | tee -a ${log}
-    ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
-    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags configure-abi 2>&1 | tee -a ${log}
+    if [ "$is_connected" = true ]; then
+        echo "Connected mode - skipping mirror registry setup" | tee -a ${log}
+    else
+        ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags mirror-registry 2>&1 | tee -a ${log}
+    fi
+    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags configure-abi 2>&1 | tee -a ${log}
     step_done
 }
 
 step_acquire_hardware() {
     echo "Acquiring Hardware .. " | tee -a ${log}
     # setup content for and boot machines
-    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags hardware,pre-install-validate 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags hardware,pre-install-validate 2>&1 | tee -a ${log}
     step_done
 }
 
 step_deploy() {
     echo "Deploying management cluster .. " | tee -a ${log}
     # deploy Red Hat payload cluster
-    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags wait-deployment 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags wait-deployment 2>&1 | tee -a ${log}
     step_done
 }
 
 step_post_install() {
     echo "Post install config.. " | tee -a ${log}
     # Apply SSL certificates
-    ansible-playbook playbooks/04-post-install.yaml -e@$global_vars -e@$certs_vars --tags post-install-config 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/04-post-install.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags post-install-config 2>&1 | tee -a ${log}
     step_done
 }
 
 step_operators() {
     echo "Deploying management apps  .. " | tee -a ${log}
     # deploy Red Hat payload cluster
-    ansible-playbook playbooks/05-operators.yaml -e@$global_vars -e@$certs_vars --tags operators 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/05-operators.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags operators 2>&1 | tee -a ${log}
     step_done
 }
 
 step_day2() {
     echo "Clair disconnected .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags clair-disconnected 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags clair-disconnected 2>&1 | tee -a ${log}
     step_done
 
     echo "Catalog source ACM policy .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
+    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags acm-policy-catalogsources 2>&1 | tee -a ${log}
     step_done
 }
 
@@ -248,7 +268,7 @@ step_discovery() {
 
     echo "Start discovering nodes.. " | tee -a ${log}
     if [ -f $cloud_infra_vars ]; then
-        if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml 2>&1 | tee -a ${log}; then
+        if ! ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars $EXTRA_VARS playbooks/07-configure-discovery.yaml 2>&1 | tee -a ${log}; then
             echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ansible-playbook -e @$global_vars -e @$certs_vars -e @$cloud_infra_vars playbooks/07-configure-discovery.yaml" | tee -a ${log}
         fi
     fi

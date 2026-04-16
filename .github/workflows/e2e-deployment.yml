@@ -254,6 +254,13 @@ jobs:
           make -f Makefile.ci deploy-cluster-post-install
           echo "Post-install complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Trust custom CA certificate
+        id: trust_custom_ca
+        run: |
+          echo "## Trust Custom CA" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci trust-custom-ca
+          echo "Custom CA trusted" >> $GITHUB_STEP_SUMMARY
+
       - name: Bootstrap - Operators
         id: bootstrap_operators
         run: |
@@ -447,6 +454,7 @@ jobs:
             ["bootstrap_acquire_hardware"]="Bootstrap: Acquire hardware"
             ["bootstrap_deploy"]="Bootstrap: Deploy cluster"
             ["bootstrap_post_install"]="Bootstrap: Post-install"
+            ["trust_custom_ca"]="Trust custom CA certificate"
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
@@ -461,6 +469,7 @@ jobs:
             bootstrap_acquire_hardware
             bootstrap_deploy
             bootstrap_post_install
+            trust_custom_ca
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
@@ -636,6 +645,13 @@ jobs:
           echo "## Bootstrap: Post-Install" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci deploy-cluster-post-install
           echo "Post-install complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Trust custom CA certificate
+        id: trust_custom_ca
+        run: |
+          echo "## Trust Custom CA" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci trust-custom-ca
+          echo "Custom CA trusted" >> $GITHUB_STEP_SUMMARY
 
       - name: Bootstrap - Operators
         id: bootstrap_operators
@@ -839,6 +855,7 @@ jobs:
             ["bootstrap_acquire_hardware"]="Bootstrap: Acquire hardware"
             ["bootstrap_deploy"]="Bootstrap: Deploy cluster"
             ["bootstrap_post_install"]="Bootstrap: Post-install"
+            ["trust_custom_ca"]="Trust custom CA certificate"
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
@@ -853,6 +870,7 @@ jobs:
             bootstrap_acquire_hardware
             bootstrap_deploy
             bootstrap_post_install
+            trust_custom_ca
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery

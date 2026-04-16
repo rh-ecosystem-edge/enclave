@@ -220,6 +220,7 @@ done
 # Generate self-signed SSL certificates for CI
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
 CERT_DIR=$(mktemp -d)
+trap 'rm -rf "$CERT_DIR"' EXIT
 
 info "Generating self-signed SSL certificates for ${CLUSTER_FQDN}..."
 
@@ -250,8 +251,6 @@ INGRESS_KEY=$(cat "${CERT_DIR}/ingress.key")
 INGRESS_CERT=$(cat "${CERT_DIR}/ingress.crt")
 CA_CERT=$(cat "${CERT_DIR}/ca.crt")
 
-rm -rf "${CERT_DIR}"
-
 # Generate config/certificates.yaml file
 cat > "$CERTS_VARS_OUTPUT" <<EOF
 ---
@@ -266,6 +265,7 @@ $(echo "$API_KEY" | sed 's/^/  /')
 
 sslAPICertificateFullChain: |
 $(echo "$API_CERT" | sed 's/^/  /')
+$(echo "$CA_CERT" | sed 's/^/  /')
 
 # Ingress Certificate for *.apps.${CLUSTER_FQDN}
 sslIngressCertificateKey: |
@@ -273,6 +273,7 @@ $(echo "$INGRESS_KEY" | sed 's/^/  /')
 
 sslIngressCertificateFullChain: |
 $(echo "$INGRESS_CERT" | sed 's/^/  /')
+$(echo "$CA_CERT" | sed 's/^/  /')
 
 # Root CA Certificate
 sslCACertificate: |
