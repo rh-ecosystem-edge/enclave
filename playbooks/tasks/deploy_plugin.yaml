@@ -207,7 +207,7 @@
   ansible.builtin.replace:
     path: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.internal.yaml"
     regexp: 'catalog: {{ certified_operator_catalog if (plugin.catalog | default("")) == "certified" else rh_operator_catalog }}'
-    replace: 'catalog: {{ quayHostname }}:8443/redhat/{{ mirror_certified_rh_operator_catalog if (plugin.catalog | default("")) == "certified" else mirror_rh_operator_catalog ~ "-" ~ plugin.name }}'
+    replace: 'catalog: {{ quayHostname }}:8443/redhat/{{ (mirror_certified_rh_operator_catalog if (plugin.catalog | default("")) == "certified" else mirror_rh_operator_catalog) ~ "-" ~ plugin.name }}'
   when:
     - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(true) | bool
