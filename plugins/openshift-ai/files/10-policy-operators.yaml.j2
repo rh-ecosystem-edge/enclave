@@ -278,6 +278,17 @@ spec:
               name: leader-worker-set
               source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operator.openshift.io/v1
+            kind: LeaderWorkerSetOperator
+            metadata:
+              name: cluster
+            spec:
+              logLevel: Normal
+              operatorLogLevel: Normal
+              managementState: Managed
         # Install Red Hat OpenShift AI
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
