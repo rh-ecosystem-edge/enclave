@@ -27,6 +27,11 @@ RUN dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-
     dnf install -y docker-ce-cli && \
     dnf clean all
 
+# Install GitHub CLI (gh)
+RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo && \
+    dnf install -y gh && \
+    dnf clean all
+
 # Install Python packages
 RUN pip3 install --no-cache-dir \
     yamllint \
