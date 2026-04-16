@@ -34,6 +34,17 @@ fi
 
 STEP_NAME="$1"
 
+# Validate step name against allowed values
+case "$STEP_NAME" in
+    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay)
+        ;;
+    *)
+        error "Unknown bootstrap step: $STEP_NAME"
+        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+        exit 1
+        ;;
+esac
+
 # Validate required environment variables
 require_env_var "DEV_SCRIPTS_PATH"
 
@@ -79,16 +90,24 @@ fi
 # Run the bootstrap step
 LOG_FILE="deployment_bootstrap_${STEP_NAME}.log"
 info "Running bootstrap.sh --step $STEP_NAME (logging to $LOG_FILE)..."
+
+# Forward deployment mode environment variable if set
+EXPORT_VARS=""
+if [ -n "${ENCLAVE_DEPLOYMENT_MODE:-}" ]; then
+    EXPORT_VARS="export ENCLAVE_DEPLOYMENT_MODE=${ENCLAVE_DEPLOYMENT_MODE}; "
+    info "Deployment mode: $ENCLAVE_DEPLOYMENT_MODE"
+fi
+
 # shellcheck disable=SC2086
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ./bootstrap.sh --step $STEP_NAME --non-interactive 2>&1 | tee $LOG_FILE'"
-
-STEP_EXIT_CODE=$?
-
-echo ""
-if [ $STEP_EXIT_CODE -eq 0 ]; then
+# Use pipefail on the remote shell so the exit code of bootstrap.sh
+# propagates through the tee pipeline (without it, tee always returns 0).
+if ssh -t $SSH_OPTS "$LZ_SSH" "set -o pipefail; cd $LZ_ENCLAVE_DIR && ${EXPORT_VARS}./bootstrap.sh --step $STEP_NAME --non-interactive 2>&1 | tee $LOG_FILE"; then
+    echo ""
     success "Bootstrap step completed successfully: $STEP_NAME"
 else
+    STEP_EXIT_CODE=$?
+    echo ""
     error "Bootstrap step failed: $STEP_NAME (exit code: $STEP_EXIT_CODE)"
     info "Check logs: ssh ${LZ_SSH} 'cat $LZ_ENCLAVE_DIR/$LOG_FILE'"
-    exit 1
+    exit $STEP_EXIT_CODE
 fi
