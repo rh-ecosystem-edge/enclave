@@ -242,31 +242,32 @@ else
     info "✓ DNS entry added: api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${API_VIP}"
 fi
 
-# Ingress endpoints (grouped under single IP)
-INGRESS_APPS=(
-    console-openshift-console
-    oauth-openshift
-    downloads-openshift-console
-    alertmanager-main-openshift-monitoring
-    grafana-openshift-monitoring
-    prometheus-k8s-openshift-monitoring
-    thanos-querier-openshift-monitoring
-    registry-quay-quay-enterprise
-)
-INGRESS_HOSTNAMES_XML=""
-for APP in "${INGRESS_APPS[@]}"; do
-    INGRESS_HOSTNAMES_XML="${INGRESS_HOSTNAMES_XML}<hostname>${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname>"
-done
-info "Adding DNS entries: *.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP} on network ${CLUSTER_NETWORK_NAME}..."
-if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${INGRESS_VIP}'>${INGRESS_HOSTNAMES_XML}</host>" \
-    --live --config 2>/dev/null; then
-    warning "Could not add ingress DNS entries (may already exist)"
+# Ingress wildcard DNS: resolve *.apps.<cluster>.<domain> to ingress VIP
+# Uses libvirt's dnsmasq:options XML namespace to inject an address= directive,
+# so any subdomain under apps resolves without listing individual hostnames.
+APPS_DOMAIN=".apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}"
+info "Adding wildcard DNS: *${APPS_DOMAIN} -> ${INGRESS_VIP} on network ${CLUSTER_NETWORK_NAME}..."
+
+# Inject the address= option into the libvirt network XML
+DNSMASQ_NS="http://libvirt.org/schemas/network/dnsmasq/1.0"
+OPTION_VALUE="address=/${APPS_DOMAIN}/${INGRESS_VIP}"
+
+# Export current network XML, add dnsmasq:options if not present, then redefine
+NET_XML=$(sudo virsh net-dumpxml "${CLUSTER_NETWORK_NAME}")
+if echo "$NET_XML" | grep -q "dnsmasq:options"; then
+    # dnsmasq:options block already exists, add our option to it
+    NET_XML=$(echo "$NET_XML" | sed "s|</dnsmasq:options>|  <dnsmasq:option value='${OPTION_VALUE}'/>\n  </dnsmasq:options>|")
 else
-    for APP in "${INGRESS_APPS[@]}"; do
-        info "✓ DNS entry added: ${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP}"
-    done
+    # Add xmlns and dnsmasq:options block before closing </network>
+    NET_XML=$(echo "$NET_XML" | sed "s|<network>|<network xmlns:dnsmasq='${DNSMASQ_NS}'>|")
+    NET_XML=$(echo "$NET_XML" | sed "s|</network>|  <dnsmasq:options>\n    <dnsmasq:option value='${OPTION_VALUE}'/>\n  </dnsmasq:options>\n</network>|")
 fi
+
+# Redefine and restart the network to apply
+echo "$NET_XML" | sudo virsh net-define /dev/stdin
+sudo virsh net-destroy "${CLUSTER_NETWORK_NAME}" 2>/dev/null || true
+sudo virsh net-start "${CLUSTER_NETWORK_NAME}"
+info "✓ Wildcard DNS added: *${APPS_DOMAIN} -> ${INGRESS_VIP}"
 
 success "DNS resolution configured for cluster endpoints"
 
