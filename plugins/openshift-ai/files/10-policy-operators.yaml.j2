@@ -21,6 +21,18 @@ spec:
           compliant: 2h
           noncompliant: 45s
         object-templates:
+        # Create custom CatalogSource for the plugin
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: {{ mirror_rh_operator_catalog }}-openshift-ai
+              namespace: openshift-marketplace
+            spec:
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:v{{ short_version_dot }}
+              sourceType: grpc
         # Install Node Feature Discovery (NFD) Operator
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -52,7 +64,7 @@ spec:
               channel: stable
               installPlanApproval: Automatic
               name: nfd
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
         # Create NodeFeatureDiscovery Instance
         - complianceType: mustonlyhave
@@ -206,7 +218,7 @@ spec:
               channel: stable-v1.18
               installPlanApproval: Automatic
               name: openshift-cert-manager-operator
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
         # Install Service Mesh Operator
         - complianceType: mustonlyhave
@@ -221,7 +233,7 @@ spec:
               channel: stable
               installPlanApproval: Automatic
               name: servicemeshoperator3
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
 
         # Install Red Hat Connectivity Link (RHCL)
@@ -237,7 +249,7 @@ spec:
               channel: stable
               installPlanApproval: Automatic
               name: rhcl-operator
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
         # Install Leader Worker Set Operator
         - complianceType: mustonlyhave
@@ -270,7 +282,7 @@ spec:
               channel: stable-v1.0
               installPlanApproval: Automatic
               name: leader-worker-set
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
         # Install Red Hat OpenShift AI
         - complianceType: mustonlyhave
@@ -300,6 +312,6 @@ spec:
             spec:
               channel: fast-3.x
               name: rhods-operator
-              source: {{ mirror_rh_operator_catalog }}
+              source: {{ mirror_rh_operator_catalog }}-openshift-ai
               sourceNamespace: openshift-marketplace
               installPlanApproval: Automatic

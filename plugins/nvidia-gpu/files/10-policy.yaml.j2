@@ -21,6 +21,18 @@ spec:
           compliant: 2h
           noncompliant: 45s
         object-templates:
+        # Create custom CatalogSource for the plugin
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
+              namespace: openshift-marketplace
+            spec:
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_certified_rh_operator_catalog }}-nvidia-gpu:v{{ short_version_dot }}
+              sourceType: grpc
         # Install NVIDIA GPU Operator
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -52,7 +64,7 @@ spec:
               channel: v25.10
               installPlanApproval: Automatic
               name: gpu-operator-certified
-              source: {{ mirror_certified_rh_operator_catalog }}
+              source: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
               sourceNamespace: openshift-marketplace
         # Create ClusterPolicy Instance
         - complianceType: mustonlyhave
