@@ -10,7 +10,7 @@ apiVersion: mirror.openshift.io/v2alpha1
 mirror:
   operators:
     - catalog: {{ catalog_image }}
-      targetCatalog: {{ catalog_mirror ~ '-' ~ plugin.name }}
+      targetCatalog: redhat/{{ catalog_mirror ~ '-' ~ plugin.name }}
       packages:
 {% for operator in plugin.operators | default([]) %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
