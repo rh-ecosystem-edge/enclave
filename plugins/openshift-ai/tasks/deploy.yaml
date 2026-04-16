@@ -9,6 +9,18 @@
   delay: "{{ k8s_delay }}"
   until: r_namespace_model_config is success
 
+- name: Create ACM Policy for Model CatalogSources
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/09-policy-catalogsource.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_model_catalogsources
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_catalogsources is success
+
 - name: Create ACM Policy for Model prerequisites
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"

@@ -1,6 +1,8 @@
 {% set catalog_image = rh_operator_catalog ~ ':' ~ rh_operator_catalog_version %}
+{% set catalog_mirror = mirror_rh_operator_catalog %}
 {% if (plugin.catalog | default("")) == "certified" %}
 {% set catalog_image = certified_operator_catalog ~ ':' ~ certified_operator_catalog_version %}
+{% set catalog_mirror = mirror_certified_rh_operator_catalog %}
 {% endif %}
 ---
 kind: ImageSetConfiguration
@@ -8,6 +10,7 @@ apiVersion: mirror.openshift.io/v2alpha1
 mirror:
   operators:
     - catalog: {{ catalog_image }}
+      targetCatalog: redhat/{{ catalog_mirror ~ '-' ~ plugin.name }}
       packages:
 {% for operator in plugin.operators | default([]) %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}

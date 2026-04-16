@@ -1,0 +1,73 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  name: model-catalogsources
+  namespace: openshift-acm-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: model-catalogsources
+      spec:
+        evaluationInterval:
+          compliant: 5m
+          noncompliant: 45s
+        object-templates:
+        # Create custom CatalogSource for the plugin
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: {{ mirror_rh_operator_catalog }}-openshift-ai
+              namespace: openshift-marketplace
+            spec:
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:{{ rh_operator_catalog_version }}
+              sourceType: grpc
+        - complianceType: musthave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: {{ mirror_rh_operator_catalog }}-openshift-ai
+              namespace: openshift-marketplace
+            status:
+              connectionState:
+                lastObservedState: READY
+        # the ingress-operator creates a servicemeshoperator3 Subscription
+        # with source: redhat-operators, which doesn't exist in disconnected mode.
+        # The ingress-operator actively manages the subscription spec and overwrites any
+        # changes, so instead of fighting it we create a CatalogSource alias that makes
+        # the existing subscription resolve to the mirrored catalog.
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: redhat-operators
+              namespace: openshift-marketplace
+            spec:
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:{{ rh_operator_catalog_version }}
+              sourceType: grpc
+        - complianceType: musthave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: redhat-operators
+              namespace: openshift-marketplace
+            status:
+              connectionState:
+                lastObservedState: READY

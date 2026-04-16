@@ -5,7 +5,7 @@ metadata:
     policy.open-cluster-management.io/categories: CM Configuration Management
     policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
     policy.open-cluster-management.io/standards: NIST SP 800-53
-  name: catalogsource-configuration-{{ short_version_dash }}
+  name: nvidia-gpu-catalogsource
   namespace: openshift-acm-policies
 spec:
   disabled: false
@@ -15,31 +15,32 @@ spec:
       apiVersion: policy.open-cluster-management.io/v1
       kind: ConfigurationPolicy
       metadata:
-        name: catalogsource-configuration
+        name: nvidia-gpu-catalogsource
       spec:
         evaluationInterval:
-          compliant: 2h
+          compliant: 5m
           noncompliant: 45s
         object-templates:
-
-        # Disable default catalogsources to enforce mirrored ones
-        - complianceType: musthave
-          objectDefinition:
-            apiVersion: config.openshift.io/v1
-            kind: OperatorHub
-            metadata:
-              name: cluster
-            spec:
-              disableAllDefaultSources: true
-
+        # Create custom CatalogSource for the plugin
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_rh_operator_catalog }}
+              name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/redhat-operator-index:v{{ short_version_dot }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_certified_rh_operator_catalog }}-nvidia-gpu:{{ certified_operator_catalog_version }}
               sourceType: grpc
+        - complianceType: musthave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: CatalogSource
+            metadata:
+              name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
+              namespace: openshift-marketplace
+            status:
+              connectionState:
+                lastObservedState: READY

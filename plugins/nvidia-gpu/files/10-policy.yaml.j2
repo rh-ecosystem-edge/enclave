@@ -8,6 +8,12 @@ metadata:
   name: nvidia-gpu-configuration
   namespace: openshift-acm-policies
 spec:
+  dependencies:
+  - apiVersion: policy.open-cluster-management.io/v1
+    compliance: Compliant
+    kind: Policy
+    name: nvidia-gpu-catalogsource
+    namespace: openshift-acm-policies
   disabled: false
   remediationAction: enforce
   policy-templates:
@@ -52,7 +58,7 @@ spec:
               channel: v25.10
               installPlanApproval: Automatic
               name: gpu-operator-certified
-              source: {{ mirror_certified_rh_operator_catalog }}
+              source: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
               sourceNamespace: openshift-marketplace
         # Create ClusterPolicy Instance
         - complianceType: mustonlyhave

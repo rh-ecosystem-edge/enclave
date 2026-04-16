@@ -10,6 +10,9 @@ placementRef:
 subjects:
 - apiGroup: policy.open-cluster-management.io
   kind: Policy
+  name: model-catalogsources
+- apiGroup: policy.open-cluster-management.io
+  kind: Policy
   name: model-prerequisites
 - apiGroup: policy.open-cluster-management.io
   kind: Policy
