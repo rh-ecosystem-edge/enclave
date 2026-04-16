@@ -1,0 +1,54 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  ocMirrorParallelImages:
+    type: integer
+    minimum: 1
+    description: Number of parallel image downloads for oc-mirror
+  ocMirrorParallelLayers:
+    type: integer
+    minimum: 1
+    description: Number of parallel layer downloads for oc-mirror
+  ocMirrorRetryTimes:
+    type: integer
+    minimum: 0
+    description: Number of internal retries for oc-mirror
+  ocMirrorRetryDelay:
+    type: string
+    pattern: "^[0-9]+[smh]?$"
+    description: Delay between oc-mirror internal retries
+  ocMirrorImageTimeout:
+    type: string
+    pattern: "^[0-9]+[smh][0-9]*[smh]?$"
+    description: Timeout for individual image mirroring
+  ocMirrorAnsibleRetries:
+    type: integer
+    minimum: 1
+    description: Number of Ansible-level retries for oc-mirror tasks
+  ocMirrorAnsibleDelay:
+    type: integer
+    minimum: 0
+    description: Delay in seconds between Ansible-level retries
+  ocMirrorCacheAnsibleRetries:
+    type: integer
+    minimum: 1
+    description: Number of Ansible-level retries for oc-mirror cache tasks
+  ocMirrorParallelLayersLocalStorage:
+    type: integer
+    minimum: 1
+    description: Number of parallel layer downloads when using LocalStorage backend
+
+required:
+  - ocMirrorParallelImages
+  - ocMirrorParallelLayers
+  - ocMirrorRetryTimes
+  - ocMirrorRetryDelay
+  - ocMirrorImageTimeout
+  - ocMirrorAnsibleRetries
+  - ocMirrorAnsibleDelay
+  - ocMirrorCacheAnsibleRetries
+  - ocMirrorParallelLayersLocalStorage

@@ -27,27 +27,62 @@
     src: "../../templates/registries.conf.j2"
     dest: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
 
-- name: Start oc-mirror process
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc-mirror --v2 \
-      --log-level {{ ocMirrorLogLevel }} \
-      --authfile {{ workingDir }}/config/pull-secret.quay.json \
-      -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
-      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-quay \
-      docker://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }} \
-      --dest-tls-verify=false \
-      --src-tls-verify=false \
-      --parallel-images 10 \
-      --parallel-layers {{ 1 if quayBackend == 'LocalStorage' else 10 }} \
-      --retry-times 10 \
-      --retry-delay 0 \
-      --image-timeout 40m0s \
-      2>&1 | tee {{ workingDir }}/logs/oc-mirror.progress.quay.$(date +%s).log | grep "ERROR"
+- name: Ensure oc-mirror log directory exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
 
-  retries: 10
-  delay: 10
-  register: r_oc_mirror_quay
-  until: r_oc_mirror_quay is succeeded
+- name: Set oc-mirror log path
+  ansible.builtin.set_fact:
+    _oc_mirror_quay_log: "{{ workingDir }}/logs/oc-mirror.progress.quay.{{ lookup('pipe', 'date +%s') }}.log"
+
+- name: Show oc-mirror log path
+  ansible.builtin.debug:
+    msg: "oc-mirror log file: {{ _oc_mirror_quay_log }}"
+
+- name: Start oc-mirror process
+  block:
+    - name: Run oc-mirror to internal Quay
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc-mirror --v2 \
+          --log-level {{ ocMirrorLogLevel }} \
+          --authfile {{ workingDir }}/config/pull-secret.quay.json \
+          -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
+          --workspace file://{{ workingDir }}/config/oc-mirror-workspace-quay \
+          docker://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }} \
+          --dest-tls-verify=false \
+          --src-tls-verify=false \
+          --parallel-images {{ ocMirrorParallelImages }} \
+          --parallel-layers {{ ocMirrorParallelLayersLocalStorage if quayBackend == 'LocalStorage' else ocMirrorParallelLayers }} \
+          --retry-times {{ ocMirrorRetryTimes }} \
+          --retry-delay {{ ocMirrorRetryDelay }} \
+          --image-timeout {{ ocMirrorImageTimeout }} \
+          > {{ _oc_mirror_quay_log }} 2>&1
+      retries: "{{ ocMirrorAnsibleRetries }}"
+      delay: "{{ ocMirrorAnsibleDelay }}"
+      register: r_oc_mirror_quay
+      until: r_oc_mirror_quay is succeeded
+
+  rescue:
+    - name: Read oc-mirror log tail
+      ansible.builtin.command:
+        argv:
+          - tail
+          - -n
+          - "10"
+          - "{{ _oc_mirror_quay_log }}"
+      register: _oc_mirror_quay_tail
+      changed_when: false
+      failed_when: false
+
+    - name: oc-mirror failed
+      ansible.builtin.fail:
+        msg: |-
+          oc-mirror to internal Quay failed after {{ r_oc_mirror_quay.attempts }} attempts.
+
+          {{ _oc_mirror_quay_tail.stdout | default('Unable to read oc-mirror log tail.') }}
+
+          Full log: {{ _oc_mirror_quay_log }}
 
 - name: Delete registries.conf for the oc-mirror process
   ansible.builtin.file:

@@ -46,20 +46,58 @@
     path: "{{ workingDir }}/bin/oc-mirror"
     mode: "0755"
 
+- name: Ensure oc-mirror log directory exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: Set oc-mirror log path
+  ansible.builtin.set_fact:
+    _oc_mirror_log: "{{ workingDir }}/logs/oc-mirror.progress.{{ lookup('pipe', 'date +%s') }}.log"
+
+- name: Show oc-mirror log path
+  ansible.builtin.debug:
+    msg: "oc-mirror log file: {{ _oc_mirror_log }}"
+
 - name: Start oc-mirror process
-  ansible.builtin.shell: >
-    {{ workingDir }}/bin/oc-mirror --v2
-    {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }}
-    --log-level {{ ocMirrorLogLevel }}
-    --authfile {{ pullSecretPath }}
-    --dest-tls-verify=false
-    -c {{ workingDir }}/config/imagesetconfiguration.yaml
-    --workspace file://{{ workingDir }}/config/oc-mirror-workspace
-    --parallel-images 10 --parallel-layers 10
-    --retry-times 10 --retry-delay 0
-    docker://{{ quayHostname }}:8443
-    2>&1 | tee {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log | grep "ERROR"
-  retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else 10 }}"
-  delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else 10 }}"
-  register: r_oc_mirror
-  until: r_oc_mirror is success
+  block:
+    - name: Run oc-mirror to mirror registry
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc-mirror --v2 \
+          {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
+          --log-level {{ ocMirrorLogLevel }} \
+          --authfile {{ pullSecretPath }} \
+          --dest-tls-verify=false \
+          -c {{ workingDir }}/config/imagesetconfiguration.yaml \
+          --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
+          --parallel-images {{ ocMirrorParallelImages }} \
+          --parallel-layers {{ ocMirrorParallelLayers }} \
+          --retry-times {{ ocMirrorRetryTimes }} \
+          --retry-delay {{ ocMirrorRetryDelay }} \
+          docker://{{ quayHostname }}:8443 \
+          > {{ _oc_mirror_log }} 2>&1
+      retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
+      delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleDelay }}"
+      register: r_oc_mirror
+      until: r_oc_mirror is success
+
+  rescue:
+    - name: Read oc-mirror log tail
+      ansible.builtin.command:
+        argv:
+          - tail
+          - -n
+          - "10"
+          - "{{ _oc_mirror_log }}"
+      register: _oc_mirror_tail
+      changed_when: false
+      failed_when: false
+
+    - name: oc-mirror failed
+      ansible.builtin.fail:
+        msg: |-
+          oc-mirror to mirror registry failed after {{ r_oc_mirror.attempts }} attempts.
+
+          {{ _oc_mirror_tail.stdout | default('Unable to read oc-mirror log tail.') }}
+
+          Full log: {{ _oc_mirror_log }}

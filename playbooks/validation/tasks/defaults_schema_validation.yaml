@@ -44,6 +44,12 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/quay_operator.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
 
+- name: validate defaults/oc_mirror.yaml schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', '../../defaults/oc_mirror.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/oc_mirror.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+
 - name: validate defaults/k8s.yaml schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', '../../defaults/k8s.yaml') | from_yaml | to_json }}"

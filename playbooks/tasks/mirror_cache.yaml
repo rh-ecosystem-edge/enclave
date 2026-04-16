@@ -34,19 +34,57 @@
     path: "{{ workingDir }}/bin/oc-mirror"
     mode: "0755"
 
+- name: Ensure oc-mirror log directory exists
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: Set oc-mirror cache log path
+  ansible.builtin.set_fact:
+    _oc_mirror_cache_log: "{{ workingDir }}/logs/oc-mirror-cache.progress.{{ lookup('pipe', 'date +%s') }}.log"
+
+- name: Show oc-mirror log path
+  ansible.builtin.debug:
+    msg: "oc-mirror log file: {{ _oc_mirror_cache_log }}"
+
 - name: Start oc-mirror process
-  ansible.builtin.shell: >
-    {{ workingDir }}/bin/oc-mirror --v2
-    --log-level {{ ocMirrorLogLevel }}
-    --authfile {{ workingDir }}/config/pull-secret-cache.json
-    --dest-tls-verify=false
-    -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml
-    --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace
-    --parallel-images 10 --parallel-layers 10
-    --retry-times 10 --retry-delay 0
-    docker://{{ dc_cache_address }}
-    2>&1 | tee {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log | grep "ERROR"
-  retries: 5
-  delay: 10
-  register: __r_oc_mirror_cache
-  until: __r_oc_mirror_cache is success
+  block:
+    - name: Run oc-mirror to cache registry
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc-mirror --v2 \
+          --log-level {{ ocMirrorLogLevel }} \
+          --authfile {{ workingDir }}/config/pull-secret-cache.json \
+          --dest-tls-verify=false \
+          -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml \
+          --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace \
+          --parallel-images {{ ocMirrorParallelImages }} \
+          --parallel-layers {{ ocMirrorParallelLayers }} \
+          --retry-times {{ ocMirrorRetryTimes }} \
+          --retry-delay {{ ocMirrorRetryDelay }} \
+          docker://{{ dc_cache_address }} \
+          > {{ _oc_mirror_cache_log }} 2>&1
+      retries: "{{ ocMirrorCacheAnsibleRetries }}"
+      delay: "{{ ocMirrorAnsibleDelay }}"
+      register: __r_oc_mirror_cache
+      until: __r_oc_mirror_cache is success
+
+  rescue:
+    - name: Read oc-mirror log tail
+      ansible.builtin.command:
+        argv:
+          - tail
+          - -n
+          - "10"
+          - "{{ _oc_mirror_cache_log }}"
+      register: _oc_mirror_cache_tail
+      changed_when: false
+      failed_when: false
+
+    - name: oc-mirror failed
+      ansible.builtin.fail:
+        msg: |-
+          oc-mirror to cache registry failed after {{ __r_oc_mirror_cache.attempts }} attempts.
+
+          {{ _oc_mirror_cache_tail.stdout | default('Unable to read oc-mirror log tail.') }}
+
+          Full log: {{ _oc_mirror_cache_log }}
