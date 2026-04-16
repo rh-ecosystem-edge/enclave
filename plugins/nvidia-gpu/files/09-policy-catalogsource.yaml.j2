@@ -31,7 +31,7 @@ spec:
               name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_certified_rh_operator_catalog }}-nvidia-gpu:v{{ short_version_dot }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_certified_rh_operator_catalog }}-nvidia-gpu:{{ certified_operator_catalog_version }}
               sourceType: grpc
         - complianceType: musthave
           metadataComplianceType: musthave
