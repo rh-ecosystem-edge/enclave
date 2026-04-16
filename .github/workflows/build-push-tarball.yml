@@ -185,6 +185,16 @@ jobs:
             oras push quay.io/edge-infrastructure/enclave:latest enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
           fi
 
+      - name: Add comment to Pull Request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "Tarball created: quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }}"
+
       - name: Clean up
         if: always()
         run: |
