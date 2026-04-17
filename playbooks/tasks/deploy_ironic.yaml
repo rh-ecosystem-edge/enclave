@@ -13,7 +13,12 @@
     metal3_ironic_image: "{{ r_ironic_image.stdout }}"
 
 - name: Generate htpasswd hash for Ironic credentials
-  ansible.builtin.command: /usr/bin/htpasswd -nbB "{{ metal3_ironic_username }}" "{{ metal3_ironic_password }}"
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/htpasswd
+      - -nbB
+      - "{{ metal3_ironic_username }}"
+      - "{{ metal3_ironic_password }}"
   register: r_htpasswd
   changed_when: false
   no_log: true
