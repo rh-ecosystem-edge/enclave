@@ -15,8 +15,8 @@ usage() {
     echo "Available steps:"
     echo "  setup               Configure environment (setup_env + setup_ansible)"
     echo "  validate            Validate configuration (schema + validations)"
-    echo "  download-content    Download dependency content (Phase 1a)"
-    echo "  build-cache         Build local cache (Phase 1b + Phase 2 + configure-abi)"
+    echo "  download-content    Download control binaries and dependency content (Phase 1)"
+    echo "  build-cache         Build local cache (Phase 2 + configure-abi)"
     echo "  acquire-hardware    Acquire and validate hardware (Phase 3a)"
     echo "  deploy              Deploy management cluster (Phase 3b)"
     echo "  post-install        Post-install configuration (Phase 4)"
@@ -188,14 +188,14 @@ step_validate() {
 
 step_download_content() {
     echo "Downloading Deps Content .. " | tee -a ${log}
+    # Download control binaries (oc, helm, etc.) first - required by download-content tasks
+    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
     ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-content 2>&1 | tee -a ${log}
     step_done
 }
 
 step_build_cache() {
     echo "Building local cache .. " | tee -a ${log}
-    # get oc / helm / mirror content etc
-    ansible-playbook playbooks/01-prepare.yaml -e@$global_vars -e@$certs_vars --tags download-control-binaries 2>&1 | tee -a ${log}
     ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
     ansible-playbook playbooks/03-deploy.yaml -e@$global_vars -e@$certs_vars --tags configure-abi 2>&1 | tee -a ${log}
     step_done
