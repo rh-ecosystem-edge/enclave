@@ -10,7 +10,7 @@
     - name: Get machine-os-images digest for {{ version_item.version }}
       ansible.builtin.command:
         cmd: >
-          oc adm release info
+          {{ workingDir }}/bin/oc adm release info
           --image-for=machine-os-images
           quay.io/openshift-release-dev/ocp-release:{{ version_item.version }}-x86_64
       register: machine_os_image
@@ -25,7 +25,7 @@
     - name: Extract ISO from machine-os-images container
       ansible.builtin.command:
         cmd: >
-          oc image extract
+          {{ workingDir }}/bin/oc image extract
           --registry-config={{ pullSecretPath }}
           {{ machine_os_image.stdout }}
           --path /coreos/coreos-x86_64.iso:{{ temp_extract_dir.path }}/
