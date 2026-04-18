@@ -1,0 +1,40 @@
+---
+- name: Copy post-installation imagesetconfiguration.yaml
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration-post.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration-post.yaml"
+
+- name: Mirror post-installation operators and additional images
+  ansible.builtin.shell: |
+    _retry=1
+    _max_retries={{ 1 if (mirror_dry_run | default(false) | bool) else 10 }}
+    _delay={{ 0 if (mirror_dry_run | default(false) | bool) else 10 }}
+    until {{ workingDir }}/bin/oc-mirror --v2 \
+      {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
+      --log-level {{ ocMirrorLogLevel }} \
+      --authfile {{ pullSecretPath }} \
+      --dest-tls-verify=false \
+      -c {{ workingDir }}/config/imagesetconfiguration-post.yaml \
+      --workspace file://{{ workingDir }}/config/oc-mirror-workspace-post \
+      --parallel-images 10 --parallel-layers 10 \
+      --retry-times 10 --retry-delay 0 \
+      docker://{{ quayHostname }}:8443 \
+      > {{ workingDir }}/logs/oc-mirror-post.progress.$(date +%s).log 2>&1
+    do
+      if [ $_retry -ge $_max_retries ]; then
+        echo "Max retries reached"
+        exit 1
+      fi
+      echo "Some images failed to mirror. Retrying ($_retry of $_max_retries)"
+      _retry=$((_retry+1))
+      sleep $_delay
+    done
+  register: r_oc_mirror_post
+  # Async run
+  async: 14400 # 4 hours timeout
+  poll: 0      # Start immediately, don't wait
+
+- name: Save async job ID for later reference
+  ansible.builtin.copy:
+    content: "{{ r_oc_mirror_post.ansible_job_id }}"
+    dest: "{{ workingDir }}/logs/operator-mirror.async_job_id"

@@ -71,7 +71,6 @@
     - idms-oc-mirror.yaml
     - itms-oc-mirror.yaml
     - signature-configmap.yaml
-    - cs-redhat-operator-index-v4-20.yaml
 
 - name: Enable diskEncryption if set
   when: diskEncryption | default(false) == true
