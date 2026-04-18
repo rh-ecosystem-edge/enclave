@@ -3,3 +3,4 @@ mgmt_openshift_version: 4.20.8
 
 openshift_versions:
 - version: 4.20.8
+- version: 4.20.10
