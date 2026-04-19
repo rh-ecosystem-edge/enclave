@@ -46,6 +46,17 @@
         mode: "0600"
       tags: always
 
+    - name: oc check
+      ansible.builtin.command: oc version --client
+      register: oc_check
+      ignore_errors: true
+      changed_when: false
+
+    - name: Fail if 'oc' is present
+      ansible.builtin.fail:
+        msg: "oc binary was found! '{{ oc_check.stdout }}'"
+      when: oc_check.rc == 0
+
     - name: Download control binaries
       ansible.builtin.include_tasks:
         file: tasks/download_control_binaries.yaml
