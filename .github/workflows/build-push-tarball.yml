@@ -180,7 +180,11 @@ jobs:
       - name: Push tarball to Quay
         run: |
           set -euo pipefail
-          oras push quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }} enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
+          EXPIRE_FLAG=""
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            EXPIRE_FLAG="--annotation quay.expires-after=7d"
+          fi
+          oras push $EXPIRE_FLAG quay.io/edge-infrastructure/enclave:${{ steps.meta.outputs.tag }} enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
           if [[ "${{ github.ref }}" == refs/heads/main ]]; then
             oras push quay.io/edge-infrastructure/enclave:latest enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
           fi
