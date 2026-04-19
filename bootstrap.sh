@@ -131,15 +131,15 @@ logdir=${workingDir}/logs
 log="$logdir/${DSTAMP}"
 
 # Determine deployment mode: env var takes precedence, then config file
-is_connected=false
+is_disconnected=true
 if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "connected" ]; then
-    is_connected=true
+    is_disconnected=false
 elif [ "$(getValue .disconnected 2>/dev/null)" = "false" ]; then
-    is_connected=true
+    is_disconnected=false
 fi
 
 EXTRA_VARS=""
-if [ "$is_connected" = true ]; then
+if [ "$is_disconnected" = false ]; then
     # Use --extra-vars= with JSON to pass boolean false (not string "false")
     # The key=value syntax (-e disconnected=false) passes a string, which
     # Jinja2 evaluates as truthy, breaking template selection.
@@ -212,7 +212,7 @@ step_download_content() {
 
 step_build_cache() {
     echo "Building local cache .. " | tee -a ${log}
-    if [ "$is_connected" = true ]; then
+    if [ "$is_disconnected" = false ]; then
         echo "Connected mode - skipping mirror registry setup" | tee -a ${log}
     else
         ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags mirror-registry 2>&1 | tee -a ${log}
