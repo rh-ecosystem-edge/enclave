@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   # Job 0: Resolve CI image — build SHA-tagged image if Dockerfile.ci changed
@@ -188,6 +189,17 @@ jobs:
           if [[ "${{ github.ref }}" == refs/heads/main ]]; then
             oras push quay.io/edge-infrastructure/enclave:latest enclave.tar.gz:application/vnd.oci.image.layer.v1.tar+gzip
           fi
+
+      - name: Add comment to Pull Request
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ steps.meta.outputs.tag }}
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "Tarball created: \`quay.io/edge-infrastructure/enclave:${COMMIT_SHA}\` (https://github.com/${REPO}/commit/${COMMIT_SHA})"
 
       - name: Clean up
         if: always()
