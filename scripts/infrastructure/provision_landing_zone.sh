@@ -1,8 +1,9 @@
 #!/bin/bash
-# Provision Landing Zone VM with CentOS Stream 10
+# Provision Landing Zone VM (CentOS Stream 10 or RHEL 10)
 #
 # This script provisions the existing Landing Zone VM (created by dev-scripts)
-# with CentOS Stream 10 cloud image and configures it for Enclave Lab deployment.
+# with a configurable cloud image (CentOS Stream 10 by default, or RHEL 10)
+# and configures it for Enclave Lab deployment.
 
 set -euo pipefail
 
@@ -31,8 +32,9 @@ CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
 LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
-CLOUD_IMAGE_URL="https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2"
-CLOUD_IMAGE_NAME="centos-stream-10-cloud.qcow2"
+CLOUD_IMAGE_URL="${LZ_CLOUD_IMAGE_URL:-https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2}"
+CLOUD_IMAGE_NAME="${LZ_CLOUD_IMAGE_NAME:-centos-stream-10-cloud.qcow2}"
+OS_VARIANT="${LZ_OS_VARIANT:-centos-stream10}"
 # Use cluster-specific storage pool for isolation in parallel execution
 # Each cluster gets its own pool in its dedicated working directory
 POOL_NAME="${CLUSTER_NAME}"
@@ -75,13 +77,17 @@ info "Creating working directory: $LZ_WORKING_DIR"
 sudo mkdir -p "$LZ_WORKING_DIR"
 sudo chown $USER:$USER "$LZ_WORKING_DIR"
 
-# Download CentOS Stream 10 cloud image
+# Download cloud image
 if [ ! -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" ]; then
-    info "Downloading CentOS Stream 10 cloud image..."
-    wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
+    info "Downloading cloud image: ${CLOUD_IMAGE_NAME}..."
+    if [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
+        cp "${CLOUD_IMAGE_URL#file://}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
+    else
+        wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
+    fi
     info "✓ Cloud image downloaded"
 else
-    info "Cloud image already exists, skipping download"
+    info "Cloud image already cached: ${CLOUD_IMAGE_NAME}"
 fi
 
 # Create cloud-init configuration
@@ -127,6 +133,17 @@ disable_root: true
 final_message: "Enclave Landing Zone VM is ready. Time: \$UPTIME"
 EOF
 
+# Conditionally add RHSM subscription for RHEL images
+if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
+    info "Adding RHSM subscription to cloud-init configuration..."
+    cat >> "${LZ_WORKING_DIR}/user-data" <<RHSM_EOF
+
+rh_subscription:
+  activation-key: "${LZ_RHSM_ACTIVATION_KEY}"
+  org: "${LZ_RHSM_ORG}"
+RHSM_EOF
+fi
+
 # Note: Skipping network-config - let cloud-init use DHCP from libvirt networks
 # This ensures the VM gets network connectivity quickly
 # Static IPs can be configured later if needed via Task 3
@@ -140,6 +157,9 @@ sudo genisoimage -output "${LZ_WORKING_DIR}/cloud-init.iso" \
     "${LZ_WORKING_DIR}/user-data" \
     "${LZ_WORKING_DIR}/meta-data" 2>&1 | grep -v "Warning: creating filesystem"
 info "✓ cloud-init ISO created"
+
+# Remove cloud-init files that may contain RHSM credentials
+rm -f "${LZ_WORKING_DIR}/user-data" "${LZ_WORKING_DIR}/meta-data"
 
 # Stop and remove existing VM if it exists
 if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
@@ -299,7 +319,7 @@ sudo virt-install \
     --network network=${BMC_NETWORK_NAME} \
     --network network=${CLUSTER_NETWORK_NAME} \
     --boot hd,cdrom \
-    --os-variant centos-stream10 \
+    --os-variant "$OS_VARIANT" \
     --graphics vnc \
     --noautoconsole \
     --import
