@@ -137,6 +137,7 @@ jobs:
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
+      LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
 
     steps:
       - name: Checkout code
@@ -190,10 +191,15 @@ jobs:
           echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
+        env:
+          LZ_CLOUD_IMAGE_URL: ${{ vars.LZ_CLOUD_IMAGE_URL }}
+          LZ_CLOUD_IMAGE_NAME: ${{ vars.LZ_CLOUD_IMAGE_NAME }}
+          LZ_RHSM_ORG: ${{ secrets.LZ_RHSM_ORG }}
+          LZ_RHSM_ACTIVATION_KEY: ${{ secrets.LZ_RHSM_ACTIVATION_KEY }}
         run: |
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          echo "Installing ${LZ_OS_VARIANT:-centos-stream10} on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
@@ -529,6 +535,7 @@ jobs:
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
+      LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
 
     steps:
       - name: Checkout code
@@ -582,10 +589,15 @@ jobs:
           echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
+        env:
+          LZ_CLOUD_IMAGE_URL: ${{ vars.LZ_CLOUD_IMAGE_URL }}
+          LZ_CLOUD_IMAGE_NAME: ${{ vars.LZ_CLOUD_IMAGE_NAME }}
+          LZ_RHSM_ORG: ${{ secrets.LZ_RHSM_ORG }}
+          LZ_RHSM_ACTIVATION_KEY: ${{ secrets.LZ_RHSM_ACTIVATION_KEY }}
         run: |
           echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          echo "Installing ${LZ_OS_VARIANT:-centos-stream10} on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
