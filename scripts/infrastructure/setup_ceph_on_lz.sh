@@ -113,6 +113,25 @@ fi
 
 success "Config files verified on Landing Zone"
 
+# Step 5: Merge Ceph configs into global.yaml so bootstrap steps can use them
+# bootstrap.sh reads global.yaml directly and does not source odf.sh
+info ""
+info "Step 5: Updating global.yaml with Ceph/ODF configuration..."
+GLOBAL_VARS="${LZ_ENCLAVE_DIR}/config/global.yaml"
+
+# Append both configs on the LZ side to avoid shell quoting issues with JSON
+# RGW config for Quay S3 validation, ODF config for operator deployment
+# shellcheck disable=SC2086
+ssh $SSH_OPTS "$LZ_SSH" bash -s -- "${GLOBAL_VARS}" "${CEPH_CONFIG_DIR}" <<'REMOTE_SCRIPT'
+GLOBAL_VARS="$1"
+CEPH_CONFIG_DIR="$2"
+RGW_CONFIG=$(cat "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml")
+ODF_CONFIG=$(cat "${CEPH_CONFIG_DIR}/odf_external_config.json")
+printf '\nquayBackendRGWConfiguration: %s\n' "${RGW_CONFIG}" >> "${GLOBAL_VARS}"
+printf "odfExternalConfig: '%s'\n" "${ODF_CONFIG}" >> "${GLOBAL_VARS}"
+REMOTE_SCRIPT
+success "global.yaml updated with quayBackendRGWConfiguration and odfExternalConfig"
+
 info ""
 info "========================================="
 info "Ceph Setup Complete"
