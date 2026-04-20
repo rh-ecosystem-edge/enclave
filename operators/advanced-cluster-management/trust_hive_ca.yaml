@@ -1,0 +1,49 @@
+---
+- name: Read existing HiveConfig
+  kubernetes.core.k8s_info:
+    api_version: hive.openshift.io/v1
+    kind: HiveConfig
+    name: hive
+  register: r_hiveconfig
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_hiveconfig is success
+    - r_hiveconfig.resources | length > 0
+
+- name: Create Secret with Root CA for Hive spoke cluster connections
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: custom-ca-for-hive
+        namespace: open-cluster-management
+      type: Opaque
+      data:
+        ca.crt: "{{ sslCACertificate | b64encode }}"
+  register: r_hive_ca_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_hive_ca_secret is success
+
+- name: Patch HiveConfig to trust the custom CA for spoke cluster connections
+  kubernetes.core.k8s:
+    state: patched
+    api_version: hive.openshift.io/v1
+    kind: HiveConfig
+    name: hive
+    merge_type: merge
+    definition:
+      spec:
+        additionalCertificateAuthoritiesSecretRef: "{{ merged_ca_refs }}"
+  vars:
+    existing_ca_refs: "{{ r_hiveconfig.resources[0].spec.additionalCertificateAuthoritiesSecretRef | default([]) }}"
+    already_present: "{{ existing_ca_refs | selectattr('name', 'equalto', 'custom-ca-for-hive') | list | length > 0 }}"
+    merged_ca_refs: "{{ existing_ca_refs if already_present else (existing_ca_refs + [{'name': 'custom-ca-for-hive'}]) }}"
+  register: r_patch_hiveconfig_ca
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_patch_hiveconfig_ca is success
