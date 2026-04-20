@@ -34,6 +34,7 @@ ensure_working_dir
 LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
 CLOUD_IMAGE_URL="${LZ_CLOUD_IMAGE_URL:-https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2}"
 CLOUD_IMAGE_NAME="${LZ_CLOUD_IMAGE_NAME:-centos-stream-10-cloud.qcow2}"
+CLOUD_IMAGE_CACHE_DIR="${LZ_CLOUD_IMAGE_CACHE_DIR:-/opt/images}"
 OS_VARIANT="${LZ_OS_VARIANT:-centos-stream10}"
 # Use cluster-specific storage pool for isolation in parallel execution
 # Each cluster gets its own pool in its dedicated working directory
@@ -77,18 +78,19 @@ info "Creating working directory: $LZ_WORKING_DIR"
 sudo mkdir -p "$LZ_WORKING_DIR"
 sudo chown $USER:$USER "$LZ_WORKING_DIR"
 
-# Download cloud image
-if [ ! -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" ]; then
-    info "Downloading cloud image: ${CLOUD_IMAGE_NAME}..."
-    if [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
-        cp "${CLOUD_IMAGE_URL#file://}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
-    else
-        wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
-    fi
-    info "✓ Cloud image downloaded"
+# Copy cloud image from cache or download
+# Each job gets its own copy to avoid I/O conflicts during parallel execution
+if [ -f "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" ]; then
+    info "Copying cloud image from cache: ${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}"
+    cp "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
+elif [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
+    info "Copying cloud image from ${CLOUD_IMAGE_URL}..."
+    cp "${CLOUD_IMAGE_URL#file://}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
 else
-    info "Cloud image already cached: ${CLOUD_IMAGE_NAME}"
+    info "Downloading cloud image: ${CLOUD_IMAGE_NAME}..."
+    wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
 fi
+info "✓ Cloud image ready"
 
 # Create cloud-init configuration
 info "Creating cloud-init configuration..."
@@ -302,6 +304,9 @@ fi
 # 1000GB: extra headroom for full release mirror and OLM catalogs in disconnected env
 info "Resizing disk to ${LZ_DISK_SIZE}..."
 sudo qemu-img resize "${POOL_PATH}/${LZ_VM_NAME}.qcow2" "$LZ_DISK_SIZE"
+
+# Remove working copy of cloud image to free disk space
+rm -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
 
 # Refresh pool so libvirt sees the new volume
 info "Refreshing libvirt pool..."
