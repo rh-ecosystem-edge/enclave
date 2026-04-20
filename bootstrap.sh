@@ -13,6 +13,7 @@ usage() {
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Available steps:"
+    echo "  runtime-host-check  Check that Runtime Host is RHEL 10"
     echo "  setup               Configure environment (setup_env + setup_ansible)"
     echo "  validate            Validate configuration (schema + validations)"
     echo "  download-content    Download control binaries and dependency content (Phase 1)"
@@ -62,7 +63,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate --step value if provided
-valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+valid_steps="runtime-host-check setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
 if [ -n "$run_step" ]; then
     step_valid=false
     for s in $valid_steps; do
@@ -180,15 +181,17 @@ step_done
 
 # --- Step functions ---
 
-step_setup() {
+step_runtime_host_check() {
     echo 'Runtime Host:' | tee -a ${log}
     cat /etc/redhat-release | tee -a ${log}
     echo ' - '
-    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:(redhat:enterprise_linux|centos:centos):10(\.?.*)?\" ]]; then
-        echo "RHEL 10 / CentOS Stream 10 Check Failed"
+    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:redhat:enterprise_linux:10(\.?.*)?\" ]]; then
+        echo "RHEL 10 Check Failed"
         exit 1
     fi
+}
 
+step_setup() {
     echo "Configuring environment .. "  | tee -a ${log}
     sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
     bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
@@ -293,6 +296,7 @@ if [ -n "${run_step}" ]; then
     "$func_name"
 else
     # Full run mode: execute all steps sequentially
+    step_runtime_host_check
     step_setup
     step_validate
     step_download_content
