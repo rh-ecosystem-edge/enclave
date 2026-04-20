@@ -94,6 +94,10 @@ storage_plugin: lvms
 # Disconnected mode (default: true, set to false for connected deployments)
 # disconnected: false
 
+# Supported Runtime Hosts (default: ["redhat:enterprise_linux:10"])
+# supportedRuntimeHosts:
+#   - redhat:enterprise_linux:10
+
 # Configure High Density Pod Limits for ABI (default: 500)
 # masterMaxPods: 250
 

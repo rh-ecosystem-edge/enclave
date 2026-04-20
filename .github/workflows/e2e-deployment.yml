@@ -132,6 +132,7 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
+      ENCLAVE_SUPPORTED_RUNTIME_HOSTS: '["centos:centos:10"]'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
@@ -524,6 +525,7 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: disconnected
+      ENCLAVE_SUPPORTED_RUNTIME_HOSTS: '["centos:centos:10"]'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
       ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}

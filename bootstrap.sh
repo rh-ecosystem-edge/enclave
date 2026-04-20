@@ -138,6 +138,18 @@ elif [ "$(getValue .disconnected 2>/dev/null)" = "false" ]; then
     is_disconnected=false
 fi
 
+# Determine supported runtime hosts: env var takes precedence, then config file
+supported_runtime_hosts=$(getValue .supportedRuntimeHosts | jq -r '
+    if . == null or . == [] then 
+        "redhat:enterprise_linux:10" 
+    else 
+        join("|") 
+    end')
+if [ -n "$ENCLAVE_SUPPORTED_RUNTIME_HOSTS" ]; then
+    supported_runtime_hosts=$(echo $ENCLAVE_SUPPORTED_RUNTIME_HOSTS | jq -r 'join("|")')
+fi
+
+
 EXTRA_VARS=""
 if [ "$is_disconnected" = false ]; then
     # Use --extra-vars= with JSON to pass boolean false (not string "false")
@@ -184,7 +196,7 @@ step_setup() {
     echo 'Runtime Host:' | tee -a ${log}
     cat /etc/redhat-release | tee -a ${log}
     echo ' - '
-    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:(redhat:enterprise_linux|centos:centos):10(\.?.*)?\" ]]; then
+    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:($supported_runtime_hosts)(\.?.*)?\" ]]; then
         echo "RHEL 10 / CentOS Stream 10 Check Failed"
         exit 1
     fi

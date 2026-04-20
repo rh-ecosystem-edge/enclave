@@ -21,6 +21,11 @@ definitions:
     description: >-
       Whether the deployment is disconnected (air-gapped). Default: true.
       Set to false for connected deployments.
+  supportedRuntimeHosts:
+    type: array
+    description: "Supported Runtime Hosts (default: ['redhat:enterprise_linux:10'])"
+    items:
+      type: string
   masterMaxPods:
     type: integer
     minimum: 1

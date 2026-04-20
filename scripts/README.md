@@ -242,6 +242,7 @@ Common environment variables used across scripts:
 | `WORKING_DIR` | Cluster working directory |
 | `BASE_WORKING_DIR` | Base directory for all clusters |
 | `ENCLAVE_DEPLOYMENT_MODE` | Deployment mode: `connected` or `disconnected` |
+| `ENCLAVE_SUPPORTED_RUNTIME_HOSTS` | Supported Runtime Hosts |
 | `ENCLAVE_SUBNET_ID` | Allocated subnet ID (for parallel CI) |
 | `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`) |
 | `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`) |

@@ -1206,6 +1206,8 @@ lzBmcIP: 100.64.1.10
 
 # OpenShift Deployment Configuration (optional — uncomment only to override defaults)
 # disconnected: false  # Default: true (set to false for connected deployments)
+# supportedRuntimeHosts:
+#   - redhat:enterprise_linux:10
 # masterMaxPods: 250 # Default: 500
 # diskEncryption: true  # Default: false (set to true to enable TPM v2 encryption)
 # ocMirrorLogLevel: debug  # Default: info

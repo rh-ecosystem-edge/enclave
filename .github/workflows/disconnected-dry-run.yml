@@ -50,6 +50,7 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: disconnected
+      ENCLAVE_SUPPORTED_RUNTIME_HOSTS: '["centos:centos:10"]'
       ENCLAVE_MIRROR_DRY_RUN: "true"
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
