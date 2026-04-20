@@ -1,0 +1,436 @@
+name: E2E Deployment - RC
+
+# Nightly E2E disconnected deployment test for the 0-rc branch.
+#
+# GitHub scheduled workflows only run on the default branch, so this workflow
+# lives on main and explicitly checks out the 0-rc branch.
+
+on:
+  schedule:
+    # Run daily at 10:00 PM EST (03:00 UTC)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      storage-plugin:
+        description: 'Storage plugin to deploy (lvms or odf)'
+        required: true
+        default: 'lvms'
+        type: choice
+        options:
+          - lvms
+          - odf
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Disconnected mode E2E deployment against 0-rc branch
+  # ---------------------------------------------------------------------------
+  e2e-disconnected-rc:
+    name: E2E RC Disconnected
+    runs-on: [self-hosted, enclave-large]
+    timeout-minutes: 600
+
+    concurrency:
+      group: enclave-ci-rc-disconnected-${{ github.run_id }}
+      cancel-in-progress: false
+
+    env:
+      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
+      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
+      PULL_SECRET: ${{ secrets.PULL_SECRET }}
+      ENCLAVE_DEPLOYMENT_MODE: disconnected
+      CLEANUP_AFTER: 'true'
+      STORAGE_PLUGIN: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      ENABLED_PLUGINS: ${{ github.event.inputs.storage-plugin || 'lvms' }}
+      OPENSHIFT_CI: "true"
+      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
+
+    steps:
+      - name: Checkout 0-rc branch
+        uses: actions/checkout@v4
+        with:
+          ref: 0-rc
+
+      - name: Generate unique cluster name
+        uses: ./.github/actions/setup-cluster-name
+        with:
+          naming-strategy: hash
+          prefix: ${{ github.event_name == 'schedule' && 'rd' || 'rcd' }}
+          run-id: ${{ github.run_id }}
+
+      - name: Setup cluster-specific working directory
+        run: |
+          make -f Makefile.ci setup-working-dir
+          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Workflow information
+        run: |
+          echo "## E2E Deployment - RC Disconnected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch**: 0-rc" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+      - name: Pre-flight checks
+        uses: ./.github/actions/preflight-checks
+        with:
+          title: E2E Deployment - RC Disconnected Mode
+          check-pull-secret: 'true'
+          check-system-resources: 'true'
+          check-libvirt: 'true'
+
+      - name: Allocate unique subnet for cluster
+        uses: ./.github/actions/allocate-subnet
+
+      - name: Create infrastructure
+        env:
+          WORKING_DIR: ${{ env.WORKING_DIR }}
+        run: |
+          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
+          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
+
+          make -f Makefile.ci environment
+          echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
+
+      - name: Provision Landing Zone
+        run: |
+          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing CentOS Stream and configuring Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci provision-landing-zone
+          echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Install Enclave Lab
+        run: |
+          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci install-enclave
+          echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Setup environment
+        id: bootstrap_setup
+        run: |
+          echo "## Bootstrap: Setup" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-setup
+          echo "Setup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Validate configuration
+        id: bootstrap_validate
+        run: |
+          echo "## Bootstrap: Validate" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-validate
+          echo "Validation complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Download content
+        id: bootstrap_download_content
+        run: |
+          echo "## Bootstrap: Download Content" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-prepare
+          echo "Download complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Build local cache
+        id: bootstrap_build_cache
+        run: |
+          echo "## Bootstrap: Build Cache" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-mirror
+          echo "Cache build complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Acquire hardware
+        id: bootstrap_acquire_hardware
+        run: |
+          echo "## Bootstrap: Acquire Hardware" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-acquire-hardware
+          echo "Hardware acquired" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Deploy cluster
+        id: bootstrap_deploy
+        run: |
+          echo "## Bootstrap: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-install
+          echo "Cluster deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Post-install
+        id: bootstrap_post_install
+        run: |
+          echo "## Bootstrap: Post-Install" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-post-install
+          echo "Post-install complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Trust custom CA certificate
+        id: trust_custom_ca
+        run: |
+          echo "## Trust Custom CA" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci trust-custom-ca
+          echo "Custom CA trusted" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Operators
+        id: bootstrap_operators
+        run: |
+          echo "## Bootstrap: Operators" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-operators
+          echo "Operators installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Day-2
+        id: bootstrap_day2
+        run: |
+          echo "## Bootstrap: Day-2" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-day2
+          echo "Day-2 complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Bootstrap - Discovery
+        id: bootstrap_discovery
+        run: |
+          echo "## Bootstrap: Discovery" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-discovery
+          echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify cluster deployment
+        if: success()
+        id: verify_cluster
+        run: |
+          make -f Makefile.ci verify-cluster
+
+          # Additional verification for disconnected mode - check mirror registry
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
+          ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+
+      - name: Collect artifacts
+        if: always()
+        uses: ./.github/actions/collect-artifacts
+        with:
+          artifact-type: deployment
+          output-directory: artifacts
+
+      - name: Collect full diagnostics on failure
+        if: failure()
+        run: |
+          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
+            echo "Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          if [ -n "$LZ_IP" ]; then
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/scripts/diagnostics/gather.sh" 2>/dev/null; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
+
+              mkdir -p artifacts/must-gather
+              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
+                "cd /home/cloud-user/enclave/scripts/diagnostics && \
+                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
+              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
+
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
+
+              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
+                echo "Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        id: upload_artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-rc-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Get artifact download URL
+        if: always()
+        id: artifact_url
+        run: |
+          ARTIFACT_ID=""
+          for attempt in 1 2 3 4 5; do
+            sleep $((attempt * 2))
+            ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+              --jq '[.artifacts[] | select(.name == "e2e-rc-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}")] | sort_by(.created_at) | last // empty | .id')
+            if [ -n "$ARTIFACT_ID" ]; then
+              break
+            fi
+          done
+
+          if [ -n "$ARTIFACT_ID" ]; then
+            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
+            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
+          else
+            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Cleanup infrastructure
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
+        run: |
+          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+          mkdir -p cleanup-logs
+
+          set +e
+          make -f Makefile.ci clean 2>&1 | tee cleanup-logs/cleanup.log
+          CLEANUP_EXIT_CODE=$?
+          set -e
+
+          if grep -q "WARNING:" cleanup-logs/cleanup.log; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep "WARNING:" cleanup-logs/cleanup.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          elif [ $CLEANUP_EXIT_CODE -eq 0 ]; then
+            echo "Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
+            echo "Check cleanup-logs/cleanup.log for details" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup skipped notice
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        run: |
+          echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "make clean" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+
+      - name: Collect post-cleanup state
+        if: always()
+        run: |
+          mkdir -p cleanup-state/libvirt cleanup-state/system
+
+          sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
+          sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
+          sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
+          df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
+
+      - name: Upload post-cleanup artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-cleanup-rc-disconnected-${{ github.run_id }}
+          path: |
+            cleanup-logs/
+            cleanup-state/
+          retention-days: 7
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: Disconnected (Air-gapped)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: 0-rc" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: $(git rev-parse HEAD)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Determine failed step
+        if: failure()
+        id: failed_step
+        env:
+          STEPS_JSON: ${{ toJSON(steps) }}
+        run: |
+          declare -A step_names=(
+            ["bootstrap_setup"]="Bootstrap: Setup environment"
+            ["bootstrap_validate"]="Bootstrap: Validate configuration"
+            ["bootstrap_download_content"]="Bootstrap: Download content"
+            ["bootstrap_build_cache"]="Bootstrap: Build local cache"
+            ["bootstrap_acquire_hardware"]="Bootstrap: Acquire hardware"
+            ["bootstrap_deploy"]="Bootstrap: Deploy cluster"
+            ["bootstrap_post_install"]="Bootstrap: Post-install"
+            ["trust_custom_ca"]="Trust custom CA certificate"
+            ["bootstrap_operators"]="Bootstrap: Operators"
+            ["bootstrap_day2"]="Bootstrap: Day-2"
+            ["bootstrap_discovery"]="Bootstrap: Discovery"
+            ["verify_cluster"]="Verify cluster deployment"
+          )
+
+          step_order=(
+            bootstrap_setup
+            bootstrap_validate
+            bootstrap_download_content
+            bootstrap_build_cache
+            bootstrap_acquire_hardware
+            bootstrap_deploy
+            bootstrap_post_install
+            trust_custom_ca
+            bootstrap_operators
+            bootstrap_day2
+            bootstrap_discovery
+            verify_cluster
+          )
+
+          FAILED_STEP=""
+          for step_id in "${step_order[@]}"; do
+            outcome=$(printf '%s' "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
+            if [ "$outcome" == "failure" ]; then
+              FAILED_STEP="${step_names[$step_id]}"
+              break
+            fi
+          done
+
+          if [ -n "$FAILED_STEP" ]; then
+            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify Slack
+        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ job.status }}
+          workflow-name: E2E Deployment - RC Disconnected
+          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: 0-rc
+          commit-sha: ${{ github.sha }}
+          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
+          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
