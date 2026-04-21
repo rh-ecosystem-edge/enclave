@@ -20,6 +20,19 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - name: Trigger Workflow
+      - name: Trigger E2E (LVMS)
         run: |
           gh workflow run e2e-deployment.yml --ref 0-rc -f send-slack-notification=true
+
+  trigger-odf-workflow:
+    runs-on: [self-hosted, pr-validation]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Trigger E2E (ODF)
+        run: |
+          gh workflow run e2e-deployment.yml --ref 0-rc \
+            -f run-connected=false \
+            -f run-disconnected=true \
+            -f storage-plugin=odf \
+            -f send-slack-notification=true
