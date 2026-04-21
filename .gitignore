@@ -1,11 +1,15 @@
 *.tar
 config/*.yaml
+config/*.json
 !config/*.example.yaml
 !config/*.validation.yaml
 debug.yaml
 .claude
 CLAUDE.md
+AGENTS.md
 tmp/
+bin/
+ocp-cluster/
 
 # IDE folders
 .vscode/
