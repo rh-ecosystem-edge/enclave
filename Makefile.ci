@@ -27,7 +27,6 @@ include Makefile
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph verify-ceph \
-        trust-custom-ca \
         verify clean verify-cluster verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
@@ -201,13 +200,6 @@ deploy-cluster-post-install:
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh post-install
-
-trust-custom-ca:
-	@echo "=========================================="
-	@echo "Add custom CA to cluster trust bundle"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/trust_custom_ca.sh
 
 deploy-cluster-operators:
 	@echo "=========================================="

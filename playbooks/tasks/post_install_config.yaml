@@ -38,6 +38,12 @@
     - sslAPICertificateFullChain is defined
     - sslAPICertificateFullChain | length > 0
 
+- name: Trust custom Root CA certificate
+  ansible.builtin.include_tasks: trust_custom_ca.yaml
+  when:
+    - sslCACertificate is defined
+    - sslCACertificate | length > 0
+
 - name: Wait for kube-apiserver ClusterOperator to finish progressing and be healthy
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
