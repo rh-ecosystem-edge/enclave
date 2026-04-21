@@ -45,6 +45,46 @@
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin.mirror | default('none') }})"
   tags: always
 
+- name: Initialize effective mirror mode
+  ansible.builtin.set_fact:
+    _effective_mirror: "{{ plugin.mirror | default('none') }}"
+  tags: always
+
+- name: Check if core plugin CatalogSource exists
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ plugin.operators[0].source }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_check
+  when:
+    - _effective_mirror == 'core'
+    - disconnected | default(true) | bool
+    - plugin.operators is defined and plugin.operators | length > 0
+  tags: always
+
+- name: Fall back to plugin mirror mode
+  ansible.builtin.set_fact:
+    _effective_mirror: "plugin"
+  when:
+    - _effective_mirror == 'core'
+    - disconnected | default(true) | bool
+    - r_catalog_check is defined
+    - r_catalog_check.resources | default([]) | length == 0
+  tags: always
+
+- name: Report mirror mode fallback
+  ansible.builtin.debug:
+    msg: >-
+      Plugin '{{ plugin.name }}': CatalogSource '{{ plugin.operators[0].source }}'
+      not found. Falling back to standalone mirroring.
+  when:
+    - _effective_mirror == 'plugin'
+    - plugin.mirror | default('none') == 'core'
+  tags: always
+
 # Dynamically set each key in plugin.defaults as an Ansible fact.
 # The dict2items loop is required because set_fact needs explicit key: value
 # pairs — the free-form `set_fact: "{{ dict }}"` renders to a string and
@@ -119,7 +159,7 @@
     src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
     dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.yaml"
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - plugin.operators is defined
   tags: mirror
@@ -143,7 +183,7 @@
   register: r_plugin_mirror
   until: r_plugin_mirror is success
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
   tags: mirror
 
@@ -155,7 +195,7 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
@@ -179,11 +219,44 @@
     | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
     | list | length >= (r_catalog_sources.resources | length)
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
+  tags: mirror
+
+- name: Find CatalogSource from plugin mirror output
+  ansible.builtin.find:
+    paths: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources"
+    patterns: "cs-*.yaml"
+  register: r_plugin_cs_files
+  when:
+    - _effective_mirror == 'plugin'
+    - plugin.mirror | default('none') == 'core'
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+  tags: mirror
+
+- name: Read CatalogSource manifest
+  ansible.builtin.slurp:
+    src: "{{ r_plugin_cs_files.files[0].path }}"
+  register: r_plugin_cs_content
+  when:
+    - r_plugin_cs_files is defined
+    - r_plugin_cs_files is not skipped
+    - r_plugin_cs_files.files | default([]) | length > 0
+  tags: mirror
+
+- name: Override operator source to match new CatalogSource
+  ansible.builtin.set_fact:
+    plugin: >-
+      {{ plugin | combine({
+           'operators': plugin.operators | map('combine', {'source': (r_plugin_cs_content.content | b64decode | from_yaml).metadata.name}) | list
+         }, recursive=true) }}
+  when:
+    - r_plugin_cs_content is defined
+    - r_plugin_cs_content is not skipped
   tags: mirror
 
 # --- Mirror addon plugin images to Quay Enterprise ---
@@ -197,7 +270,7 @@
     dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.internal.yaml"
     remote_src: true
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -209,7 +282,7 @@
     regexp: 'catalog: {{ certified_operator_catalog if (plugin.catalog | default("")) == "certified" else rh_operator_catalog }}'
     replace: 'catalog: {{ quayHostname }}:8443/redhat/{{ (mirror_certified_rh_operator_catalog if (plugin.catalog | default("")) == "certified" else mirror_rh_operator_catalog) ~ "-" ~ plugin.name }}'
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -220,7 +293,7 @@
     path: "{{ lookup('env','HOME') }}/.config/containers/"
     state: directory
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -233,7 +306,7 @@
   vars:
     _core_plugin_registries: "{{ plugin.registries | default([]) }}"
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -260,7 +333,7 @@
   register: r_plugin_mirror_quay
   until: r_plugin_mirror_quay is success
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -271,7 +344,7 @@
     path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
     state: absent
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - disconnected | default(true) | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -285,7 +358,7 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - _effective_mirror == 'plugin'
     - plugin.installOperators | default(true)
     - disconnected | default(true) | bool
     - r_plugin_mirror_quay is defined
@@ -303,7 +376,7 @@
     plugin_registries_entries: "{{ plugin.registries }}"
   when:
     - plugin.registries is defined
-    - plugin.mirror | default('none') in ['core', 'plugin']
+    - _effective_mirror in ['core', 'plugin']
     - disconnected | default(true) | bool
   tags: mirror
 
