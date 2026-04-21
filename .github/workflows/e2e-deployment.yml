@@ -646,13 +646,6 @@ jobs:
           make -f Makefile.ci deploy-cluster-post-install
           echo "Post-install complete" >> $GITHUB_STEP_SUMMARY
 
-      - name: Trust custom CA certificate
-        id: trust_custom_ca
-        run: |
-          echo "## Trust Custom CA" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci trust-custom-ca
-          echo "Custom CA trusted" >> $GITHUB_STEP_SUMMARY
-
       - name: Bootstrap - Operators
         id: bootstrap_operators
         run: |
