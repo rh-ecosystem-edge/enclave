@@ -22,4 +22,4 @@ jobs:
     steps:
       - name: Trigger Workflow
         run: |
-          gh workflow run e2e-deployment.yml --ref 0-rc
+          gh workflow run e2e-deployment.yml --ref 0-rc -f send-slack-notification=true
