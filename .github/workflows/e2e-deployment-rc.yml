@@ -1,9 +1,9 @@
 name: E2E Deployment - RC
 
-# Nightly E2E disconnected deployment trigger for the 0-rc branch.
+# Nightly E2E deployment trigger for the 0-rc branch.
 #
 # GitHub scheduled workflows only run on the default branch, so this workflow
-# lives on main and explicitly trigger the workflow for the 0-rc branch.
+# lives on main and explicitly triggers the workflow for the 0-rc branch.
 
 on:
   schedule:
