@@ -148,24 +148,6 @@
 
           [[registry]]
             prefix = ""
-            location = "registry.redhat.io/lvms4"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/lvms4"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/odf4"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/odf4"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhceph"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhceph"
-
-          [[registry]]
-            prefix = ""
             location = "registry.redhat.io/cert-manager"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/cert-manager"
@@ -190,75 +172,9 @@
 
           [[registry]]
             prefix = ""
-            location = "nvcr.io/nvidia"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/nvidia"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.connect.redhat.com/nvidia"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/nvidia"
-
-          [[registry]]
-            prefix = ""
             location = "registry.connect.redhat.com/hashicorp"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/hashicorp"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhcl-1"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhcl-1"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/leader-worker-set"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/leader-worker-set"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/openshift-service-mesh"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift-service-mesh"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/openshift-service-mesh-tech-preview"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift-service-mesh-tech-preview"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/openshift-service-mesh-dev-preview-beta"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift-service-mesh-dev-preview-beta"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhoai"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhoai"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhelai1"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhelai1"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhaiis"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhaiis"
-
-          [[registry]]
-            prefix = ""
-            location = "registry.redhat.io/rhods"
-          [[registry.mirror]]
-            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhods"
 
           [[registry]]
             prefix = ""
