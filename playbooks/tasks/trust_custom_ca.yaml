@@ -57,7 +57,7 @@
         ca-bundle.crt: "{{ prior_ca ~ ('\n' if prior_ca | length > 0 and prior_ca[-1:] != '\n' else '') ~ sslCACertificate }}"
   vars:
     prior_ca: >-
-      {{ r_existing_trusted_ca.resources[0].data['ca-bundle.crt']
+      {{ r_existing_trusted_ca.resources[0].data['ca-bundle.crt'] | default('')
          if (not (r_existing_trusted_ca.skipped | default(false)) and
              r_existing_trusted_ca.resources | default([]) | length > 0)
          else '' }}
