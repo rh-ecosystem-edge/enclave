@@ -24,6 +24,9 @@
   vars:
     existing_trusted_ca_name: "{{ (r_current_proxy.resources[0].spec.trustedCA | default({})).name | default('') }}"
   register: r_existing_trusted_ca
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_existing_trusted_ca is success
   when: existing_trusted_ca_name | length > 0
 
 - name: Determine if Root CA is already trusted
