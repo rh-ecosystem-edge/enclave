@@ -1,0 +1,87 @@
+---
+- name: Read current Proxy/cluster configuration
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: Proxy
+    name: cluster
+  register: r_current_proxy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - r_current_proxy is success
+    - r_current_proxy.resources | length > 0
+
+- name: Read existing trusted CA ConfigMap when configured
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    namespace: openshift-config
+    name: "{{ existing_trusted_ca_name }}"
+  vars:
+    existing_trusted_ca_name: "{{ (r_current_proxy.resources[0].spec.trustedCA | default({})).name | default('') }}"
+  register: r_existing_trusted_ca
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_existing_trusted_ca is success
+  when: existing_trusted_ca_name | length > 0
+
+- name: Determine if Root CA is already trusted
+  ansible.builtin.set_fact:
+    ca_already_trusted: >-
+      {{ ca_probe | length > 0 and
+         not (r_existing_trusted_ca.skipped | default(false)) and
+         r_existing_trusted_ca.resources | default([]) | length > 0 and
+         ca_probe in (r_existing_trusted_ca.resources[0].data['ca-bundle.crt'] | default('')) }}
+  vars:
+    ca_probe: >-
+      {{ sslCACertificate.split('\n')
+         | select('match', '^[A-Za-z0-9+/=]{10,}')
+         | first | default('') }}
+
+- name: Create custom-ca-bundle ConfigMap with Root CA
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: custom-ca-bundle
+        namespace: openshift-config
+      data:
+        ca-bundle.crt: "{{ prior_ca ~ ('\n' if prior_ca | length > 0 and prior_ca[-1:] != '\n' else '') ~ sslCACertificate }}"
+  vars:
+    prior_ca: >-
+      {{ r_existing_trusted_ca.resources[0].data['ca-bundle.crt'] | default('')
+         if (not (r_existing_trusted_ca.skipped | default(false)) and
+             r_existing_trusted_ca.resources | default([]) | length > 0)
+         else '' }}
+  register: r_custom_ca_configmap
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_custom_ca_configmap is success
+  when: not ca_already_trusted
+
+- name: Patch Proxy/cluster to trust the custom CA bundle
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: patched
+    api_version: config.openshift.io/v1
+    kind: Proxy
+    name: cluster
+    merge_type: merge
+    definition:
+      spec:
+        trustedCA:
+          name: custom-ca-bundle
+  register: r_patch_proxy_trusted_ca
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_patch_proxy_trusted_ca is success
+  when: not ca_already_trusted
