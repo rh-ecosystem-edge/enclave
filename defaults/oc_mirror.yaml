@@ -1,0 +1,12 @@
+---
+# Retry and parallelism settings for oc-mirror tasks.
+# These are internal defaults and are not meant to be overridden by the user.
+ocMirrorParallelImages: 10
+ocMirrorParallelLayers: 10
+ocMirrorRetryTimes: 10
+ocMirrorRetryDelay: 10s
+ocMirrorImageTimeout: 40m0s
+ocMirrorAnsibleRetries: 10
+ocMirrorAnsibleDelay: 10
+ocMirrorCacheAnsibleRetries: 5
+ocMirrorParallelLayersLocalStorage: 1

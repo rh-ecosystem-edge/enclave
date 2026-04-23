@@ -69,26 +69,26 @@ done
 step_done
 
 echo "Validating Config .. " | tee -a ${log}
-    ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars --tags schema-validation
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
 step_done
 
 echo "Building local cache .. " | tee -a ${log}
-    ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/02-mirror.yaml -e@$global_vars -e@$certs_vars --tags mirror-registry
 step_done
 
 echo "Quay disconnected .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags quay-disconnected 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags quay-disconnected
 step_done
 
 echo "Clair disconnected .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags clair-disconnected 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags clair-disconnected
 step_done
 
 echo "ACM ClusterImageSets .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-cis 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags acm-cis
 step_done
 
 echo "OpenShift Pipelines .." | tee -a ${log}
-    ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags openshift-pipelines 2>&1 | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e@$global_vars -e@$certs_vars --tags openshift-pipelines
 step_done
