@@ -1,0 +1,79 @@
+name: Egress Capture
+
+# Runs the full e2e deployment for both connected and disconnected modes with
+# OpenSnitch enabled, analyzes captured traffic, and either opens a PR to update
+# docs/EGRESS_ALLOWLIST.yaml (daily schedule) or posts a diff (dry-run / slash command).
+
+on:
+  schedule:
+    # Run daily at 1:00 AM EST (06:00 UTC), after the nightly e2e (03:00 UTC)
+    - cron: '0 6 * * *'
+  # TEMPORARY — delete before merging (use workflow_dispatch / slash commands instead)
+  pull_request:
+    paths:
+      - '.github/TRIGGER_CAPTURE_E2E'
+  workflow_dispatch:
+    inputs:
+      run-connected:
+        type: boolean
+        default: true
+        description: 'Capture egress for connected mode'
+      run-disconnected:
+        type: boolean
+        default: true
+        description: 'Capture egress for disconnected mode'
+      dry-run:
+        type: boolean
+        default: true
+        description: 'Show diff only; do not create a PR'
+      pr-number:
+        type: string
+        default: ''
+        description: 'PR number to comment on (set by slash command)'
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  run-e2e:
+    # TEMPORARY — remove '|| github.event_name == 'pull_request'' before merging
+    if: github.event_name == 'schedule' || github.event_name == 'pull_request' || true
+    uses: ./.github/workflows/e2e-deployment.yml
+    with:
+      run-connected: ${{ inputs.run-connected == false && false || true }}
+      run-disconnected: ${{ inputs.run-disconnected == false && false || true }}
+      storage-plugin: lvms
+      skip-cleanup: false
+      capture-egress: true
+    secrets: inherit
+
+  update-allowlist:
+    name: Update egress allow list
+    needs: [run-e2e]
+    if: >-
+      !cancelled() && needs.run-e2e.result == 'success'
+    runs-on: [self-hosted, pr-validation]
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download egress logs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: egress-logs-*
+          path: egress-logs/
+          merge-multiple: false
+        continue-on-error: true
+
+      - name: Analyze and update allow list
+        env:
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || (inputs.dry-run || 'true') }}
+          # TEMPORARY — remove 'github.event.pull_request.number ||' before merging
+          PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number || '' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/egress/update_allowlist.sh

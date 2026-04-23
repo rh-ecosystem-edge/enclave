@@ -103,6 +103,8 @@ jobs:
           | `/test e2e-disconnected` | Dispatch E2E (disconnected only) | enclave-large |
           | `/test e2e-disconnected-odf` | Dispatch E2E disconnected with ODF storage | enclave-large |
           | `/test cleanup` | Run cleanup workflow | enclave-small |
+          | `/test capture-egress` | Capture egress traffic and diff allow list (dry-run) | enclave-large |
+          | `/test capture-infra` | Smoke test egress capture pipeline via infra-verify (~30 min) | enclave-small |
           | `/test all` | Run validation + tarball + infra + e2e (both modes) | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
           | `/retest` | Re-run all failed checks on this PR | — |
@@ -226,6 +228,19 @@ jobs:
             cleanup)
               dispatch_workflow cleanup.yml; track_result "Cleanup" $?
               ;;
+            capture-egress)
+              dispatch_workflow egress-capture.yml \
+                -f run-connected=true \
+                -f run-disconnected=true \
+                -f dry-run=true \
+                -f pr-number="${PR_NUMBER}"
+              track_result "Egress Capture" $?
+              ;;
+            capture-infra)
+              dispatch_workflow infra-verify.yml \
+                -f capture-egress=true
+              track_result "Egress Capture (infra smoke test)" $?
+              ;;
             all)
               rerun_pr_workflow pr-validation.yml; track_result "PR Validation" $?
               rerun_pr_workflow build-push-tarball.yml; track_result "Build Tarball" $?
@@ -334,6 +349,8 @@ jobs:
               e2e-disconnected)     echo "e2e-deployment.yml" ;;
               e2e-disconnected-odf) echo "e2e-deployment.yml" ;;
               cleanup)              echo "cleanup.yml" ;;
+              capture-egress)       echo "egress-capture.yml" ;;
+              capture-infra)        echo "infra-verify.yml" ;;
               *) return 1 ;;
             esac
           }

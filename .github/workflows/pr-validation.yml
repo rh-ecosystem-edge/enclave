@@ -405,3 +405,51 @@ jobs:
           name: plugins-log
           path: plugins.log
           retention-days: 7
+
+  # Job 9: Egress analyzer validation
+  egress-analyzer:
+    name: Egress Analyzer Validation
+    needs: resolve-image
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run egress analyzer validation
+        run: |
+          set -o pipefail
+          echo "## Egress Analyzer Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make -f Makefile.ci validate-egress-analyzer 2>&1 | tee egress-analyzer.log; then
+            echo "### ✅ Egress analyzer validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 egress-analyzer.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Egress analyzer validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the egress analyzer issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 egress-analyzer.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload egress analyzer log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: egress-analyzer-log
+          path: egress-analyzer.log
+          retention-days: 7
