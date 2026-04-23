@@ -2,6 +2,7 @@
 # Common tasks for Metal3 deployment - shared authentication secrets
 
 - name: Check if metal3-ironic-username secret exists
+  become: "{{ metal3_persistent | default(false) | bool }}"
   ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
   register: r_username_secret_check
   failed_when: false
@@ -9,6 +10,7 @@
   no_log: true
 
 - name: Check if metal3-ironic-password secret exists
+  become: "{{ metal3_persistent | default(false) | bool }}"
   ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
   register: r_password_secret_check
   failed_when: false
@@ -40,6 +42,7 @@
   no_log: true
 
 - name: Create podman secret for ironic username
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_secret:
     name: metal3-ironic-username
     data: "{{ metal3_ironic_username }}"
@@ -48,6 +51,7 @@
   no_log: true
 
 - name: Create podman secret for ironic password
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_secret:
     name: metal3-ironic-password
     data: "{{ metal3_ironic_password }}"

@@ -1,0 +1,39 @@
+---
+# BMO persistent deployment via quadlet unit
+
+- name: Deploy metal3-bmo container quadlet
+  become: true
+  ansible.builtin.template:
+    src: "{{ playbook_dir }}/templates/quadlets/metal3-bmo.container.j2"
+    dest: /etc/containers/systemd/metal3-bmo.container
+    mode: '0644'
+  register: r_bmo_quadlet
+
+- name: Reload systemd daemon
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start metal3-bmo service
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-bmo.service
+    state: started
+    enabled: true
+
+- name: Restart metal3-bmo service if quadlet changed
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-bmo.service
+    state: restarted
+  when: r_bmo_quadlet is changed
+
+- name: Wait for metal3-bmo service to be active
+  become: true
+  ansible.builtin.systemd:
+    name: metal3-bmo.service
+  register: r_bmo_svc
+  retries: 60
+  delay: 5
+  until: r_bmo_svc.status.ActiveState == 'active'
+  changed_when: false

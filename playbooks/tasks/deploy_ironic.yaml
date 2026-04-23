@@ -29,6 +29,7 @@
   no_log: true
 
 - name: Create podman secret for ironic htpasswd
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_secret:
     name: metal3-ironic-htpasswd
     data: "{{ metal3_ironic_htpasswd }}"
@@ -42,6 +43,7 @@
 
 - name: Create podman secret for CA bundle
   when: ssl_certs_configured | bool
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_secret:
     name: metal3-ca-bundle
     data: "{{ sslIngressCertificateFullChain + sslCACertificate | default('') }}"
@@ -50,156 +52,37 @@
   no_log: true
 
 - name: Create ironic-conf volume
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_volume:
     name: metal3-ironic-conf
     state: present
 
 - name: Create ironic-data volume
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_volume:
     name: metal3-ironic-data
     state: present
 
 - name: Create ironic-shared volume
+  become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_volume:
     name: metal3-ironic-shared
     state: present
 
-- name: Create metal3-ironic pod
-  containers.podman.podman_pod:
-    name: metal3-ironic
-    network: host
-    share: net,ipc,uts
-    state: started
+- name: Pre-pull ironic image
+  become: "{{ metal3_persistent | default(false) | bool }}"
+  containers.podman.podman_image:
+    name: "{{ metal3_ironic_image }}"
+    auth_file: "{{ pullSecretPath }}"
+    state: present
 
-- name: Wait for metal3-ironic pod infrastructure container to be ready
-  block:
-    - name: Get pod info to extract infra container ID
-      containers.podman.podman_pod_info:
-        name: metal3-ironic
-      register: r_pod_infra_check
-      retries: 30
-      delay: 2
-      until:
-        - r_pod_infra_check.pods | length > 0
-        - r_pod_infra_check.pods[0].InfraContainerID is defined
-        - r_pod_infra_check.pods[0].InfraContainerID | length > 0
-      changed_when: false
+- name: Deploy Ironic containers (ephemeral)
+  when: not (metal3_persistent | default(false) | bool)
+  ansible.builtin.include_tasks: deploy_ironic_containers.yaml
 
-    - name: Verify infra container is running
-      containers.podman.podman_container_info:
-        name: "{{ r_pod_infra_check.pods[0].InfraContainerID }}"
-      register: r_infra_container_check
-      retries: 10
-      delay: 1
-      until:
-        - r_infra_container_check.containers | length > 0
-        - r_infra_container_check.containers[0].State.Running | default(false)
-      changed_when: false
-
-- name: Wait for metal3-ironic pod to exist
-  containers.podman.podman_pod_info:
-    name: metal3-ironic
-  register: r_pod_infra_check
-  retries: 30
-  delay: 2
-  until:
-    - r_pod_infra_check.pods | length > 0
-  changed_when: false
-
-- name: Set ironic secrets list (with CA bundle)
-  when: ssl_certs_configured | bool
-  ansible.builtin.set_fact:
-    ironic_secrets:
-      - metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400
-      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
-
-- name: Set ironic secrets list (without CA bundle)
-  when: not (ssl_certs_configured | bool)
-  ansible.builtin.set_fact:
-    ironic_secrets:
-      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
-
-- name: Set ironic environment variables (with CA bundle)
-  when: ssl_certs_configured | bool
-  ansible.builtin.set_fact:
-    ironic_env:
-      IRONIC_LISTEN_PORT: "6385"
-      HTTP_PORT: "6180"
-      LISTEN_ALL_INTERFACES: "true"
-      USE_IRONIC_INSPECTOR: "false"
-      PROVISIONING_IP: "{{ lzBmcIP }}"
-      IRONIC_USE_MARIADB: "false"
-      IRONIC_EXPOSE_JSON_RPC: "false"
-      OS_JSON_RPC__PORT: "6189"
-      WEBSERVER_CACERT_FILE: /certs/ca-bundle.crt
-
-- name: Set ironic environment variables (without CA bundle)
-  when: not (ssl_certs_configured | bool)
-  ansible.builtin.set_fact:
-    ironic_env:
-      IRONIC_LISTEN_PORT: "6385"
-      HTTP_PORT: "6180"
-      LISTEN_ALL_INTERFACES: "true"
-      USE_IRONIC_INSPECTOR: "false"
-      PROVISIONING_IP: "{{ lzBmcIP }}"
-      IRONIC_USE_MARIADB: "false"
-      IRONIC_EXPOSE_JSON_RPC: "false"
-      OS_JSON_RPC__PORT: "6189"
-
-- name: Run ironic container
-  containers.podman.podman_container:
-    name: ironic
-    pod: metal3-ironic
-    image: "{{ metal3_ironic_image }}"
-    authfile: "{{ pullSecretPath }}"
-    restart_policy: always
-    user: "1002:1003"
-    cap_drop:
-      - ALL
-    volume:
-      - metal3-ironic-conf:/conf
-      - metal3-ironic-data:/data
-      - metal3-ironic-shared:/shared
-    secrets: "{{ ironic_secrets }}"
-    env: "{{ ironic_env }}"
-    command:
-      - /bin/runironic
-    state: started
-
-- name: Run httpd container
-  containers.podman.podman_container:
-    name: httpd
-    pod: metal3-ironic
-    image: "{{ metal3_ironic_image }}"
-    authfile: "{{ pullSecretPath }}"
-    restart_policy: always
-    user: "1002:1003"
-    cap_drop:
-      - ALL
-    volume:
-      - metal3-ironic-shared:/shared
-    env:
-      IRONIC_LISTEN_PORT: "6385"
-      HTTP_PORT: "6180"
-      LISTEN_ALL_INTERFACES: "true"
-      USE_IRONIC_INSPECTOR: "false"
-      PROVISIONING_IP: "{{ lzBmcIP }}"
-    command:
-      - /bin/runhttpd
-    state: started
-
-- name: Wait for metal3-ironic pod and containers to be running
-  containers.podman.podman_pod_info:
-    name: metal3-ironic
-  register: r_pod_ready
-  retries: 60
-  delay: 5
-  until:
-    - r_pod_ready.pods | length > 0
-    - r_pod_ready.pods[0].Containers | selectattr('Name', 'equalto', 'ironic') | selectattr('State', 'equalto', 'running') | list | length == 1
-    - r_pod_ready.pods[0].Containers | selectattr('Name', 'equalto', 'httpd') | selectattr('State', 'equalto', 'running') | list | length == 1
-  changed_when: false
-  # Note: Checks that both ironic and httpd containers are running (infra container state is ignored)
+- name: Deploy Ironic via quadlet (persistent)
+  when: metal3_persistent | default(false) | bool
+  ansible.builtin.include_tasks: deploy_ironic_quadlet_units.yaml
 
 - name: Verify HTTP server accessibility
   ansible.builtin.uri:
