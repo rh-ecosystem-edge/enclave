@@ -30,7 +30,8 @@ include Makefile
         verify clean verify-cluster verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
-        collect-artifacts-full ci-flow-connected ci-flow-disconnected
+        collect-artifacts-full ci-flow-connected ci-flow-disconnected \
+        setup-opensnitch collect-egress-logs validate-egress-analyzer
 
 # Override default help to show both LZ and CI targets
 help:
@@ -71,6 +72,9 @@ help:
 	@echo "  make -f Makefile.ci verify-enclave-installation      - Verify Enclave Lab installation"
 	@echo "  make -f Makefile.ci setup-ceph                       - Setup Ceph on Landing Zone (ODF only)"
 	@echo "  make -f Makefile.ci verify-ceph                      - Verify Ceph health on Landing Zone (ODF only)"
+	@echo "  make -f Makefile.ci setup-opensnitch                 - Install OpenSnitch on Landing Zone for egress capture"
+	@echo "  make -f Makefile.ci collect-egress-logs              - Collect OpenSnitch egress logs from Landing Zone"
+	@echo "  make -f Makefile.ci validate-egress-analyzer         - Run functional test for analyze_egress.py"
 	@echo "  make -f Makefile.ci deploy-cluster                   - Deploy OpenShift cluster (all phases, via SSH)"
 	@echo "  make -f Makefile.ci verify                           - Verify infrastructure setup"
 	@echo "  make -f Makefile.ci clean                            - Clean up infrastructure"
@@ -229,6 +233,7 @@ deploy-plugin:
 
 validate:
 	@./scripts/verification/validate.sh all
+	@$(MAKE) -f Makefile.ci validate-egress-analyzer
 
 validate-shell:
 	@./scripts/verification/validate.sh shell
@@ -418,6 +423,26 @@ verify-ceph:
 	else \
 		echo "Skipping Ceph verification (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
 	fi
+
+# Install OpenSnitch on Landing Zone in accept-all + log mode for egress capture
+setup-opensnitch:
+	@echo "=========================================="
+	@echo "Setting up OpenSnitch on Landing Zone"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/egress/setup_opensnitch.sh
+
+# Collect OpenSnitch egress logs from Landing Zone
+collect-egress-logs:
+	@echo "=========================================="
+	@echo "Collecting OpenSnitch egress logs"
+	@echo "=========================================="
+	@echo ""
+	@./scripts/egress/collect_egress_logs.sh
+
+# Run functional test for analyze_egress.py
+validate-egress-analyzer:
+	@./scripts/egress/test_analyze_egress.sh
 
 # Verify infrastructure
 verify:
