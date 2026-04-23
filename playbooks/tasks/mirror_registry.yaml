@@ -14,11 +14,6 @@
         {{ workingDir }}/bin/mirror-registry  install --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data --initPassword "{{ quayPassword }}" --initUser "{{ quayUser }}"
       register: r_mirror_registry
 
-- name: Change oc-mirror permissions
-  ansible.builtin.file:
-    path: "{{ workingDir }}/bin/oc-mirror"
-    mode: "0755"
-
 - name: Generate pull secret for internal mirror
   no_log: true
   ansible.builtin.set_fact:
@@ -40,3 +35,31 @@
   ansible.builtin.copy:
     content: "{{ pullSecretInternal }}"
     dest: "{{ workingDir }}/config/pull-secret.internal.json"
+
+- name: Copy imagesetconfiguration.yaml
+  ansible.builtin.template:
+    src: ../../templates/imagesetconfiguration.yaml.j2
+    dest: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
+- name: Start oc-mirror process
+  ansible.builtin.shell: >
+    {{ workingDir }}/bin/oc-mirror --v2
+    {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }}
+    --log-level {{ ocMirrorLogLevel }}
+    --authfile {{ pullSecretPath }}
+    --dest-tls-verify=false
+    -c {{ workingDir }}/config/imagesetconfiguration.yaml
+    --workspace file://{{ workingDir }}/config/oc-mirror-workspace
+    --parallel-images 10 --parallel-layers 10
+    --retry-times 10 --retry-delay 0
+    docker://{{ quayHostname }}:8443
+    > {{ workingDir }}/logs/oc-mirror.progress.$(date +%s).log 2>&1
+  retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else 10 }}"
+  delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else 10 }}"
+  register: r_oc_mirror
+  until: r_oc_mirror is success

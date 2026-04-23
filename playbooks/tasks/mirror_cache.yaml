@@ -29,17 +29,22 @@
     src: ../../templates/imagesetconfiguration.yaml.j2
     dest: "{{ workingDir }}/config/imagesetconfiguration-cache.yaml"
 
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
 - name: Start oc-mirror process
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc-mirror --v2 \
-    --log-level {{ ocMirrorLogLevel }} \
-    --authfile {{ workingDir }}/config/pull-secret-cache.json \
-    --dest-tls-verify=false \
-    -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml \
-    --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace \
-    --parallel-images 10 --parallel-layers 10 \
-    --retry-times 10 --retry-delay 0 \
-    docker://{{ dc_cache_address }} \
+  ansible.builtin.shell: >
+    {{ workingDir }}/bin/oc-mirror --v2
+    --log-level {{ ocMirrorLogLevel }}
+    --authfile {{ workingDir }}/config/pull-secret-cache.json
+    --dest-tls-verify=false
+    -c {{ workingDir }}/config/imagesetconfiguration-cache.yaml
+    --workspace file://{{ workingDir }}/config/oc-mirror-cache-workspace
+    --parallel-images 10 --parallel-layers 10
+    --retry-times 10 --retry-delay 0
+    docker://{{ dc_cache_address }}
     > {{ workingDir }}/logs/oc-mirror-cache.progress.$(date +%s).log 2>&1
   retries: 5
   delay: 10
