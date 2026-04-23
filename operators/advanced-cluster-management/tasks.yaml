@@ -85,3 +85,10 @@
 - name: ACM ClusterImageSet reconciliation
   ansible.builtin.include_tasks:
     file: acm_cis.yaml
+
+- name: Trust custom Root CA in Hive for spoke cluster connections
+  ansible.builtin.include_tasks:
+    file: trust_hive_ca.yaml
+  when:
+    - sslCACertificate is defined
+    - sslCACertificate | length > 0
