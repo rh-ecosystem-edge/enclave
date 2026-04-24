@@ -43,7 +43,7 @@ jobs:
   disconnected-dry-run:
     name: Disconnected Dry-Run Test
     runs-on: [self-hosted, enclave-small]
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     env:
       DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
