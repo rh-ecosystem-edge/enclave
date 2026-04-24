@@ -8,11 +8,11 @@
 
 - name: Generate IDMS/ITMS/etc manifests with oc-mirror
   ansible.builtin.shell: |
-    /tmp/bin/oc-mirror --v2 \
+    /tmp/bin/oc-mirror-dry-run --v2 \
     --authfile {{ pullSecretPath }} \
     --dest-tls-verify=false \
     -c {{ workingDir }}/config/imagesetconfiguration.yaml \
     --workspace file://{{ workingDir }}/config/oc-mirror-workspace-manifests \
-    --cluster-resources-only \
+    --dry-run \
     docker://{{ quayHostname }}:8443 \
     > {{ workingDir }}/logs/oc-mirror-manifests.progress.$(date +%s).log 2>&1
