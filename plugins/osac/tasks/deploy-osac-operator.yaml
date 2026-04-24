@@ -1,0 +1,105 @@
+---
+- name: Create OSAC operator namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osac_operator.ns }}"
+  register: r_osac_namespace
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_osac_namespace is success
+
+- name: Pull OSAC operator manifests image
+  containers.podman.podman_image:
+    name: "{{ osac_operator.image }}:{{ osac_operator.tag }}-{{ osac_operator.manifests }}"
+    state: present
+  become: true
+  register: __r_podman_pull
+  retries: 3
+  delay: 10
+  until: __r_podman_pull is success
+
+- name: Install OSAC operator from container manifest
+  block:
+    - name: Mount the container filesystem
+      ansible.builtin.command:
+        cmd: "podman image mount {{ osac_operator.image }}:{{ osac_operator.tag }}-{{ osac_operator.manifests }}"
+      become: true
+      changed_when: false
+      register: __r_mount_path
+
+    - name: Copy OSAC installation manifest to /tmp
+      ansible.builtin.copy:
+        src: "{{ __r_mount_path.stdout.strip() }}/manifests/install.yaml"
+        dest: "/tmp/osac-install.yaml"
+        remote_src: true
+        mode: "0644"
+      become: true
+      changed_when: false
+
+    - name: Apply OSAC operator manifests
+      kubernetes.core.k8s:
+        state: present
+        src: "/tmp/osac-install.yaml"
+      register: __r_apply_manifests
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until: __r_apply_manifests is success
+
+    # TODO: remove
+    - name: Show OSAC installation manifest content
+      ansible.builtin.command:
+        cmd: cat /tmp/osac-install.yaml
+      changed_when: false
+      register: __r_osac_manifest_content
+
+    - name: Debug OSAC installation manifest
+      ansible.builtin.debug:
+        var: __r_osac_manifest_content.stdout_lines
+
+    - name: Remove temporary manifest
+      ansible.builtin.file:
+        path: "/tmp/osac-install.yaml"
+        state: absent
+      become: true
+      changed_when: false
+
+  always:
+    - name: Unmount the container filesystem
+      ansible.builtin.command:
+        cmd: "podman image umount {{ osac_operator.image }}:{{ osac_operator.tag }}-{{ osac_operator.manifests }}"
+      become: true
+      changed_when: false
+      when:
+        - __r_mount_path is defined
+        - __r_mount_path.stdout is defined
+        - __r_mount_path.stdout | length > 0
+
+- name: Fetch OSAC operator deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ osac_operator.name }}-controller-manager"
+    namespace: "{{ osac_operator.ns }}"
+  register: __osac_deploy
+  retries: 30
+  delay: 10
+  until: __osac_deploy.resources | length > 0
+
+- name: Debug OSAC operator deployment details
+  ansible.builtin.debug:
+    msg:
+      - "Deployment: {{ __osac_deploy.resources[0].metadata.name }}"
+      - "Replicas: {{ __osac_deploy.resources[0].status.replicas | default(0) }}"
+      - "Available: {{ __osac_deploy.resources[0].status.availableReplicas | default(0) }}"
+      - "Container: {{ __osac_deploy.resources[0].spec.template.spec.containers[0].name }}"
+      - "Image: {{ __osac_deploy.resources[0].spec.template.spec.containers[0].image }}"
+
+- name: Debug OSAC operator summary
+  ansible.builtin.debug:
+    msg:
+      - "Namespace: {{ osac_operator.ns }}"
+      - "Operator manifests: {{ osac_operator.image }}:{{ osac_operator.tag }}-{{ osac_operator.manifests }}"

@@ -1,0 +1,6 @@
+---
+- name: Deploy AAP
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-aap.yaml"
+
+- name: Deploy OSAC operator
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-osac-operator.yaml"

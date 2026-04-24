@@ -1,0 +1,40 @@
+---
+name: osac
+type: addon
+order: 200
+mirror: none
+
+operators:
+  - name: ansible-automation-platform-operator
+    version: 2.5.0+0.1774617850
+    channel: stable-2.5-cluster-scoped
+    init_version: 2.5.0+0.1774617850
+    namespace: ansible-aap
+    source: cs-redhat-operator-index-v4-20
+    global: true
+    csvNames:
+      - aap-operator
+
+defaults:
+  osac_operator:
+    name: osac-operator
+    ns: osac-operator-system
+    image: ghcr.io/osac-project/osac-operator
+    tag: sha-525facb
+    manifests: manifests
+  osac_aap:
+    name: osac-aap
+    ns: ansible-aap
+    controller_disabled: false
+    eda_disabled: false
+    hub_disabled: true
+    image_pull_policy: IfNotPresent
+    lightspeed_disabled: true
+    no_log: true
+    redis_mode: standalone
+    route_tls_termination: Edge
+
+# Used when mirror is set to core or plugin (disconnected mode)
+# registries:
+#   - location: "ghcr.io/osac-project"
+#     mirror: "osac-project"
