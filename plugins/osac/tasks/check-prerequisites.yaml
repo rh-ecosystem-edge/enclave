@@ -1,0 +1,54 @@
+---
+- name: Check cluster is reachable
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+  register: __r_cv
+  retries: 3
+  delay: 5
+  until: __r_cv.resources | length > 0
+
+- name: Debug cluster info
+  ansible.builtin.debug:
+    msg:
+      - "Version: {{ __r_cv.resources[0].status.desired.version }}"
+      - "Channel: {{ __r_cv.resources[0].spec.channel | default('none') }}"
+      - "ClusterID: {{ __r_cv.resources[0].spec.clusterID | default('unknown') }}"
+
+- name: Check for StorageClass
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+  register: __r_sc
+
+- name: Fail if no StorageClass exists
+  ansible.builtin.fail:
+    msg: "No StorageClass found in the cluster"
+  when: __r_sc.resources | length == 0
+
+- name: Debug StorageClass
+  ansible.builtin.debug:
+    msg:
+      - "StorageClasses: {{ __r_sc.resources | map(attribute='metadata.name') | list }}"
+
+- name: Check ACM MultiClusterHub
+  kubernetes.core.k8s_info:
+    api_version: operator.open-cluster-management.io/v1
+    kind: MultiClusterHub
+  register: __r_mch
+
+- name: Fail if ACM is not installed
+  ansible.builtin.fail:
+    msg: "ACM MultiClusterHub not found"
+  when: __r_mch.resources | length == 0
+
+- name: Debug ACM
+  ansible.builtin.debug:
+    msg:
+      - "MultiClusterHub: {{ __r_mch.resources[0].metadata.name }}"
+      - "Status: {{ __r_mch.resources[0].status.phase | default('unknown') }}"
+
+# Check operators installed by the plugin, which are required for OSAC
+#  - cert-manager
+#  - authorino

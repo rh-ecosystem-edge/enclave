@@ -95,6 +95,9 @@ if [ "$STORAGE_PLUGIN" = "odf" ]; then
     MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 16384)) # +16 GB RAM (ODF/rook/noobaa + Quay)
     VM_EXTRADISKS_SIZE_VAL="60G"    # Masters don't need large LVMS disks with ODF
     LANDINGZONE_DISK_VAL=500        # Ceph OSDs store mirrored images on the LZ disk
+elif [ "${ENCLAVE_HEAVY_WORKLOAD:-false}" = "true" ]; then
+    MASTER_VCPU_VAL=16              # 16 vCPUs (up from 12)
+    MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 16384)) # +16 GB RAM for heavy workloads (e.g. AAP/OSAC)
 fi
 
 # Create configuration file

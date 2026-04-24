@@ -1,0 +1,19 @@
+---
+apiVersion: aap.ansible.com/v1alpha1
+kind: AnsibleAutomationPlatform
+metadata:
+  name: {{ osac_aap.name }}
+  namespace: {{ osac_aap.ns }}
+spec:
+  controller:
+    disabled: {{ osac_aap.controller_disabled }}
+  eda:
+    disabled: {{ osac_aap.eda_disabled }}
+  hub:
+    disabled: {{ osac_aap.hub_disabled }}
+  image_pull_policy: {{ osac_aap.image_pull_policy }}
+  lightspeed:
+    disabled: {{ osac_aap.lightspeed_disabled }}
+  no_log: {{ osac_aap.no_log }}
+  redis_mode: {{ osac_aap.redis_mode }}
+  route_tls_termination_mechanism: {{ osac_aap.route_tls_termination }}

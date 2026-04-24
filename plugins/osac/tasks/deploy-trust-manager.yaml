@@ -1,0 +1,27 @@
+---
+- name: Apply trust-manager manifests
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop: "{{ lookup('file', plugin_dir ~ '/files/trust-manager.yaml') | from_yaml_all | list }}"
+  register: __r_trust_manager
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_trust_manager is success
+
+- name: Wait for trust-manager deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: trust-manager
+    namespace: cert-manager
+  register: __r_trust_manager_deploy
+  retries: 30
+  delay: 10
+  until:
+    - __r_trust_manager_deploy.resources | length > 0
+    - __r_trust_manager_deploy.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Debug trust-manager status
+  ansible.builtin.debug:
+    msg: "trust-manager deployment is ready in cert-manager namespace"

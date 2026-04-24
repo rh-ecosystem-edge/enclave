@@ -1,0 +1,36 @@
+---
+- name: Deploy CertManager CR
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operator.openshift.io/v1alpha1
+      kind: CertManager
+      metadata:
+        name: cluster
+      spec:
+        managementState: Managed
+  register: __r_deploy_certmanager
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_deploy_certmanager is success
+
+- name: Wait for cert-manager deployments
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ item }}"
+    namespace: cert-manager
+  register: __r_certmanager_deploy
+  retries: 30
+  delay: 10
+  until:
+    - __r_certmanager_deploy.resources | length > 0
+    - __r_certmanager_deploy.resources[0].status.availableReplicas | default(0) | int > 0
+  loop:
+    - cert-manager
+    - cert-manager-webhook
+    - cert-manager-cainjector
+
+- name: Debug cert-manager status
+  ansible.builtin.debug:
+    msg: "cert-manager deployments are ready in cert-manager namespace"

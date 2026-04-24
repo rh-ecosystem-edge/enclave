@@ -1,0 +1,21 @@
+---
+- name: Check OSAC prerequisites
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/check-prerequisites.yaml"
+
+- name: Deploy trust-manager
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-trust-manager.yaml"
+
+- name: Deploy CA issuer
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-ca-issuer.yaml"
+
+- name: Deploy Keycloak
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-keycloak.yaml"
+
+- name: Apply AAP license
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/aap-license.yaml"
+
+- name: Deploy AAP
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-aap.yaml"
+
+- name: Deploy OSAC (via osac-installer)
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/deploy-osac.yaml"

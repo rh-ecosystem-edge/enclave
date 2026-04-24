@@ -1,0 +1,153 @@
+---
+- name: Clone osac-installer
+  ansible.builtin.git:
+    repo: https://github.com/osac-project/osac-installer.git
+    dest: "{{ osac_installer.repo_path }}"
+    version: "{{ osac_installer.version }}"
+    force: true
+    recursive: true
+
+- name: Copy pull secret
+  ansible.builtin.copy:
+    src: "{{ pullSecretPath }}"
+    dest: "{{ osac_installer.repo_path }}/overlays/{{ osac_installer.overlay }}/files/quay-pull-secret.json"
+    mode: "0644"
+
+- name: Copy AAP license
+  ansible.builtin.copy:
+    src: "{{ osac_aap.license_file }}"
+    dest: "{{ osac_installer.repo_path }}/overlays/{{ osac_installer.overlay }}/files/license.zip"
+    mode: "0644"
+
+- name: Ensure osac namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: osac
+
+- name: Apply kustomize overlay
+  ansible.builtin.command:
+    cmd: "oc apply --server-side --force-conflicts -k overlays/{{ osac_installer.overlay }}"
+    chdir: "{{ osac_installer.repo_path }}"
+  register: __r_apply_overlay
+  retries: 3
+  delay: 10
+  until: __r_apply_overlay is success
+
+- name: Debug applied resources
+  ansible.builtin.debug:
+    var: __r_apply_overlay.stdout_lines
+
+- name: Create fulfillment-controller OAuth credentials
+  ansible.builtin.shell:
+    cmd: |
+      FC_CLIENT_SECRET=$(jq -r '.clients[] | select(.clientId == "fulfillment-controller") | .secret' prerequisites/keycloak/service/files/realm.json)
+      oc create secret generic fulfillment-controller-credentials \
+        --from-literal=client-id=fulfillment-controller \
+        --from-literal=client-secret="${FC_CLIENT_SECRET}" \
+        -n {{ osac_installer.namespace }} \
+        --dry-run=client -o yaml | oc apply -f -
+    chdir: "{{ osac_installer.repo_path }}"
+  changed_when: true
+
+- name: Run AAP configuration
+  ansible.builtin.command:
+    cmd: ./scripts/aap-configuration.sh
+    chdir: "{{ osac_installer.repo_path }}"
+  environment:
+    INSTALLER_NAMESPACE: "{{ osac_installer.namespace }}"
+    INSTALLER_KUSTOMIZE_OVERLAY: "{{ osac_installer.overlay }}"
+  changed_when: true
+
+- name: Wait for AAP bootstrap job (up to 40 min)
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    name: aap-bootstrap
+    namespace: "{{ osac_installer.namespace }}"
+  register: __r_aap_bootstrap
+  retries: 80
+  delay: 30
+  until:
+    - __r_aap_bootstrap.resources | length > 0
+    - __r_aap_bootstrap.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Complete') | selectattr('status', 'equalto', 'True') | list | length > 0
+
+- name: Wait for Authorino deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: authorino
+    namespace: "{{ osac_installer.namespace }}"
+  register: __r_authorino
+  retries: 30
+  delay: 10
+  until:
+    - __r_authorino.resources | length > 0
+    - __r_authorino.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Wait for fulfillment stack
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ item }}"
+    namespace: "{{ osac_installer.namespace }}"
+  register: __r_fulfillment
+  retries: 30
+  delay: 10
+  until:
+    - __r_fulfillment.resources | length > 0
+    - __r_fulfillment.resources[0].status.availableReplicas | default(0) | int > 0
+  loop:
+    - fulfillment-grpc-server
+    - fulfillment-ingress-proxy
+
+- name: Wait for AAP gateway route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    name: osac-aap
+    namespace: "{{ osac_installer.namespace }}"
+  register: __r_aap_route
+  retries: 30
+  delay: 10
+  until:
+    - __r_aap_route.resources | length > 0
+    - __r_aap_route.resources[0].spec.host | default('') | length > 0
+
+- name: Debug AAP gateway route
+  ansible.builtin.debug:
+    msg: "AAP gateway route: {{ __r_aap_route.resources[0].spec.host }}"
+
+- name: Prepare AAP
+  ansible.builtin.command:
+    cmd: ./scripts/prepare-aap.sh
+    chdir: "{{ osac_installer.repo_path }}"
+  environment:
+    INSTALLER_NAMESPACE: "{{ osac_installer.namespace }}"
+    INSTALLER_KUSTOMIZE_OVERLAY: "{{ osac_installer.overlay }}"
+  changed_when: true
+
+- name: Prepare fulfillment service
+  ansible.builtin.command:
+    cmd: ./scripts/prepare-fulfillment-service.sh
+    chdir: "{{ osac_installer.repo_path }}"
+  environment:
+    INSTALLER_NAMESPACE: "{{ osac_installer.namespace }}"
+    INSTALLER_KUSTOMIZE_OVERLAY: "{{ osac_installer.overlay }}"
+  changed_when: true
+
+- name: Prepare tenant
+  ansible.builtin.command:
+    cmd: ./scripts/prepare-tenant.sh
+    chdir: "{{ osac_installer.repo_path }}"
+  environment:
+    INSTALLER_NAMESPACE: "{{ osac_installer.namespace }}"
+    INSTALLER_KUSTOMIZE_OVERLAY: "{{ osac_installer.overlay }}"
+  changed_when: true
+
+- name: Debug OSAC deployment complete
+  ansible.builtin.debug:
+    msg: "OSAC deployment complete in {{ osac_installer.namespace }} namespace"

@@ -1,0 +1,37 @@
+---
+- name: Ensure AAP namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osac_aap.ns }}"
+
+- name: Check AAP license file
+  ansible.builtin.stat:
+    path: "{{ osac_aap.license_file }}"
+  register: __r_aap_license_stat
+
+- name: Fail if AAP license file not found
+  ansible.builtin.fail:
+    msg: "AAP license file not found at {{ osac_aap.license_file }}"
+  when: not (__r_aap_license_stat.stat.exists | default(false))
+
+- name: Read AAP license file
+  ansible.builtin.slurp:
+    src: "{{ osac_aap.license_file }}"
+  register: __r_aap_license_content
+
+- name: Create AAP license Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osac_aap.license_secret }}"
+        namespace: "{{ osac_aap.ns }}"
+      type: Opaque
+      data:
+        manifest.zip: "{{ __r_aap_license_content.content }}"
