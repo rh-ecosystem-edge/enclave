@@ -62,6 +62,11 @@
     dest: "{{ workingDir }}/bin/"
     remote_src: true
 
+- name: Change oc-mirror permissions
+  ansible.builtin.file:
+    path: "{{ workingDir }}/bin/oc-mirror"
+    mode: "0755"
+
 - name: Download clairctl
   ansible.builtin.get_url:
     url: "{{ control_binaries.clairctl.url }}"
