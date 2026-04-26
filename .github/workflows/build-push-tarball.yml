@@ -50,13 +50,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
 
-      - name: Download Ansible Collections
+      - name: Download Ansible Collections and Control Binaries
         if: github.event_name != 'pull_request'
         run: |
           pip install ansible-core
           mkdir -p collections
           ansible-galaxy collection download --download-path ./collections --requirements-file ansible_collections.txt
           cat ansible_collections.sha256 | sha256sum -c
+          ansible-playbook playbooks/01-prepare.yaml --tags download-control-binaries -e "workingDir=$PWD"
 
       - name: Add version file
         run: |
@@ -77,7 +78,7 @@ jobs:
       - name: Build tarball
         run: |
           tar --exclude='.git' --exclude='.gitignore' --exclude='.github' --exclude='scripts' \
-            --exclude='Makefile.ci' \
+            --exclude='Makefile.ci' --exclude='dist' \
             -czvf /tmp/enclave.tar.gz .
           mv /tmp/enclave.tar.gz .
           ls -lh enclave.tar.gz
