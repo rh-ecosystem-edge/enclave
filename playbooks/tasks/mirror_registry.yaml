@@ -41,11 +41,6 @@
     src: ../../templates/imagesetconfiguration.yaml.j2
     dest: "{{ workingDir }}/config/imagesetconfiguration.yaml"
 
-- name: Change oc-mirror permissions
-  ansible.builtin.file:
-    path: "{{ workingDir }}/bin/oc-mirror"
-    mode: "0755"
-
 - name: Ensure oc-mirror log directory exists
   ansible.builtin.file:
     path: "{{ workingDir }}/logs/"

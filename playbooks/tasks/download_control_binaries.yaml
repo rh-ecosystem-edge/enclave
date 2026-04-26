@@ -30,13 +30,17 @@
     src: "{{ workingDir }}/dist/openshift-client-linux.tar.gz"
     dest: "{{ workingDir }}/bin/"
     remote_src: true
+    extra_opts:
+      - "oc"
+      - "kubectl"
+    mode: "0755"
 
 - name: Download helm
   ansible.builtin.get_url:
     url: "{{ control_binaries.helm.url }}"
     dest: "{{ workingDir }}/bin/helm"
     checksum: "{{ control_binaries.helm.checksum }}"
-    mode: "0750"
+    mode: "0755"
 
 - name: Download latest mirror registry available
   ansible.builtin.get_url:
@@ -49,6 +53,9 @@
     src: "{{ workingDir }}/dist/mirror-registry-amd64.tar.gz"
     dest: "{{ workingDir }}/bin/"
     remote_src: true
+    extra_opts:
+      - "mirror-registry"
+    mode: "0755"
 
 - name: Download latest oc-mirror available
   ansible.builtin.get_url:
@@ -61,10 +68,13 @@
     src: "{{ workingDir }}/dist/oc-mirror.tar.gz"
     dest: "{{ workingDir }}/bin/"
     remote_src: true
+    extra_opts:
+      - "oc-mirror"
+    mode: "0755"
 
 - name: Download clairctl
   ansible.builtin.get_url:
     url: "{{ control_binaries.clairctl.url }}"
     dest: "{{ workingDir }}/bin/clairctl"
     checksum: "{{ control_binaries.clairctl.checksum }}"
-    mode: "0750"
+    mode: "0755"
