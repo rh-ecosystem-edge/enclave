@@ -116,7 +116,7 @@
 
 - name: Set catalog image and mirror defaults
   set_fact:
-    catalog_image: "{{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}"
+    catalog_image: "{{ rh_operator_catalog }}"
     catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ rh_operator_catalog_version }}"
   when:
@@ -127,7 +127,7 @@
 
 - name: Override variables for certified catalog
   set_fact:
-    catalog_image: "{{ certified_operator_catalog }}:{{ certified_operator_catalog_version }}"
+    catalog_image: "{{ certified_operator_catalog }}"
     catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ certified_operator_catalog_version }}"
   when:

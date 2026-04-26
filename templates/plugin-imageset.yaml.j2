@@ -3,7 +3,7 @@ kind: ImageSetConfiguration
 apiVersion: mirror.openshift.io/v2alpha1
 mirror:
   operators:
-    - catalog: {{ catalog_image }}
+    - catalog: {{ catalog_image }}:{{ catalog_version }}
       targetCatalog: redhat/{{ catalog_mirror }}
       packages:
 {% for operator in plugin.operators | default([]) %}
