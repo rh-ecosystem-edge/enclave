@@ -14,9 +14,11 @@
 
 - name: Read plugin descriptors
   ansible.builtin.slurp:
-    src: "{{ item }}"
+    src: "{{ plugin_path }}"
   loop: "{{ r_pr_find.files | map(attribute='path') | list }}"
   register: r_pr_slurp
+  loop_control:
+    loop_var: plugin_path
 
 - name: Build combined plugin registries list
   vars:
