@@ -9,6 +9,7 @@ CLAUDE.md
 AGENTS.md
 tmp/
 bin/
+dist/
 ocp-cluster/
 
 # IDE folders
