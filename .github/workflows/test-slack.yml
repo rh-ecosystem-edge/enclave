@@ -1,0 +1,29 @@
+name: Test Slack Notification
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      status:
+        description: 'Notification status to test'
+        required: false
+        type: choice
+        options:
+          - success
+          - failure
+        default: success
+
+jobs:
+  test-slack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send test Slack notification
+        uses: ./.github/actions/notify-slack
+        with:
+          status: ${{ inputs.status }}
+          workflow-name: Test Slack Notification
+          cluster-name: test-cluster
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
