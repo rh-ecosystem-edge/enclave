@@ -5,8 +5,9 @@
 An Enclave upgrade is the process of updating the deployed infrastructure to a new Enclave release. Each Enclave tarball is distributed with a tested combination of:
 
 1. **Enclave automation** (playbooks, scripts, configuration)
-2. **Management Cluster OpenShift version** (e.g., 4.20.8)
-3. **Operator versions** (ACM, Quay, etc.)
+2. **Landing Zone components** (mirror-registry, metal3 stack, packages, binaries, etc.)
+3. **Management Cluster OpenShift version** (e.g., 4.20.8)
+4. **Operator versions** (ACM, Quay, etc.)
 
 The tarball contains all version definitions in `defaults/*.yaml` files and is the artifact as-is—a complete, tested release.
 
@@ -16,13 +17,13 @@ Upgrading to a new Enclave release follows this sequence:
 
 1. **Deploy new Enclave tarball** - Extract new release to Landing Zone, preserving your `config/*.yaml` customizations
 2. **Sync/Mirror new content** - Run sync process to download and mirror new OpenShift and operator images to local registry (disconnected mode)
-3. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
-4. **Upgrade operators** - Update operators to the versions specified in the new tarball
-5. **Validation** - Verify all components are healthy and at expected versions
+3. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball
+4. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
+5. **Upgrade operators** - Update operators to the versions specified in the new tarball
 
 **Key Principle**: Each Enclave tarball is a versioned release with a pre-defined set of component versions. Upgrades move from one tarball release to another.
 
-**Important**: Components must be upgraded in order—tarball first, then sync content, then cluster, then operators.
+**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then cluster, then operators.
 
 ---
 
@@ -42,8 +43,8 @@ Each Enclave tarball release includes:
 4. **Restore configurations** - Copy your `config/*.yaml` files back (or merge if needed)
 5. **Validate configuration** - Ensure your configs are compatible with new release
 6. **Sync content** - Run sync process to mirror new versions (disconnected mode)
-7. **Upgrade management cluster** - Update OpenShift to version in tarball
-8. **Upgrade operators** - Update operators to versions in tarball
+7. **Upgrade management cluster** - Update OpenShift to the version in the tarball
+8. **Upgrade operators** - Update operators to the versions in the tarball
 
 ---
 
