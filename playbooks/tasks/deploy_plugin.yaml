@@ -135,6 +135,7 @@
   when:
     - plugin.registries is defined
     - plugin.mirror | default('none') in ['core', 'plugin']
+    - plugin.operators | default([]) | length > 0
     - disconnected | default(true) | bool
   tags: mirror
 
@@ -149,7 +150,7 @@
   loop_control:
     loop_var: operator
   when:
-    - plugin.operators is defined
+    - plugin.operators | default([]) | length > 0
     - plugin.installOperators | default(true)
   tags: operators
 
