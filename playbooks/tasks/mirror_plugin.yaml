@@ -87,12 +87,47 @@
           Full log: {{ _oc_mirror_plugin_log }}
 
 - name: Apply updated mirror manifests to cluster
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc apply \
-      -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
-      --server-side --force-conflicts
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  block:
+    - name: Set landing-zone cluster resources directory
+      ansible.builtin.set_fact:
+        lz_cluster_resources_dir: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources"
+
+    - name: Stat landing-zone IDMS source
+      ansible.builtin.stat:
+        path: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+      register: lz_idms_src_stat
+
+    - name: Stat landing-zone ITMS source
+      ansible.builtin.stat:
+        path: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+      register: lz_itms_src_stat
+
+    - name: Merge plugin mirror sources into landing-zone resources
+      ansible.builtin.include_tasks:
+        file: merge_mirror_manifests.yaml
+      vars:
+        merge_mirror_enabled: "{{ quay_merge_plugin_mirrors | default(false) | bool }}"
+        merge_mirror_items:
+          - api_kind: ImageDigestMirrorSet
+            oc_resource: imagedigestmirrorset
+            spec_key: imageDigestMirrors
+            input_manifest: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+            output_manifest: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+            source_exists: "{{ lz_idms_src_stat.stat.exists }}"
+          - api_kind: ImageTagMirrorSet
+            oc_resource: imagetagmirrorset
+            spec_key: imageTagMirrors
+            input_manifest: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+            output_manifest: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+            source_exists: "{{ lz_itms_src_stat.stat.exists }}"
+
+    - name: Apply updated mirror manifests to cluster
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc apply \
+          -f {{ lz_cluster_resources_dir }}/ \
+          --server-side --force-conflicts
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
@@ -235,6 +270,8 @@
     apply:
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    quay_merge_plugin_mirrors: true
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined

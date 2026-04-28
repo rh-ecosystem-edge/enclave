@@ -1,0 +1,29 @@
+- name: Merge mirror sources into existing resources
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ playbook_dir }}/../helpers/mirror/merge_mirror_sets.py"
+      - --oc-bin
+      - "{{ workingDir }}/bin/oc"
+      - --input-manifest
+      - "{{ item.input_manifest }}"
+      - --output-manifest
+      - "{{ item.output_manifest }}"
+      - --api-kind
+      - "{{ item.api_kind }}"
+      - --oc-resource
+      - "{{ item.oc_resource }}"
+      - --spec-key
+      - "{{ item.spec_key }}"
+      - --apply
+      - --max-attempts
+      - "{{ merge_mirror_max_attempts | default(5) }}"
+      - --retry-delay
+      - "{{ merge_mirror_retry_delay | default(1.0) }}"
+  changed_when: false
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ merge_mirror_items }}"
+  when:
+    - merge_mirror_enabled | bool
+    - item.source_exists | bool

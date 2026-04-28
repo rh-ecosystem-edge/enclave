@@ -1,48 +1,91 @@
 ---
 # Quay disconnected: apply IDMS/ITMS from oc-mirror and trust Quay registry CA for image pulls.
 # Included from quay_disconnected.yaml.
-# Copy to idms-oc-mirror-internal.yaml / itms-oc-mirror-internal.yaml, rename the resource inside,
-# then apply so they coexist with the landing-zone IDMS/ITMS (idms-oc-mirror, itms-oc-mirror).
-# The cluster then has both: landing-zone mirrors (primary) and internal Quay mirrors (fallback).
+# Copy to a target manifest name based on mode:
+# - default: idms/itms *-internal (core flow)
+# - plugin merge mode: idms/itms *-plugins (shared for all plugins)
+# Then rename the resources inside to avoid conflict with landing-zone IDMS/ITMS.
+
+- name: Set target mirror suffix and base directory
+  ansible.builtin.set_fact:
+    quay_mirror_suffix: "{{ 'plugins' if (quay_merge_plugin_mirrors | default(false) | bool) else 'internal' }}"
+    quay_cluster_resources_dir: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources"
+
+- name: Set target mirror manifest paths
+  ansible.builtin.set_fact:
+    quay_idms_internal_manifest: "{{ quay_cluster_resources_dir }}/idms-oc-mirror-{{ quay_mirror_suffix }}.yaml"
+    quay_itms_internal_manifest: "{{ quay_cluster_resources_dir }}/itms-oc-mirror-{{ quay_mirror_suffix }}.yaml"
+    quay_idms_merged_manifest: "{{ quay_cluster_resources_dir }}/idms-oc-mirror-{{ quay_mirror_suffix }}-merged.json"
+    quay_itms_merged_manifest: "{{ quay_cluster_resources_dir }}/itms-oc-mirror-{{ quay_mirror_suffix }}-merged.json"
 
 - name: Stat IDMS source from oc-mirror workspace
   ansible.builtin.stat:
     path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror.yaml"
   register: quay_idms_src_stat
 
-- name: Copy IDMS to idms-oc-mirror-internal.yaml
+- name: Copy IDMS to target mirror manifest
   ansible.builtin.copy:
     src: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror.yaml"
-    dest: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+    dest: "{{ quay_idms_internal_manifest }}"
     remote_src: true
   when: quay_idms_src_stat.stat.exists
 
-# oc-mirror v2 uses names like idms-release-0, idms-operator-0 (not idms-oc-mirror); rename all with '-internal' suffix.
+# oc-mirror v2 uses names like idms-release-0, idms-operator-0 (not idms-oc-mirror).
 - name: Rename ImageDigestMirrorSet resources in IDMS manifest to avoid conflict with landing-zone
   ansible.builtin.replace:
-    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+    path: "{{ quay_idms_internal_manifest }}"
     regexp: '^(\s*name:\s*)idms-([^\s]+)\s*$'
-    replace: '\1idms-\2-internal'
+    replace: '\1idms-\2-{{ quay_mirror_suffix }}'
   when: quay_idms_src_stat.stat.exists
+
 
 - name: Stat ITMS source from oc-mirror workspace
   ansible.builtin.stat:
     path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror.yaml"
   register: quay_itms_src_stat
 
-- name: Copy ITMS to itms-oc-mirror-internal.yaml
+- name: Copy ITMS to target mirror manifest
   ansible.builtin.copy:
     src: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror.yaml"
-    dest: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+    dest: "{{ quay_itms_internal_manifest }}"
     remote_src: true
   when: quay_itms_src_stat.stat.exists
 
-# oc-mirror v2 uses names like itms-release-0, itms-operator-0; rename all with -internal suffix.
+# oc-mirror v2 uses names like itms-release-0, itms-operator-0.
 - name: Rename ImageTagMirrorSet resources in ITMS manifest to avoid conflict with landing-zone
   ansible.builtin.replace:
-    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+    path: "{{ quay_itms_internal_manifest }}"
     regexp: '^(\s*name:\s*)itms-([^\s]+)\s*$'
-    replace: '\1itms-\2-internal'
+    replace: '\1itms-\2-{{ quay_mirror_suffix }}'
+  when: quay_itms_src_stat.stat.exists
+
+- name: Merge plugin mirror sources into existing internal resources
+  ansible.builtin.include_tasks:
+    file: "{{ playbook_dir }}/tasks/merge_mirror_manifests.yaml"
+  vars:
+    merge_mirror_enabled: "{{ quay_merge_plugin_mirrors | default(false) | bool }}"
+    merge_mirror_items:
+      - api_kind: ImageDigestMirrorSet
+        oc_resource: imagedigestmirrorset
+        spec_key: imageDigestMirrors
+        input_manifest: "{{ quay_idms_internal_manifest }}"
+        output_manifest: "{{ quay_idms_merged_manifest }}"
+        source_exists: "{{ quay_idms_src_stat.stat.exists }}"
+      - api_kind: ImageTagMirrorSet
+        oc_resource: imagetagmirrorset
+        spec_key: imageTagMirrors
+        input_manifest: "{{ quay_itms_internal_manifest }}"
+        output_manifest: "{{ quay_itms_merged_manifest }}"
+        source_exists: "{{ quay_itms_src_stat.stat.exists }}"
+
+- name: Set IDMS apply manifest path
+  ansible.builtin.set_fact:
+    quay_idms_apply_manifest: "{{ quay_idms_merged_manifest if (quay_merge_plugin_mirrors | default(false) | bool) else quay_idms_internal_manifest }}"
+  when: quay_idms_src_stat.stat.exists
+
+- name: Set ITMS apply manifest path
+  ansible.builtin.set_fact:
+    quay_itms_apply_manifest: "{{ quay_itms_merged_manifest if (quay_merge_plugin_mirrors | default(false) | bool) else quay_itms_internal_manifest }}"
   when: quay_itms_src_stat.stat.exists
 
 - name: Apply Quay IDMS to cluster (fallback mirrors to internal Quay)
@@ -51,7 +94,7 @@
       - "{{ workingDir }}/bin/oc"
       - apply
       - -f
-      - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/idms-oc-mirror-internal.yaml"
+      - "{{ quay_idms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when: quay_idms_src_stat.stat.exists
@@ -62,7 +105,7 @@
       - "{{ workingDir }}/bin/oc"
       - apply
       - -f
-      - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/itms-oc-mirror-internal.yaml"
+      - "{{ quay_itms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when: quay_itms_src_stat.stat.exists

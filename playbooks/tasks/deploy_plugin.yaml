@@ -117,6 +117,8 @@
 - name: Mirror plugin
   ansible.builtin.include_tasks:
     file: mirror_plugin.yaml
+  vars:
+    quay_merge_plugin_mirrors: true
   when:
     - plugin.mirror | default('none') == 'plugin'
     - disconnected | default(true) | bool
