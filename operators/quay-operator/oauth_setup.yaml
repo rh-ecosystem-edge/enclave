@@ -9,7 +9,28 @@
 # This file sets the following variables:
 #   - quay_oauth_client_id
 #   - quay_oauth_client_secret
-#   - quay_oauth_token
+#   - quay_oauth_token (only when a token is (re)generated)
+
+- name: Read existing OAuth credentials Secret
+  no_log: true
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: quay-oauth-credentials
+    namespace: quay-enterprise
+  register: r_quay_oauth_secret_existing
+
+- name: Determine whether OAuth application is already provisioned
+  ansible.builtin.set_fact:
+    quay_oauth_secret_exists: "{{ r_quay_oauth_secret_existing.resources | default([]) | length > 0 }}"
+
+- name: Reuse credentials from existing Secret
+  no_log: true
+  when: quay_oauth_secret_exists
+  ansible.builtin.set_fact:
+    quay_oauth_client_id: "{{ r_quay_oauth_secret_existing.resources[0].data['client-id'] | b64decode }}"
+    quay_oauth_client_secret: "{{ r_quay_oauth_secret_existing.resources[0].data['client-secret'] | b64decode }}"
+    quay_oauth_current_scopes: "{{ r_quay_oauth_secret_existing.resources[0].data['scopes'] | default('') | b64decode }}"
 
 - name: Create Quay organization for OAuth application
   no_log: true
@@ -33,6 +54,7 @@
   retries: 3
   delay: 5
   when:
+    - not quay_oauth_secret_exists
     - quay_initial_token is defined
     - quay_initial_token | length > 0
   until:
@@ -61,6 +83,7 @@
   retries: 5
   delay: 10
   when:
+    - not quay_oauth_secret_exists
     - quay_initial_token is defined
     - quay_initial_token | length > 0
   until:
@@ -81,6 +104,7 @@
     - r_quay_oauth_app.json.client_secret is defined
 
 - name: Get current quay-app Deployment state before config update
+  when: not quay_oauth_secret_exists
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
@@ -108,6 +132,7 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   when:
+    - not quay_oauth_secret_exists
     - quay_oauth_client_id is defined
     - quay_oauth_client_id | length > 0
   until: r_quay_config_secret_oauth is success
@@ -160,6 +185,7 @@
   when:
     - quay_oauth_client_id is defined
     - quay_oauth_client_id | length > 0
+    - not quay_oauth_secret_exists or (quay_oauth_current_scopes.split() | sort) != (quayOAuthApp.scopes.split() | sort)
   until:
     - r_quay_oauth_token is defined
     - r_quay_oauth_token.status in [302, 303]

@@ -83,6 +83,16 @@
         loop_var: openshift_version
       tags: acm-policy-catalogsources
 
+    - name: Sync Quay OAuth credentials with desired scopes
+      when: quayOAuthApp.enabled | default(true)
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/oauth_setup.yaml
+        apply:
+          tags: quay-oauth-sync
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      tags: quay-oauth-sync
+
     - name: Management cluster upgrade
       ansible.builtin.include_tasks:
         file: tasks/mgmt_cluster_upgrade.yaml
