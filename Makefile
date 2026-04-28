@@ -6,7 +6,7 @@
         deploy-cluster-pre-install-validate \
         deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators \
         deploy-cluster-day2 deploy-cluster-discovery deploy-cluster-connected \
-        deploy-plugin bootstrap sync
+        deploy-plugin mirror-plugin bootstrap sync
 
 # Configuration
 WORKING_DIR ?= $(HOME)
@@ -47,6 +47,7 @@ help:
 	@echo ""
 	@echo "Plugin deployment:"
 	@echo "  make deploy-plugin PLUGIN=<name>      - Deploy a single plugin (e.g., openshift-ai)"
+	@echo "  make mirror-plugin PLUGIN=<name>      - Mirror a single plugin (e.g., openshift-ai)"
 	@echo ""
 	@echo "Convenience targets:"
 	@echo "  make bootstrap                        - Bootstrap the Landing Zone"
@@ -124,6 +125,13 @@ deploy-plugin:
 		exit 1; \
 	fi
 	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e 'plugin_name=$(PLUGIN)'
+
+mirror-plugin:
+	@if [ -z "$(PLUGIN)" ]; then \
+		echo "Error: PLUGIN variable must be set. Usage: make mirror-plugin PLUGIN=<name>"; \
+		exit 1; \
+	fi
+	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e 'plugin_name=$(PLUGIN)' --tags mirror
 
 # Convenience targets
 bootstrap:
