@@ -119,6 +119,7 @@
     file: mirror_plugin.yaml
   when:
     - plugin.mirror | default('none') == 'plugin'
+    - plugin.operators | default([]) | length > 0
     - disconnected | default(true) | bool
   tags: mirror
 
