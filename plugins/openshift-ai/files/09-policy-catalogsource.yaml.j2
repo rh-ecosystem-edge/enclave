@@ -44,11 +44,15 @@ spec:
             status:
               connectionState:
                 lastObservedState: READY
+
         # the ingress-operator creates a servicemeshoperator3 Subscription
         # with source: redhat-operators, which doesn't exist in disconnected mode.
         # The ingress-operator actively manages the subscription spec and overwrites any
         # changes, so instead of fighting it we create a CatalogSource alias that makes
         # the existing subscription resolve to the mirrored catalog.
+        #
+        # FIXME: OCPBUGS-78330. Temporary workaround until OCP 4.22 fix.
+        # https://redhat.atlassian.net/browse/OCPBUGS-78330
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
