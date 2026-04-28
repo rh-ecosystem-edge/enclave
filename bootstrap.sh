@@ -184,8 +184,8 @@ step_setup() {
     echo 'Runtime Host:' | tee -a ${log}
     cat /etc/redhat-release | tee -a ${log}
     echo ' - '
-    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:(redhat:enterprise_linux|centos:centos):10(\.?.*)?\" ]]; then
-        echo "RHEL 10 / CentOS Stream 10 Check Failed"
+    if ! [[ $(</etc/os-release) =~ CPE_NAME=\"cpe:/o:redhat:enterprise_linux:10(\.?.*)?\" ]]; then
+        echo "RHEL 10 Check Failed"
         exit 1
     fi
 
