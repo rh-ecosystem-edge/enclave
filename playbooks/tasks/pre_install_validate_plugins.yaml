@@ -102,9 +102,11 @@
 
 - name: Read plugin descriptors for filtering
   ansible.builtin.slurp:
-    src: "{{ item }}/plugin.yaml"
+    src: "{{ plugin_dir_path }}/plugin.yaml"
   loop: "{{ r_pre_install_plugins.files | map(attribute='path') | map('dirname') | map('dirname') | unique | list | sort }}"
   register: r_pre_install_slurp
+  loop_control:
+    loop_var: plugin_dir_path
   when: r_pre_install_plugins.files | length > 0
 
 - name: Build enabled plugin name list

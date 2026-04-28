@@ -16,9 +16,11 @@
 
 - name: Read plugin descriptors
   ansible.builtin.slurp:
-    src: "{{ item }}"
+    src: "{{ plugin_path }}"
   loop: "{{ r_foundation_find.files | map(attribute='path') | list }}"
   register: r_foundation_slurp
+  loop_control:
+    loop_var: plugin_path
 
 - name: Parse foundation plugin descriptors
   ansible.builtin.set_fact:

@@ -18,9 +18,11 @@
 
 - name: Read plugin descriptors
   ansible.builtin.slurp:
-    src: "{{ item }}"
+    src: "{{ plugin_path }}"
   loop: "{{ _vp_find.files | map(attribute='path') | list }}"
   register: _vp_slurp
+  loop_control:
+    loop_var: plugin_path
 
 - name: Filter to enabled plugins with requirements
   ansible.builtin.set_fact:
