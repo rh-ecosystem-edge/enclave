@@ -7,11 +7,10 @@ on:
   merge_group:
     types: [checks_requested]
 
-# Allow parallel execution with unique cluster names per run
-# Each job gets isolated VMs, networks, and resources
+# Cancel previous runs when a PR is updated
 concurrency:
-  group: enclave-ci-${{ github.run_id }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   infra-verify:

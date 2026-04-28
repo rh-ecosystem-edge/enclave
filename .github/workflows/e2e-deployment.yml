@@ -9,6 +9,11 @@ name: E2E Deployment
 # Both jobs run on every PR and nightly schedule. Manual dispatch allows
 # selecting which modes to run, skipping cleanup, and sending Slack notifications.
 
+# Cancel previous runs when a PR is updated
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 on:
   schedule:
     # Run daily at 10:00 PM EST (03:00 UTC)

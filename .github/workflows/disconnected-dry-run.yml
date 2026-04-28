@@ -9,6 +9,11 @@ name: Disconnected Dry-Run
 # 2. Automatic: On every PR
 # 3. Scheduled: Daily at 11:00 PM EST (04:00 UTC)
 
+# Cancel previous runs when a PR is updated
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 on:
   schedule:
     # Run daily at 11:00 PM EST (04:00 UTC)
@@ -33,11 +38,6 @@ on:
 
 permissions:
   contents: read
-
-# Allow parallel execution with unique cluster names per run
-concurrency:
-  group: disconnected-dry-run-${{ github.run_id }}
-  cancel-in-progress: false
 
 jobs:
   disconnected-dry-run:
