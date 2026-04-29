@@ -13,6 +13,11 @@ on:
   merge_group:
     types: [checks_requested]
 
+# Cancel previous runs when a PR is updated
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
