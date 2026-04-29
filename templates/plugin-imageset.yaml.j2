@@ -1,8 +1,6 @@
 ---
 kind: ImageSetConfiguration
 apiVersion: mirror.openshift.io/v2alpha1
-metadata:
-  name: {{ catalog_mirror }}
 mirror:
   operators:
     - catalog: {{ catalog_image }}:{{ catalog_version }}
