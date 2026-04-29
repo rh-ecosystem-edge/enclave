@@ -82,14 +82,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Destroy any remaining CI VMs (all CI runs)
-          for vm in $(sudo virsh list --all --name | grep "eci-\|enclave-ci-\|enclave-test" || true); do
+          for vm in $(sudo virsh list --all --name | grep "eci-\|ecd-\|nc-\|nd-\|enclave-ci-\|enclave-test" || true); do
             echo "Destroying VM: $vm" >> $GITHUB_STEP_SUMMARY
             sudo virsh destroy "$vm" 2>/dev/null || true
             sudo virsh undefine "$vm" --remove-all-storage 2>/dev/null || true
           done
 
           # Remove any CI networks (all CI runs)
-          for net in $(sudo virsh net-list --all --name | grep "eci-\|enclave-ci-\|enclave-test" || true); do
+          for net in $(sudo virsh net-list --all --name | grep "eci-\|ecd-\|nc-\|nd-\|enclave-ci-\|enclave-test" || true); do
             echo "Removing network: $net" >> $GITHUB_STEP_SUMMARY
             sudo virsh net-destroy "$net" 2>/dev/null || true
             sudo virsh net-undefine "$net" 2>/dev/null || true
@@ -118,10 +118,10 @@ jobs:
 
           # Clean up libvirt pools (if any were created)
           # Match all cluster-specific pools:
-          # - dev-scripts pools: eci-XXXXXXXX, nc-YYYYMMDD, nd-YYYYMMDD
-          # - Landing Zone pools (new): eci-*-lz, nc-*-lz, nd-*-lz
-          # - Landing Zone pools (legacy): eci-*_pool, nc-*_pool, nd-*_pool
-          for pool in $(sudo virsh pool-list --all --name | grep -E "^(eci-|nc-|nd-)([a-f0-9]{8}|[0-9]{8})(-lz|_pool)?$" || true); do
+          # - dev-scripts pools: eci-XXXXXXXX, ecd-XXXXXXXX, nc-YYYYMMDD, nd-YYYYMMDD
+          # - Landing Zone pools (new): eci-*-lz, ecd-*-lz, nc-*-lz, nd-*-lz
+          # - Landing Zone pools (legacy): eci-*_pool, ecd-*_pool, nc-*_pool, nd-*_pool
+          for pool in $(sudo virsh pool-list --all --name | grep -E "^(eci-|ecd-|nc-|nd-)([a-f0-9]{8}|[0-9]{8})(-lz|_pool)?$" || true); do
             echo "Removing pool: $pool" >> $GITHUB_STEP_SUMMARY
             sudo virsh pool-destroy "$pool" 2>/dev/null || true
             sudo virsh pool-undefine "$pool" 2>/dev/null || true
@@ -171,13 +171,13 @@ jobs:
           echo "- **Cleanup Level**: $CLEANUP_LEVEL" >> $GITHUB_STEP_SUMMARY
 
           # Count VMs before and after
-          VMS_BEFORE=$(grep -cE "eci-|enclave-ci-|enclave-test" vms-before.txt || echo "0")
-          VMS_AFTER=$(grep -cE "eci-|enclave-ci-|enclave-test" vms-after.txt || echo "0")
+          VMS_BEFORE=$(grep -cE "eci-|ecd-|nc-|nd-|enclave-ci-|enclave-test" vms-before.txt || echo "0")
+          VMS_AFTER=$(grep -cE "eci-|ecd-|nc-|nd-|enclave-ci-|enclave-test" vms-after.txt || echo "0")
           echo "- **VMs Cleaned**: $((VMS_BEFORE - VMS_AFTER))" >> $GITHUB_STEP_SUMMARY
 
           # Count networks before and after
-          NETS_BEFORE=$(grep -cE "eci-|enclave-ci-|enclave-test" networks-before.txt || echo "0")
-          NETS_AFTER=$(grep -cE "eci-|enclave-ci-|enclave-test" networks-after.txt || echo "0")
+          NETS_BEFORE=$(grep -cE "eci-|ecd-|nc-|nd-|enclave-ci-|enclave-test" networks-before.txt || echo "0")
+          NETS_AFTER=$(grep -cE "eci-|ecd-|nc-|nd-|enclave-ci-|enclave-test" networks-after.txt || echo "0")
           echo "- **Networks Cleaned**: $((NETS_BEFORE - NETS_AFTER))" >> $GITHUB_STEP_SUMMARY
 
           echo "- **Result**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
