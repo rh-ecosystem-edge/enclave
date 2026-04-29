@@ -41,5 +41,5 @@ spec:
               name: {{ mirror_rh_operator_catalog }}
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/redhat-operator-index:v{{ short_version_dot }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}:v{{ short_version_dot }}
               sourceType: grpc

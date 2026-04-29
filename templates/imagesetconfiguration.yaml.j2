@@ -27,6 +27,7 @@ mirror:
     graph: true
   operators:
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
+      targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
       packages:
 {% for operator in operators + (_core_plugin_operators | default([])) %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}

@@ -4,7 +4,7 @@
 
     - name: Include configure_operator
       vars:
-        default_operator_source: "cs-redhat-operator-index-v4-20"
+        default_operator_source: "cs-{{ mirror_rh_operator_catalog }}-v4-20"
       ansible.builtin.include_tasks: configure_operator.yaml
       loop: "{{ operators }}"
       loop_control:
