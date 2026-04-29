@@ -1,5 +1,5 @@
 ---
-# Auto-discover and deploy all foundation plugins (type: foundation)
+# Auto-discover all foundation plugins (type: foundation)
 # sorted by order field.
 #
 # Only plugins listed in enabled_plugins are deployed.
@@ -43,13 +43,3 @@
 - name: Display foundation plugins to deploy
   ansible.builtin.debug:
     msg: "Foundation plugins to deploy (sorted by order): {{ _foundation_deploy_list }}"
-
-- name: Deploy foundation plugin
-  ansible.builtin.include_tasks:
-    file: tasks/deploy_plugin.yaml
-  vars:
-    plugin_name: "{{ _foundation_plugin_name }}"
-  loop: "{{ _foundation_deploy_list }}"
-  loop_control:
-    loop_var: _foundation_plugin_name
-  when: _foundation_deploy_list | length > 0

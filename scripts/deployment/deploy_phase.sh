@@ -6,7 +6,7 @@
 #
 # Usage: ./deploy_phase.sh <playbook-file> [ansible-playbook extra args]
 # Example: ./deploy_phase.sh 04-post-install.yaml
-# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
+# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-registry
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 if [ $# -lt 1 ]; then
     error "Usage: $0 <playbook-file> [--tags <tags>]"
     error "Example: $0 04-post-install.yaml"
-    error "Example: $0 02-mirror.yaml --tags mirror-plugins"
+    error "Example: $0 02-mirror.yaml --tags mirror-registry"
     exit 1
 fi
 

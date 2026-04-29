@@ -42,13 +42,22 @@
         - foundation-plugins
         - operators
 
-    - name: Auto-discover and deploy foundation plugins
+    - name: Collect foundation plugins
       ansible.builtin.include_tasks:
-        file: tasks/deploy_foundation_plugins.yaml
-        apply:
-          tags:
-            - foundation-plugins
-            - operators
+        file: tasks/collect_foundation_plugins.yaml
+      tags:
+        - foundation-plugins
+        - operators
+
+    - name: Deploy foundation plugins
+      ansible.builtin.include_tasks:
+        file: tasks/deploy_plugin.yaml
+      vars:
+        plugin_name: "{{ _foundation_plugin_name }}"
+      loop: "{{ _foundation_deploy_list }}"
+      loop_control:
+        loop_var: _foundation_plugin_name
+      when: _foundation_deploy_list | length > 0
       tags:
         - foundation-plugins
         - operators
