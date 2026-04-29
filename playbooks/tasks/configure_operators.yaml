@@ -3,6 +3,8 @@
   block:
 
     - name: Include configure_operator
+      vars:
+        default_operator_source: "cs-redhat-operator-index-v4-20"
       ansible.builtin.include_tasks: configure_operator.yaml
       loop: "{{ operators }}"
       loop_control:

@@ -153,6 +153,8 @@
   tags: mirror
 
 - name: Install plugin operators
+  vars:
+    default_operator_source: "{{ catalog_mirror }}"
   ansible.builtin.include_tasks:
     file: tasks/configure_operator.yaml
     apply:
