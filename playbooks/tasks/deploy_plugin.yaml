@@ -119,7 +119,7 @@
     file: mirror_plugin.yaml
   when:
     - plugin.mirror | default('none') == 'plugin'
-    - plugin.operators | default([]) | length > 0
+    - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
     - disconnected | default(true) | bool
   tags: mirror
 
@@ -135,7 +135,6 @@
   when:
     - plugin.registries is defined
     - plugin.mirror | default('none') in ['core', 'plugin']
-    - plugin.operators | default([]) | length > 0
     - disconnected | default(true) | bool
   tags: mirror
 
