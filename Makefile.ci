@@ -23,6 +23,7 @@ include Makefile
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
         validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
+        build-tarball build-push-tarball \
         deploy-cluster-pre-install-validate \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
         environment provision-landing-zone verify-landing-zone \
@@ -260,6 +261,16 @@ validate-makefile:
 
 validate-plugins:
 	@./scripts/verification/validate.sh plugins
+
+# --- Tarball targets ---
+
+# Build distribution tarball (used by ci-operator container test)
+build-tarball:
+	@./scripts/ci/build_tarball.sh build
+
+# Build and push tarball to Quay (postsubmit)
+build-push-tarball:
+	@./scripts/ci/build_tarball.sh build-push
 
 # --- CI Image targets ---
 

@@ -43,17 +43,16 @@ COPY ansible_pip_requirements.txt /tmp/ansible_pip_requirements.txt
 RUN pip3 install --no-cache-dir -r /tmp/ansible_pip_requirements.txt && \
     rm /tmp/ansible_pip_requirements.txt
 
-# Pre-install Ansible Galaxy collections
+# Pre-install Ansible Galaxy collections to a shared location
 COPY ansible_collections.txt /tmp/ansible_collections.txt
-RUN ansible-galaxy collection install -r /tmp/ansible_collections.txt && \
+RUN ansible-galaxy collection install -r /tmp/ansible_collections.txt \
+        -p /usr/local/share/ansible/collections && \
     rm /tmp/ansible_collections.txt
 
-# Symlink collections to /usr/local for system-wide access
-RUN mkdir -p /usr/local/share/ansible/collections && \
-    ln -s /root/.ansible/collections/ansible_collections /usr/local/share/ansible/collections/ansible_collections
-
-# Set environment variable for Ansible to find collections
-ENV ANSIBLE_COLLECTIONS_PATH=/usr/local/share/ansible/collections:/root/.ansible/collections
+# Ansible configuration for non-root containers (e.g. Prow CI)
+ENV ANSIBLE_COLLECTIONS_PATH=/usr/local/share/ansible/collections \
+    ANSIBLE_REMOTE_TMP=/tmp/.ansible/tmp \
+    HOME=/tmp
 
 # Set working directory
 WORKDIR /workspace
