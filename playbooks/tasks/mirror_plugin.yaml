@@ -10,20 +10,6 @@
       Validation Error: Ensure 'plugin' is defined, 'plugin.mirror' is set to 'plugin',
       'plugin.operators' or 'plugin.additionalImages' are not empty, and 'disconnected' is true.
 
-- name: Set catalog image and mirror defaults
-  set_fact:
-    catalog_image: "{{ rh_operator_catalog }}"
-    catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
-    catalog_version: "{{ rh_operator_catalog_version }}"
-
-- name: Override variables for certified catalog
-  set_fact:
-    catalog_image: "{{ certified_operator_catalog }}"
-    catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
-    catalog_version: "{{ certified_operator_catalog_version }}"
-  when:
-    - plugin.catalog | default("") == "certified"
-
 - name: Template plugin imageset configuration
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
