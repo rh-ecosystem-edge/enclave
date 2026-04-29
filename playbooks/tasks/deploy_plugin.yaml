@@ -119,6 +119,7 @@
     catalog_image: "{{ rh_operator_catalog }}"
     catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ rh_operator_catalog_version }}"
+  tags: always
 
 - name: Override variables for certified catalog
   set_fact:
@@ -127,6 +128,7 @@
     catalog_version: "{{ certified_operator_catalog_version }}"
   when:
     - plugin.catalog | default("") == "certified"
+  tags: always
 
 - name: Mirror plugin
   ansible.builtin.include_tasks:
