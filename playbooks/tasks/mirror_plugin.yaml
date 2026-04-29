@@ -4,16 +4,17 @@
     that:
       - plugin is defined
       - plugin.mirror | default('none') == 'plugin'
+      - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
       - disconnected | default(true) | bool
-    fail_msg: "Validation Error: Ensure 'plugin' is defined, 'plugin.mirror' is set to 'plugin', and 'disconnected' is true."
+    fail_msg: >-
+      Validation Error: Ensure 'plugin' is defined, 'plugin.mirror' is set to 'plugin',
+      'plugin.operators' or 'plugin.additionalImages' are not empty, and 'disconnected' is true.
 
 - name: Set catalog image and mirror defaults
   set_fact:
     catalog_image: "{{ rh_operator_catalog }}"
     catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ rh_operator_catalog_version }}"
-  when:
-    - plugin.operators is defined
 
 - name: Override variables for certified catalog
   set_fact:
@@ -21,15 +22,12 @@
     catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ certified_operator_catalog_version }}"
   when:
-    - plugin.operators is defined
     - plugin.catalog | default("") == "certified"
 
 - name: Template plugin imageset configuration
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
     dest: "{{ workingDir }}/plugin-{{ plugin_name }}-imageset.yaml"
-  when:
-    - plugin.operators is defined
 
 - name: Ensure oc-mirror log directory exists
   ansible.builtin.file:
