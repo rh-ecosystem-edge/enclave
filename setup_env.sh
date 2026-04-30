@@ -10,6 +10,7 @@ dnf install -y \
     httpd-tools \
     ipcalc \
     lsof \
+    make \
     nmstate \
     openssl \
     podman \
