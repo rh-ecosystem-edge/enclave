@@ -16,6 +16,7 @@ plugins/lvms/
     deploy.yaml            <- post-operator deployment logic
     quay.yaml              <- Quay storage integration
     pre-validate.yaml      <- pre-deployment checks (optional)
+    post-operators.yaml    <- runs after operators, before deploy (optional)
     post-validate.yaml     <- post-deployment checks (optional)
     pre-install-validate.yaml <- hardware checks before cluster install (optional)
 ```
@@ -83,18 +84,21 @@ Each file is optional and lives under `tasks/`. The plugin runner (`deploy_plugi
 Here's what runs and in what order:
 
 ```
-1. Load plugin.yaml              <- always
-2. Load defaults                  <- from plugin.yaml defaults section
-3. Validate requirements          <- assert requires.vars and requires.files
-4. tasks/early-validate.yaml     <- custom validation (no cluster access)
-5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
-6. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
-7. Install operators              <- from plugin.yaml operators list (if installOperators != false)
-8. tasks/deploy.yaml             <- "create my CRs"
-9. tasks/post-validate.yaml      <- "did it work?"
+ 1. Load plugin.yaml              <- always
+ 2. Load defaults                  <- from plugin.yaml defaults section
+ 3. Validate requirements          <- assert requires.vars and requires.files
+ 4. tasks/early-validate.yaml     <- custom validation (no cluster access)
+ 5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
+ 6. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
+ 7. Install operators              <- from plugin.yaml operators list (if installOperators != false)
+ 8. tasks/post-operators.yaml     <- "set up infrastructure that deploy needs"
+ 9. tasks/deploy.yaml             <- "create my CRs"
+10. tasks/post-validate.yaml      <- "did it work?"
 ```
 
 Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
+
+Step 8 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that `tasks/deploy.yaml` depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
 
 Separately, during Quay operator setup:
 
@@ -213,7 +217,8 @@ Foundation plugins deploy before core operators (Quay, GitOps). This ordering en
 ```
 1. Disable default CatalogSources (disconnected)
 2. Deploy foundation plugins (sorted by order):
-   -> load defaults -> validate requirements -> pre-validate -> mirror -> operators -> deploy -> post-validate
+   -> load defaults -> validate requirements -> pre-validate -> mirror -> operators
+   -> post-operators -> deploy -> post-validate
 3. Install core operators
    -> Quay includes plugins/{storage_plugin}/tasks/quay.yaml
 4. Deploy addon plugins (sorted by order)
@@ -329,10 +334,11 @@ requires:
 4. Add `registries` if disconnected mirroring is needed
 5. Add `requires` to declare variables or files that must exist at load time
 6. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
-7. Add `tasks/deploy.yaml` with your post-operator setup logic
-8. Add `tasks/quay.yaml` if your plugin provides storage for Quay
-9. Run `make validate-plugins` to verify
-10. Add your plugin name to `enabled_plugins` in `config/global.yaml`
+7. Add `tasks/post-operators.yaml` for setup needed after operators but before deploy (optional)
+8. Add `tasks/deploy.yaml` with your post-operator setup logic
+9. Add `tasks/quay.yaml` if your plugin provides storage for Quay
+10. Run `make validate-plugins` to verify
+11. Add your plugin name to `enabled_plugins` in `config/global.yaml`
 
 No core files need to be modified.
 
