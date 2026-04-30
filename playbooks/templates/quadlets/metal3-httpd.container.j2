@@ -15,6 +15,12 @@ Environment=LISTEN_ALL_INTERFACES=true
 Environment=USE_IRONIC_INSPECTOR=false
 Environment=PROVISIONING_IP={{ lzBmcIP }}
 Exec=/bin/runhttpd
+HealthCmd=curl -s http://localhost:6180/
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+HealthOnFailure=kill
 
 [Service]
 Restart=always
