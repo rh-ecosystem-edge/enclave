@@ -17,7 +17,13 @@ Environment=IRONIC_ENDPOINT=http://{{ lzBmcIP }}:6385/v1/
 Environment=WATCH_NAMESPACE=infraenv
 Environment=LIVE_ISO_FORCE_PERSISTENT_BOOT_DEVICE=Never
 Environment=METAL3_AUTH_ROOT_DIR=/auth
-Exec=/baremetal-operator --webhook-port=0 --metrics-addr=0 --health-addr=0 --dev --enable-leader-election=false
+Exec=/baremetal-operator --webhook-port=0 --metrics-addr=0 --health-addr=:9440 --dev --enable-leader-election=false
+HealthCmd=curl -sf http://localhost:9440/healthz
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+HealthOnFailure=kill
 
 [Service]
 Restart=always

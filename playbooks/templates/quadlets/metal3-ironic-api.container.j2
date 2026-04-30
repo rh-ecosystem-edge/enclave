@@ -27,6 +27,12 @@ Environment=OS_JSON_RPC__PORT=6189
 Environment=WEBSERVER_CACERT_FILE=/certs/ca-bundle.crt
 {% endif %}
 Exec=/bin/runironic
+HealthCmd=curl -sf http://localhost:6385/
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+HealthOnFailure=kill
 
 [Service]
 Restart=always
