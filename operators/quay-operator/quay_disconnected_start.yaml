@@ -73,7 +73,8 @@
   async: 14400 # 4 hours timeout
   poll: 0      # Start immediately, don't wait
 
-- name: Save async job ID for later reference
-  ansible.builtin.copy:
-    content: "{{ r_oc_mirror_quay.ansible_job_id }}"
-    dest: "{{ workingDir }}/logs/quay-mirror.async_job_id"
+- name: Save ansible job id for quay mirror
+  ansible.builtin.include_tasks: "../../playbooks/tasks/background_task_save_id.yaml"
+  vars:
+    task_id: quay
+    job_id: "{{ r_oc_mirror_quay.ansible_job_id }}"

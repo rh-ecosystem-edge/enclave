@@ -2,9 +2,10 @@
 # Quay disconnected tasks: imageset for oc-mirror and mirror run.
 # This file is included only when disconnected | default(true).
 
-- name: Wait for the async oc-mirror to quay
-  ansible.builtin.include_tasks:
-    file: tasks/wait_quay_mirror.yaml
+- name: Wait for async oc-mirror to quay
+  ansible.builtin.include_tasks: "../../playbooks/tasks/background_task_wait.yaml"
+  vars:
+    task_id: quay
 
 - name: Delete registries.conf for the oc-mirror process
   ansible.builtin.file:

@@ -60,7 +60,7 @@
           tags: operators
       tags: operators
 
-    - name: Configure operators
+    - name: Finish quay mirroring task while disconnected
       when: disconnected | default(true) | bool
       ansible.builtin.include_tasks:
         file: ../operators/quay-operator/quay_disconnected_finish.yaml
