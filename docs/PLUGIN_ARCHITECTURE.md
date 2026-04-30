@@ -19,6 +19,9 @@ plugins/lvms/
     post-operators.yaml    <- runs after operators, before deploy (optional)
     post-validate.yaml     <- post-deployment checks (optional)
     pre-install-validate.yaml <- hardware checks before cluster install (optional)
+  charts/                    <- Helm chart directories (optional)
+  templates/                 <- Jinja2 templates for Helm values or other rendering (optional)
+  files/                     <- Jinja2 templates for K8s manifests (optional)
 ```
 
 ### The Descriptor: `plugin.yaml`
@@ -74,6 +77,7 @@ registries:
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
 | `requires` | Declarative requirements validated at load time, before any deployment work begins. See [Load-Time Validation](#load-time-validation). |
+| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts and remote repos. Each entry specifies `release`, `namespace`, and optional `repo`, `version`, and values template. |
 
 The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during `make validate`. The validator (`make validate-plugins`) also checks directory structure.
 
@@ -91,14 +95,15 @@ Here's what runs and in what order:
  5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
  6. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
  7. Install operators              <- from plugin.yaml operators list (if installOperators != false)
- 8. tasks/post-operators.yaml     <- "set up infrastructure that deploy needs"
- 9. tasks/deploy.yaml             <- "create my CRs"
-10. tasks/post-validate.yaml      <- "did it work?"
+ 8. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
+ 9. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
+10. tasks/deploy.yaml             <- "create my CRs"
+11. tasks/post-validate.yaml      <- "did it work?"
 ```
 
 Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
 
-Step 8 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that `tasks/deploy.yaml` depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
+Step 8 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before Helm charts or deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that the Helm values template depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
 
 Separately, during Quay operator setup:
 
@@ -218,7 +223,7 @@ Foundation plugins deploy before core operators (Quay, GitOps). This ordering en
 1. Disable default CatalogSources (disconnected)
 2. Deploy foundation plugins (sorted by order):
    -> load defaults -> validate requirements -> pre-validate -> mirror -> operators
-   -> post-operators -> deploy -> post-validate
+   -> post-operators -> helm -> deploy -> post-validate
 3. Install core operators
    -> Quay includes plugins/{storage_plugin}/tasks/quay.yaml
 4. Deploy addon plugins (sorted by order)
@@ -253,7 +258,7 @@ Every plugin is validated at two levels:
 2. **Shell script** (`scripts/verification/validate_plugins.sh`) -- validates directory structure:
    - `plugin.yaml` exists with required fields
    - Task files are valid Ansible task lists
-   - No unexpected files outside `plugin.yaml`, `tasks/`, and `files/`
+   - No unexpected files outside `plugin.yaml`, `tasks/`, `files/`, `charts/`, and `templates/`
 
 ## Load-Time Validation
 
@@ -334,11 +339,12 @@ requires:
 4. Add `registries` if disconnected mirroring is needed
 5. Add `requires` to declare variables or files that must exist at load time
 6. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
-7. Add `tasks/post-operators.yaml` for setup needed after operators but before deploy (optional)
-8. Add `tasks/deploy.yaml` with your post-operator setup logic
-9. Add `tasks/quay.yaml` if your plugin provides storage for Quay
-10. Run `make validate-plugins` to verify
-11. Add your plugin name to `enabled_plugins` in `config/global.yaml`
+7. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
+8. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`
+9. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
+10. Add `tasks/quay.yaml` if your plugin provides storage for Quay
+11. Run `make validate-plugins` to verify
+12. Add your plugin name to `enabled_plugins` in `config/global.yaml`
 
 No core files need to be modified.
 
