@@ -59,6 +59,7 @@
         fail_msg: "No master nodes matched the selector; cannot validate maxPods."
 
     - name: Assert that all master nodes report the correct maxPods
+      no_log: true
       ansible.builtin.assert:
         that:
           - (item.status.capacity.pods | int) == (masterMaxPods | int)
