@@ -1,0 +1,30 @@
+---
+# Generic task file for saving id for background async tasks
+#
+# Required variables:
+#   - task_id: ID for the task (e.g. quay, operator_mirror, ...)
+#   - job_id: ansible job id for the task
+#
+# Example on how to use it:
+# # Launch an async task
+# - name: Your example task to run in background
+#   ansible.builtin.shell: sleep 3000
+#   register: r_example_background_task
+#   async: 14400
+#   poll: 0
+#
+# # Write job_id to file
+# - name: Save ansible job id for example background task
+#   ansible.builtin.include_tasks: background_task_save_id.yaml
+#   vars:
+#     task_id: example_task
+#     job_id: "{{ r_example_background_task.ansible_job_id }}"
+
+- name: "Set default values for saving {{ task_id }} background task"
+  ansible.builtin.set_fact:
+    _job_id_file_path: "{{ workingDir }}/logs/{{ task_id }}.async_job_id"
+
+- name: "Save {{ task_id }} job ID to a file for later reference"
+  ansible.builtin.copy:
+    content: "{{ job_id }}"
+    dest: "{{ _job_id_file_path }}"

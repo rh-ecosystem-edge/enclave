@@ -1,0 +1,106 @@
+---
+# Generic task file for waiting on background async tasks
+#
+# Required variables:
+#   - task_id: ID for the task (e.g. quay, operator_mirror, ...)
+#
+# Optional variables:
+#   - max_retries: Maximum number of retries (defaults to 480 = 4 hours at 30s intervals)
+#   - retry_delay: Delay between retries in seconds (defaults to 30)
+#   - cleanup_job_file: Whether to clean up job ID file on success (defaults to true)
+#
+# Example on how to use it:
+# - name: Wait for example background task
+#   ansible.builtin.include_tasks: background_task_wait.yaml
+#   vars:
+#     task_id: example_task
+#     # Optional overrides (these show the defaults):
+#     # max_retries: 480  # 4 hours at 30s intervals
+#     # retry_delay: 30
+#     # cleanup_job_file: true
+
+- name: "Set default values for background task waiting"
+  ansible.builtin.set_fact:
+    _working_dir: "{{ working_dir | default(workingDir) }}"
+    _max_retries: "{{ max_retries | default(480) }}"
+    _retry_delay: "{{ retry_delay | default(30) }}"
+    _cleanup_job_file: "{{ cleanup_job_file | default(true) }}"
+    _job_id_file_path: "{{ workingDir }}/logs/{{ task_id }}.async_job_id"
+    _async_job_id_var: "async_{{ task_id }}_job_id"
+
+- name: "Check if {{ task_id }} async job ID file exists"
+  when: vars[_async_job_id_var] is not defined
+  ansible.builtin.stat:
+    path: "{{ _job_id_file_path }}"
+  register: _async_job_id_file_stat
+
+- name: "Read {{ task_id }} async job ID from file"
+  when:
+    - vars[_async_job_id_var] is not defined
+    - _async_job_id_file_stat.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ _job_id_file_path }}"
+  register: _async_job_id_file_content
+
+- name: "Set {{ task_id }} async job ID from file"
+  when:
+    - vars[_async_job_id_var] is not defined
+    - _async_job_id_file_stat.stat.exists
+    - _async_job_id_file_content.content is defined
+  ansible.builtin.set_fact:
+    "{{ _async_job_id_var }}": "{{ _async_job_id_file_content.content | b64decode | trim }}"
+
+- name: "Get {{ task_id }} async job ID from user input or fail"
+  when: vars[_async_job_id_var] is not defined
+  ansible.builtin.fail:
+    msg: |
+      No {{ task_id }} async job ID found.
+      Please run the task that generates the job ID file first
+
+      The job ID should be available in: {{ _job_id_file_path }}
+
+- name: "Wait for {{ task_id }} async task to complete"
+  when: vars[_async_job_id_var] is defined
+  ansible.builtin.async_status:
+    jid: "{{ vars[_async_job_id_var] }}"
+  register: _async_task_result
+  until: _async_task_result.finished
+  retries: "{{ _max_retries | int }}"
+  delay: "{{ _retry_delay | int }}"
+
+- name: "Display {{ task_id }} results"
+  when: vars[_async_job_id_var] is defined
+  ansible.builtin.debug:
+    msg: |
+      {{ task_id }} async task has completed.
+      Status: {{ 'Success' if _async_task_result.rc == 0 else 'Failed' }}
+      Exit code: {{ _async_task_result.rc | default('unknown') }}
+      Duration: {{ _async_task_result.delta | default('unknown') }}
+
+- name: "Show {{ task_id }} output on failure"
+  when:
+    - vars[_async_job_id_var] is defined
+    - _async_task_result.rc != 0
+  ansible.builtin.debug:
+    msg: |
+      {{ task_id }} failed with output:
+      STDOUT: {{ _async_task_result.stdout | default('none') }}
+      STDERR: {{ _async_task_result.stderr | default('none') }}
+
+- name: "Fail if {{ task_id }} failed"
+  when:
+    - vars[_async_job_id_var] is defined
+    - _async_task_result.rc != 0
+  ansible.builtin.fail:
+    msg: "{{ task_id }} failed with exit code {{ _async_task_result.rc }}"
+
+- name: "Clean up {{ task_id }} async job ID file on success"
+  when:
+    - vars[_async_job_id_var] is defined
+    - _async_task_result.rc == 0
+    - _cleanup_job_file | bool
+    - _async_job_id_file_stat.stat.exists is defined
+    - _async_job_id_file_stat.stat.exists
+  ansible.builtin.file:
+    path: "{{ _job_id_file_path }}"
+    state: absent
