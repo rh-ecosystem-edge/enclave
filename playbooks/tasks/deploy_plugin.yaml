@@ -153,6 +153,16 @@
     - plugin.installOperators | default(true)
   tags: operators
 
+- name: Run post-operators
+  ansible.builtin.include_tasks:
+    file: "{{ plugin_dir }}/tasks/post-operators.yaml"
+    apply:
+      tags: post-operators
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/post-operators.yaml') | length > 0
+  tags: post-operators
+
 - name: Run deploy
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/deploy.yaml"
