@@ -40,7 +40,6 @@ operators:
     channel: stable-4.20
     init_version: 4.20.0
     namespace: openshift-storage
-    source: cs-redhat-operator-index-v4-20
 
 requires:
   files:
@@ -129,7 +128,6 @@ operators:
     channel: stable-4.20
     init_version: 4.20.0
     namespace: openshift-storage
-    source: cs-redhat-operator-index-v4-20
 
 requires:
   files:

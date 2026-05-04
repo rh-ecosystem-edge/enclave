@@ -91,7 +91,7 @@
         installPlanApproval: Automatic
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source | default(default_operator_source) if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
@@ -114,7 +114,7 @@
         installPlanApproval: Manual
         channel: "{{ operator.channel }}"
         name: "{{ operator.name }}"
-        source: "{{ operator.source if (disconnected | default(true)) else 'redhat-operators' }}"
+        source: "{{ operator.source | default(default_operator_source) if (disconnected | default(true)) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
         startingCSV: "{{ operator.csvNames | default([]) | first | default(operator.name) }}.v{{ operator.version | replace('+', '-') }}"
   register: r_sub_exists

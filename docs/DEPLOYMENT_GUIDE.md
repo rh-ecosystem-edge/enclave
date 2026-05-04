@@ -357,43 +357,36 @@ operators:
   - name: quay-operator
     channel: stable-3.15
     namespace: quay-enterprise
-    source: cs-redhat-operator-index-v4-20
 
   # Advanced Cluster Management
   - name: advanced-cluster-management
     channel: release-2.15
     namespace: open-cluster-management
-    source: cs-redhat-operator-index-v4-20
 
   # OpenShift GitOps (ArgoCD)
   - name: openshift-gitops-operator
     channel: gitops-1.19
     namespace: openshift-gitops-operator
-    source: cs-redhat-operator-index-v4-20
 
   # OpenShift Pipelines (Tekton)
   - name: openshift-pipelines-operator-rh
     channel: pipelines-1.20
     namespace: openshift-pipelines
-    source: cs-redhat-operator-index-v4-20
 
   # Network Observability
   - name: netobserv-operator
     channel: stable
     namespace: openshift-netobserv-operator
-    source: cs-redhat-operator-index-v4-20
 
   # Backup and Restore
   - name: redhat-oadp-operator
     channel: stable
     namespace: openshift-oadp
-    source: cs-redhat-operator-index-v4-20
 
   # Certificate Manager
   - name: openshift-cert-manager-operator
     channel: stable-v1
     namespace: cert-manager-operator
-    source: cs-redhat-operator-index-v4-20
   # ... and more (see defaults/operators.yaml for full list)
 ```
 

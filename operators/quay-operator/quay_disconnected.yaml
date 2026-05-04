@@ -14,8 +14,8 @@
 - name: Replace registry.redhat.io with internal quay
   ansible.builtin.replace:
     path: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
-    regexp: 'catalog: registry.redhat.io'
-    replace: "catalog: {{ quayHostname }}:8443"
+    regexp: 'catalog: {{ rh_operator_catalog }}'
+    replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_rh_operator_catalog }}"
 
 - name: Ensure .config/containers/ exists
   ansible.builtin.file:

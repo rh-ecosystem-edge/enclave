@@ -114,6 +114,22 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
+- name: Set catalog image and mirror defaults
+  set_fact:
+    catalog_image: "{{ rh_operator_catalog }}"
+    catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
+    catalog_version: "{{ rh_operator_catalog_version }}"
+  tags: always
+
+- name: Override variables for certified catalog
+  set_fact:
+    catalog_image: "{{ certified_operator_catalog }}"
+    catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
+    catalog_version: "{{ certified_operator_catalog_version }}"
+  when:
+    - plugin.catalog | default("") == "certified"
+  tags: always
+
 - name: Mirror plugin
   ansible.builtin.include_tasks:
     file: mirror_plugin.yaml
@@ -139,6 +155,8 @@
   tags: mirror
 
 - name: Install plugin operators
+  vars:
+    default_operator_source: "{{ catalog_mirror }}"
   ansible.builtin.include_tasks:
     file: tasks/configure_operator.yaml
     apply:
