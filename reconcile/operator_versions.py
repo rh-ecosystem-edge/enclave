@@ -149,7 +149,7 @@ def init_ns_op_version_map(
     return ns_op_version_map
 
 
-def main():
+def reconcile():
     try:
         operators = ast.literal_eval(sys.argv[1])
     except (IndexError, ValueError, SyntaxError) as e:
@@ -180,4 +180,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    reconcile()
