@@ -233,6 +233,25 @@ lzBmcIP: 100.64.1.10
 - ISO will be served at `http://{{ lzBmcIP }}/assisted/agent.x86_64.iso`
 - Ensure HTTP server (Apache/Nginx) is running on this host
 
+#### `lzBmcHostname`
+
+**Description**: DNS hostname for the LZ BMC interface. Optional. When set, Ironic constructs HTTPS vmedia URLs using this hostname instead of `lzBmcIP`.
+
+**Type**: String (DNS hostname)
+
+**Required**: No. Set this when using publicly trusted TLS certificates (e.g. Let's Encrypt) for the Ironic vmedia server. Let's Encrypt only issues DNS SANs, not IP SANs, so the certificate SAN must match a hostname rather than an IP address.
+
+**Example**:
+```yaml
+lzBmcHostname: mirror.example.com
+```
+
+**Notes**:
+- The hostname must resolve to `lzBmcIP` from the BMC network
+- When set, `ironicHTTPSCertificate` must have a DNS SAN matching this hostname
+- When not set, the IP-based flow is used and `ironicHTTPSCertificate` must have an IP SAN matching `lzBmcIP`
+- `PROVISIONING_IP` (used for Apache binding) always remains `lzBmcIP`; only the vmedia URL changes
+
 #### `defaultNtpServers`
 
 **Description**: Optional list of additional NTP server addresses for cluster nodes. When not set, the cluster uses its default NTP sources.
@@ -1082,6 +1101,64 @@ sslIngressCertificateFullChain: |
 sslCACertificate: |
   -----BEGIN CERTIFICATE-----
   ... (server certificate)
+  -----END CERTIFICATE-----
+```
+
+### Ironic HTTPS Certificate (Optional)
+
+These variables enable HTTPS for the Ironic vmedia server, which serves
+boot ISOs to BMCs. When configured, Ironic will serve content over TLS
+instead of plain HTTP.
+
+#### `ironicHTTPSCertificate`
+
+**Description**: TLS certificate for the Ironic vmedia HTTPS server.
+
+**Type**: String (PEM format)
+
+**Required**: Yes, when HTTPS vmedia is desired. Must be provided together
+with `ironicHTTPSKey`. The certificate SAN must cover `lzBmcHostname`
+(DNS SAN, for publicly trusted certs such as Let's Encrypt) or `lzBmcIP`
+(IP SAN, for private CA certs) depending on which is configured.
+
+**Example**:
+```yaml
+ironicHTTPSCertificate: |
+  -----BEGIN CERTIFICATE-----
+  ... (certificate)
+  -----END CERTIFICATE-----
+```
+
+#### `ironicHTTPSKey`
+
+**Description**: Private key for the Ironic vmedia HTTPS certificate.
+
+**Type**: String (PEM format)
+
+**Required**: Yes, when `ironicHTTPSCertificate` is set. Both variables
+must be provided together.
+
+**Example**:
+```yaml
+ironicHTTPSKey: |
+  <PEM-encoded private key>
+```
+
+#### `ironicHTTPSCACertificate`
+
+**Description**: CA certificate to install into the BMC emulator trust
+store. Only needed when the Ironic HTTPS certificate is signed by a
+private CA that the BMC emulator does not trust by default.
+
+**Type**: String (PEM format)
+
+**Required**: No. Leave empty when using a publicly trusted certificate.
+
+**Example**:
+```yaml
+ironicHTTPSCACertificate: |
+  -----BEGIN CERTIFICATE-----
+  ... (CA certificate)
   -----END CERTIFICATE-----
 ```
 

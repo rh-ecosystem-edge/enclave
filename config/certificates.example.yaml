@@ -47,3 +47,18 @@ sslCACertificate: |
   -----BEGIN CERTIFICATE-----
   YOUR_ROOT_CA_CERTIFICATE
   -----END CERTIFICATE-----
+
+# Ironic HTTP Server TLS Certificate (optional)
+# Required when serving boot ISOs over HTTPS to the BMC.
+# The SAN on this certificate must cover lzBmcHostname (DNS SAN, for Let's Encrypt certs)
+# or lzBmcIP (IP SAN, for private CA certs). Set lzBmcHostname in global.yaml when using
+# a publicly trusted certificate such as Let's Encrypt.
+ironicHTTPSCertificate: ""
+
+ironicHTTPSKey: ""
+
+# Ironic HTTP Server TLS CA Certificate (optional)
+# Provide this when the BMC emulator must trust a private CA to verify
+# the Ironic HTTPS certificate. Installs the CA into the BMC emulator
+# trust store. Leave empty when using a publicly trusted certificate.
+ironicHTTPSCACertificate: ""

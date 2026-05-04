@@ -1,50 +1,8 @@
 ---
 # Set up Ironic for hardware configuration
-# This deploys the Ironic service and starts a temporary HTTP server for ISO hosting
-
-- name: Set defaults for Ironic configuration
-  ansible.builtin.set_fact:
-    http_server_port: "{{ http_server_port | default(8000) }}"
-    http_server_pidfile: "{{ http_server_pidfile | default(workingDir + '/logs/ironic-temp-http.pid') }}"
-    http_server_logfile: "{{ http_server_logfile | default(workingDir + '/logs/ironic-temp-http.log') }}"
 
 - name: Deploy Metal3 common resources
   ansible.builtin.include_tasks: deploy_metal3_common.yaml
 
 - name: Deploy Ironic pod
   ansible.builtin.include_tasks: deploy_ironic.yaml
-
-- name: Check if HTTP server PID file exists
-  ansible.builtin.stat:
-    path: "{{ http_server_pidfile }}"
-  register: pidfile_stat
-
-- name: Check if HTTP server process is running
-  ansible.builtin.shell: "kill -0 $(cat {{ http_server_pidfile }}) 2>/dev/null"
-  register: http_server_check
-  failed_when: false
-  changed_when: false
-  when: pidfile_stat.stat.exists
-
-- name: Start temporary Python HTTP server
-  ansible.builtin.shell: >
-    nohup python3 -m http.server {{ http_server_port }} --directory {{ workingDir + '/ocp-cluster/abi-iso/' }} > {{ http_server_logfile }} 2>&1 &
-    echo $! > {{ http_server_pidfile }}
-  when: not pidfile_stat.stat.exists or http_server_check.rc != 0
-  changed_when: true
-
-- name: Wait for HTTP server to be ready
-  ansible.builtin.wait_for:
-    port: "{{ http_server_port }}"
-    host: localhost
-    timeout: 30
-
-- name: Verify ISO is accessible via temporary HTTP server
-  ansible.builtin.uri:
-    url: "http://{{ lzBmcIP }}:{{ http_server_port }}/agent.x86_64.iso"
-    method: HEAD
-    status_code: [200]
-  register: r_temp_http_check
-  retries: 3
-  delay: 1
-  until: r_temp_http_check is succeeded

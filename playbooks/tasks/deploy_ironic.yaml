@@ -41,6 +41,30 @@
   ansible.builtin.set_fact:
     ssl_certs_configured: "{{ (sslIngressCertificateFullChain is defined and sslIngressCertificateFullChain | length > 0) }}"
 
+- name: Check if Ironic HTTPS is configured
+  ansible.builtin.set_fact:
+    ironic_https_configured: >-
+      {{
+        ironicHTTPSCertificate is defined and ironicHTTPSCertificate | length > 0
+        and ironicHTTPSKey is defined and ironicHTTPSKey | length > 0
+      }}
+
+- name: Check if Ironic HTTPS CA is configured
+  ansible.builtin.set_fact:
+    ironic_https_ca_configured: >-
+      {{
+        ironicHTTPSCACertificate is defined and ironicHTTPSCACertificate | length > 0
+      }}
+
+- name: Assert Ironic HTTPS inputs are complete
+  when: >-
+    (ironicHTTPSCertificate is defined and ironicHTTPSCertificate | length > 0)
+    or (ironicHTTPSKey is defined and ironicHTTPSKey | length > 0)
+  ansible.builtin.assert:
+    that:
+      - ironic_https_configured | bool
+    fail_msg: "Set both ironicHTTPSCertificate and ironicHTTPSKey to enable Ironic HTTPS."
+
 - name: Create podman secret for CA bundle
   when: ssl_certs_configured | bool
   become: "{{ metal3_persistent | default(false) | bool }}"
@@ -50,6 +74,53 @@
     state: present
     force: false
   no_log: true
+
+- name: Set Ironic HTTPS CA certificate file path
+  become: "{{ metal3_persistent | default(false) | bool }}"
+  when:
+    - ironic_https_configured | bool
+    - ironic_https_ca_configured | bool
+  ansible.builtin.set_fact:
+    ironic_ca_certfile: "{{ ironic_ca_certfile | default(workingDir + '/logs/ironic-iso-ca.crt') }}"
+
+- name: Write Ironic HTTPS CA certificate to temp file
+  become: "{{ metal3_persistent | default(false) | bool }}"
+  when:
+    - ironic_https_configured | bool
+    - ironic_https_ca_configured | bool
+  ansible.builtin.copy:
+    content: "{{ ironicHTTPSCACertificate }}\n"
+    dest: "{{ ironic_ca_certfile }}"
+    mode: "0644"
+
+- name: Check if httpd container is already running
+  when: ironic_https_configured | bool
+  containers.podman.podman_container_info:
+    name: httpd
+  register: httpd_precheck
+  failed_when: false
+
+- name: Create podman secret for Ironic vmedia TLS certificate
+  when: ironic_https_configured | bool
+  become: "{{ metal3_persistent | default(false) | bool }}"
+  containers.podman.podman_secret:
+    name: ironic-vmedia-cert
+    data: "{{ ironicHTTPSCertificate }}\n"
+    state: present
+    force: false
+  no_log: true
+  register: vmedia_cert_secret
+
+- name: Create podman secret for Ironic vmedia TLS key
+  when: ironic_https_configured | bool
+  become: "{{ metal3_persistent | default(false) | bool }}"
+  containers.podman.podman_secret:
+    name: ironic-vmedia-key
+    data: "{{ ironicHTTPSKey }}\n"
+    state: present
+    force: false
+  no_log: true
+  register: vmedia_key_secret
 
 - name: Create ironic-conf volume
   become: "{{ metal3_persistent | default(false) | bool }}"
@@ -93,6 +164,32 @@
   retries: 30
   delay: 10
   until: r_http is succeeded
+
+- name: Verify HTTPS vmedia server accessibility
+  when: ironic_https_configured | bool
+  block:
+    - name: Wait for HTTPS vmedia port
+      ansible.builtin.wait_for:
+        host: "{{ lzBmcIP }}"
+        port: 6183
+        timeout: 300
+  rescue:
+    - name: Capture httpd logs on HTTPS check failure
+      ansible.builtin.command: podman logs httpd
+      register: r_httpd_failure_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Show httpd logs
+      ansible.builtin.debug:
+        msg: "{{ (r_httpd_failure_logs.stdout_lines | default([])) + (r_httpd_failure_logs.stderr_lines | default([])) }}"
+
+    - name: Fail after printing httpd logs
+      ansible.builtin.fail:
+        msg: >-
+          HTTPS vmedia port 6183
+          on {{ lzBmcIP }} did not become reachable within 300 s.
+          Check httpd logs above for TLS or configuration errors.
 
 - name: Verify Ironic API accessibility
   ansible.builtin.uri:

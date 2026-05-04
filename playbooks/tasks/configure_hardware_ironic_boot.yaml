@@ -154,7 +154,7 @@
     body:
       - op: add
         path: /instance_info/boot_iso
-        value: "http://{{ lzBmcIP }}:{{ http_server_port }}/agent.x86_64.iso"
+        value: "file:///iso/agent.x86_64.iso"
     headers:
       Content-Type: "application/json"
       X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"

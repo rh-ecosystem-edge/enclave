@@ -1,26 +1,5 @@
 ---
-# Clean up Ironic deployment and temporary HTTP server after hardware configuration is complete
-- name: Set defaults for Ironic configuration
-  ansible.builtin.set_fact:
-    http_server_pidfile: "{{ http_server_pidfile | default(workingDir + '/logs/ironic-temp-http.pid') }}"
-
-- name: Check if pidfile exists
-  ansible.builtin.stat:
-    path: "{{ http_server_pidfile }}"
-  register: pidfile_stat
-
-- name: Stop temporary Python HTTP server
-  ansible.builtin.shell: "kill $(cat {{ http_server_pidfile }}) 2>/dev/null"
-  register: stop_result
-  failed_when: false
-  changed_when: stop_result.rc == 0
-  when: pidfile_stat.stat.exists
-
-- name: Remove HTTP server PID file
-  ansible.builtin.file:
-    path: "{{ http_server_pidfile }}"
-    state: absent
-
+# Clean up Ironic deployment after hardware configuration is complete
 - name: Stop and remove Ironic pod
   containers.podman.podman_pod:
     name: metal3-ironic
@@ -45,4 +24,6 @@
     - metal3-ca-bundle
     - metal3-ironic-username
     - metal3-ironic-password
+    - ironic-vmedia-cert
+    - ironic-vmedia-key
   when: metal3_cleanup_secrets | default(false) | bool

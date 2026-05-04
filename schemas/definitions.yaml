@@ -16,6 +16,10 @@ definitions:
     type: string
     minLength: 1
     description: A non-empty string value
+  hostname:
+    type: string
+    pattern: "^[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9\\-]*[a-zA-Z0-9])?)*$"
+    description: A valid DNS hostname
   disconnected:
     type: boolean
     description: >-

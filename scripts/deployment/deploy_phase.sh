@@ -129,6 +129,44 @@ if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
     append_odf_extra_vars
 fi
 
+# Log when HTTPS is requested for the Ironic ISO server
+# Note: ironic_https_configured is computed by the playbook from the cert/key vars
+if [ "${ENCLAVE_IRONIC_HTTPS:-}" = "true" ]; then
+    info "Ironic ISO server: HTTPS enabled"
+else
+    info "Ironic ISO server: HTTP only (HTTPS not configured)"
+fi
+
+# Inject Ironic ISO server TLS certificate if provided
+if [ -n "${ENCLAVE_IRONIC_CERT:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSCertificate: |
+"
+    while IFS= read -r line; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
+"
+    done < <(printf '%s\n' "${ENCLAVE_IRONIC_CERT}")
+fi
+
+# Inject Ironic ISO server TLS key if provided
+if [ -n "${ENCLAVE_IRONIC_KEY:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSKey: |
+"
+    while IFS= read -r line; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
+"
+    done < <(printf '%s\n' "${ENCLAVE_IRONIC_KEY}")
+fi
+
+# Inject Ironic ISO server CA certificate if provided
+if [ -n "${ENCLAVE_IRONIC_CA:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSCACertificate: |
+"
+    while IFS= read -r line; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
+"
+    done < <(printf '%s\n' "${ENCLAVE_IRONIC_CA}")
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
