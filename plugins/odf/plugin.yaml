@@ -10,7 +10,7 @@ operators:
     channel: stable-4.20
     init_version: 4.20.7-rhodf
     namespace: openshift-storage
-    source: cs-redhat-operator-index-v4-20
+    source: cs-mirror-redhat-operators-v4-20
     csvMirror: true
     csvNames:
       - odf-operator
