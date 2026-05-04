@@ -124,12 +124,7 @@ if [ -n "${GITHUB_ENV:-}" ]; then
         echo "$KEY_CONTENT"
         echo "EOF"
     } >> "$GITHUB_ENV"
-    {
-        echo "ENCLAVE_IRONIC_CA<<EOF"
-        cat "$CA_CRT"
-        echo "EOF"
-    } >> "$GITHUB_ENV"
-    success "Ironic ISO server certificate and CA exported to GITHUB_ENV"
+    success "Ironic ISO server certificate exported to GITHUB_ENV"
 else
     info "GITHUB_ENV not set - printing certificate to stdout (local use)"
     echo "ENCLAVE_IRONIC_CERT:"
@@ -137,7 +132,4 @@ else
     echo ""
     echo "ENCLAVE_IRONIC_KEY:"
     echo "$KEY_CONTENT"
-    echo ""
-    echo "ENCLAVE_IRONIC_CA:"
-    cat "$CA_CRT"
 fi

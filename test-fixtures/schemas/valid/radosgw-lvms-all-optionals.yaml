@@ -71,10 +71,6 @@ ironicHTTPSKey: |
   -----BEGIN DUMMY KEY-----
   DUMMY_IRONIC_KEY
   -----END DUMMY KEY-----
-ironicHTTPSCACertificate: |
-  -----BEGIN CERTIFICATE-----
-  DUMMY_IRONIC_CA
-  -----END CERTIFICATE-----
 discovery_hosts:
   - name: discovery-host-01
     macAddress: 0c:c4:7a:62:ff:01

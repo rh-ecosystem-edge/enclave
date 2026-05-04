@@ -157,15 +157,6 @@ if [ -n "${ENCLAVE_IRONIC_KEY:-}" ]; then
     done < <(printf '%s\n' "${ENCLAVE_IRONIC_KEY}")
 fi
 
-# Inject Ironic ISO server CA certificate if provided
-if [ -n "${ENCLAVE_IRONIC_CA:-}" ]; then
-    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSCACertificate: |
-"
-    while IFS= read -r line; do
-        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
-"
-    done < <(printf '%s\n' "${ENCLAVE_IRONIC_CA}")
-fi
 
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT

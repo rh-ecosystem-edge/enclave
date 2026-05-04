@@ -1144,23 +1144,6 @@ ironicHTTPSKey: |
   <PEM-encoded private key>
 ```
 
-#### `ironicHTTPSCACertificate`
-
-**Description**: CA certificate to install into the BMC emulator trust
-store. Only needed when the Ironic HTTPS certificate is signed by a
-private CA that the BMC emulator does not trust by default.
-
-**Type**: String (PEM format)
-
-**Required**: No. Leave empty when using a publicly trusted certificate.
-
-**Example**:
-```yaml
-ironicHTTPSCACertificate: |
-  -----BEGIN CERTIFICATE-----
-  ... (CA certificate)
-  -----END CERTIFICATE-----
-```
 
 ## Operator Configuration
 

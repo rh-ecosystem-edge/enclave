@@ -116,9 +116,6 @@ properties:
     "$ref": "#/definitions/ipv4Address"
   sshPubPath:
     "$ref": "#/definitions/nonEmptyString"
-  ironicHTTPSCACertificate:
-    type: string
-    description: PEM-encoded CA certificate for Ironic vmedia HTTPS (for BMC trust)
   ironicHTTPSCertificate:
     type: string
     description: PEM-encoded TLS certificate for Ironic vmedia HTTPS server

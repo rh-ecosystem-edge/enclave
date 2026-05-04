@@ -49,13 +49,6 @@
         and ironicHTTPSKey is defined and ironicHTTPSKey | length > 0
       }}
 
-- name: Check if Ironic HTTPS CA is configured
-  ansible.builtin.set_fact:
-    ironic_https_ca_configured: >-
-      {{
-        ironicHTTPSCACertificate is defined and ironicHTTPSCACertificate | length > 0
-      }}
-
 - name: Assert Ironic HTTPS inputs are complete
   when: >-
     (ironicHTTPSCertificate is defined and ironicHTTPSCertificate | length > 0)
@@ -75,23 +68,6 @@
     force: false
   no_log: true
 
-- name: Set Ironic HTTPS CA certificate file path
-  become: "{{ metal3_persistent | default(false) | bool }}"
-  when:
-    - ironic_https_configured | bool
-    - ironic_https_ca_configured | bool
-  ansible.builtin.set_fact:
-    ironic_ca_certfile: "{{ ironic_ca_certfile | default(workingDir + '/logs/ironic-iso-ca.crt') }}"
-
-- name: Write Ironic HTTPS CA certificate to temp file
-  become: "{{ metal3_persistent | default(false) | bool }}"
-  when:
-    - ironic_https_configured | bool
-    - ironic_https_ca_configured | bool
-  ansible.builtin.copy:
-    content: "{{ ironicHTTPSCACertificate }}\n"
-    dest: "{{ ironic_ca_certfile }}"
-    mode: "0644"
 
 - name: Check if httpd container is already running
   when: ironic_https_configured | bool

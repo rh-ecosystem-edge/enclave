@@ -56,9 +56,3 @@ sslCACertificate: |
 ironicHTTPSCertificate: ""
 
 ironicHTTPSKey: ""
-
-# Ironic HTTP Server TLS CA Certificate (optional)
-# Provide this when the BMC emulator must trust a private CA to verify
-# the Ironic HTTPS certificate. Installs the CA into the BMC emulator
-# trust store. Leave empty when using a publicly trusted certificate.
-ironicHTTPSCACertificate: ""

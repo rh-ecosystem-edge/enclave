@@ -2,7 +2,6 @@
 # Fixture: LocalStorage + lvms with Ironic vmedia HTTPS variables
 # Validates that the ironicHTTPSCertificate conditional passes when both
 # ironicHTTPSCertificate and ironicHTTPSKey are present.
-# ironicHTTPSCACertificate is omitted (always optional).
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
