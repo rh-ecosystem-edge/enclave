@@ -1,0 +1,25 @@
+---
+# Quay disconnected tasks: imageset for oc-mirror and mirror run.
+# This file is included only when disconnected | default(true).
+
+- name: Wait for async oc-mirror to quay
+  ansible.builtin.include_tasks: "../../playbooks/tasks/background_task_wait.yaml"
+  vars:
+    task_id: quay
+
+- name: Delete registries.conf for the oc-mirror process
+  ansible.builtin.file:
+    path: "{{ lookup('env','HOME') }}/.config/containers/registries.conf"
+    state: absent
+
+- name: Apply release signature ConfigMap
+  ansible.builtin.command:
+    cmd: |
+      {{ workingDir }}/bin/oc apply -f {{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+# Apply oc-mirror-generated IDMS/ITMS to the cluster (fallback to internal Quay when LZ fails)
+# and add the Quay registry CA to image.config so nodes trust the registry for image pulls.
+- name: Apply Quay mirrors and trust registry CA for image pulls
+  ansible.builtin.include_tasks: quay_disconnected_mirrors.yaml

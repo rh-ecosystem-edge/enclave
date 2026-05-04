@@ -172,4 +172,4 @@
 - name: Quay disconnected (oc-mirror setup and run)
   when: disconnected | default(true)
   ansible.builtin.include_tasks:
-    file: quay_disconnected.yaml
+    file: quay_disconnected_start.yaml

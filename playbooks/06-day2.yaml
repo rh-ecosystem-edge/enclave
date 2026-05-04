@@ -29,6 +29,16 @@
         msg: "Running day-2 operations in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
       tags: always
 
+    - name: Configure Quay in disconnected environments
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/quay_disconnected_start.yaml
+        apply:
+          tags: quay-disconnected
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      tags: quay-disconnected
+
     - name: Configure ACM ClusterImageSets
       ansible.builtin.include_tasks:
         file: ../operators/advanced-cluster-management/acm_cis.yaml
@@ -46,16 +56,6 @@
           environment:
             KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       tags: openshift-pipelines
-
-    - name: Configure Quay in disconnected environments
-      when: disconnected | default(true)
-      ansible.builtin.include_tasks:
-        file: ../operators/quay-operator/quay_disconnected.yaml
-        apply:
-          tags: quay-disconnected
-          environment:
-            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-      tags: quay-disconnected
 
     - name: Configure Clair in disconnected environments
       when: disconnected | default(true)
@@ -82,6 +82,16 @@
       loop_control:
         loop_var: openshift_version
       tags: acm-policy-catalogsources
+
+    - name: Finish Quay configuration in disconnected environments
+      when: disconnected | default(true)
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/quay_disconnected_finish.yaml
+        apply:
+          tags: quay-disconnected
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      tags: quay-disconnected
 
     - name: Management cluster upgrade
       ansible.builtin.include_tasks:

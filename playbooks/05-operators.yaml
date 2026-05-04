@@ -59,3 +59,11 @@
         apply:
           tags: operators
       tags: operators
+
+    - name: Configure operators
+      when: disconnected | default(true) | bool
+      ansible.builtin.include_tasks:
+        file: ../operators/quay-operator/quay_disconnected_finish.yaml
+        apply:
+          tags: operators
+      tags: operators
