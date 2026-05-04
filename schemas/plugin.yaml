@@ -97,6 +97,54 @@ definitions:
     required:
       - path
 
+  helm_chart:
+    type: object
+    additionalProperties: false
+    not:
+      required: [valuesTemplate, valuesFile]
+    if:
+      required: [repo]
+    then:
+      required: [chart]
+    properties:
+      chart:
+        type: string
+        description: >-
+          Chart name (when repo is set) or path relative to the plugin
+          directory (local chart). Default for local: charts/<release>.
+      repo:
+        type: string
+        description: >-
+          Helm repository URL. When set, the chart is fetched from this
+          remote repo instead of the local plugin directory.
+      version:
+        type: string
+        description: Chart version constraint (e.g. '1.2.3' or '^1.0').
+      release:
+        type: string
+        description: Helm release name.
+      namespace:
+        type: string
+        description: Kubernetes namespace for the release.
+      valuesTemplate:
+        type: string
+        description: Path to Jinja2 values template relative to plugin directory.
+      valuesFile:
+        type: string
+        description: Path to static values file relative to plugin directory.
+      createNamespace:
+        type: boolean
+        description: "Pass --create-namespace. Default: true."
+      timeout:
+        type: string
+        description: "Helm timeout (e.g. '15m'). Default: '15m'."
+      wait:
+        type: boolean
+        description: "Pass --wait. Default: true."
+    required:
+      - release
+      - namespace
+
 additionalProperties: false
 properties:
   name:
@@ -135,6 +183,11 @@ properties:
   installOperators:
     type: boolean
     decsription: Install operators.
+  helm:
+    type: array
+    description: Helm charts to install, in order. Runs after OLM operators, before tasks/deploy.yaml.
+    items:
+      $ref: "#/definitions/helm_chart"
   defaults:
     type: object
     description: Default variables loaded into Ansible scope before plugin tasks run.

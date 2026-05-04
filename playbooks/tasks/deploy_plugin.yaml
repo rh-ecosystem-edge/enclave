@@ -163,6 +163,22 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/post-operators.yaml') | length > 0
   tags: post-operators
 
+- name: Deploy Helm charts
+  ansible.builtin.include_tasks:
+    file: tasks/helm_deploy.yaml
+    apply:
+      tags: helm
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ plugin.helm }}"
+  loop_control:
+    loop_var: helm_chart
+    label: "{{ helm_chart.release }}"
+  when:
+    - plugin.helm is defined
+    - plugin.helm | length > 0
+  tags: helm
+
 - name: Run deploy
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/deploy.yaml"

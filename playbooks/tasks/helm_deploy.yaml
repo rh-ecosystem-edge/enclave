@@ -1,0 +1,111 @@
+---
+# Reusable tasks for deploying a single Helm chart.
+#
+# Required loop_var: helm_chart (from deploy_plugin.yaml loop)
+# Required vars: plugin_dir, plugin_name, workingDir
+#
+# Supports two modes:
+#   Remote chart: set helm_chart.repo (Helm repo URL) and helm_chart.chart (chart name).
+#   Local chart:  set helm_chart.chart (path relative to plugin dir) or omit for default.
+
+# --- Remote repo setup ---
+
+- name: "Helm | Add repo for {{ helm_chart.release }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ workingDir }}/bin/helm repo add
+      {{ helm_chart.release }}-repo
+      {{ helm_chart.repo }}
+  when: helm_chart.repo is defined
+  changed_when: true
+
+- name: "Helm | Update repo cache"
+  ansible.builtin.command:
+    cmd: "{{ workingDir }}/bin/helm repo update"
+  when: helm_chart.repo is defined
+  changed_when: true
+
+# --- Chart reference ---
+
+- name: "Helm | Set chart reference for {{ helm_chart.release }}"
+  ansible.builtin.set_fact:
+    _helm_chart_ref: >-
+      {{ helm_chart.release ~ '-repo/' ~ helm_chart.chart
+         if helm_chart.repo is defined
+         else plugin_dir ~ '/' ~ (helm_chart.chart | default('charts/' ~ helm_chart.release)) }}
+
+- name: "Helm | Verify local chart exists"
+  ansible.builtin.stat:
+    path: "{{ _helm_chart_ref }}"
+  register: _r_chart_stat
+  when: helm_chart.repo is not defined
+
+- name: "Helm | Assert local chart exists"
+  ansible.builtin.assert:
+    that: _r_chart_stat.stat.exists
+    fail_msg: "Helm chart not found: {{ _helm_chart_ref }}"
+  when: helm_chart.repo is not defined
+
+# --- Values ---
+
+- name: "Helm | Render values template"
+  ansible.builtin.template:
+    src: "{{ plugin_dir }}/{{ helm_chart.valuesTemplate }}"
+    dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ helm_chart.release }}.yaml"
+  when: helm_chart.valuesTemplate is defined
+
+- name: "Helm | Copy static values file"
+  ansible.builtin.copy:
+    src: "{{ plugin_dir }}/{{ helm_chart.valuesFile }}"
+    dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ helm_chart.release }}.yaml"
+  when:
+    - helm_chart.valuesFile is defined
+    - helm_chart.valuesTemplate is not defined
+
+- name: "Helm | Build values arg"
+  ansible.builtin.set_fact:
+    _helm_values_arg: >-
+      {{ '-f ' ~ workingDir ~ '/helm-values-' ~ plugin_name ~ '-' ~ helm_chart.release ~ '.yaml'
+         if (helm_chart.valuesTemplate is defined or helm_chart.valuesFile is defined)
+         else '' }}
+
+# --- Install ---
+
+- name: "Helm | Ensure log directory exists"
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: "Helm | Set log path"
+  ansible.builtin.set_fact:
+    _helm_log: "{{ workingDir }}/logs/helm-{{ plugin_name }}-{{ helm_chart.release }}.{{ lookup('pipe', 'date +%s') }}.log"
+
+- name: "Helm | Install {{ helm_chart.release }}"
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ workingDir }}/bin/helm upgrade --install \
+      {{ helm_chart.release }} \
+      {{ _helm_chart_ref }} \
+      --namespace {{ helm_chart.namespace }} \
+      {{ '--create-namespace' if (helm_chart.createNamespace | default(true) | bool) else '' }} \
+      {{ '--wait' if (helm_chart.wait | default(true) | bool) else '' }} \
+      --timeout {{ helm_chart.timeout | default('15m') }} \
+      {{ '--version ' ~ helm_chart.version if helm_chart.version is defined else '' }} \
+      {{ _helm_values_arg }} \
+      2>&1 | tee {{ _helm_log }}
+  args:
+    executable: /bin/bash
+  register: r_helm_install
+  retries: 2
+  delay: 30
+  until: r_helm_install is success
+
+- name: "Helm | Verify release status"
+  ansible.builtin.command:
+    cmd: "{{ workingDir }}/bin/helm status {{ helm_chart.release }} --namespace {{ helm_chart.namespace }}"
+  register: r_helm_status
+  changed_when: false
+
+- name: "Helm | Show status"
+  ansible.builtin.debug:
+    msg: "{{ r_helm_status.stdout_lines | default([]) }}"

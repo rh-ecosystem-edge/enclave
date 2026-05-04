@@ -83,7 +83,7 @@ filepath = sys.argv[1]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'mirror', 'catalog', 'operators', 'defaults',
                 'installOperators', 'registries', 'additionalImages', 'blockedImages',
-                'requires']
+                'requires', 'helm']
 
 try:
     with open(filepath) as f:
@@ -125,8 +125,10 @@ if unexpected:
     # 3. Check for unexpected files/directories (only plugin.yaml and tasks/ allowed)
     for entry in "${plugin_dir}"*; do
         entry_name=$(basename "$entry")
-        if [ "$entry_name" != "plugin.yaml" ] && [ "$entry_name" != "tasks" ] && [ "$entry_name" != "files" ]; then
-            error "  Unexpected file or directory: $entry_name (only plugin.yaml, tasks/ and files/ are allowed)"
+        if [ "$entry_name" != "plugin.yaml" ] && [ "$entry_name" != "tasks" ] && \
+           [ "$entry_name" != "files" ] && [ "$entry_name" != "charts" ] && \
+           [ "$entry_name" != "templates" ]; then
+            error "  Unexpected file or directory: $entry_name (only plugin.yaml, tasks/, files/, charts/ and templates/ are allowed)"
             FAILED=1
             plugin_failed=1
         fi
