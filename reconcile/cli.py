@@ -11,10 +11,10 @@ def cli():
 
 @cli.command()
 @click.option("--operators", default="[]")
-@click.option("--dry-run", default="False")
+@click.option("--dry-run/--no-dry-run", default=False)
 def operator_versions(operators, dry_run):
     # rebuild sys.argv for the standalone script
-    sys.argv = ["operator_versions.py", operators, dry_run]
+    sys.argv = ["operator_versions.py", operators, str(dry_run)]
 
     operator_versions_reconcile()
 
