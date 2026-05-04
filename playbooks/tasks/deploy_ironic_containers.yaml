@@ -1,30 +1,6 @@
 ---
 # Ironic ephemeral container deployment (non-persistent path)
 
-- name: Stop persistent Ironic systemd services if running
-  become: true
-  ansible.builtin.systemd:
-    name: "{{ item }}"
-    state: stopped
-    enabled: false
-  loop:
-    - metal3-httpd.service
-    - metal3-ironic-api.service
-    - metal3-ironic-pod.service
-  failed_when: false
-
-- name: Remove persistent metal3-ironic pod
-  become: true
-  containers.podman.podman_pod:
-    name: metal3-ironic
-    state: absent
-  failed_when: false
-
-- name: Remove stale ephemeral metal3-ironic pod
-  containers.podman.podman_pod:
-    name: metal3-ironic
-    state: absent
-
 - name: Create metal3-ironic pod
   containers.podman.podman_pod:
     name: metal3-ironic
