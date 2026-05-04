@@ -1,0 +1,19 @@
+---
+name: cincinnati
+type: foundation
+order: 10
+mirror: core
+
+operators:
+  - name: cincinnati-operator
+    version: 5.0.3
+    channel: v1
+    init_version: 5.0.3
+    namespace: openshift-update-service
+    source: cs-redhat-operator-index-v4-20
+    csvNames:
+      - update-service-operator
+
+registries:
+  - location: "registry.redhat.io/openshift-update-service"
+    mirror: "openshift-update-service"

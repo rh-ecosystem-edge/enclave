@@ -19,9 +19,10 @@ storage_plugin: lvms
 blockStorageBackend: "{{ storage_plugin }}"
 
 # Plugins to deploy during the pipeline. Override in config/global.yaml to add or remove plugins.
-# By default only the selected storage plugin is enabled.
+# By default the selected storage plugin and cincinnati are enabled.
 enabled_plugins:
   - "{{ storage_plugin }}"
+  - cincinnati
 
 # Default pull secret path. Override in config/global.yaml if stored elsewhere.
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"

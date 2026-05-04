@@ -22,15 +22,6 @@ operators:
     namespace: open-cluster-management
     source: cs-redhat-operator-index-v4-20
 
-  - name: cincinnati-operator
-    version: 5.0.3
-    channel: v1
-    init_version: 5.0.3
-    namespace: openshift-update-service
-    source: cs-redhat-operator-index-v4-20
-    csvNames:
-      - update-service-operator
-
   - name: openshift-gitops-operator
     version: 1.19.2
     channel: gitops-1.19
