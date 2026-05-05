@@ -1,0 +1,40 @@
+---
+name: observability
+type: foundation
+order: 20
+mirror: core
+
+operators:
+  - name: netobserv-operator
+    version: 1.11.0
+    channel: stable
+    init_version: 1.11.0
+    namespace: openshift-netobserv-operator
+    global: true
+    csvNames:
+      - network-observability-operator
+  - name: cluster-logging
+    version: 6.4.2
+    channel: stable-6.4
+    init_version: 6.4.2
+    namespace: openshift-logging
+  - name: loki-operator
+    version: 6.4.2
+    channel: stable-6.4
+    init_version: 6.4.2
+    namespace: openshift-operators-redhat
+    global: true
+  - name: cluster-observability-operator
+    version: 1.3.1
+    channel: stable
+    init_version: 1.3.1
+    namespace: openshift-cluster-observability-operator
+    global: true
+
+registries:
+  - location: "registry.redhat.io/openshift-logging"
+    mirror: "openshift-logging"
+  - location: "registry.redhat.io/network-observability"
+    mirror: "network-observability"
+  - location: "registry.redhat.io/cluster-observability-operator"
+    mirror: "cluster-observability-operator"
