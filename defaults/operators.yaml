@@ -12,12 +12,14 @@ operators:
     channel: stable-2.10
     init_version: 2.10.0
     namespace: multicluster-engine
+    seed: true
 
   - name: advanced-cluster-management
     version: 2.15.1
     channel: release-2.15
     init_version: 2.15.0
     namespace: open-cluster-management
+    seed: true
 
   - name: cincinnati-operator
     version: 5.0.3
