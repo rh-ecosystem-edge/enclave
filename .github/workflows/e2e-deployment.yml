@@ -48,6 +48,31 @@ on:
         required: false
         type: boolean
         default: false
+  # let's allow this workflow to be reusable, e.g. to call it from egress-capture.yml
+  workflow_call:
+    inputs:
+      run-connected:
+        type: boolean
+        default: true
+      run-disconnected:
+        type: boolean
+        default: true
+      storage-plugin:
+        type: string
+        default: 'lvms'
+      skip-cleanup:
+        type: boolean
+        default: false
+      capture-egress:
+        type: boolean
+        default: false
+    outputs:
+      egress-artifact-connected:
+        description: "Artifact name for connected egress logs (empty if not captured)"
+        value: ${{ jobs.e2e-connected.outputs.egress-artifact }}
+      egress-artifact-disconnected:
+        description: "Artifact name for disconnected egress logs (empty if not captured)"
+        value: ${{ jobs.e2e-disconnected.outputs.egress-artifact }}
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -64,6 +89,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
+      run_connected: ${{ steps.decision.outputs.run_connected }}
+      run_disconnected: ${{ steps.decision.outputs.run_disconnected }}
       storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
       storage_plugins_connected: ${{ steps.decision.outputs.storage_plugins_connected }}
 
@@ -108,6 +135,17 @@ jobs:
           # Determine whether to run and which storage plugins to test.
           # storage_plugins is a JSON array consumed by the job matrix.
           # ODF only runs in disconnected mode. Connected always uses lvms.
+          #
+          # run_connected / run_disconnected: honour caller inputs when present,
+          # default to running both modes. Resolved here (not at job level)
+          # because the inputs context is unreliable in workflow_call when the
+          # caller's event_name is inherited.
+          # Boolean false renders as "false"; absent/null renders as empty string.
+          RUN_CONNECTED="${{ inputs.run-connected }}"
+          RUN_DISCONNECTED="${{ inputs.run-disconnected }}"
+          [[ -z "$RUN_CONNECTED" ]] && RUN_CONNECTED=true
+          [[ -z "$RUN_DISCONNECTED" ]] && RUN_DISCONNECTED=true
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
@@ -118,6 +156,16 @@ jobs:
               echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
             fi
             echo "Manual trigger - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
+          elif [[ "${{ github.event_name }}" == "workflow_call" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
+            echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
+            if [[ "$PLUGIN" == "odf" ]]; then
+              echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
+            else
+              echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
+            fi
+            echo "Called as reusable workflow — E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
@@ -146,6 +194,9 @@ jobs:
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
+          echo "run_connected=${RUN_CONNECTED}" >> $GITHUB_OUTPUT
+          echo "run_disconnected=${RUN_DISCONNECTED}" >> $GITHUB_OUTPUT
+
   # ---------------------------------------------------------------------------
   # Connected mode E2E deployment
   # ---------------------------------------------------------------------------
@@ -154,9 +205,11 @@ jobs:
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
-      (github.event_name != 'workflow_dispatch' || inputs.run-connected == true)
+      needs.check-e2e-needed.outputs.run_connected == 'true'
     runs-on: [self-hosted, enclave-large]
     timeout-minutes: 210
+    outputs:
+      egress-artifact: ${{ steps.egress_export.outputs.artifact-name || '' }}
 
     strategy:
       fail-fast: false
@@ -242,6 +295,13 @@ jobs:
           echo "Installing ${LZ_OS_VARIANT:-centos-stream10} on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup OpenSnitch for egress capture
+        if: inputs.capture-egress == true
+        run: |
+          echo "## Setting up OpenSnitch" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci setup-opensnitch
+          echo "OpenSnitch running on Landing Zone" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
         run: |
@@ -334,6 +394,25 @@ jobs:
         id: verify_cluster
         run: make -f Makefile.ci verify-cluster
 
+      - name: Collect egress logs
+        if: inputs.capture-egress == true && !cancelled()
+        run: make -f Makefile.ci collect-egress-logs
+
+      - name: Upload egress logs
+        if: inputs.capture-egress == true && !cancelled()
+        id: egress_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: egress-logs-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
+          path: artifacts/egress/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Export egress artifact name
+        if: inputs.capture-egress == true && steps.egress_upload.outputs.artifact-id != ''
+        id: egress_export
+        run: echo "artifact-name=egress-logs-connected-${ENCLAVE_CLUSTER_NAME}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Collect artifacts
         if: always()
         uses: ./.github/actions/collect-artifacts
@@ -411,7 +490,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
+        if: >-
+          always() &&
+          !((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') &&
+            inputs.skip-cleanup == true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -438,7 +520,10 @@ jobs:
           fi
 
       - name: Cleanup skipped notice
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        if: >-
+          always() &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') &&
+          inputs.skip-cleanup == true
         run: |
           echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -558,9 +643,11 @@ jobs:
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
-      (github.event_name != 'workflow_dispatch' || inputs.run-disconnected == true)
+      needs.check-e2e-needed.outputs.run_disconnected == 'true'
     runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]') || fromJSON('["self-hosted", "enclave-large"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
+    outputs:
+      egress-artifact: ${{ steps.egress_export.outputs.artifact-name || '' }}
 
     strategy:
       fail-fast: false
@@ -646,6 +733,13 @@ jobs:
           echo "Installing ${LZ_OS_VARIANT:-centos-stream10} on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Setup OpenSnitch for egress capture
+        if: inputs.capture-egress == true
+        run: |
+          echo "## Setting up OpenSnitch" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci setup-opensnitch
+          echo "OpenSnitch running on Landing Zone" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
         run: |
@@ -747,6 +841,25 @@ jobs:
           echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
           ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
 
+      - name: Collect egress logs
+        if: inputs.capture-egress == true && !cancelled()
+        run: make -f Makefile.ci collect-egress-logs
+
+      - name: Upload egress logs
+        if: inputs.capture-egress == true && !cancelled()
+        id: egress_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: egress-logs-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
+          path: artifacts/egress/
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Export egress artifact name
+        if: inputs.capture-egress == true && steps.egress_upload.outputs.artifact-id != ''
+        id: egress_export
+        run: echo "artifact-name=egress-logs-disconnected-${ENCLAVE_CLUSTER_NAME}-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Collect artifacts
         if: always()
         uses: ./.github/actions/collect-artifacts
@@ -824,7 +937,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
+        if: >-
+          always() &&
+          !((github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') &&
+            inputs.skip-cleanup == true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -851,7 +967,10 @@ jobs:
           fi
 
       - name: Cleanup skipped notice
-        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
+        if: >-
+          always() &&
+          (github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call') &&
+          inputs.skip-cleanup == true
         run: |
           echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
