@@ -9,8 +9,13 @@ Pod=metal3-ironic.pod
 User=1002:1003
 DropCapability=ALL
 Volume=metal3-ironic-shared:/shared
+{% if ironic_https_configured | default(false) | bool %}
+Secret=ironic-vmedia-cert,type=mount,target=/certs/vmedia/tls.crt,uid=1002,gid=1003,mode=0400
+Secret=ironic-vmedia-key,type=mount,target=/certs/vmedia/tls.key,uid=1002,gid=1003,mode=0400
+{% endif %}
 Environment=IRONIC_LISTEN_PORT=6385
 Environment=HTTP_PORT=6180
+Environment=VMEDIA_TLS_PORT=6183
 Environment=LISTEN_ALL_INTERFACES=true
 Environment=USE_IRONIC_INSPECTOR=false
 Environment=PROVISIONING_IP={{ lzBmcIP }}
