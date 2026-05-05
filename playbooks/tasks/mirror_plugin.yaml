@@ -71,12 +71,71 @@
           Full log: {{ _oc_mirror_plugin_log }}
 
 - name: Apply updated mirror manifests to cluster
-  ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc apply \
-      -f {{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/ \
-      --server-side --force-conflicts
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  block:
+    - name: Set landing-zone cluster resources directory
+      ansible.builtin.set_fact:
+        lz_cluster_resources_dir: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources"
+
+    - name: Stat landing-zone IDMS source
+      ansible.builtin.stat:
+        path: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+      register: lz_idms_src_stat
+
+    - name: Stat landing-zone ITMS source
+      ansible.builtin.stat:
+        path: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+      register: lz_itms_src_stat
+
+    # Dedicated IDMS/ITMS per plugin; oc-mirror overwrites generic idms-oc-mirror.yaml — remove after copy.
+    # oc-mirror v2 may emit multiple resources per file; names must stay unique (idms-<slice>-plugin-<name>).
+    # Quay apply uses idms-<slice>-plugin-<name>-internal (quay_disconnected_mirrors.yaml).
+    - name: Copy LZ IDMS to plugin-specific manifest
+      ansible.builtin.copy:
+        src: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+        dest: "{{ lz_cluster_resources_dir }}/idms-oc-mirror-plugin-{{ plugin_name }}.yaml"
+        remote_src: true
+      when: lz_idms_src_stat.stat.exists
+
+    - name: Rename ImageDigestMirrorSet names in plugin LZ IDMS manifest
+      ansible.builtin.replace:
+        path: "{{ lz_cluster_resources_dir }}/idms-oc-mirror-plugin-{{ plugin_name }}.yaml"
+        regexp: '^(\s*name:\s*)idms-([^\s]+)\s*$'
+        replace: '\1idms-\2-plugin-{{ plugin_name }}'
+      when: lz_idms_src_stat.stat.exists
+
+    - name: Remove generic LZ IDMS after plugin-specific copy
+      ansible.builtin.file:
+        path: "{{ lz_cluster_resources_dir }}/idms-oc-mirror.yaml"
+        state: absent
+      when: lz_idms_src_stat.stat.exists
+
+    - name: Copy LZ ITMS to plugin-specific manifest
+      ansible.builtin.copy:
+        src: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+        dest: "{{ lz_cluster_resources_dir }}/itms-oc-mirror-plugin-{{ plugin_name }}.yaml"
+        remote_src: true
+      when: lz_itms_src_stat.stat.exists
+
+    - name: Rename ImageTagMirrorSet names in plugin LZ ITMS manifest
+      ansible.builtin.replace:
+        path: "{{ lz_cluster_resources_dir }}/itms-oc-mirror-plugin-{{ plugin_name }}.yaml"
+        regexp: '^(\s*name:\s*)itms-([^\s]+)\s*$'
+        replace: '\1itms-\2-plugin-{{ plugin_name }}'
+      when: lz_itms_src_stat.stat.exists
+
+    - name: Remove generic LZ ITMS after plugin-specific copy
+      ansible.builtin.file:
+        path: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
+        state: absent
+      when: lz_itms_src_stat.stat.exists
+
+    - name: Apply updated mirror manifests to cluster
+      ansible.builtin.shell: |
+        {{ workingDir }}/bin/oc apply \
+          -f {{ lz_cluster_resources_dir }}/ \
+          --server-side --force-conflicts
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
@@ -219,6 +278,8 @@
     apply:
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    quay_plugin_mirror: true
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined

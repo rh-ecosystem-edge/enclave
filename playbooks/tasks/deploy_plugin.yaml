@@ -133,6 +133,8 @@
 - name: Mirror plugin
   ansible.builtin.include_tasks:
     file: mirror_plugin.yaml
+  vars:
+    quay_plugin_mirror: true
   when:
     - plugin.mirror | default('none') == 'plugin'
     - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
