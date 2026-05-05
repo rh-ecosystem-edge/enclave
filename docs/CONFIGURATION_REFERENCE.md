@@ -235,7 +235,7 @@ lzBmcIP: 100.64.1.10
 
 #### `lzBmcHostname`
 
-**Description**: DNS hostname for the LZ BMC interface. Optional. When set, Ironic constructs HTTPS vmedia URLs using this hostname instead of `lzBmcIP`.
+**Description**: DNS hostname for the LZ BMC interface. Optional. Only used when `ironicHTTPSCertificate` and `ironicHTTPSKey` are also set — ignored otherwise. When set, Ironic constructs HTTPS vmedia URLs using this hostname instead of `lzBmcIP`.
 
 **Type**: String (DNS hostname)
 
@@ -247,9 +247,10 @@ lzBmcHostname: mirror.example.com
 ```
 
 **Notes**:
+- Has no effect unless `ironicHTTPSCertificate` and `ironicHTTPSKey` are configured
 - The hostname must resolve to `lzBmcIP` from the BMC network
 - When set, `ironicHTTPSCertificate` must have a DNS SAN matching this hostname
-- When not set, the IP-based flow is used and `ironicHTTPSCertificate` must have an IP SAN matching `lzBmcIP`
+- When not set with HTTPS, `ironicHTTPSCertificate` must have an IP SAN matching `lzBmcIP`
 - `PROVISIONING_IP` (used for Apache binding) always remains `lzBmcIP`; only the vmedia URL changes
 
 #### `defaultNtpServers`
