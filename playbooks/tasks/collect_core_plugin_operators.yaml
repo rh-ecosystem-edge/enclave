@@ -23,7 +23,7 @@
   loop_control:
     loop_var: plugin_path
 
-- name: Build combined plugin operators list
+- name: Build combined plugin operators dictionary
   vars:
     _enabled: >-
       {{ r_cp_slurp.results
@@ -39,10 +39,8 @@
     _core_plugin_operators: >-
       {{ _core
          | selectattr('operators', 'defined')
-         | map(attribute='operators')
-         | flatten
-         | list }}
+         | items2dict(key_name='name', value_name='operators') }}
 
 - name: Display plugin operators to mirror
   ansible.builtin.debug:
-    msg: "Plugin operators to include in imageset: {{ _core_plugin_operators | map(attribute='name') | list }}"
+    msg: "Plugin operators to include in imageset: {{ _core_plugin_operators.values() | flatten | map(attribute='name') | list }}"
