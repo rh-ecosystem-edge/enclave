@@ -419,8 +419,34 @@ get_landing_zone_ip() {
     if [ -n "${WORKING_DIR:-}" ]; then
         local env_file
         env_file=$(ls -t "$WORKING_DIR"/environment*.json 2>/dev/null | head -1)
+
         if [ -f "$env_file" ]; then
-            lz_ip=$(jq -r '.landing_zone.ip // empty' "$env_file" 2>/dev/null || true)
+            lz_ip=$(jq -r '[
+              .vms.landing_zone.networks.cluster.ip,
+              .vms.landing_zone.networks.bmc.ip,
+              .landing_zone.ip
+            ] | map(select(. != null and . != "unknown")) | .[0] // empty' "$env_file" 2>/dev/null || true)
+
+            if [ -z "$lz_ip" ]; then
+                local lz_vm_name
+                lz_vm_name=$(jq -r '.vms.landing_zone.name // empty' "$env_file" 2>/dev/null || true)
+                [ -z "$lz_vm_name" ] && lz_vm_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0"
+
+                local cluster_network
+                cluster_network=$(jq -r '.networks.cluster.cidr // empty' "$env_file" 2>/dev/null || true)
+                [ -z "$cluster_network" ] && cluster_network="192.168.2.0/24"
+
+                local cluster_net_prefix
+                cluster_net_prefix=$(echo "$cluster_network" | cut -d'/' -f1 | awk -F. '{print $1"."$2"."$3}')
+                local escaped_prefix
+                escaped_prefix=$(echo "$cluster_net_prefix" | sed 's/\./\\./g')
+
+                lz_ip=$(sudo virsh domifaddr "$lz_vm_name" 2>/dev/null \
+                    | grep -E "${escaped_prefix}\.[0-9]+" \
+                    | awk '{print $4}' \
+                    | cut -d'/' -f1 \
+                    | head -1)
+            fi
         fi
     fi
 
@@ -494,6 +520,44 @@ collect_lz_deployment_logs() {
     # Copy and extract
     if scp $ssh_opts cloud-user@"$lz_ip":/tmp/deployment-logs-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/landing-zone/" 2>/dev/null; then
         (cd "${OUTPUT_DIR}/landing-zone" && tar xzf deployment-logs-${TIMESTAMP}.tar.gz && rm deployment-logs-${TIMESTAMP}.tar.gz) || true
+    fi
+}
+
+collect_lz_oc_mirror_logs() {
+    local lz_ip="$1"
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
+
+    mkdir -p "${OUTPUT_DIR}/landing-zone/oc-mirror"
+    info "Collecting oc-mirror logs from Landing Zone..."
+
+    local remote_tar="/tmp/oc-mirror-logs-${TIMESTAMP}.tar.gz"
+
+    if ! ssh $ssh_opts cloud-user@"$lz_ip" "
+        cd ~ || exit 2
+        shopt -s nullglob
+        files=(
+            logs/oc-mirror.progress.*.log
+            config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
+        )
+        if [ \${#files[@]} -eq 0 ]; then
+            exit 2
+        fi
+        tar czf ${remote_tar} \${files[@]}
+    "; then
+        warn "No oc-mirror logs found or SSH failed"
+        return
+    fi
+
+    if scp $ssh_opts cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/oc-mirror/"; then
+        (
+            cd "${OUTPUT_DIR}/landing-zone/oc-mirror" && \
+            tar xzf "oc-mirror-logs-${TIMESTAMP}.tar.gz" && \
+            rm "oc-mirror-logs-${TIMESTAMP}.tar.gz"
+        ) || warn "Failed to extract logs"
+
+        ssh $ssh_opts cloud-user@"$lz_ip" "rm -f ${remote_tar}" >/dev/null 2>&1 || true
+    else
+        warn "Failed to download oc-mirror logs"
     fi
 }
 
@@ -721,6 +785,7 @@ collect_deployment() {
     collect_lz_system_info "$lz_ip"
     collect_lz_dns_config "$lz_ip"
     collect_lz_deployment_logs "$lz_ip"
+    collect_lz_oc_mirror_logs "$lz_ip"
     collect_lz_config_files "$lz_ip"
     collect_lz_services "$lz_ip"
     collect_lz_registry "$lz_ip"
