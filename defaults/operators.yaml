@@ -41,28 +41,6 @@ operators:
     namespace: openshift-pipelines
     global: true
 
-  - name: netobserv-operator
-    version: 1.11.0
-    channel: stable
-    init_version: 1.11.0
-    namespace: openshift-netobserv-operator
-    global: true
-    csvNames:
-      - network-observability-operator
-
-  - name: cluster-logging
-    version: 6.4.2
-    channel: stable-6.4
-    init_version: 6.4.2
-    namespace: openshift-logging
-
-  - name: loki-operator
-    version: 6.4.2
-    channel: stable-6.4
-    init_version: 6.4.2
-    namespace: openshift-operators-redhat
-    global: true
-
   - name: redhat-oadp-operator
     version: 1.5.5
     channel: stable
@@ -78,13 +56,6 @@ operators:
     namespace: cert-manager-operator
     csvNames:
       - cert-manager-operator
-
-  - name: cluster-observability-operator
-    version: 1.3.1
-    channel: stable
-    init_version: 1.3.1
-    namespace: openshift-cluster-observability-operator
-    global: true
 
   - name: openshift-external-secrets-operator
     version: 1.0.0
