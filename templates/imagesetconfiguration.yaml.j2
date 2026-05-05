@@ -26,10 +26,16 @@ mirror:
 {% endfor %}
     graph: true
   operators:
+{% set combined_operators = {'default': operators} | combine(_core_plugin_operators | default({})) %}
+{% for plugin_name, plugin_operators in combined_operators.items() %}
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
+{% if plugin_name == 'default' %}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
+{% else %}
+      targetCatalog: redhat/{{ mirror_rh_operator_catalog }}-{{ plugin_name }}
+{% endif %}
       packages:
-{% for operator in operators + (_core_plugin_operators | default([])) %}
+{% for operator in plugin_operators %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
 {% for operator_name in [operator.name] + additional_operator_names %}
         - name: {{ operator_name }}
@@ -41,6 +47,7 @@ mirror:
 {% endfor %}
 {% for pkg in operator.extraMirrorPackages | default([]) %}
         - name: {{ pkg }}
+{% endfor %}
 {% endfor %}
 {% endfor %}
 

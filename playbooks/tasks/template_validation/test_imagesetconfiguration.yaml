@@ -4,7 +4,7 @@
 
 - name: Render imagesetconfiguration.yaml for each storage backend
   vars:
-    _core_plugin_operators: "{{ item.operators }}"
+    _core_plugin_operators: "{{ {item.name: item.operators} }}"
   ansible.builtin.template:
     src: ../../templates/imagesetconfiguration.yaml.j2
     dest: "{{ temp_dir.path }}/imagesetconfiguration-{{ item.name }}.yaml"
