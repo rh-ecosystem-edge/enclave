@@ -1,0 +1,74 @@
+---
+- name: Verify AAP operator CSV is installed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ osac_aap.ns }}"
+    label_selectors:
+      - "operators.coreos.com/ansible-automation-platform-operator.{{ osac_aap.ns }}"
+  register: __r_aap_csv
+  retries: 30
+  delay: 10
+  until:
+    - __r_aap_csv.resources | length > 0
+    - __r_aap_csv.resources[0].status.phase | default('') == 'Succeeded'
+
+- name: Debug AAP operator CSV
+  ansible.builtin.debug:
+    msg:
+      - "CSV: {{ __r_aap_csv.resources[0].metadata.name }}"
+      - "Phase: {{ __r_aap_csv.resources[0].status.phase }}"
+      - "Version: {{ __r_aap_csv.resources[0].spec.version | default('unknown') }}"
+
+- name: Wait for AAP operator deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: automation-controller-operator-controller-manager
+    namespace: "{{ osac_aap.ns }}"
+  register: __r_aap_operator_deploy
+  retries: 30
+  delay: 10
+  until:
+    - __r_aap_operator_deploy.resources | length > 0
+    - __r_aap_operator_deploy.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Debug AAP operator deployment
+  ansible.builtin.debug:
+    msg:
+      - "Deployment: {{ __r_aap_operator_deploy.resources[0].metadata.name }}"
+      - "Replicas: {{ __r_aap_operator_deploy.resources[0].status.replicas | default(0) }}"
+      - "Available: {{ __r_aap_operator_deploy.resources[0].status.availableReplicas | default(0) }}"
+
+- name: Deploy AnsibleAutomationPlatform
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap.yaml.j2') | from_yaml }}"
+  register: __r_deploy_aap
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_deploy_aap is success
+
+- name: Get AnsibleAutomationPlatform resource status
+  kubernetes.core.k8s_info:
+    api_version: aap.ansible.com/v1alpha1
+    kind: AnsibleAutomationPlatform
+    name: "{{ osac_aap.name }}"
+    namespace: "{{ osac_aap.ns }}"
+  register: __r_aap_resource
+  retries: 10
+  delay: 10
+  until: __r_aap_resource.resources | length > 0
+
+- name: Debug AnsibleAutomationPlatform resource
+  ansible.builtin.debug:
+    msg:
+      - "Name: {{ __r_aap_resource.resources[0].metadata.name }}"
+      - "Status: {{ __r_aap_resource.resources[0].status.conditions | default([]) | map(attribute='type') | zip(__r_aap_resource.resources[0].status.conditions | default([]) | map(attribute='status')) | list }}"
+
+- name: Debug AAP deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "AAP namespace: {{ osac_aap.ns }}"
+      - "AAP name: {{ osac_aap.name }}"
+      - "AAP CR status: {{ __r_aap_resource.resources[0].status.conditions | default([]) | map(attribute='type') | zip(__r_aap_resource.resources[0].status.conditions | default([]) | map(attribute='status')) | list }}"

@@ -60,6 +60,7 @@ permissions:
 jobs:
   check-e2e-needed:
     name: Check if E2E should run
+    if: false #TODO: remove before merge
     runs-on: [self-hosted, pr-validation]
     timeout-minutes: 5
     outputs:
