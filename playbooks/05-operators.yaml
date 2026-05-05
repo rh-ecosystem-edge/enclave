@@ -42,6 +42,15 @@
         - foundation-plugins
         - operators
 
+    - name: Configure seed operators
+      ansible.builtin.include_tasks:
+        file: tasks/configure_operators.yaml
+        apply:
+          tags: operators
+      vars:
+        target_operators: "{{ operators | selectattr('seed', 'true') | list }}"
+      tags: operators
+
     - name: Auto-discover and deploy foundation plugins
       ansible.builtin.include_tasks:
         file: tasks/deploy_foundation_plugins.yaml
@@ -53,9 +62,11 @@
         - foundation-plugins
         - operators
 
-    - name: Configure operators
+    - name: Configure remaining operators
       ansible.builtin.include_tasks:
         file: tasks/configure_operators.yaml
         apply:
           tags: operators
+      vars:
+        target_operators: "{{ operators | rejectattr('seed', 'sameas', true) | list }}"
       tags: operators
