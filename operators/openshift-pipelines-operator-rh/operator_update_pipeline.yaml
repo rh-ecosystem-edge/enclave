@@ -91,8 +91,8 @@
             script: |
                 #!/bin/bash
 
-                cat <<EOF > approve_installplans.py
-                {{ lookup('ansible.builtin.file', '../helpers/operator-update/approve_installplans.py') }}
+                cat <<EOF > reconcile_operator_versions.py
+                {{ lookup('ansible.builtin.file', '../reconcile/operator_versions.py') }}
                 EOF
           - name: operator-update
             image: "{{ oc_cli_image }}"
@@ -100,7 +100,7 @@
             script: |
                 #!/bin/bash
 
-                python ./approve_installplans.py "{{ (_core_plugin_operators | default([])) + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
+                python ./reconcile_operator_versions.py "{{ (_core_plugin_operators | default([])) + operators }}" "$(params.dry-run)" > "$(results.status-report.path)"
                 rc=$?
                 echo -n "${rc}" > "$(results.exit-code.path)"
                 exit "${rc}"

@@ -143,7 +143,7 @@
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.shell: |
-    python ../helpers/operator-update/approve_installplans.py "{{ [operator] }}" "False"
+    python ../reconcile/cli.py operator-versions --operators "{{ [operator] }}" --no-dry-run
   register: operator_update_result
 
 - name: Print the output
