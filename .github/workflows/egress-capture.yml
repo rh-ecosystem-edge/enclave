@@ -6,7 +6,7 @@ name: Egress Capture
 
 on:
   schedule:
-    # Run daily at 1:00 AM EST (06:00 UTC), after the nightly e2e (03:00 UTC)
+    # Run 06:00 UTC, after the nightly e2e (03:00 UTC)
     - cron: '0 6 * * *'
   # TEMPORARY — delete before merging (use workflow_dispatch / slash commands instead)
   pull_request:
