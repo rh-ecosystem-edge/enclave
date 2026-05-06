@@ -35,17 +35,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # TEMPORARY: enable egress capture via trigger file (remove before merging)
-      - name: '[TEMP] Check egress capture trigger'
-        id: egress_trigger
-        run: |
-          if [ -f ".github/TRIGGER_CAPTURE_INFRA" ]; then
-            echo "enabled=true" >> $GITHUB_OUTPUT
-            echo "Egress capture enabled via trigger file" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "enabled=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Generate unique cluster name
         id: cluster_name
         uses: ./.github/actions/setup-cluster-name
@@ -147,8 +136,7 @@ jobs:
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Setup OpenSnitch for egress capture
-        # TEMPORARY — remove '|| steps.egress_trigger.outputs.enabled ...' before merging
-        if: inputs.capture-egress == true || steps.egress_trigger.outputs.enabled == 'true'
+        if: inputs.capture-egress == true
         run: |
           echo "## Setting up OpenSnitch" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci setup-opensnitch
@@ -164,13 +152,11 @@ jobs:
           ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave 2>&1 | tee step-logs/03-install-enclave.log
 
       - name: Collect egress logs
-        # TEMPORARY — remove '|| steps.egress_trigger.outputs.enabled ...' before merging
-        if: (inputs.capture-egress == true || steps.egress_trigger.outputs.enabled == 'true') && !cancelled()
+        if: inputs.capture-egress == true && !cancelled()
         run: make -f Makefile.ci collect-egress-logs
 
       - name: Analyze egress and generate allow list
-        # TEMPORARY — remove '|| steps.egress_trigger.outputs.enabled ...' before merging
-        if: (inputs.capture-egress == true || steps.egress_trigger.outputs.enabled == 'true') && !cancelled()
+        if: inputs.capture-egress == true && !cancelled()
         run: |
           python3 scripts/egress/analyze_egress.py \
             artifacts/egress/opensnitch-connections.json.gz \
