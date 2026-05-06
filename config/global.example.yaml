@@ -29,6 +29,12 @@ rendezvousIP: YOUR_RENDEZVOUS_IP      # Example: 192.168.2.24
 # LZ IP where HTTP server serves the installation ISO to IPMI nodes
 lzBmcIP: YOUR_LZ_WEB_SERVER_IP        # Example: 100.64.1.10
 
+# DNS hostname for the LZ BMC interface (optional).
+# When set, Ironic HTTPS vmedia URLs use this hostname instead of lzBmcIP.
+# Required when using publicly trusted certificates (e.g. Let's Encrypt), which
+# only support DNS SANs. The hostname must resolve to lzBmcIP from the BMC network.
+# lzBmcHostname: mirror.example.com
+
 # ============================================================================
 # Quay Registry Configuration
 # ============================================================================

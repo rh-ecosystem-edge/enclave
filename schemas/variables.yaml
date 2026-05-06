@@ -60,6 +60,8 @@ properties:
             type: array
             items:
               type: string
+  lzBmcHostname:
+    "$ref": "#/definitions/hostname"
   lzBmcIP:
     "$ref": "#/definitions/ipv4Address"
   machineNetwork:
@@ -114,6 +116,12 @@ properties:
     "$ref": "#/definitions/ipv4Address"
   sshPubPath:
     "$ref": "#/definitions/nonEmptyString"
+  ironicHTTPSCertificate:
+    type: string
+    description: PEM-encoded TLS certificate for Ironic vmedia HTTPS server
+  ironicHTTPSKey:
+    type: string
+    description: PEM-encoded private key for Ironic vmedia HTTPS certificate
   sslAPICertificateFullChain:
     type: string
     description: PEM-encoded full certificate chain for API server
@@ -187,5 +195,19 @@ allOf:
           type: string
           minLength: 1
         sslIngressCertificateKey:
+          type: string
+          minLength: 1
+  - if:
+      properties:
+        ironicHTTPSCertificate:
+          type: string
+          minLength: 1
+      required:
+        - ironicHTTPSCertificate
+    then:
+      required:
+        - ironicHTTPSKey
+      properties:
+        ironicHTTPSKey:
           type: string
           minLength: 1

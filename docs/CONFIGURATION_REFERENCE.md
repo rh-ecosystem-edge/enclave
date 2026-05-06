@@ -233,6 +233,26 @@ lzBmcIP: 100.64.1.10
 - ISO will be served at `http://{{ lzBmcIP }}/assisted/agent.x86_64.iso`
 - Ensure HTTP server (Apache/Nginx) is running on this host
 
+#### `lzBmcHostname`
+
+**Description**: DNS hostname for the LZ BMC interface. Optional. Only used when `ironicHTTPSCertificate` and `ironicHTTPSKey` are also set — ignored otherwise. When set, Ironic constructs HTTPS vmedia URLs using this hostname instead of `lzBmcIP`.
+
+**Type**: String (DNS hostname)
+
+**Required**: No. Set this when using publicly trusted TLS certificates (e.g. Let's Encrypt) for the Ironic vmedia server. Let's Encrypt only issues DNS SANs, not IP SANs, so the certificate SAN must match a hostname rather than an IP address.
+
+**Example**:
+```yaml
+lzBmcHostname: mirror.example.com
+```
+
+**Notes**:
+- Has no effect unless `ironicHTTPSCertificate` and `ironicHTTPSKey` are configured
+- The hostname must resolve to `lzBmcIP` from the BMC network
+- When set, `ironicHTTPSCertificate` must have a DNS SAN matching this hostname
+- When not set with HTTPS, `ironicHTTPSCertificate` must have an IP SAN matching `lzBmcIP`
+- `PROVISIONING_IP` (used for Apache binding) always remains `lzBmcIP`; only the vmedia URL changes
+
 #### `defaultNtpServers`
 
 **Description**: Optional list of additional NTP server addresses for cluster nodes. When not set, the cluster uses its default NTP sources.
@@ -1084,6 +1104,47 @@ sslCACertificate: |
   ... (server certificate)
   -----END CERTIFICATE-----
 ```
+
+### Ironic HTTPS Certificate (Optional)
+
+These variables enable HTTPS for the Ironic vmedia server, which serves
+boot ISOs to BMCs. When configured, Ironic will serve content over TLS
+instead of plain HTTP.
+
+#### `ironicHTTPSCertificate`
+
+**Description**: TLS certificate for the Ironic vmedia HTTPS server.
+
+**Type**: String (PEM format)
+
+**Required**: Yes, when HTTPS vmedia is desired. Must be provided together
+with `ironicHTTPSKey`. The certificate SAN must cover `lzBmcHostname`
+(DNS SAN, for publicly trusted certs such as Let's Encrypt) or `lzBmcIP`
+(IP SAN, for private CA certs) depending on which is configured.
+
+**Example**:
+```yaml
+ironicHTTPSCertificate: |
+  -----BEGIN CERTIFICATE-----
+  ... (certificate)
+  -----END CERTIFICATE-----
+```
+
+#### `ironicHTTPSKey`
+
+**Description**: Private key for the Ironic vmedia HTTPS certificate.
+
+**Type**: String (PEM format)
+
+**Required**: Yes, when `ironicHTTPSCertificate` is set. Both variables
+must be provided together.
+
+**Example**:
+```yaml
+ironicHTTPSKey: |
+  <PEM-encoded private key>
+```
+
 
 ## Operator Configuration
 

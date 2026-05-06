@@ -43,21 +43,27 @@
     - r_pod_infra_check.pods | length > 0
   changed_when: false
 
-- name: Set ironic secrets list (with CA bundle)
-  when: ssl_certs_configured | bool
-  ansible.builtin.set_fact:
-    ironic_secrets:
-      - metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400
-      - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
-
-- name: Set ironic secrets list (without CA bundle)
-  when: not (ssl_certs_configured | bool)
+- name: Set base ironic secrets list
   ansible.builtin.set_fact:
     ironic_secrets:
       - metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
 
-- name: Set ironic environment variables (with CA bundle)
+- name: Add CA bundle to ironic secrets
   when: ssl_certs_configured | bool
+  ansible.builtin.set_fact:
+    ironic_secrets: >-
+      {{ ironic_secrets + ['metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400'] }}
+
+- name: Add vmedia TLS certs to ironic secrets
+  when: ironic_https_configured | bool
+  ansible.builtin.set_fact:
+    ironic_secrets: >-
+      {{ ironic_secrets + [
+           'ironic-vmedia-cert,type=mount,target=/certs/vmedia/tls.crt,uid=1002,gid=1003,mode=0400',
+           'ironic-vmedia-key,type=mount,target=/certs/vmedia/tls.key,uid=1002,gid=1003,mode=0400'
+         ] }}
+
+- name: Set base ironic environment variables
   ansible.builtin.set_fact:
     ironic_env:
       IRONIC_LISTEN_PORT: "6385"
@@ -68,20 +74,21 @@
       IRONIC_USE_MARIADB: "false"
       IRONIC_EXPOSE_JSON_RPC: "false"
       OS_JSON_RPC__PORT: "6189"
-      WEBSERVER_CACERT_FILE: /certs/ca-bundle.crt
+      OS_CONDUCTOR__FILE_URL_ALLOWED_PATHS: "/iso"
 
-- name: Set ironic environment variables (without CA bundle)
-  when: not (ssl_certs_configured | bool)
+- name: Add CA bundle path to ironic environment
+  when: ssl_certs_configured | bool
   ansible.builtin.set_fact:
-    ironic_env:
-      IRONIC_LISTEN_PORT: "6385"
-      HTTP_PORT: "6180"
-      LISTEN_ALL_INTERFACES: "true"
-      USE_IRONIC_INSPECTOR: "false"
-      PROVISIONING_IP: "{{ lzBmcIP }}"
-      IRONIC_USE_MARIADB: "false"
-      IRONIC_EXPOSE_JSON_RPC: "false"
-      OS_JSON_RPC__PORT: "6189"
+    ironic_env: "{{ ironic_env | combine({'WEBSERVER_CACERT_FILE': '/certs/ca-bundle.crt'}) }}"
+
+- name: Add HTTPS vmedia settings to ironic environment
+  when: ironic_https_configured | bool
+  ansible.builtin.set_fact:
+    ironic_env: >-
+      {{ ironic_env | combine({
+           'VMEDIA_TLS_PORT': '6183',
+           'IRONIC_EXTERNAL_IP': lzBmcHostname | default(lzBmcIP)
+         }) }}
 
 - name: Run ironic container
   containers.podman.podman_container:
@@ -97,11 +104,24 @@
       - metal3-ironic-conf:/conf
       - metal3-ironic-data:/data
       - metal3-ironic-shared:/shared
+      - "{{ workingDir }}/ocp-cluster/abi-iso:/iso:ro"
     secrets: "{{ ironic_secrets }}"
     env: "{{ ironic_env }}"
     command:
       - /bin/runironic
     state: started
+
+- name: Set httpd secrets list (with TLS)
+  when: ironic_https_configured | bool
+  ansible.builtin.set_fact:
+    httpd_secrets:
+      - ironic-vmedia-cert,type=mount,target=/certs/vmedia/tls.crt,uid=1002,gid=1003,mode=0400
+      - ironic-vmedia-key,type=mount,target=/certs/vmedia/tls.key,uid=1002,gid=1003,mode=0400
+
+- name: Set httpd secrets list (without TLS)
+  when: not (ironic_https_configured | bool)
+  ansible.builtin.set_fact:
+    httpd_secrets: []
 
 - name: Run httpd container
   containers.podman.podman_container:
@@ -115,9 +135,11 @@
       - ALL
     volume:
       - metal3-ironic-shared:/shared
+    secrets: "{{ httpd_secrets }}"
     env:
       IRONIC_LISTEN_PORT: "6385"
       HTTP_PORT: "6180"
+      VMEDIA_TLS_PORT: "6183"
       LISTEN_ALL_INTERFACES: "true"
       USE_IRONIC_INSPECTOR: "false"
       PROVISIONING_IP: "{{ lzBmcIP }}"
@@ -137,3 +159,12 @@
     - r_pod_ready.pods[0].Containers | selectattr('Name', 'equalto', 'httpd') | selectattr('State', 'equalto', 'running') | list | length == 1
   changed_when: false
   # Note: Checks that both ironic and httpd containers are running (infra container state is ignored)
+
+- name: Restart httpd container after vmedia TLS secret rotation
+  when:
+    - ironic_https_configured | bool
+    - httpd_precheck.containers | default([]) | length > 0
+    - vmedia_cert_secret.changed | default(false) or vmedia_key_secret.changed | default(false)
+  containers.podman.podman_container:
+    name: httpd
+    state: restarted

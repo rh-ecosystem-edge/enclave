@@ -172,6 +172,7 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
+      ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
       ENABLED_PLUGINS: ${{ matrix.storage-plugin }}
@@ -250,6 +251,11 @@ jobs:
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate Ironic ISO server TLS certificate
+        id: generate_ironic_cert
+        if: env.ENCLAVE_IRONIC_HTTPS == 'true'
+        run: ./scripts/deployment/generate_ironic_cert.sh
 
       - name: Setup Ceph on Landing Zone
         if: env.STORAGE_PLUGIN == 'odf'
@@ -494,6 +500,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
             ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
@@ -509,6 +516,7 @@ jobs:
           )
 
           step_order=(
+            generate_ironic_cert
             setup_ceph
             bootstrap_setup
             bootstrap_validate
@@ -654,6 +662,11 @@ jobs:
           echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate Ironic ISO server TLS certificate
+        id: generate_ironic_cert
+        if: env.ENCLAVE_IRONIC_HTTPS == 'true'
+        run: ./scripts/deployment/generate_ironic_cert.sh
 
       - name: Setup Ceph on Landing Zone
         if: env.STORAGE_PLUGIN == 'odf'
@@ -907,6 +920,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
             ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
@@ -922,6 +936,7 @@ jobs:
           )
 
           step_order=(
+            generate_ironic_cert
             setup_ceph
             bootstrap_setup
             bootstrap_validate

@@ -11,9 +11,14 @@ DropCapability=ALL
 Volume=metal3-ironic-conf:/conf
 Volume=metal3-ironic-data:/data
 Volume=metal3-ironic-shared:/shared
+Volume={{ workingDir }}/ocp-cluster/abi-iso:/iso:ro
 Secret=metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD
 {% if ssl_certs_configured | bool %}
 Secret=metal3-ca-bundle,type=mount,target=/certs/ca-bundle.crt,uid=1002,gid=1003,mode=0400
+{% endif %}
+{% if ironic_https_configured | default(false) | bool %}
+Secret=ironic-vmedia-cert,type=mount,target=/certs/vmedia/tls.crt,uid=1002,gid=1003,mode=0400
+Secret=ironic-vmedia-key,type=mount,target=/certs/vmedia/tls.key,uid=1002,gid=1003,mode=0400
 {% endif %}
 Environment=IRONIC_LISTEN_PORT=6385
 Environment=HTTP_PORT=6180
@@ -23,8 +28,13 @@ Environment=PROVISIONING_IP={{ lzBmcIP }}
 Environment=IRONIC_USE_MARIADB=false
 Environment=IRONIC_EXPOSE_JSON_RPC=false
 Environment=OS_JSON_RPC__PORT=6189
+Environment=OS_CONDUCTOR__FILE_URL_ALLOWED_PATHS=/iso
 {% if ssl_certs_configured | bool %}
 Environment=WEBSERVER_CACERT_FILE=/certs/ca-bundle.crt
+{% endif %}
+{% if ironic_https_configured | default(false) | bool %}
+Environment=VMEDIA_TLS_PORT=6183
+Environment=IRONIC_EXTERNAL_IP={{ lzBmcHostname | default(lzBmcIP) }}
 {% endif %}
 Exec=/bin/runironic
 HealthCmd=curl -sf http://localhost:6385/

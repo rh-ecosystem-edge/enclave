@@ -240,6 +240,20 @@ if [ "$ENDPOINT_READY" = false ]; then
     exit 1
 fi
 
+# Install Ironic ISO server CA into the container trust store so that
+# sushy-tools trusts CA-signed certs when fetching virtual media ISOs.
+if sudo podman exec "$CONTAINER_NAME" test -f /root/sushy/ca.crt; then
+    info "Installing Ironic ISO server CA into sushy-tools container trust store..."
+    sudo podman exec "$CONTAINER_NAME" bash -c "
+        mkdir -p /etc/pki/ca-trust/source/anchors /usr/local/share/ca-certificates &&
+        cp /root/sushy/ca.crt /etc/pki/ca-trust/source/anchors/ironic-iso-ca.crt &&
+        cp /root/sushy/ca.crt /usr/local/share/ca-certificates/ironic-iso-ca.crt &&
+        { update-ca-trust || update-ca-certificates; }"
+    success "Ironic ISO server CA installed in sushy-tools trust store"
+else
+    info "No Ironic ISO server CA found; skipping trust store update (HTTPS not configured)"
+fi
+
 info ""
 success "sushy-tools BMC emulation started successfully for cluster ${CLUSTER_NAME}!"
 info "  Endpoint: https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems (HTTPS with self-signed cert)"

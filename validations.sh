@@ -339,6 +339,17 @@ validation_section ssl_certificates
 checkCerts api api.$cluster_fqdn .sslAPICertificateKey .sslAPICertificateFullChain
 checkCerts ingress "*.apps.$cluster_fqdn" .sslIngressCertificateKey .sslIngressCertificateFullChain
 
+# Check Ironic HTTPS certificate (optional)
+lz_bmc_ip=$(getValue .lzBmcIP)
+lz_bmc_hostname=$(getValue .lzBmcHostname 2>/dev/null || echo "")
+ironic_cert_name="${lz_bmc_hostname:-$lz_bmc_ip}"
+ironic_https_cert=$(getValue .ironicHTTPSCertificate)
+if [[ -n "$ironic_https_cert" && "$ironic_https_cert" != "null" ]]; then
+    checkCerts ironic_https "$ironic_cert_name" .ironicHTTPSKey .ironicHTTPSCertificate
+else
+    validation pass ironic_https_skipped "Ironic HTTPS certificate not configured. Skipping validation"
+fi
+
 ## Check nmstate config (if defined)
 validation_section nmstate
 

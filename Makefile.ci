@@ -336,13 +336,20 @@ environment:
 	@echo "Step 4: Verifying networks were created..."
 	@./scripts/infrastructure/verify_networks.sh
 	@echo ""
-	@echo "Step 5: Starting BMC emulation (sushy-tools)..."
+	@if [ "$${ENCLAVE_IRONIC_HTTPS}" = "true" ]; then \
+		echo "Step 5: Generating Ironic ISO server CA..."; \
+		./scripts/deployment/generate_ironic_ca.sh; \
+	else \
+		echo "Step 5: Skipping Ironic ISO server CA (HTTPS not configured)"; \
+	fi
+	@echo ""
+	@echo "Step 6: Starting BMC emulation (sushy-tools)..."
 	@./scripts/infrastructure/start_sushy_tools.sh
 	@echo ""
-	@echo "Step 6: Generating environment metadata..."
+	@echo "Step 7: Generating environment metadata..."
 	@./scripts/infrastructure/generate_environment_json.sh
 	@echo ""
-	@echo "Step 7: Verifying infrastructure..."
+	@echo "Step 8: Verifying infrastructure..."
 	@$(MAKE) -f Makefile.ci verify
 	@echo ""
 	@echo "=========================================="
