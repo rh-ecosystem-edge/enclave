@@ -23,8 +23,6 @@ jobs:
         run: |
           gh workflow run e2e-deployment.yml \
             --ref "${{ github.ref }}" \
-            -f run-connected=false \
-            -f run-disconnected=true \
             -f storage-plugin=odf \
             -f send-slack-notification=true \
             -R "${{ github.repository }}"

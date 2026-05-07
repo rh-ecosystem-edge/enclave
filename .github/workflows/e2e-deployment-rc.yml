@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Trigger E2E (ODF)
         run: |
+          # we keep the run-connected/run-disconnected flags here
+          # since this runs in 0-rc where they still exist
           gh workflow run e2e-deployment.yml --ref 0-rc \
             -f run-connected=false \
             -f run-disconnected=true \

@@ -173,8 +173,6 @@ Both connected and disconnected jobs run automatically on every PR with E2E-rele
 2. Select "E2E Deployment"
 3. Click "Run workflow"
 4. Configure options:
-   - **run-connected**: Run connected mode (default: true)
-   - **run-disconnected**: Run disconnected mode (default: true)
    - **storage-plugin**: lvms or odf (default: lvms)
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
