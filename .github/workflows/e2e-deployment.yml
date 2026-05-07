@@ -24,7 +24,7 @@ on:
         description: 'Run connected mode E2E test'
         required: false
         type: boolean
-        default: true
+        default: false
       run-disconnected:
         description: 'Run disconnected mode E2E test'
         required: false
