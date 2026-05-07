@@ -8,7 +8,7 @@ operators:
     namespace: quay-enterprise
 
   - name: multicluster-engine
-    version: 2.10.1
+    version: 2.10.2
     channel: stable-2.10
     init_version: 2.10.0
     namespace: multicluster-engine
