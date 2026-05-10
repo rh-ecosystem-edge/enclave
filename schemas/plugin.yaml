@@ -49,7 +49,6 @@ definitions:
       - name
       - version
       - channel
-      - init_version
 
   registry:
     type: object
