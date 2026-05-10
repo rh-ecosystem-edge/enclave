@@ -64,9 +64,9 @@ class ClusterOperatorsNotReadyError(ClusterUpgradeError):
 
     def __init__(self, issues: list[str]):
         self.issues = issues
+        joined = "\n".join(f"  - {issue}" for issue in issues)
         super().__init__(
-            f"Cluster operators are not ready for upgrade. Issues found:\n"
-            f"{'\n'.join(f'  - {issue}' for issue in issues)}"
+            f"Cluster operators are not ready for upgrade. Issues found:\n{joined}"
         )
 
 
@@ -182,7 +182,7 @@ def wait_for_resource_status(
                     f"jsonpath='{{.status.{status_field}}}'",
                 ]
             )
-        except TimeoutError:
+        except TimeoutError as e:
             logging.warning(
                 "oc get %s/%s timed out after 60 seconds, retrying",
                 kind,
@@ -193,7 +193,7 @@ def wait_for_resource_status(
             if time.time() > timeout:
                 raise TimeoutError(
                     f"{kind}/{name} polling exceeded global timeout of {timeout_minutes} minutes"
-                )
+                ) from e
             continue
 
         if result.returncode != 0:
