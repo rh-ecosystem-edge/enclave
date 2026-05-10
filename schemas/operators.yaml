@@ -41,6 +41,9 @@ definitions:
       global:
         type: boolean
         description: Configure operator to watch the entire cluster.
+      seed:
+        type: boolean
+        description: Seed operators are deployed before anything else.
     dependencies:
       csvMirror:
       - csvNames
