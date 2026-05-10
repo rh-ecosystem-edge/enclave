@@ -3,11 +3,11 @@
 import json
 import logging
 import math
+import re
 import subprocess
+import sys
 import time
 from typing import Any, Optional
-
-from packaging.version import InvalidVersion, Version
 
 
 class ClusterUpgradeError(Exception):
@@ -73,6 +73,29 @@ class ClusterOperatorsNotReadyError(ClusterUpgradeError):
 def parse_jsonpath_value(raw: str) -> str:
     """Strip surrounding whitespace and quotes from a JSONPath output value."""
     return raw.strip().strip("'\"")
+
+
+def semver_key(v_string: str) -> tuple[tuple[int, ...], tuple[int, str, int]]:
+    """Return a sort key for semantic version strings so release versions rank above pre-releases.
+
+    A version without a suffix (e.g. '4.20.0') sorts higher than one with a suffix
+    (e.g. '4.20.0-rc1'), matching the convention that release > pre-release.
+    Suffixes are split into a label and a number (e.g. 'rc10' -> ('rc', 10)) so that
+    numeric ordering is used instead of lexicographic ('rc9' < 'rc10').
+    """
+    # Separate the numeric part from the tag (e.g., '1.2.0-rc1' -> ['1.2.0', 'rc1'])
+    parts = v_string.split("-", 1)
+    main_version = tuple(map(int, parts[0].split(".")))
+
+    if len(parts) == 1:
+        # No suffix: (sys.maxsize, "", 0) beats any (0, "rcN", n) in element-wise tuple comparison
+        return (main_version, (sys.maxsize, "", 0))
+    else:
+        # Split suffix into label + number so 'rc9' < 'rc10' (not 'rc9' > 'rc10' lexicographically)
+        m = re.match(r'^([a-zA-Z]*)(\d*)$', parts[1])
+        label = m.group(1) if m else parts[1]
+        num = int(m.group(2)) if m and m.group(2) else 0
+        return (main_version, (0, label, num))
 
 
 def log_subprocess_output(
@@ -232,15 +255,20 @@ def get_current_version() -> str:
     return version
 
 
-def parse_version(version: str, context: str = "version") -> Version:
-    """Parse and validate a semantic version string.
+def parse_version(
+    version: str, context: str = "version"
+) -> tuple[tuple[int, ...], tuple[int, str, int]]:
+    """Parse and validate a semantic version string into a comparable tuple.
+
+    OpenShift versions follow the format: major.minor.patch[-prerelease]
+    Example: 4.20.0, 4.20.11, 4.20.0-rc1
 
     Args:
         version: Version string to validate
         context: Description of the version being validated (for error messages)
 
     Returns:
-        A Version object for comparison
+        A tuple suitable for version comparison (from semver_key)
 
     Raises:
         InvalidVersionError: If the version string is invalid
@@ -248,24 +276,22 @@ def parse_version(version: str, context: str = "version") -> Version:
     if not version or not version.strip():
         raise InvalidVersionError(version, f"{context} cannot be empty")
 
-    try:
-        parsed = Version(version)
-    except InvalidVersion as e:
-        raise InvalidVersionError(
-            version, f"{context} does not conform to semantic versioning: {e}"
-        ) from e
-
-    # Additional validation: ensure it has at least 2 components (major.minor)
-    # This catches cases like "4" which packaging.version accepts but OpenShift doesn't
-    main_part = version.split("-")[0]  # Remove pre-release suffix
+    # Validate basic format: must have 3 version components (x.y.z)
+    main_part = version.split("-")[0]  # Remove optional prerelease suffix
     components = main_part.split(".")
-    if len(components) < 2:
+
+    if len(components) != 3:
         raise InvalidVersionError(
             version,
-            f"{context} must have at least major.minor components (e.g., 4.20 or 4.20.0)",
+            f"{context} must have 3 version components (e.g., 4.20.0 or 4.20.11)",
         )
 
-    return parsed
+    # Let semver_key do the parsing and validation
+    # It will raise ValueError if the format is invalid
+    try:
+        return semver_key(version)
+    except (ValueError, AttributeError, TypeError) as e:
+        raise InvalidVersionError(version, f"{context} has invalid format: {e}") from e
 
 
 def get_available_versions() -> Optional[list[str]]:
