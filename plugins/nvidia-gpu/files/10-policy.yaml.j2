@@ -58,7 +58,7 @@ spec:
               channel: v25.10
               installPlanApproval: Automatic
               name: gpu-operator-certified
-              source: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
+              source: {{ catalog_mirror }}
               sourceNamespace: openshift-marketplace
         # Create ClusterPolicy Instance
         - complianceType: mustonlyhave
