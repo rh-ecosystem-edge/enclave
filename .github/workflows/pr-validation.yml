@@ -405,3 +405,51 @@ jobs:
           name: plugins-log
           path: plugins.log
           retention-days: 7
+
+  # Job 8: Python validation (ruff, mypy, pytest)
+  python:
+    name: Python Validation
+    needs: resolve-image
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      options: --user root
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Python validation
+        run: |
+          set -o pipefail
+          echo "## Python Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make -f Makefile.ci validate-python 2>&1 | tee python.log; then
+            echo "### ✅ Python validation passed!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 python.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Python validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please fix the Python issues below:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 python.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload python validation log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-log
+          path: python.log
+          retention-days: 7

@@ -1,8 +1,8 @@
 #!/bin/sh
 
+
 # Install prerequisites
 dnf install -y \
-    ansible-core \
     awscli2 \
     bind-utils \
     curl \
@@ -14,6 +14,7 @@ dnf install -y \
     nmstate \
     openssl \
     podman \
+    python3 \
     python3-pip \
     rsync \
     skopeo \

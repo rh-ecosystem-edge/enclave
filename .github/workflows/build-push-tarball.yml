@@ -51,13 +51,9 @@ jobs:
             echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-
       - name: Download Ansible Collections
         if: github.event_name != 'pull_request'
         run: |
-          pip install ansible-core
           mkdir -p collections
           ansible-galaxy collection download --download-path ./collections --requirements-file ansible_collections.txt
           cat ansible_collections.sha256 | sha256sum -c

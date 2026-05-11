@@ -134,7 +134,7 @@ Comprehensive documentation is available in the `docs/` folder:
 
 - **dev-scripts** installed and configured
 - **libvirt/KVM** with sufficient resources (64GB+ RAM recommended)
-- **Required tools**: shellcheck, yamllint, ansible-lint, make, jq
+- **Required tools**: uv, shellcheck, yamllint, ansible-lint, make, jq
 - **Environment variables**:
   - `DEV_SCRIPTS_PATH`: Path to your dev-scripts installation
 
@@ -165,6 +165,13 @@ make sync                            # Sync configuration
 make setup                           # Install system packages and Ansible deps
 make validate-config                 # Validate configuration files
 make validate-schema                 # Validate configuration against JSON schemas
+
+# Development
+make dev-env                         # Install all Python dependencies (uv sync)
+make python-format                   # Format and lint reconcile/ with ruff
+make python-linter-test              # Check formatting and linting (no fixes)
+make python-unit-test                # Run unit tests with coverage
+make python-types-test               # Run mypy type checks
 ```
 
 #### CI Targets (`Makefile.ci`)

@@ -274,7 +274,7 @@
 
 - name: Apply Quay Enterprise mirrors for plugin
   ansible.builtin.include_tasks:
-    file: "{{ playbook_dir }}/../operators/quay-operator/quay_disconnected_mirrors.yaml"
+    file: "../../operators/quay-operator/quay_disconnected_mirrors.yaml"
     apply:
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"

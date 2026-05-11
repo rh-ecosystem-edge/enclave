@@ -241,6 +241,52 @@ validate_mirror() {
     fi
 }
 
+validate_python() {
+    print_header "Validating Python code quality"
+
+    local failed=0
+
+    echo "Running ruff check..."
+    if ruff check reconcile/; then
+        print_success "ruff check passed"
+    else
+        print_error "ruff check failed"
+        failed=1
+    fi
+
+    echo "Running ruff format check..."
+    if ruff format --check reconcile/; then
+        print_success "ruff format check passed"
+    else
+        print_error "ruff format check failed"
+        failed=1
+    fi
+
+    echo "Running mypy..."
+    if mypy reconcile/; then
+        print_success "mypy check passed"
+    else
+        print_error "mypy check failed"
+        failed=1
+    fi
+
+    echo "Running pytest..."
+    if pytest reconcile/tests/ -v --cov=reconcile --cov-report=term-missing; then
+        print_success "pytest passed"
+    else
+        print_error "pytest failed"
+        failed=1
+    fi
+
+    if [ $failed -eq 0 ]; then
+        print_success "Python validation passed"
+        return 0
+    else
+        print_error "Python validation failed"
+        return 1
+    fi
+}
+
 # Main function
 validate_all() {
     local failed=0
@@ -259,6 +305,7 @@ validate_all() {
     validate_templates || failed=1
     validate_makefile || failed=1
     validate_plugins || failed=1
+    validate_python || failed=1
 
     if [ $failed -eq 0 ]; then
         echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
@@ -301,6 +348,9 @@ case "${1:-all}" in
     plugins)
         validate_plugins
         ;;
+    python)
+        validate_python
+        ;;
     mirror)
         validate_mirror
         ;;
@@ -308,7 +358,7 @@ case "${1:-all}" in
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|python}"
         exit 1
         ;;
 esac

@@ -53,6 +53,13 @@ help:
 	@echo "  make bootstrap                        - Bootstrap the Landing Zone"
 	@echo "  make sync                             - Sync configuration to the Landing Zone"
 	@echo ""
+	@echo "Development targets:"
+	@echo "  make dev-env                          - Install all Python dependencies (uv sync)"
+	@echo "  make python-format                    - Format and lint reconcile/ with ruff"
+	@echo "  make python-linter-test               - Check formatting and linting (no fixes)"
+	@echo "  make python-unit-test                 - Run unit tests with coverage"
+	@echo "  make python-types-test                - Run mypy type checks"
+	@echo ""
 	@echo "Configuration variables:"
 	@echo "  WORKING_DIR      - Working directory (default: $$HOME)"
 	@echo "  DISCONNECTED     - Disconnected mode (default: true)"
@@ -139,3 +146,20 @@ bootstrap:
 
 sync:
 	@bash ./sync.sh $(GLOBAL_VARS) $(CERTS_VARS)
+
+python-format:
+	@uv run ruff format reconcile/
+	@uv run ruff check reconcile/
+
+python-linter-test:
+	uv run ruff check --no-fix reconcile/
+	uv run ruff format --check reconcile/
+
+python-unit-test: ## Run unit tests
+	uv run pytest --cov=reconcile --cov-report=term-missing reconcile/
+
+python-types-test:
+	uv run mypy reconcile/
+
+dev-env:
+	uv sync --all-packages
