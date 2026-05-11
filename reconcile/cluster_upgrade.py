@@ -367,6 +367,8 @@ def check_cluster_operators_ready() -> tuple[bool, list[str]]:
                 issues.append(f"Cluster Operator {co_name} is not Available")
             if condition_type == "Upgradeable" and condition_status == "False":
                 issues.append(f"Cluster Operator {co_name} is not Upgradeable")
+            if condition_type == "Progressing" and condition_status == "True":
+                issues.append(f"Cluster Operator {co_name} is moving from one steady state to another")
 
     return (len(issues) == 0, issues)
 
