@@ -88,13 +88,28 @@
     namespace: quay-enterprise
   register: r_quay_app_deployment_before
 
-- name: Store current deployment generation and replica count
+- name: Store current deployment generation and minReplicas
   ansible.builtin.set_fact:
     quay_app_generation_before: "{{ r_quay_app_deployment_before.resources[0].metadata.generation | default(0) }}"
-    quay_app_replicas: "{{ r_quay_app_deployment_before.resources[0].spec.replicas | default(1) }}"
+    quay_app_min_replicas: "{{ r_quay_app_deployment_before.resources[0].spec.replicas | default(1) }}"
   when:
     - r_quay_app_deployment_before.resources is defined
     - r_quay_app_deployment_before.resources | length > 0
+
+- name: Get current quay-app HorizontalPodAutoscaler state before config update
+  kubernetes.core.k8s_info:
+    api_version: autoscaling/v2
+    kind: HorizontalPodAutoscaler
+    name: registry-quay-app
+    namespace: quay-enterprise
+  register: r_quay_app_hpa_before
+
+- name: Store minReplicas from HorizontalPodAutoscaler
+  ansible.builtin.set_fact:
+    quay_app_min_replicas: "{{ r_quay_app_hpa_before.resources[0].spec.minReplicas | default(1) }}"
+  when:
+    - r_quay_app_hpa_before.resources is defined
+    - r_quay_app_hpa_before.resources | length > 0
 
 - name: Update quay-config Secret with OAuth client ID whitelist
   no_log: true
@@ -130,9 +145,10 @@
     - r_quay_app_deployment.resources[0].status.observedGeneration is defined
     - r_quay_app_deployment.resources[0].status.observedGeneration == r_quay_app_deployment.resources[0].metadata.generation
     - r_quay_app_deployment.resources[0].metadata.generation | default(0) > (quay_app_generation_before | int)
-    - r_quay_app_deployment.resources[0].status.updatedReplicas | default(0) == (quay_app_replicas | int)
-    - r_quay_app_deployment.resources[0].status.readyReplicas | default(0) == (quay_app_replicas | int)
-    - r_quay_app_deployment.resources[0].status.availableReplicas | default(0) == (quay_app_replicas | int)
+    - r_quay_app_deployment.resources[0].status.updatedReplicas | default(0) >= (quay_app_min_replicas | int)
+    - r_quay_app_deployment.resources[0].status.readyReplicas | default(0) >= (quay_app_min_replicas | int)
+    - r_quay_app_deployment.resources[0].status.availableReplicas | default(0) >= (quay_app_min_replicas | int)
+    - r_quay_app_deployment.resources[0].status.replicas | default(0) == r_quay_app_deployment.resources[0].status.updatedReplicas | default(0)
     - r_quay_app_deployment.resources[0].status.unavailableReplicas | default(0) == 0
 
 - name: Generate OAuth application token
