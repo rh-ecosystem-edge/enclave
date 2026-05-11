@@ -179,7 +179,7 @@ def wait_for_resource_status(
                     kind,
                     name,
                     "-o",
-                    f"jsonpath='{{.status.{status_field}}}'",
+                    f"jsonpath={{.status.{status_field}}}",
                 ]
             )
         except TimeoutError as e:
