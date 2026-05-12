@@ -1180,7 +1180,7 @@ operators:
 | `name` | Operator package name as it appears in the catalog | Yes |
 | `version` | Operator version | Yes |
 | `channel` | Update channel for the operator | Yes |
-| `init_version` | Initial operator version | Yes |
+| `init_version` | Initial operator version (default: `version`) | No |
 | `namespace` | Target namespace for installation. OperatorGroup is auto-created if not `openshift-operators` | No |
 | `source` | Catalog source name (from oc-mirror). Must match a source created by oc-mirror | No |
 | `global` | Set to `true` to configure operator to watch the entire cluster | No |

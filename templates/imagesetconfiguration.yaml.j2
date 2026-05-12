@@ -36,7 +36,7 @@ mirror:
           defaultChannel: {{ operator.channel }}
           channels:
             - name: {{ operator.channel }}
-              minVersion: {{ operator.init_version }}
+              minVersion: {{ operator.init_version | default(operator.version) }}
               maxVersion: {{ operator.version }}
 {% endfor %}
 {% for pkg in operator.extraMirrorPackages | default([]) %}

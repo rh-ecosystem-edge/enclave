@@ -51,7 +51,6 @@ definitions:
     - name
     - version
     - channel
-    - init_version
 
 additionalProperties: false
 properties:
