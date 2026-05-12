@@ -18,6 +18,8 @@ defaults:
     storagePath: /osac
     validateCerts: true
     apiTimeout: 30
+    apiVersion: latest
+    viewPolicyId: 1
     csiProvisioners:
       nfs: csi.vastdata.com
       block: block.csi.vastdata.com
@@ -36,6 +38,9 @@ requires:
       when: "{{ storage_plugin == 'vast-csi' }}"
     - name: vastAdminPassword
       description: "VAST management API password"
+      when: "{{ storage_plugin == 'vast-csi' }}"
+    - name: vastVipPool
+      description: "VIP pool configuration: {name, subnet_cidr, ip_ranges: [{start, end}]}"
       when: "{{ storage_plugin == 'vast-csi' }}"
   files:
     - path: "tasks/deploy.yaml"

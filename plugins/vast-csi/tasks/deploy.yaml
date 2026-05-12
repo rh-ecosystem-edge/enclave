@@ -1,12 +1,19 @@
 ---
-# Provisions the infra tenant's K8s resources: CSI credentials Secret,
-# per-tier StorageClasses, and optional VolumeSnapshotClasses.
+# Provisions the infra tenant on the VAST management plane (VMS API), then
+# creates matching K8s resources (Secrets, StorageClasses, VolumeSnapshotClasses).
+#
+# Calls the VMS REST API directly via ansible.builtin.uri to avoid depending
+# on the vastdata.vms Ansible collection. osac-aap uses the same API through
+# the vendored collection modules for tenant lifecycle operations.
 #
 # Follows the osac-aap naming convention so both systems can reason about
 # each other's resources:
-#   Tenant:           {tenant}
-#   StorageClass:     {tenant}-{tier}
-#   CSI Secret:       vast-csi-{tenant}
+#   Tenant:              {tenant}
+#   VIP pool:            vippool-{tenant}
+#   View:                view-{tenant}-{tier}
+#   View path:           {storagePath}/{tenant}/{tier}
+#   StorageClass:        {tenant}-{tier}
+#   CSI Secret:          vast-csi-{tenant}
 #   VolumeSnapshotClass: vast-snapshot-{tenant}-{tier}
 
 - name: Set infra tenant variables
@@ -14,6 +21,135 @@
     vast_tenant: "{{ vastDefaults.infraTenant }}"
     vast_tiers: "{{ vastDefaults.tiers }}"
     vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_api_base: "{{ vastEndpoint }}/api/{{ vastDefaults.apiVersion }}"
+    vast_api_headers:
+      Content-Type: application/json
+    vast_api_auth:
+      url_username: "{{ vastAdminUsername }}"
+      url_password: "{{ vastAdminPassword }}"
+      force_basic_auth: true
+
+# ── VMS: Create infra tenant ─────────────────────────────────────────────
+
+- name: Check if infra tenant already exists
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/tenants/?name={{ vast_tenant }}"
+    method: GET
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    status_code: [200]
+  register: r_tenant_lookup
+  no_log: true
+
+- name: Create infra tenant on VAST
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/tenants/"
+    method: POST
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    body_format: json
+    body:
+      name: "{{ vast_tenant }}"
+    status_code: [200, 201]
+  register: r_tenant_create
+  when: r_tenant_lookup.json | length == 0
+  no_log: true
+
+- name: Set tenant ID
+  ansible.builtin.set_fact:
+    vast_tenant_id: "{{ (r_tenant_lookup.json | length > 0) | ternary(r_tenant_lookup.json[0].id, r_tenant_create.json.id) }}"
+
+# ── VMS: Create VIP pool ─────────────────────────────────────────────────
+
+- name: Check if VIP pool already exists
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/vippools/?name=vippool-{{ vast_tenant }}"
+    method: GET
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    status_code: [200]
+  register: r_vippool_lookup
+  no_log: true
+
+- name: Create VIP pool for infra tenant
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/vippools/"
+    method: POST
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    body_format: json
+    body:
+      name: "vippool-{{ vast_tenant }}"
+      subnet_cidr: "{{ vastVipPool.subnet_cidr }}"
+      ip_ranges: "{{ vastVipPool.ip_ranges }}"
+      role: "{{ vastVipPool.role | default('PROTOCOLS') }}"
+      enabled: true
+    status_code: [200, 201]
+  register: r_vippool_create
+  when: r_vippool_lookup.json | length == 0
+  no_log: true
+
+# ── VMS: Create views per tier ────────────────────────────────────────────
+
+- name: Check which views already exist
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/views/?path={{ vastDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
+    method: GET
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    status_code: [200]
+  loop: "{{ vast_tiers }}"
+  loop_control:
+    label: "view-{{ vast_tenant }}-{{ item.name }}"
+  register: r_view_lookups
+  no_log: true
+
+- name: Create view for each new tier
+  ansible.builtin.uri:
+    url: "{{ vast_api_base }}/views/"
+    method: POST
+    headers: "{{ vast_api_headers }}"
+    url_username: "{{ vastAdminUsername }}"
+    url_password: "{{ vastAdminPassword }}"
+    force_basic_auth: true
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    body_format: json
+    body:
+      path: "{{ vastDefaults.storagePath }}/{{ item.item.name }}"
+      name: "view-{{ vast_tenant }}-{{ item.item.name }}"
+      policy_id: "{{ vastDefaults.viewPolicyId }}"
+      tenant_id: "{{ vast_tenant_id }}"
+      protocols:
+        - "{{ item.item.protocol | upper }}"
+    status_code: [200, 201]
+  loop: "{{ r_view_lookups.results }}"
+  loop_control:
+    label: "view-{{ vast_tenant }}-{{ item.item.name }}"
+  when: item.json | length == 0
+  no_log: true
+
+# ── K8s: Create CSI credentials Secret ───────────────────────────────────
 
 - name: Create CSI credentials Secret for infra tenant
   no_log: true
@@ -37,6 +173,8 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_csi_secret is success
+
+# ── K8s: Create StorageClasses ────────────────────────────────────────────
 
 - name: Create StorageClass for each tier
   kubernetes.core.k8s:
@@ -68,6 +206,8 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_storageclass is success
+
+# ── K8s: Create VolumeSnapshotClasses ─────────────────────────────────────
 
 - name: Check if VolumeSnapshot CRD is available
   kubernetes.core.k8s_info:
@@ -102,3 +242,11 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_snapshotclass is success or r_snapshotclass is skipped
+
+# ── Credential cleanup ────────────────────────────────────────────────────
+
+- name: Clear credential facts
+  no_log: true
+  ansible.builtin.set_fact:
+    vast_api_auth: null
+    vast_api_headers: null
