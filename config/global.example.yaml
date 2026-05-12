@@ -94,6 +94,31 @@ storage_plugin: lvms
 #     "kind": "ConfigMap", "data": ..}]'
 
 # ============================================================================
+# Storage Configuration (VAST CSI)
+# ============================================================================
+# When storage_plugin is vast-csi, configure the VAST management endpoint
+# and admin credentials. The plugin creates an "infra" tenant following the
+# osac-aap naming convention so both systems can reason about resources.
+#
+# vastEndpoint: "https://vms.example.com"
+# vastAdminUsername: "admin"
+# vastAdminPassword: "YOUR_VAST_ADMIN_PASSWORD"
+#
+# Configure storage tiers (default: single NFS tier for Quay).
+# Each tier creates a StorageClass named {infraTenant}-{tierName}.
+# vastDefaults:
+#   infraTenant: infra
+#   storagePath: /osac
+#   quayPvcSize: 2000Gi
+#   tiers:
+#     - name: quay
+#       protocol: nfs
+#     - name: fast
+#       protocol: block
+#     - name: archive
+#       protocol: nfs
+
+# ============================================================================
 # OpenShift Deployment Configuration (optional)
 # All settings below have defaults. Uncomment only to override.
 # ============================================================================

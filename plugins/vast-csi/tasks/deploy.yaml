@@ -1,0 +1,104 @@
+---
+# Provisions the infra tenant's K8s resources: CSI credentials Secret,
+# per-tier StorageClasses, and optional VolumeSnapshotClasses.
+#
+# Follows the osac-aap naming convention so both systems can reason about
+# each other's resources:
+#   Tenant:           {tenant}
+#   StorageClass:     {tenant}-{tier}
+#   CSI Secret:       vast-csi-{tenant}
+#   VolumeSnapshotClass: vast-snapshot-{tenant}-{tier}
+
+- name: Set infra tenant variables
+  ansible.builtin.set_fact:
+    vast_tenant: "{{ vastDefaults.infraTenant }}"
+    vast_tiers: "{{ vastDefaults.tiers }}"
+    vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+
+- name: Create CSI credentials Secret for infra tenant
+  no_log: true
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "vast-csi-{{ vast_tenant }}"
+        namespace: vast-csi
+        labels:
+          app.kubernetes.io/managed-by: enclave
+          osac.openshift.io/tenant: "{{ vast_tenant }}"
+      type: Opaque
+      stringData:
+        endpoint: "{{ vastEndpoint }}"
+        username: "{{ vastAdminUsername }}"
+        password: "{{ vastAdminPassword }}"
+  register: r_csi_secret
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_csi_secret is success
+
+- name: Create StorageClass for each tier
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: "{{ vast_tenant }}-{{ item.name }}"
+        labels:
+          app.kubernetes.io/managed-by: enclave
+          osac.openshift.io/tenant: "{{ vast_tenant }}"
+          osac.openshift.io/tier: "{{ item.name }}"
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "{{ (item.default | default(false)) | ternary('true', 'false') }}"
+      provisioner: "{{ vastDefaults.csiProvisioners[item.protocol] }}"
+      parameters:
+        vipPool: "vippool-{{ vast_tenant }}"
+        storagePath: "{{ vastDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
+        secretName: "vast-csi-{{ vast_tenant }}"
+        secretNamespace: vast-csi
+      reclaimPolicy: Delete
+      allowVolumeExpansion: true
+      volumeBindingMode: "{{ (item.protocol == 'block') | ternary('WaitForFirstConsumer', 'Immediate') }}"
+  loop: "{{ vast_tiers }}"
+  loop_control:
+    label: "{{ vast_tenant }}-{{ item.name }}"
+  register: r_storageclass
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_storageclass is success
+
+- name: Check if VolumeSnapshot CRD is available
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: volumesnapshotclasses.snapshot.storage.k8s.io
+  register: r_snapshot_crd
+
+- name: Create VolumeSnapshotClass for each tier
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: snapshot.storage.k8s.io/v1
+      kind: VolumeSnapshotClass
+      metadata:
+        name: "vast-snapshot-{{ vast_tenant }}-{{ item.name }}"
+        labels:
+          app.kubernetes.io/managed-by: enclave
+          osac.openshift.io/tenant: "{{ vast_tenant }}"
+          osac.openshift.io/tier: "{{ item.name }}"
+      driver: "{{ vastDefaults.csiProvisioners[item.protocol] }}"
+      deletionPolicy: Delete
+      parameters:
+        secretName: "vast-csi-{{ vast_tenant }}"
+        secretNamespace: vast-csi
+  loop: "{{ vast_tiers }}"
+  loop_control:
+    label: "vast-snapshot-{{ vast_tenant }}-{{ item.name }}"
+  when:
+    - r_snapshot_crd.resources | default([]) | length > 0
+  register: r_snapshotclass
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_snapshotclass is success or r_snapshotclass is skipped
