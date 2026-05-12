@@ -18,6 +18,12 @@
     vast_tenant: "{{ vastDefaults.infraTenant }}"
     vast_tiers: "{{ vastDefaults.tiers }}"
     vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_vms_conn:
+      host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
+      username: "{{ vastAdminUsername }}"
+      password: "{{ vastAdminPassword }}"
+      validate_certs: "{{ vastDefaults.validateCerts }}"
+      api_version: "{{ vastDefaults.apiVersion }}"
 
 # ── VMS: Create infra tenant ─────────────────────────────────────────────
 
@@ -25,10 +31,7 @@
   no_log: true
   vastdata.vms.tenants:
     name: "{{ vast_tenant }}"
-    vms_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
-    vms_user: "{{ vastAdminUsername }}"
-    vms_password: "{{ vastAdminPassword }}"
-    vms_validate_certs: "{{ vastDefaults.validateCerts }}"
+    vms: "{{ vast_vms_conn }}"
     state: present
   register: r_tenant
 
@@ -41,11 +44,9 @@
     subnet_cidr: "{{ vastVipPool.subnet_cidr }}"
     ip_ranges: "{{ vastVipPool.ip_ranges }}"
     role: "{{ vastVipPool.role | default('PROTOCOLS') }}"
+    tenant_id: "{{ r_tenant.tenants.id }}"
     enabled: true
-    vms_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
-    vms_user: "{{ vastAdminUsername }}"
-    vms_password: "{{ vastAdminPassword }}"
-    vms_validate_certs: "{{ vastDefaults.validateCerts }}"
+    vms: "{{ vast_vms_conn }}"
     state: present
   register: r_vippool
 
@@ -60,10 +61,7 @@
     tenant_id: "{{ r_tenant.tenants.id }}"
     protocols:
       - "{{ item.protocol | upper }}"
-    vms_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
-    vms_user: "{{ vastAdminUsername }}"
-    vms_password: "{{ vastAdminPassword }}"
-    vms_validate_certs: "{{ vastDefaults.validateCerts }}"
+    vms: "{{ vast_vms_conn }}"
     state: present
   loop: "{{ vast_tiers }}"
   loop_control:
@@ -162,3 +160,10 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_snapshotclass is success or r_snapshotclass is skipped
+
+# ── Credential cleanup ────────────────────────────────────────────────────
+
+- name: Clear VMS connection facts
+  no_log: true
+  ansible.builtin.set_fact:
+    vast_vms_conn: null

@@ -99,6 +99,7 @@ storage_plugin: lvms
 # When storage_plugin is vast-csi, configure the VAST management endpoint
 # and admin credentials. The plugin creates an "infra" tenant following the
 # osac-aap naming convention so both systems can reason about resources.
+# Also set quayBackend: LocalStorage (VAST NFS uses PVC mount for Quay).
 #
 # vastEndpoint: "https://vms.example.com"
 # vastAdminUsername: "admin"
