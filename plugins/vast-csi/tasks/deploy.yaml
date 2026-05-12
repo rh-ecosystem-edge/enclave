@@ -14,10 +14,12 @@
 #   VolumeSnapshotClass: vast-snapshot-{tenant}-{tier}
 
 - name: Set infra tenant variables
+  no_log: true
   ansible.builtin.set_fact:
     vast_tenant: "{{ vastDefaults.infraTenant }}"
     vast_tiers: "{{ vastDefaults.tiers }}"
     vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
     vast_vms_conn:
       host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
       username: "{{ vastAdminUsername }}"
@@ -84,7 +86,7 @@
           osac.openshift.io/tenant: "{{ vast_tenant }}"
       type: Opaque
       stringData:
-        endpoint: "{{ vastEndpoint }}"
+        endpoint: "{{ vast_host }}"
         username: "{{ vastAdminUsername }}"
         password: "{{ vastAdminPassword }}"
   register: r_csi_secret

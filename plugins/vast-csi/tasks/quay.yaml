@@ -63,6 +63,8 @@
   until: r_quay_vast is succeeded
 
 - name: Quay VAST NFS storage (PVC and deployment patch)
+  when:
+    - quayBackend == 'LocalStorage'
   block:
   - name: Wait for Quay app deployment to exist (VAST)
     kubernetes.core.k8s_info:
