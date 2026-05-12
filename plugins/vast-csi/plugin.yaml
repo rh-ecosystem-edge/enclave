@@ -33,6 +33,7 @@ requires:
   vars:
     - name: vastEndpoint
       description: "VAST management endpoint URL (e.g. https://vms.example.com)"
+      when: "{{ storage_plugin == 'vast-csi' }}"
     - name: vastAdminUsername
       description: "VAST management API username"
       when: "{{ storage_plugin == 'vast-csi' }}"

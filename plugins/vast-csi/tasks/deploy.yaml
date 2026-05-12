@@ -57,7 +57,7 @@
     name: "view-{{ vast_tenant }}-{{ item.name }}"
     path: "{{ vastDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
     policy_id: "{{ vastDefaults.viewPolicyId }}"
-    tenant_id: "{{ r_tenant.resource.id }}"
+    tenant_id: "{{ r_tenant.tenants.id }}"
     protocols:
       - "{{ item.protocol | upper }}"
     vms_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
