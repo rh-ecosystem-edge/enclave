@@ -61,9 +61,9 @@ quayBackendRGWConfiguration:
 # ============================================================================
 # Storage Backend
 # ============================================================================
-# Storage plugin for block devices for quay database and assisted installer
-# Selects which storage plugin (plugins/lvms/ or plugins/odf/) to deploy
-# Options: lvms or odf
+# Storage plugin for quay database and assisted installer
+# Selects which storage plugin to deploy
+# Options: lvms, odf, or vast-csi
 # storage_plugin: odf
 storage_plugin: lvms
 
