@@ -171,6 +171,19 @@
     - plugin.installOperators | default(true)
   tags: operators
 
+- name: Install plugin operators to fleet
+  ansible.builtin.include_tasks:
+    file: tasks/configure_operators_fleet.yaml
+    apply:
+      tags: operators
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.operators | default([]) | length > 0
+    - plugin.clusterSelector is defined
+    - plugin.clusterSelector
+  tags: operators
+
 - name: Run post-operators
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/post-operators.yaml"

@@ -1,0 +1,58 @@
+- name: Create Namespace for ACM Policies
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.file', '/files/00-namespace.yaml') | from_yaml }}"
+  register: r_acm_policy_ns
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_ns is success
+
+- name: Create ACM Policy for Plugin CatalogSource
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', 'files/plugin-fleet-configuration/09-policy-catalogsource.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_cs
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_cs is success
+
+- name: Create ACM Policy for Plugin Operators
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', 'files/plugin-fleet-configuration/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_operators
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_operators is success
+
+- name: Create ACM PlacementRule for Plugin
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', 'files/plugin-fleet-configuration/20-placementrule.yaml.j2') | from_yaml }}"
+  register: r_acm_placementrule
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementrule is success
+
+- name: Create ACM PlacementBinding for Plugin
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', 'files/plugin-fleet-configuration/30-placementbinding.yaml.j2') | from_yaml }}"
+  register: r_acm_placementbinding
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_placementbinding is success

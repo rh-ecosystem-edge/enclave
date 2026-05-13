@@ -50,6 +50,46 @@ definitions:
       - version
       - channel
 
+  selector:
+    description: Defines a set of label matching selectors for ACM.
+    type: object
+    additionalProperties: false
+    properties:
+      matchLabels:
+        type: object
+        description: >-
+          A map of {key,value} pairs. A single {key,value} in the matchLabels map 
+          is equivalent to an element of matchExpressions with operator 'In'.
+        additionalProperties:
+          type: string
+      matchExpressions:
+        type: array
+        description: A list of label selector requirements. The requirements are ANDed.
+        items:
+          type: object
+          required:
+            - key
+            - operator
+          properties:
+            key:
+              type: string
+              description: The label key that the selector applies to.
+            operator:
+              type: string
+              description: Represents a key's relationship to a set of values.
+              enum:
+                - In
+                - NotIn
+                - Exists
+                - DoesNotExist
+            values:
+              type: array
+              description: >-
+                An array of string values. Required if operator is 'In' or 'NotIn'.
+                Must be empty if operator is 'Exists' or 'DoesNotExist'.
+              items:
+                type: string
+
   registry:
     type: object
     additionalProperties: false
@@ -173,6 +213,8 @@ properties:
   installOperators:
     type: boolean
     decsription: Install operators.
+  clusterSelector:
+    $ref: "#/definitions/selector"
   helm:
     type: array
     description: Helm charts to install, in order. Runs after OLM operators, before tasks/deploy.yaml.

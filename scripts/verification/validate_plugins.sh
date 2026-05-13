@@ -83,7 +83,7 @@ filepath = sys.argv[1]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
                 'installOperators', 'registries', 'additionalImages', 'blockedImages',
-                'requires', 'helm']
+                'requires', 'helm', 'clusterSelector']
 
 try:
     with open(filepath) as f:
