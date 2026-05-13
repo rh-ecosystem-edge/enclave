@@ -11,10 +11,10 @@
     src: "{{ workingDir }}/config/imagesetconfiguration.yaml"
     dest: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
 
-- name: Replace registry.redhat.io with internal quay
+- name: Replace redhat-operator-index with internal mirror
   ansible.builtin.replace:
     path: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
-    regexp: 'catalog: {{ rh_operator_catalog }}'
+    regexp: 'catalog: {{ quayHostname }}:8443/redhat/redhat-operator-index'
     replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_rh_operator_catalog }}"
 
 - name: Ensure .config/containers/ exists

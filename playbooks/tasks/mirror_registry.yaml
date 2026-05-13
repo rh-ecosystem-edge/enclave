@@ -36,10 +36,46 @@
     content: "{{ pullSecretInternal }}"
     dest: "{{ workingDir }}/config/pull-secret.internal.json"
 
+# We iterate over catalog_operators keys, which are the list of plugins + "core".
+# For each item, we copy the Red Hat Index image to an intermediate image in the mirror registry,
+# to be used as the source catalog image in the ImageSetConfiguration of oc-mirror.
+# This is required to make oc-mirror output a Catalog Source file for each item,
+# which we later use during cluster provisioning.
+# This is done to separate mirroring of plugins from the core operators,
+# and to support plugin operations in day 2.
+# The destination mirror registry does not support signatures and TLS,
+# so we work around by using remove-signatures, insecure-policy and dest-tls-verify.
+- name: Copy Red Hat Index Image for core and plugin operators
+  ansible.builtin.shell: |
+    skopeo copy \
+      --all \
+      --remove-signatures \
+      --insecure-policy \
+      --authfile {{ pullSecretPath }} \
+      --dest-tls-verify=false \
+      --retry-times {{ ocMirrorRetryTimes }} \
+      --retry-delay {{ ocMirrorRetryDelay }} \
+      docker://{{ rh_operator_catalog }}:{{ rh_operator_catalog_version }} \
+      docker://{{ quayHostname }}:8443/redhat/redhat-operator-index{{ '-' ~ item }}:{{ rh_operator_catalog_version }}
+  loop: "{{ catalog_operators.keys() | list }}"
+  loop_control:
+    label: "{{ item }}"
+  register: skopeo_result
+  changed_when: "'Copying blob' in skopeo_result.stdout"
+  retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
+  delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleDelay }}"
+  until: skopeo_result.rc == 0
+
 - name: Copy imagesetconfiguration.yaml
   ansible.builtin.template:
     src: ../../templates/imagesetconfiguration.yaml.j2
     dest: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+
+- name: Replace registry.redhat.io with redhat-operator-index in mirror-registry
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+    regexp: 'catalog: {{ rh_operator_catalog }}'
+    replace: "catalog: {{ quayHostname }}:8443/redhat/redhat-operator-index"
 
 - name: Ensure oc-mirror log directory exists
   ansible.builtin.file:
@@ -62,6 +98,8 @@
           {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
           --log-level {{ ocMirrorLogLevel }} \
           --authfile {{ pullSecretPath }} \
+          --ignore-release-signature \
+          --src-tls-verify=false \
           --dest-tls-verify=false \
           -c {{ workingDir }}/config/imagesetconfiguration.yaml \
           --workspace file://{{ workingDir }}/config/oc-mirror-workspace \

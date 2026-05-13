@@ -186,6 +186,14 @@ else
     echo "  Python kubernetes library is already installed"
 fi
 
+# Install skopeo (needed for mirroring)
+if ! command -v skopeo &>/dev/null; then
+    echo "  Installing skopeo..."
+    sudo dnf install -y skopeo
+else
+    echo "  skopeo is already installed"
+fi
+
 # Install required Ansible collections
 echo "  Installing required Ansible collections..."
 cd /home/cloud-user/enclave

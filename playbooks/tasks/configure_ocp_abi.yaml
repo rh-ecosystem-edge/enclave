@@ -62,16 +62,26 @@
           maxPods: {{ masterMaxPods }}
     mode: '0644'
 
+- name: Find custom manifests from mirror registry
+  when: disconnected | default(true)
+  ansible.builtin.find:
+    paths: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/"
+    patterns: 
+      - "idms-oc-mirror.yaml"
+      - "itms-oc-mirror.yaml"
+      - "signature-configmap.yaml"
+      - "cs-*.yaml"
+    recurse: no
+  register: custom_manifests
+
 - name: Copy custom manifests from mirror registry to the ABI directory
   when: disconnected | default(true)
   ansible.builtin.copy:
-    src: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/{{ item }}"
-    dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item }}"
-  loop:
-    - idms-oc-mirror.yaml
-    - itms-oc-mirror.yaml
-    - signature-configmap.yaml
-    - cs-{{ mirror_rh_operator_catalog }}-v4-20.yaml
+    src: "{{ item_path }}"
+    dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item_path | basename }}"
+  loop: "{{ custom_manifests.files | map(attribute='path') | list }}"
+  loop_control:
+    loop_var: item_path
 
 - name: Enable diskEncryption if set
   when: diskEncryption | default(false) == true

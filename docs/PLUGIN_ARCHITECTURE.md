@@ -209,6 +209,8 @@ Plugins with `mirror: core` have their operators collected by `collect_core_plug
 
 Operators with `csvMirror: true` have their `csvNames` entries added as separate packages in the image set.
 
+Each Plugin is mirrored to a custom catalog to support operations on day 2, and to not overwrite the core operators catalog.
+
 ### Pre-install Validation
 
 Before cluster installation, plugins with `tasks/pre-install-validate.yaml` run hardware checks against discovered hosts.

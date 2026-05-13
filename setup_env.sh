@@ -16,6 +16,7 @@ dnf install -y \
     podman \
     python3-pip \
     rsync \
+    skopeo \
     tar \
     vim
 
