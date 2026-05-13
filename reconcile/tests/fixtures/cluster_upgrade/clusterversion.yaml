@@ -1,0 +1,266 @@
+apiVersion: config.openshift.io/v1
+kind: ClusterVersion
+metadata:
+  creationTimestamp: "2026-04-08T16:12:34Z"
+  generation: 9
+  name: version
+  resourceVersion: "6750611"
+  uid: 34751015-cd38-4873-831b-45767eb9fcc4
+spec:
+  channel: stable-4.20
+  clusterID: b928155d-63ff-418e-860a-5c193086e5d6
+  desiredUpdate:
+    version: 4.20.16
+status:
+  availableUpdates:
+  - channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    image: quay.io/openshift-release-dev/ocp-release@sha256:54c81ab130a264829c9a3434df1005074cc9b2edc8e31ead40ac94faf3debf72
+    url: https://access.redhat.com/errata/RHBA-2026:13863
+    version: 4.20.21
+  - channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    - stable-4.21
+    image: quay.io/openshift-release-dev/ocp-release@sha256:f3d952e9a20de0c5db249c6c7771d6b71d4eaa9d269d5da8868e6652f6dbec0d
+    url: https://access.redhat.com/errata/RHBA-2026:12066
+    version: 4.20.20
+  - channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    - stable-4.21
+    image: quay.io/openshift-release-dev/ocp-release@sha256:e37bcdba07c7312607363ddf5a8e317e4b6952b1465704b38c9a081d095697be
+    url: https://access.redhat.com/errata/RHBA-2026:8430
+    version: 4.20.19
+  - channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    - stable-4.21
+    image: quay.io/openshift-release-dev/ocp-release@sha256:2dab927fd20984e247301b2483083b71f942a1f550f5d8a1db42897edc042e39
+    url: https://access.redhat.com/errata/RHSA-2026:6564
+    version: 4.20.18
+  - channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    - stable-4.21
+    image: quay.io/openshift-release-dev/ocp-release@sha256:e0e62ca0bf43f7e9c18551fb8907c882c60cfa0c76392d3a8115a628da02d693
+    url: https://access.redhat.com/errata/RHSA-2026:5142
+    version: 4.20.17
+  capabilities:
+    enabledCapabilities:
+    - Build
+    - CSISnapshot
+    - CloudControllerManager
+    - CloudCredential
+    - Console
+    - DeploymentConfig
+    - ImageRegistry
+    - Ingress
+    - Insights
+    - MachineAPI
+    - NodeTuning
+    - OperatorLifecycleManager
+    - OperatorLifecycleManagerV1
+    - Storage
+    - baremetal
+    - marketplace
+    - openshift-samples
+    knownCapabilities:
+    - Build
+    - CSISnapshot
+    - CloudControllerManager
+    - CloudCredential
+    - Console
+    - DeploymentConfig
+    - ImageRegistry
+    - Ingress
+    - Insights
+    - MachineAPI
+    - NodeTuning
+    - OperatorLifecycleManager
+    - OperatorLifecycleManagerV1
+    - Storage
+    - baremetal
+    - marketplace
+    - openshift-samples
+  conditionalUpdates:
+  - conditions:
+    - lastTransitionTime: "2026-04-29T10:46:59Z"
+      message: The update is recommended, because none of the conditional update risks
+        apply to this cluster.
+      reason: NotExposedToRisks
+      status: "True"
+      type: Recommended
+    release:
+      channels:
+      - candidate-4.20
+      - candidate-4.21
+      - candidate-4.22
+      - eus-4.20
+      - fast-4.20
+      - fast-4.21
+      - stable-4.20
+      - stable-4.21
+      image: quay.io/openshift-release-dev/ocp-release@sha256:e37bcdba07c7312607363ddf5a8e317e4b6952b1465704b38c9a081d095697be
+      url: https://access.redhat.com/errata/RHBA-2026:8430
+      version: 4.20.19
+    risks:
+    - matchingRules:
+      - promql:
+          promql: |
+            group by (_id, name) (csv_succeeded{_id="", name=~"ptp-operator[.]v4[.][0-9]*[.]0-(202[3-5]|20260[1-9])[0-9]*"})
+            or on (_id)
+            0 * label_replace(group by (_id) (csv_succeeded{_id=""}), "name", "ptp-operator.v4.y.0-20260331... or older not installed", "", "")
+        type: PromQL
+      message: Clusters using older PTP operators may struggle to synchronize system
+        clocks and might not provide time to downstream clients.
+      name: PrecisionTimeProtocolDPLLPins
+      url: https://redhat.atlassian.net/browse/CORENET-6950
+  - conditions:
+    - lastTransitionTime: "2026-04-24T12:23:33Z"
+      message: The update is recommended, because none of the conditional update risks
+        apply to this cluster.
+      reason: NotExposedToRisks
+      status: "True"
+      type: Recommended
+    release:
+      channels:
+      - candidate-4.20
+      - candidate-4.21
+      - candidate-4.22
+      - eus-4.20
+      - fast-4.20
+      - fast-4.21
+      - stable-4.20
+      - stable-4.21
+      image: quay.io/openshift-release-dev/ocp-release@sha256:2dab927fd20984e247301b2483083b71f942a1f550f5d8a1db42897edc042e39
+      url: https://access.redhat.com/errata/RHSA-2026:6564
+      version: 4.20.18
+    risks:
+    - matchingRules:
+      - promql:
+          promql: |
+            group by (_id, name) (csv_succeeded{_id="", name=~"ptp-operator[.]v4[.][0-9]*[.]0-(202[3-5]|20260[1-9])[0-9]*"})
+            or on (_id)
+            0 * label_replace(group by (_id) (csv_succeeded{_id=""}), "name", "ptp-operator.v4.y.0-20260331... or older not installed", "", "")
+        type: PromQL
+      message: Clusters using older PTP operators may struggle to synchronize system
+        clocks and might not provide time to downstream clients.
+      name: PrecisionTimeProtocolDPLLPins
+      url: https://redhat.atlassian.net/browse/CORENET-6950
+  conditions:
+  - lastTransitionTime: "2026-05-07T14:00:41Z"
+    status: "True"
+    type: RetrievedUpdates
+  - lastTransitionTime: "2026-04-08T16:12:54Z"
+    message: Capabilities match configured spec
+    reason: AsExpected
+    status: "False"
+    type: ImplicitlyEnabledCapabilities
+  - lastTransitionTime: "2026-04-08T16:12:54Z"
+    message: Payload loaded version="4.20.16" image="quay.io/openshift-release-dev/ocp-release@sha256:5e2fb7977a82237e497443e2bb53fd1c196e083fc5095294699399b61ce02746"
+      architecture="amd64"
+    reason: PayloadLoaded
+    status: "True"
+    type: ReleaseAccepted
+  - lastTransitionTime: "2026-04-08T16:42:32Z"
+    message: Done applying 4.20.16
+    status: "True"
+    type: Available
+  - lastTransitionTime: "2026-05-11T10:48:19Z"
+    status: "False"
+    type: Failing
+  - lastTransitionTime: "2026-05-11T11:10:26Z"
+    message: Cluster version is 4.20.16
+    status: "False"
+    type: Progressing
+  desired:
+    channels:
+    - candidate-4.20
+    - candidate-4.21
+    - candidate-4.22
+    - eus-4.20
+    - fast-4.20
+    - fast-4.21
+    - stable-4.20
+    - stable-4.21
+    image: quay.io/openshift-release-dev/ocp-release@sha256:5e2fb7977a82237e497443e2bb53fd1c196e083fc5095294699399b61ce02746
+    url: https://access.redhat.com/errata/RHSA-2026:3855
+    version: 4.20.16
+  history:
+  - completionTime: "2026-05-11T11:10:26Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:5e2fb7977a82237e497443e2bb53fd1c196e083fc5095294699399b61ce02746
+    startedTime: "2026-05-11T10:21:04Z"
+    state: Completed
+    verified: true
+    version: 4.20.16
+  - completionTime: "2026-05-10T22:45:19Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:a60fbe523d8ad802ab9bcbb4c505f5fe4467283fc748e4978fe9a3b280145d75
+    startedTime: "2026-05-10T21:46:02Z"
+    state: Completed
+    verified: true
+    version: 4.20.15
+  - completionTime: "2026-05-08T09:02:19Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:682e85bfe8034924e596b281ed8fefe4451e6f6c5bac07b5ec300443eeb23566
+    startedTime: "2026-05-08T08:09:42Z"
+    state: Completed
+    verified: true
+    version: 4.20.14
+  - completionTime: "2026-05-07T18:26:58Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:280ffe256696c1b3699a5d0bc9c520b785a0c6acff0ed58073adbd206185c4b9
+    startedTime: "2026-05-07T16:51:33Z"
+    state: Completed
+    verified: true
+    version: 4.20.13
+  - completionTime: "2026-05-07T16:25:17Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:c9bae4933c711d664e15da5b98e6e057fda51697aef4f3ec8e932922aa969373
+    startedTime: "2026-05-07T15:28:57Z"
+    state: Completed
+    verified: true
+    version: 4.20.12
+  - completionTime: "2026-05-07T14:49:54Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:bbe1ffd9b28cbe6814cb6cecef844733f38aba1a3d400b1bc5aff5865cfe665e
+    startedTime: "2026-05-07T14:00:38Z"
+    state: Completed
+    verified: true
+    version: 4.20.11
+  - completionTime: "2026-05-07T11:55:21Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:2d228e6d0b5a5ef2d7eb40bc171ad44f06b990d7adb678914e5d9d047e72568d
+    startedTime: "2026-05-07T11:03:05Z"
+    state: Completed
+    verified: true
+    version: 4.20.10
+  - completionTime: "2026-04-08T16:42:32Z"
+    image: quay.io/openshift-release-dev/ocp-release@sha256:91606a5f04331ed3293f71034d4f480e38645560534805fe5a821e6b64a3f203
+    startedTime: "2026-04-08T16:12:54Z"
+    state: Completed
+    verified: false
+    version: 4.20.8
+  observedGeneration: 9
+  versionHash: cDeLgZbgTmc=
