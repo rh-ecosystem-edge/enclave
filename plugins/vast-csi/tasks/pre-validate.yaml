@@ -36,10 +36,11 @@
 - name: Validate tier names are DNS-safe
   ansible.builtin.assert:
     that:
+      - item.name | length <= 63
       - item.name is regex('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
     fail_msg: >-
       Tier name '{{ item.name }}' must be a valid DNS label
-      (lowercase alphanumeric, hyphens allowed in the middle).
+      (1-63 chars, lowercase alphanumeric, hyphens allowed in the middle).
   loop: "{{ vastDefaults.tiers }}"
   loop_control:
     label: "{{ item.name }}"
