@@ -1,9 +1,6 @@
 ---
-# Collect operator definitions from all enabled plugins
-# so they can be included in the main imageset for a single oc-mirror run.
-#
-# This avoids running separate oc-mirror invocations per plugin, which
-# would overwrite the catalog index and lose operators from earlier runs.
+# Collect operator definitions from all enabled foundation plugins
+# so they can be included in the core imageset for a single oc-mirror run.
 #
 # Sets fact: _core_plugin_operators (list of operator dicts)
 
@@ -25,19 +22,17 @@
 
 - name: Build combined plugin operators dictionary
   vars:
-    _enabled: >-
+    _foundation: >-
       {{ r_cp_slurp.results
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
          | selectattr('name', 'in', enabled_plugins)
          | list }}
-    _core: >-
-      {{ (_enabled | rejectattr('mirror', 'defined') | list)
-         + (_enabled | selectattr('mirror', 'defined') | selectattr('mirror', 'equalto', 'core') | list) }}
   ansible.builtin.set_fact:
     _core_plugin_operators: >-
-      {{ _core
+      {{ _foundation
          | selectattr('operators', 'defined')
          | items2dict(key_name='name', value_name='operators') }}
 
