@@ -65,4 +65,4 @@
       This may be expected in disconnected environments where VMS is on a separate network.
       CSI driver will still be installed, but StorageClasses may not be functional
       until VMS connectivity is established.
-  when: r_vast_connectivity.status is not defined or r_vast_connectivity.status == -1
+  when: r_vast_connectivity.status is not defined or r_vast_connectivity.status not in [200, 401, 403]

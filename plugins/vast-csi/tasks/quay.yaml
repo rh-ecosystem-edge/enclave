@@ -80,8 +80,11 @@
   - name: Check if Quay app deployment already has registry-storage volume (VAST)
     ansible.builtin.set_fact:
       quay_registry_storage_already_patched: >-
-        {{ quay_app_deployment.resources[0].spec.template.spec.volumes
-           | selectattr('name', 'equalto', 'registry-storage') | list | length > 0 }}
+        {{ (quay_app_deployment.resources[0].spec.template.spec.volumes | default([])
+            | selectattr('name', 'equalto', 'registry-storage') | list | length > 0)
+           and (quay_app_deployment.resources[0].spec.template.spec.containers | default([])
+            | map(attribute='volumeMounts', default=[]) | flatten
+            | selectattr('name', 'equalto', 'registry-storage') | list | length > 0) }}
 
   - name: Create VAST NFS PVC for Quay Storage
     kubernetes.core.k8s:
