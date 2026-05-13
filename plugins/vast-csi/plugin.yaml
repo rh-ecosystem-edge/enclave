@@ -49,6 +49,10 @@ requires:
     - path: "tasks/quay.yaml"
       description: "VAST Quay storage configuration"
 
+clusterSelector:
+  matchLabels:
+    storage.vastdata.com/enabled: "true"
+
 registries:
   - location: "registry.connect.redhat.com/vastdataorg"
     mirror: "vastdataorg"
