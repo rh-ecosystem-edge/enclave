@@ -27,8 +27,13 @@ mirror:
     graph: true
   operators:
 {% for c_name, c_operators in catalog_operators.items() %}
+{% if c_name == 'core' %}
+    - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
+      targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
+{% else %}
     - catalog: {{ rh_operator_catalog }}-{{ c_name }}:{{ rh_operator_catalog_version }}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}-{{ c_name }}
+{% endif %}
       packages:
 {% for operator in c_operators %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}

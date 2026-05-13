@@ -56,7 +56,7 @@
       --retry-times {{ ocMirrorRetryTimes }} \
       --retry-delay {{ ocMirrorRetryDelay }} \
       docker://{{ rh_operator_catalog }}:{{ rh_operator_catalog_version }} \
-      docker://{{ quayHostname }}:8443/redhat/redhat-operator-index{{ '-' ~ item }}:{{ rh_operator_catalog_version }}
+      docker://{{ quayHostname }}:8443/redhat/redhat-operator-index{{ (item == 'core') | ternary('', '-' ~ item) }}:{{ rh_operator_catalog_version }}
   loop: "{{ catalog_operators.keys() | list }}"
   loop_control:
     label: "{{ item }}"
