@@ -159,15 +159,6 @@ properties:
   order:
     type: integer
     description: Deploy order among same-type plugins. Lower values deploy first.
-  mirror:
-    type: string
-    enum:
-      - core
-      - plugin
-      - none
-    description: >-
-      How images are mirrored. core = included in the main oc-mirror run.
-      plugin = plugin runs its own oc-mirror during deploy. none = no mirroring.
   catalog:
     type: string
     description: The Operator catalog name to include in the image set.

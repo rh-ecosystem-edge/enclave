@@ -81,7 +81,7 @@ import yaml, sys
 
 filepath = sys.argv[1]
 required_fields = ['name', 'type']
-valid_fields = ['name', 'type', 'order', 'mirror', 'catalog', 'operators', 'defaults',
+valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
                 'installOperators', 'registries', 'additionalImages', 'blockedImages',
                 'requires', 'helm']
 

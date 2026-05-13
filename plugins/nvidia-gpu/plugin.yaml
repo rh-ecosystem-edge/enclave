@@ -2,7 +2,6 @@
 name: nvidia-gpu
 type: addon
 order: 110
-mirror: plugin
 
 catalog: certified
 operators:

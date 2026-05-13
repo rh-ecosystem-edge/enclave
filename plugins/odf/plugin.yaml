@@ -2,7 +2,6 @@
 name: odf
 type: foundation
 order: 10
-mirror: core
 
 operators:
   - name: odf-operator
