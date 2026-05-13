@@ -32,7 +32,6 @@ This is the only required file. It contains all plugin data: metadata, operator 
 name: lvms
 type: foundation
 order: 10
-mirror: core
 
 operators:
   - name: lvms-operator
@@ -67,10 +66,9 @@ registries:
 | `name` | Plugin identifier. Must match the directory name. |
 | `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deployed separately. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
-| `mirror` | How images are mirrored. `core` = mirrored in the core run. `plugin` = plugin runs its own oc-mirror. `none` = skip. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
-| `installOperators` | Set to `false` to skip operator installation (mirror-only plugins). Defaults to `true`. |
+| `installOperators` | Set to `false` to skip operator installation. Defaults to `true`. |
 | `defaults` | Variables loaded into Ansible scope before tasks run. Keeps config namespaced per plugin. |
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
@@ -120,7 +118,6 @@ LVMS is a foundation plugin that provides LVM-based block storage on local disks
 name: lvms
 type: foundation
 order: 10
-mirror: core
 
 operators:
   - name: lvms-operator
@@ -205,7 +202,7 @@ The per-plugin validation in `deploy_plugin.yaml` remains as defense-in-depth du
 
 ### Mirroring (disconnected)
 
-Plugins with `mirror: core` have their operators collected by `collect_core_plugin_operators.yaml` and included in the core oc-mirror run. Plugins with `mirror: plugin` run their own oc-mirror invocation during step 5 of their lifecycle.
+Foundation Plugins have their operators collected by `collect_core_plugin_operators.yaml` and included in the core oc-mirror run. Addon plugins run their own oc-mirror invocation during step 6 of their lifecycle.
 
 Operators with `csvMirror: true` have their `csvNames` entries added as separate packages in the image set.
 
@@ -297,7 +294,7 @@ Don't add `requires.vars` entries for variables that come from `plugin.defaults`
 
 ## Validation-Only Plugins
 
-A plugin doesn't have to deploy anything. If a plugin has no `operators`, no `mirror` config, and no `tasks/deploy.yaml`, all deployment steps are skipped -- only validation runs. This is useful for pre-flight checks, config verification, or environment validation that should gate the pipeline.
+A plugin doesn't have to deploy anything. If a plugin has no `operators`, and no `tasks/deploy.yaml`, all deployment steps are skipped -- only validation runs. This is useful for pre-flight checks, config verification, or environment validation that should gate the pipeline.
 
 A validation-only plugin can hook into any of these checkpoints:
 
@@ -350,10 +347,10 @@ No core files need to be modified.
 
 ## Current Plugins
 
-| Plugin | Type | Order | Mirror | What it does |
-|--------|------|-------|--------|-------------|
-| `lvms` | foundation | 10 | core | LVM-based block storage for edge/single-node |
-| `odf` | foundation | 10 | core | OpenShift Data Foundation (external Ceph) |
-| `openshift-ai` | addon | 100 | plugin | OpenShift AI (RHOAI) with service mesh and dependencies |
-| `nvidia-gpu` | addon | 110 | plugin | NVIDIA GPU operator for GPU-accelerated workloads |
-| `example` | addon | 999 | none | Reference implementation (does nothing useful) |
+| Plugin | Type | Order | What it does |
+|--------|------|-------|--------------|
+| `lvms` | foundation | 10 | LVM-based block storage for edge/single-node |
+| `odf` | foundation | 10 | OpenShift Data Foundation (external Ceph) |
+| `openshift-ai` | addon | 100 | OpenShift AI (RHOAI) with service mesh and dependencies |
+| `nvidia-gpu` | addon | 110 | NVIDIA GPU operator for GPU-accelerated workloads |
+| `example` | addon | 999 | Reference implementation (does nothing useful) |
