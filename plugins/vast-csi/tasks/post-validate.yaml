@@ -1,0 +1,47 @@
+---
+# Post-deployment validation: verify CSI drivers and StorageClasses are functional.
+
+- name: Set validation variables
+  ansible.builtin.set_fact:
+    vast_tenant: "{{ vastDefaults.infraTenant }}"
+    vast_expected_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+
+- name: Verify CSI drivers are registered
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: CSIDriver
+    name: "{{ vastDefaults.csiProvisioners[item] }}"
+  loop: "{{ vast_expected_protocols }}"
+  register: r_csi_verify
+  failed_when:
+    - r_csi_verify.resources | length == 0
+
+- name: Verify StorageClasses exist for each tier
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+    name: "{{ vast_tenant }}-{{ item.name }}"
+  loop: "{{ vastDefaults.tiers }}"
+  loop_control:
+    label: "{{ vast_tenant }}-{{ item.name }}"
+  register: r_sc_verify
+  failed_when:
+    - r_sc_verify.resources | length == 0
+
+- name: Verify CSI credentials Secret exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "vast-csi-{{ vast_tenant }}"
+    namespace: vast-csi
+  register: r_secret_verify
+  failed_when:
+    - r_secret_verify.resources | length == 0
+
+- name: Report VAST plugin deployment status
+  ansible.builtin.debug:
+    msg: >-
+      VAST CSI plugin deployed successfully.
+      Infra tenant: {{ vast_tenant }}
+      Protocols: {{ vast_expected_protocols | join(', ') }}
+      StorageClasses: {{ vastDefaults.tiers | map(attribute='name') | map('regex_replace', '^(.*)$', vast_tenant ~ '-\1') | list | join(', ') }}

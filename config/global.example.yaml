@@ -61,9 +61,9 @@ quayBackendRGWConfiguration:
 # ============================================================================
 # Storage Backend
 # ============================================================================
-# Storage plugin for block devices for quay database and assisted installer
-# Selects which storage plugin (plugins/lvms/ or plugins/odf/) to deploy
-# Options: lvms or odf
+# Storage plugin for quay database and assisted installer
+# Selects which storage plugin to deploy
+# Options: lvms, odf, or vast-csi
 # storage_plugin: odf
 storage_plugin: lvms
 
@@ -92,6 +92,41 @@ storage_plugin: lvms
 # odfExternalConfig:
 #  '[{"name": "external-cluster-user-command",
 #     "kind": "ConfigMap", "data": ..}]'
+
+# ============================================================================
+# Storage Configuration (VAST CSI)
+# ============================================================================
+# When storage_plugin is vast-csi, configure the VAST management endpoint
+# and admin credentials. The plugin creates an "infra" tenant following the
+# osac-aap naming convention so both systems can reason about resources.
+# Also set quayBackend: LocalStorage (VAST NFS uses PVC mount for Quay).
+#
+# vastEndpoint: "https://vms.example.com"
+# vastAdminUsername: "admin"
+# vastAdminPassword: "YOUR_VAST_ADMIN_PASSWORD"
+#
+# VIP pool network configuration (required).
+# The plugin creates a VIP pool on the VAST cluster for CSI traffic.
+# vastVipPool:
+#   subnet_cidr: 24
+#   ip_ranges:
+#     - start: "10.0.100.10"
+#       end: "10.0.100.50"
+#
+# Configure storage tiers (default: single NFS tier for Quay).
+# Each tier creates a VAST view and a K8s StorageClass named {infraTenant}-{tierName}.
+# vastDefaults:
+#   infraTenant: infra
+#   storagePath: /osac
+#   viewPolicyId: 1
+#   quayPvcSize: 2000Gi
+#   tiers:
+#     - name: quay
+#       protocol: nfs
+#     - name: fast
+#       protocol: block
+#     - name: archive
+#       protocol: nfs
 
 # ============================================================================
 # OpenShift Deployment Configuration (optional)

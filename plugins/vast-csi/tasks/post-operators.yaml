@@ -1,0 +1,49 @@
+---
+# After the VAST CSI operator is installed via OLM, wait for the VastCSIDriver CRD
+# and create CSI driver instances for each protocol in use.
+
+- name: Collect protocols from configured tiers
+  ansible.builtin.set_fact:
+    vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+
+- name: Wait for VastCSIDriver CRD to be registered
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: vastcsidrivers.csi.vastdata.com
+  register: r_vast_crd
+  retries: 30
+  delay: 10
+  until:
+    - r_vast_crd.resources is defined
+    - r_vast_crd.resources | length > 0
+
+- name: Create VastCSIDriver CR for each protocol
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: csi.vastdata.com/v1
+      kind: VastCSIDriver
+      metadata:
+        name: "{{ (item == vast_protocols[0]) | ternary(vastDefaults.csiDriverName, vastDefaults.csiDriverName ~ '-' ~ item) }}"
+        namespace: vast-csi
+      spec:
+        driverType: "{{ item }}"
+  loop: "{{ vast_protocols }}"
+  register: r_vast_driver
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vast_driver is success
+
+- name: Wait for CSI drivers to register
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: CSIDriver
+    name: "{{ vastDefaults.csiProvisioners[item] }}"
+  loop: "{{ vast_protocols }}"
+  register: r_csi_registered
+  retries: 30
+  delay: 10
+  until:
+    - r_csi_registered.resources is defined
+    - r_csi_registered.resources | length > 0

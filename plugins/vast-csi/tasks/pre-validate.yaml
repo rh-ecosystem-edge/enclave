@@ -1,0 +1,68 @@
+---
+# Pre-deployment validation: verify VAST endpoint connectivity and credential format.
+
+- name: Validate VAST endpoint is a valid URL
+  ansible.builtin.assert:
+    that:
+      - vastEndpoint is regex('^https?://')
+    fail_msg: >-
+      vastEndpoint must be a URL starting with http:// or https://.
+      Got: {{ vastEndpoint }}
+
+- name: Validate VAST tier configuration
+  ansible.builtin.assert:
+    that:
+      - vastDefaults.tiers | length > 0
+      - vastDefaults.tiers | length <= 20
+    fail_msg: "vastDefaults.tiers must have 1-20 entries"
+
+- name: Validate tier protocols
+  ansible.builtin.assert:
+    that:
+      - item.protocol in ['nfs', 'block']
+    fail_msg: >-
+      Tier '{{ item.name }}' has invalid protocol '{{ item.protocol }}'.
+      Must be 'nfs' or 'block'.
+  loop: "{{ vastDefaults.tiers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Validate tier names are unique
+  ansible.builtin.assert:
+    that:
+      - vastDefaults.tiers | map(attribute='name') | list | unique | length == vastDefaults.tiers | length
+    fail_msg: "Tier names must be unique"
+
+- name: Validate tier names are DNS-safe
+  ansible.builtin.assert:
+    that:
+      - item.name is regex('^[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
+    fail_msg: >-
+      Tier name '{{ item.name }}' must be a valid DNS label
+      (lowercase alphanumeric, hyphens allowed in the middle).
+  loop: "{{ vastDefaults.tiers }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Check VAST endpoint connectivity
+  ansible.builtin.uri:
+    url: "{{ vastEndpoint }}/api/clusters/"
+    method: GET
+    validate_certs: "{{ vastDefaults.validateCerts }}"
+    timeout: "{{ vastDefaults.apiTimeout }}"
+    status_code:
+      - 200
+      - 401
+      - 403
+  register: r_vast_connectivity
+  failed_when: false
+
+- name: Warn if VAST endpoint is unreachable
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: VAST endpoint {{ vastEndpoint }} is not reachable
+      (status={{ r_vast_connectivity.status | default('connection_error') }}).
+      This may be expected in disconnected environments where VMS is on a separate network.
+      CSI driver will still be installed, but StorageClasses may not be functional
+      until VMS connectivity is established.
+  when: r_vast_connectivity.status is not defined or r_vast_connectivity.status == -1
