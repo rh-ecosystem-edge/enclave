@@ -11,7 +11,7 @@
     quay_mirror_suffix: >-
       {{
         ('plugin-' ~ plugin_name ~ '-internal')
-        if (quay_plugin_mirror | default(false) | bool)
+        if (plugin_mirror | default(false) | bool)
         else 'internal'
       }}
     quay_cluster_resources_dir: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources"

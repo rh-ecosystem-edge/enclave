@@ -42,7 +42,7 @@
 
 - name: Display plugin info
   ansible.builtin.debug:
-    msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin.mirror | default('none') }})"
+    msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
   tags: always
 
 # Dynamically set each key in plugin.defaults as an Ansible fact.
@@ -133,10 +133,8 @@
 - name: Mirror plugin
   ansible.builtin.include_tasks:
     file: mirror_plugin.yaml
-  vars:
-    quay_plugin_mirror: true
   when:
-    - plugin.mirror | default('none') == 'plugin'
+    - plugin_mirror | default(false) | bool
     - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
     - disconnected | default(true) | bool
   tags: mirror
@@ -152,7 +150,7 @@
     plugin_registries_entries: "{{ plugin.registries }}"
   when:
     - plugin.registries is defined
-    - plugin.mirror | default('none') in ['core', 'plugin']
+    - plugin_mirror | default(false) | bool
     - disconnected | default(true) | bool
   tags: mirror
 

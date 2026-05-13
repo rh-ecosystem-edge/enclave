@@ -33,4 +33,6 @@
     - name: Deploy plugin
       ansible.builtin.include_tasks:
         file: tasks/deploy_plugin.yaml
+      vars:
+        plugin_mirror: true
       tags: always
