@@ -31,13 +31,14 @@ on:
         type: boolean
         default: true
       storage-plugin:
-        description: 'Storage plugin to deploy (lvms or odf)'
+        description: 'Storage plugin to deploy (lvms, odf or vast-csi)'
         required: true
         default: 'lvms'
         type: choice
         options:
           - lvms
           - odf
+          - vast-csi
       skip-cleanup:
         description: 'Skip cleanup after deployment (leave infrastructure running)'
         required: false
