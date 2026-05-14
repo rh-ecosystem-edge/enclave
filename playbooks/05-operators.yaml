@@ -8,6 +8,9 @@
 #   Storage plugins (LVMS/ODF) run here, BEFORE core operators,
 #   so that Quay can rely on the storage backend being present.
 # - Install general operators from defaults/operators.yaml
+# - Auto-discover and deploy addon plugins (type: addon)
+#   Addon plugins (nvidia-gpu, openshift-ai, etc.) run AFTER core
+#   operators and Quay mirroring are complete.
 #
 # Usage:
 #   ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
@@ -78,3 +81,14 @@
         apply:
           tags: operators
       tags: operators
+
+    - name: Auto-discover and deploy addon plugins
+      ansible.builtin.include_tasks:
+        file: tasks/deploy_addon_plugins.yaml
+        apply:
+          tags:
+            - addon-plugins
+            - operators
+      tags:
+        - addon-plugins
+        - operators
