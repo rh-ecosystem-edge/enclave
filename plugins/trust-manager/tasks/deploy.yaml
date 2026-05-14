@@ -1,0 +1,65 @@
+---
+- name: Wait for trust-manager Bundle CRD to be established
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: bundles.trust.cert-manager.io
+  register: __r_bundle_crd
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - __r_bundle_crd.resources | length > 0
+    - __r_bundle_crd.resources[0].status.conditions
+      | default([])
+      | selectattr('type', 'equalto', 'Established')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length > 0
+
+- name: Wait for trust-manager deployment to be available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: trust-manager
+    namespace: cert-manager
+  register: __r_trust_manager_deploy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - __r_trust_manager_deploy.resources | length > 0
+    - __r_trust_manager_deploy.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Debug trust-manager status
+  ansible.builtin.debug:
+    msg: "trust-manager deployment is ready in cert-manager namespace"
+
+- name: Apply CA issuer manifests
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop: "{{ lookup('template', plugin_dir ~ '/templates/ca-issuer.yaml.j2') | from_yaml_all | list }}"
+  register: __r_ca_issuer
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_ca_issuer is success
+
+- name: Wait for ClusterIssuer to be ready
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: ClusterIssuer
+    name: default-ca
+  register: __r_cluster_issuer
+  retries: 30
+  delay: "{{ k8s_delay }}"
+  until:
+    - __r_cluster_issuer.resources | length > 0
+    - __r_cluster_issuer.resources[0].status.conditions
+      | default([])
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length > 0
+
+- name: Debug CA issuer status
+  ansible.builtin.debug:
+    msg: "ClusterIssuer default-ca is ready"

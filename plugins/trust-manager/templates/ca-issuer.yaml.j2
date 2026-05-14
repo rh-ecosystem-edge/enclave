@@ -1,0 +1,39 @@
+# Self-signed issuer for creating the CA certificate
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: cert-manager
+spec:
+  selfSigned: {}
+
+---
+# CA Certificate that will be used by the ClusterIssuer
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: default-ca-cert
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: default-ca
+  secretName: default-ca
+  duration: {{ ca_issuer_duration }}
+  renewBefore: {{ ca_issuer_renew_before }}
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+
+---
+# ClusterIssuer that uses the CA certificate
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: default-ca
+spec:
+  ca:
+    secretName: default-ca
