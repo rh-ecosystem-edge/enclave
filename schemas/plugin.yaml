@@ -70,6 +70,7 @@ definitions:
           required:
             - key
             - operator
+          additionalProperties: false
           properties:
             key:
               type: string
@@ -89,6 +90,24 @@ definitions:
                 Must be empty if operator is 'Exists' or 'DoesNotExist'.
               items:
                 type: string
+          allOf:
+            - if:
+                properties:
+                  operator:
+                    enum: [In, NotIn]
+              then:
+                required: [values]
+                properties:
+                  values:
+                    minItems: 1
+            - if:
+                properties:
+                  operator:
+                    enum: [Exists, DoesNotExist]
+              then:
+                properties:
+                  values:
+                    maxItems: 0
 
   registry:
     type: object

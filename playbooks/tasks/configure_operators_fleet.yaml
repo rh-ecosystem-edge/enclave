@@ -3,7 +3,7 @@
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s:
     state: present
-    definition: "{{ lookup('ansible.builtin.file', '/files/00-namespace.yaml') | from_yaml }}"
+    definition: "{{ lookup('ansible.builtin.file', 'files/plugin-fleet-configuration/00-namespace.yaml') | from_yaml }}"
   register: r_acm_policy_ns
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
