@@ -123,6 +123,12 @@ if [ "${ENCLAVE_MIRROR_DRY_RUN:-}" = "true" ]; then
 "
 fi
 
+# Disable Quay PinnedImageSet apply after mirror if requested
+if [ "${ENCLAVE_QUAY_PINNEDIMAGESET_ENABLED:-}" = "false" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}quayPinnedImageSetEnabled: false
+"
+fi
+
 # Load ODF external config and Quay RGW config (from env vars or LZ files)
 if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
     source "${ENCLAVE_DIR}/scripts/lib/odf.sh"

@@ -69,6 +69,12 @@ properties:
     "$ref": "#/definitions/cidr"
   ocMirrorLogLevel:
     "$ref": "#/definitions/ocMirrorLogLevel"
+  quayPinnedImageSetEnabled:
+    type: boolean
+    default: true
+    description: >-
+      Whether to apply a master PinnedImageSet after Quay mirror sync.
+      Set to false to skip post-mirror image prefetch pinning.
   odfExternalConfig:
     type: string
     description: ODF external cluster configuration JSON string

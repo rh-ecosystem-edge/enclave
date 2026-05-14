@@ -1,0 +1,102 @@
+---
+# collect_master_node_image_digests.yaml — digest pull specs from images on all master nodes.
+#
+# Sets:
+#   pinned_images — unique digest pull specs (PinnedImageSet API format).
+
+- name: List master nodes for image collection
+  kubernetes.core.k8s_info:
+    kind: Node
+    label_selectors:
+      - node-role.kubernetes.io/master
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_pinned_master_nodes
+
+- name: Fail when no master nodes found for image collection
+  ansible.builtin.fail:
+    msg: "No master nodes matched node-role.kubernetes.io/master; cannot collect images for PinnedImageSet."
+  when: r_pinned_master_nodes.resources | default([]) | length == 0
+
+# Per-node collection via enclave tools (see tools/node_image_digests.py).
+- name: Collect container image digest refs from each master node
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - tools
+      - collect-node-image-digests
+      - --node
+      - "{{ item.metadata.name }}"
+      - --oc
+      - "{{ workingDir }}/bin/oc"
+      - --raw-output-file
+      - "{{ workingDir }}/config/pinned-image-digests-{{ item.metadata.name }}.log"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  loop: "{{ r_pinned_master_nodes.resources }}"
+  register: r_master_crictl_digests
+  changed_when: false
+  ignore_errors: true
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: Build pinned image list from master node crictl output
+  ansible.builtin.set_fact:
+    pinned_images: >-
+      {{
+        (r_master_crictl_digests.results | default([])
+        | map(attribute='stdout_lines')
+        | flatten
+        | map('trim')
+        | select()
+        | unique
+        | list)
+      }}
+
+- name: Identify failed or empty master node image collection results
+  ansible.builtin.set_fact:
+    _pinned_collection_failed_nodes: >-
+      {{
+        r_master_crictl_digests.results | default([])
+        | selectattr('failed', 'equalto', true)
+        | list
+      }}
+    _pinned_collection_empty_nodes: >-
+      {{
+        r_master_crictl_digests.results | default([])
+        | rejectattr('failed', 'equalto', true)
+        | selectattr('stdout_lines', 'defined')
+        | selectattr('stdout_lines', 'equalto', [])
+        | list
+      }}
+    _pinned_collection_has_issues: >-
+      {{
+        (r_master_crictl_digests.results | default([]) | selectattr('failed', 'equalto', true) | list | length > 0)
+        or (
+          r_master_crictl_digests.results | default([])
+          | rejectattr('failed', 'equalto', true)
+          | selectattr('stdout_lines', 'defined')
+          | selectattr('stdout_lines', 'equalto', [])
+          | list
+          | length > 0
+        )
+        or (pinned_images | default([]) | length == 0)
+      }}
+
+- name: Fail when master node image digest collection failed or incomplete
+  ansible.builtin.fail:
+    msg: >-
+      Master node image digest collection failed or produced no usable digest refs.
+      Failed nodes:
+      {{ _pinned_collection_failed_nodes | map(attribute='item.metadata.name') | list }}
+      Nodes with empty output:
+      {{ _pinned_collection_empty_nodes | map(attribute='item.metadata.name') | list }}
+      Unique digest refs collected: {{ pinned_images | default([]) | length }}.
+  when: _pinned_collection_has_issues | default(false) | bool
+
+- name: Write collected master image digests for diagnostics
+  ansible.builtin.copy:
+    content: "{{ pinned_images | join('\n') }}\n"
+    dest: "{{ workingDir }}/config/pinned-images-master.txt"
+    mode: "0644"
+  when: pinned_images | default([]) | length > 0

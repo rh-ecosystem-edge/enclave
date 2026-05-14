@@ -1,0 +1,11 @@
+apiVersion: machineconfiguration.openshift.io/v1
+kind: PinnedImageSet
+metadata:
+  name: {{ (role ~ '-pinned-images') | to_json }}
+  labels:
+    machineconfiguration.openshift.io/role: {{ role | to_json }}
+spec:
+  pinnedImages:
+{% for img in images %}
+  - name: {{ img | to_json }}
+{% endfor %}

@@ -120,6 +120,10 @@ storage_plugin: lvms
 # Log level for oc-mirror (default: info, options: trace, debug, info, error)
 # ocMirrorLogLevel: debug
 
+# Apply master PinnedImageSet after Quay mirror (default: true). Set false to skip
+# post-mirror prefetch pinning (e.g. faster iteration or when MCO pin step is unwanted).
+# quayPinnedImageSetEnabled: false
+
 # Additional NTP sources for cluster nodes (no additional servers by default)
 # defaultNtpServers:
 #  - YOUR_NTP_SERVER_1

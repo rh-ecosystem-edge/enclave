@@ -1,0 +1,42 @@
+---
+# quay_pinnedimageset.yaml — disconnected Quay finish: master PinnedImageSet from on-node images.
+#
+# Flow:
+#   - Load vars (so this file can run when the operator play omits it).
+#   - Collect digest pull specs (crictl repoDigests) from all master nodes via oc debug.
+#   - Render/apply PinnedImageSet for masters (images already on disk, hence MCO pin step should be fast).
+#   - Note: single manifest images are excluded (as MCO prefetch uses podman manifest inspect, which exits with error 125).
+
+- name: Load deployment and global configuration
+  ansible.builtin.include_tasks:
+    file: ../../playbooks/common/load-vars.yaml
+
+- name: Collect digest image refs present on master nodes
+  ansible.builtin.include_tasks:
+    file: ../../playbooks/tasks/collect_master_node_image_digests.yaml
+
+- name: Show master PinnedImageSet image count
+  ansible.builtin.debug:
+    msg: >-
+      PinnedImageSet will pin {{ pinned_images | default([]) | length }} digest refs
+      collected from {{ r_pinned_master_nodes.resources | default([]) | length }} master node(s).
+
+- name: Generate master PinnedImageSet manifest
+  ansible.builtin.template:
+    src: "../../templates/pinnedimageset.yaml.j2"
+    dest: "{{ workingDir }}/config/pinnedimageset-master.yaml"
+  vars:
+    role: master
+    images: "{{ pinned_images | default([]) }}"
+  when: pinned_images | default([]) | length > 0
+
+- name: Apply master PinnedImageSet to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ workingDir }}/config/pinnedimageset-master.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: pinned_images | default([]) | length > 0
