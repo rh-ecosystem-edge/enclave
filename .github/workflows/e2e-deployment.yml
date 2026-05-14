@@ -940,6 +940,7 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
+            ["deploy_addon_plugin"]="Deploy - Addon Plugin (example)"
             ["verify_cluster"]="Verify cluster deployment"
           )
 
@@ -956,6 +957,7 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
+            deploy_addon_plugin
             verify_cluster
           )
 
