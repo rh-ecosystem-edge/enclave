@@ -7,7 +7,8 @@
       metadata:
         name: multiclusterhub
         namespace: open-cluster-management
-      spec: {}
+      spec:
+        disableUpdateClusterImageSets: true
   retries: 60
   delay: 10
   register: r_mhc
