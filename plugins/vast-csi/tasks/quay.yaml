@@ -1,0 +1,128 @@
+---
+# VAST-specific tasks for Quay: QuayRegistry CR and NFS PVC mount for registry storage.
+# Included from operators/quay-operator/tasks.yaml via dynamic plugin include.
+#
+# Uses the infra tenant's quay-tier StorageClass following the osac-aap naming
+# convention: {tenant}-{tier} → infra-quay
+
+- name: Set Quay storage variables
+  ansible.builtin.set_fact:
+    vast_quay_storageclass: "{{ vastDefaults.infraTenant }}-quay"
+    vast_quay_pvc_size: "{{ vastDefaults.quayPvcSize }}"
+
+- name: Ensure QuayRegistry is present (VAST Backend)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: quay.redhat.com/v1
+      kind: QuayRegistry
+      metadata:
+        name: registry
+        namespace: quay-enterprise
+      spec:
+        configBundleSecret: quay-config
+        components:
+        - kind: horizontalpodautoscaler
+          managed: "{{ quayBackend != 'LocalStorage' }}"
+        - kind: objectstorage
+          managed: false
+        - kind: quay
+          managed: true
+          overrides:
+            replicas: null
+            resources:
+              limits:
+                cpu: "4"
+                memory: 12Gi
+              requests:
+                cpu: "{{ '2' if (disconnected | default(true)) else '1' }}"
+                memory: "{{ '6Gi' if (disconnected | default(true)) else '4Gi' }}"
+        - kind: postgres
+          managed: true
+          overrides:
+            resources:
+              limits:
+                cpu: 500m
+                memory: 2Gi
+              requests:
+                cpu: 500m
+                memory: 2Gi
+        - kind: clairpostgres
+          managed: true
+          overrides:
+            resources:
+              limits:
+                cpu: 500m
+                memory: 2Gi
+              requests:
+                cpu: 500m
+                memory: 2Gi
+  retries: 60
+  delay: 10
+  register: r_quay_vast
+  until: r_quay_vast is succeeded
+
+- name: Quay VAST NFS storage (PVC and deployment patch)
+  when:
+    - quayBackend == 'LocalStorage'
+  block:
+  - name: Wait for Quay app deployment to exist (VAST)
+    kubernetes.core.k8s_info:
+      api_version: apps/v1
+      kind: Deployment
+      namespace: quay-enterprise
+      name: registry-quay-app
+    register: quay_app_deployment
+    retries: 30
+    delay: 10
+    until: quay_app_deployment.resources | length > 0
+
+  - name: Check if Quay app deployment already has registry-storage volume (VAST)
+    ansible.builtin.set_fact:
+      quay_registry_storage_already_patched: >-
+        {{ (quay_app_deployment.resources[0].spec.template.spec.volumes | default([])
+            | selectattr('name', 'equalto', 'registry-storage') | list | length > 0)
+           and (quay_app_deployment.resources[0].spec.template.spec.containers | default([])
+            | map(attribute='volumeMounts', default=[]) | flatten
+            | selectattr('name', 'equalto', 'registry-storage') | list | length > 0) }}
+
+  - name: Create VAST NFS PVC for Quay Storage
+    kubernetes.core.k8s:
+      state: present
+      definition:
+        apiVersion: v1
+        kind: PersistentVolumeClaim
+        metadata:
+          name: quay-storage-pvc
+          namespace: quay-enterprise
+          labels:
+            app.kubernetes.io/managed-by: enclave
+            osac.openshift.io/tenant: "{{ vastDefaults.infraTenant }}"
+        spec:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: "{{ vast_quay_pvc_size }}"
+          storageClassName: "{{ vast_quay_storageclass }}"
+
+  - name: Patch Quay app deployment to mount registry storage PVC (VAST)
+    environment:
+      KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+    ansible.builtin.shell: |
+      {{ workingDir }}/bin/oc patch deployment registry-quay-app -n quay-enterprise --type=json -p='{{ quay_vast_patch | to_json }}'
+    vars:
+      quay_vast_patch:
+        - op: add
+          path: /spec/template/spec/volumes/-
+          value:
+            name: registry-storage
+            persistentVolumeClaim:
+              claimName: quay-storage-pvc
+        - op: add
+          path: /spec/template/spec/containers/0/volumeMounts/-
+          value:
+            name: registry-storage
+            mountPath: /datastorage/registry
+    when: not (quay_registry_storage_already_patched | default(false))
+    register: quay_patch_result
