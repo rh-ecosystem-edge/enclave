@@ -536,7 +536,7 @@ collect_lz_oc_mirror_logs() {
         cd ~ || exit 2
         shopt -s nullglob
         files=(
-            logs/oc-mirror.progress.*.log
+            logs/oc-mirror*.progress.*.log
             config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
         )
         if [ \${#files[@]} -eq 0 ]; then
