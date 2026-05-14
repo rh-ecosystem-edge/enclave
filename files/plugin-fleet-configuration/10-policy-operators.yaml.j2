@@ -1,0 +1,63 @@
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  annotations:
+    policy.open-cluster-management.io/categories: CM Configuration Management
+    policy.open-cluster-management.io/controls: CM-2 Baseline Configuration
+    policy.open-cluster-management.io/standards: NIST SP 800-53
+  name: {{ plugin.name }}-operators
+  namespace: openshift-acm-policies
+spec:
+  dependencies:
+  - apiVersion: policy.open-cluster-management.io/v1
+    compliance: Compliant
+    kind: Policy
+    name: {{ plugin.name }}-catalogsource
+    namespace: openshift-acm-policies
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: ConfigurationPolicy
+      metadata:
+        name: {{ plugin.name }}-operators
+      spec:
+        evaluationInterval:
+          compliant: 2h
+          noncompliant: 45s
+        object-templates:
+{% for operator in plugin.operators | default([]) %}
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: v1
+            kind: Namespace
+            metadata:
+                name: {{ operator.namespace }}
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1
+            kind: OperatorGroup
+            metadata:
+              name: {{ operator.name }}
+              namespace: {{ operator.namespace }}
+            spec:
+              targetNamespaces:
+              - {{ operator.namespace }}
+        - complianceType: mustonlyhave
+          metadataComplianceType: musthave
+          objectDefinition:
+            apiVersion: operators.coreos.com/v1alpha1
+            kind: Subscription
+            metadata:
+              name: {{ operator.name }}
+              namespace: {{ operator.namespace }}
+            spec:
+              channel: {{ operator.channel }}
+              installPlanApproval: Automatic
+              name: {{ operator.name }}
+              source: {{ operator.source | default(catalog_mirror) }}
+              sourceNamespace: openshift-marketplace
+{% endfor %}
