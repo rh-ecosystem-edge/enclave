@@ -18,7 +18,6 @@ defaults:
     validateCerts: true
     apiTimeout: 30
     apiVersion: latest
-    viewPolicyId: 1
     csiProvisioners:
       nfs: csi.vastdata.com
       block: block.csi.vastdata.com
@@ -47,6 +46,8 @@ requires:
       description: "VAST CSI deployment tasks"
     - path: "tasks/quay.yaml"
       description: "VAST Quay storage configuration"
+    - path: "tasks/create_tenant_manager.yaml"
+      description: "VAST tenant manager creation tasks"
 
 clusterSelector:
   matchLabels:
