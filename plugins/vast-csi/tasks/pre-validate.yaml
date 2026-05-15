@@ -45,12 +45,21 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Validate VAST admin credentials are non-empty
+  ansible.builtin.assert:
+    that:
+      - vastAdminUsername | length > 0
+      - vastAdminPassword | length > 0
+    fail_msg: >-
+      vastAdminUsername and vastAdminPassword must both be non-empty strings.
+      Empty credentials will cause 401 errors during VMS API authentication.
+
 - name: Check VAST endpoint connectivity
   ansible.builtin.uri:
     url: "{{ vastEndpoint }}/api/clusters/"
     method: GET
     validate_certs: "{{ vastDefaults.validateCerts }}"
-    timeout: "{{ vastDefaults.apiTimeout }}"
+    timeout: "{{ vastDefaults.apiTimeout | int }}"
     status_code:
       - 200
       - 401
