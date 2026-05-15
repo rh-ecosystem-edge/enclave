@@ -13,6 +13,7 @@ RUN dnf install -y \
 RUN dnf install -y --allowerasing \
     ca-certificates \
     curl \
+    diffutils \
     make \
     shellcheck \
     python3 \
