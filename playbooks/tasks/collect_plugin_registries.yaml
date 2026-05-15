@@ -1,5 +1,5 @@
 ---
-# Collect registry mirror entries from all enabled foundation plugins
+# Collect registry mirror entries from all enabled plugins (foundation + addon)
 # so they can be included in the core registries.conf for oc-mirror.
 #
 # Sets fact: _core_plugin_registries (list of dicts with 'location' and 'mirror')
@@ -22,17 +22,16 @@
 
 - name: Build combined plugin registries list
   vars:
-    _foundation: >-
+    _enabled: >-
       {{ r_pr_slurp.results
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
-         | selectattr('type', 'equalto', 'foundation')
          | selectattr('name', 'in', enabled_plugins)
          | list }}
   ansible.builtin.set_fact:
     _core_plugin_registries: >-
-      {{ _foundation
+      {{ _enabled
          | selectattr('registries', 'defined')
          | map(attribute='registries')
          | flatten
