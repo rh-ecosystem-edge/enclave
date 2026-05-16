@@ -1,0 +1,28 @@
+---
+# Idempotent pip install of Enclave repo ansible_pip_requirements.txt on the play host
+# (localhost = Landing Zone). Needed for reconcile/cli.py (click) and kubernetes.core, etc.
+# Complements bootstrap.sh --step setup / setup_ansible.sh when those were not run.
+
+- name: Resolve path to ansible_pip_requirements.txt (Enclave repo root)
+  ansible.builtin.set_fact:
+    _enclave_pip_requirements_path: "{{ playbook_dir | dirname }}/ansible_pip_requirements.txt"
+
+- name: Stat ansible_pip_requirements.txt
+  ansible.builtin.stat:
+    path: "{{ _enclave_pip_requirements_path }}"
+  register: r_enclave_pip_requirements
+
+- name: Install Python requirements from ansible_pip_requirements.txt
+  ansible.builtin.pip:
+    requirements: "{{ _enclave_pip_requirements_path }}"
+    executable: pip3
+    extra_args: "--disable-pip-version-check"
+  become: true
+  when: r_enclave_pip_requirements.stat.exists
+
+- name: Warn when ansible_pip_requirements.txt is missing
+  ansible.builtin.debug:
+    msg: >-
+      ansible_pip_requirements.txt not found at {{ _enclave_pip_requirements_path }}.
+      reconcile/cli.py and some Ansible modules may fail; run setup_ansible.sh on the LZ or fix checkout path.
+  when: not r_enclave_pip_requirements.stat.exists

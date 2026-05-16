@@ -25,6 +25,13 @@
           tags: always
       tags: always
 
+    - name: Ensure Python requirements for reconcile CLI and collections (ansible_pip_requirements.txt)
+      ansible.builtin.include_tasks:
+        file: tasks/ensure_reconcile_python_requirements.yaml
+        apply:
+          tags: always
+      tags: always
+
     - name: Display operator installation mode
       ansible.builtin.debug:
         msg: "Installing operators in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
