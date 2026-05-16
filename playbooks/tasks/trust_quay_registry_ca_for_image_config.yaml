@@ -1,0 +1,88 @@
+---
+# Trust the internal Quay registry TLS cert for image pulls and UpdateService.
+# Nodes and the Cincinnati operator pull from the Quay route (default ingress cert);
+# image.config.openshift.io cluster must reference a ConfigMap with that CA.
+
+- name: Get ingress CA (signs default router/Quay route cert)
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc get secret router-ca -n openshift-ingress-operator -o jsonpath='{.data.tls\.crt}' | base64 -d
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: quay_registry_ingress_ca
+  changed_when: false
+  failed_when: false
+
+- name: Set Quay registry hostname for image trust
+  ansible.builtin.set_fact:
+    quay_registry_hostname: "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
+
+# UpdateService operator reads updateservice-registry; nodes use the registry hostname key.
+- name: Set Quay registry CA ConfigMap data keys
+  ansible.builtin.set_fact:
+    quay_registry_ca_configmap_data: >-
+      {{ {
+        quay_registry_hostname: quay_registry_ingress_ca.stdout,
+        'updateservice-registry': quay_registry_ingress_ca.stdout
+      } }}
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+
+- name: Get current image config additionalTrustedCA ConfigMap name
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc get image.config.openshift.io/cluster -o jsonpath='{.spec.additionalTrustedCA.name}'
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: image_config_trusted_ca_name
+  changed_when: false
+  failed_when: false
+
+- name: Create ConfigMap with Quay registry CA for image pulls
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: quay-registry-ca
+        namespace: openshift-config
+      data: "{{ quay_registry_ca_configmap_data }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Add Quay registry CA to existing additionalTrustedCA ConfigMap
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+    and (image_config_trusted_ca_name.rc == 0)
+    and (image_config_trusted_ca_name.stdout | trim | length > 0)
+    and (image_config_trusted_ca_name.stdout | trim != 'quay-registry-ca')
+  kubernetes.core.k8s:
+    state: patched
+    kind: ConfigMap
+    name: "{{ image_config_trusted_ca_name.stdout | trim }}"
+    namespace: openshift-config
+    merge_type: strategic-merge
+    definition:
+      data: "{{ quay_registry_ca_configmap_data }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Patch image config to reference Quay registry CA ConfigMap
+  when: >-
+    quay_registry_ingress_ca.rc == 0 and quay_registry_ingress_ca.stdout | trim | length > 0
+    and (image_config_trusted_ca_name.rc == 0)
+    and (image_config_trusted_ca_name.stdout | trim | length == 0)
+  kubernetes.core.k8s:
+    state: patched
+    kind: Image
+    name: cluster
+    api_version: config.openshift.io/v1
+    namespace: ""
+    merge_type: merge
+    definition:
+      spec:
+        additionalTrustedCA:
+          name: quay-registry-ca
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
