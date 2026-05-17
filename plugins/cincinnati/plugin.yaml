@@ -1,7 +1,7 @@
 ---
 name: cincinnati
-type: foundation
-order: 10
+type: addon
+order: 20
 
 operators:
   - name: cincinnati-operator
