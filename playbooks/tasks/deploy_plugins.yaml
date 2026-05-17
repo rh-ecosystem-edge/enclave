@@ -31,8 +31,7 @@
          | map('from_yaml')
          | selectattr('type', 'equalto', plugin_type)
          | selectattr('name', 'in', enabled_plugins)
-         | selectattr('order', 'defined')
-         | sort(attribute='order')
+         | sort(attribute='order' | default(999))
          | list }}
 
 - name: Build plugin deploy list
