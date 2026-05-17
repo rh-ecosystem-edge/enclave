@@ -19,6 +19,31 @@
   delay: "{{ k8s_delay }}"
   until: r_update_service is success
 
+# UpdateService requires image.config cluster additionalTrustedCA (RegistryCACertFound).
+# Cincinnati is configured before quay_disconnected_finish, so trust the Quay registry CA here.
+- name: Trust Quay registry CA in image.config for UpdateService
+  ansible.builtin.include_tasks: ../../playbooks/tasks/trust_quay_registry_ca_for_image_config.yaml
+
+- name: Wait for UpdateService registry CA condition
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    api_version: updateservice.operator.openshift.io/v1
+    kind: UpdateService
+    name: service
+    namespace: openshift-update-service
+  register: r_update_service_registry_ca
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: >-
+    r_update_service_registry_ca.resources | default([]) | length > 0
+    and (
+      r_update_service_registry_ca.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'RegistryCACertFound')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+    )
+
 - name: Create ACM Policy for Update Service
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
