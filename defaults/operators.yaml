@@ -21,14 +21,6 @@ operators:
     namespace: open-cluster-management
     seed: true
 
-  - name: cincinnati-operator
-    version: 5.0.3
-    channel: v1
-    init_version: 5.0.3
-    namespace: openshift-update-service
-    csvNames:
-      - update-service-operator
-
   - name: openshift-gitops-operator
     version: 1.19.2
     channel: gitops-1.19
