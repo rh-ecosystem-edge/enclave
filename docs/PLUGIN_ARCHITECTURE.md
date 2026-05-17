@@ -306,7 +306,7 @@ A validation-only plugin can hook into any of these checkpoints:
 | `pre-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
 | `post-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
 
-`pre-validate.yaml` and `post-validate.yaml` run inside `deploy_plugin.yaml`, which is only triggered automatically for `type: foundation` plugins (via `deploy_foundation_plugins.yaml`). Use `type: foundation` with an `order` field for validation-only plugins that need cluster access.
+`pre-validate.yaml` and `post-validate.yaml` run inside `deploy_plugin.yaml`, which is only triggered automatically for `type: foundation` plugins (via `deploy_plugins.yaml`). Use `type: foundation` with an `order` field for validation-only plugins that need cluster access.
 
 Example -- a plugin that validates network config before mirroring:
 
