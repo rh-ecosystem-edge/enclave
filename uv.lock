@@ -309,7 +309,7 @@ requires-dist = [
     { name = "certifi", specifier = "==2025.11.12" },
     { name = "click", specifier = "==8.3.3" },
     { name = "durationpy", specifier = "==0.10" },
-    { name = "google-auth", specifier = "==1.0.1" },
+    { name = "google-auth", specifier = "==2.53.0" },
     { name = "jsonschema", specifier = "==4.26.0" },
     { name = "kubernetes", specifier = "==33.1.0" },
     { name = "oauthlib", specifier = "==3.2.2" },
@@ -342,18 +342,15 @@ wheels = [
 
 [[package]]
 name = "google-auth"
-version = "1.0.1"
+version = "2.53.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cachetools" },
-    { name = "pyasn1" },
+    { name = "cryptography" },
     { name = "pyasn1-modules" },
-    { name = "rsa" },
-    { name = "six" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/88/e1d20a80c357a48b024615b49fe7ea93f638eb3ba27106cfce77879d7d48/google-auth-1.0.1.tar.gz", hash = "sha256:dd7b6e5f3bd15c0f7cfee63a266acea40c779da0a924b475bc1812e6e10687e1", size = 133903, upload-time = "2017-05-08T17:06:45.903Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c6/ad/ff781329bbbdc0974a098d996e89c9e1f7024262f9e3eec442fbb9ad1ac6/google_auth-2.53.0.tar.gz", hash = "sha256:e7e6aa16f6bee7b2b264830fd04f08087a1d5a836df516251a5d15327b246c9c", size = 335844, upload-time = "2026-05-15T20:53:07.928Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/f9/81a76ccea52275d49407daa93fc3871fa633999aed83ec42df9018a85246/google_auth-1.0.1-py2.py3-none-any.whl", hash = "sha256:f52f6fc59f228c92629948167efa31652a934390cecfdd5be735424e46641099", size = 58221, upload-time = "2017-05-08T17:06:16.747Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/c9/db44165ba7c581268c6d46017ef63339110378305062830104fc7fa144cb/google_auth-2.53.0-py3-none-any.whl", hash = "sha256:6e7449917c599b35126a99ec268ec6880301f2fea41dce198fe8fd83ff642b68", size = 246071, upload-time = "2026-05-15T20:53:05.609Z" },
 ]
 
 [[package]]

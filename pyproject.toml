@@ -11,7 +11,7 @@ dependencies = [
     "certifi ==2025.11.12",
     "click ==8.3.3",
     "durationpy ==0.10",
-    "google-auth ==1.0.1",
+    "google-auth ==2.53.0",
     "jsonschema ==4.26.0",
     "kubernetes ==33.1.0",
     "oauthlib ==3.2.2",
