@@ -267,13 +267,6 @@ jobs:
           make -f Makefile.ci setup-ceph
           echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
 
-      - name: Bootstrap - Setup environment
-        id: bootstrap_setup
-        run: |
-          echo "## Bootstrap: Setup" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-setup
-          echo "Setup complete" >> $GITHUB_STEP_SUMMARY
-
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate
         run: |
@@ -677,13 +670,6 @@ jobs:
           echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci setup-ceph
           echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Setup environment
-        id: bootstrap_setup
-        run: |
-          echo "## Bootstrap: Setup" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-setup
-          echo "Setup complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate

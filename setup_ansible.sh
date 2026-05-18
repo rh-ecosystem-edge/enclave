@@ -1,4 +1,9 @@
-#!/bin/sh -e
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 UV_VERSION="0.11.13"
 UV_PREFIX="$HOME/.local"

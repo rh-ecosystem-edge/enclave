@@ -1,5 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
+set -e
 
 # Install prerequisites
 dnf install -y \
@@ -22,3 +23,5 @@ dnf install -y \
     vim
 
 systemctl enable --now httpd
+mkdir -p /var/www/html
+chmod 755 /var/www/html
