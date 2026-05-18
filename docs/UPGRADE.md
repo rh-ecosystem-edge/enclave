@@ -43,8 +43,16 @@ Each Enclave tarball release includes:
 4. **Restore configurations** - Copy your `config/*.yaml` files back (or merge if needed)
 5. **Validate configuration** - Ensure your configs are compatible with new release
 6. **Sync content** - Run sync process to mirror new versions (disconnected mode)
-7. **Upgrade management cluster** - Update OpenShift to the version in the tarball
-8. **Upgrade operators** - Update operators to the versions in the tarball
+7. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
+    ```sh
+    $ VERSION=$(cat defaults/platforms.yaml | yq -c .mgmt_openshift_version)
+    $ enclave-reconcile mgmt-cluster-version $VERSION
+    ```
+8. **Upgrade operators** - Update operators to the versions in the tarball:
+    ```sh
+    $ OPERATORS=$(cat defaults/operators.yaml | yq -c .operators)
+    $ enclave-reconcile operator-versions --operators $OPERATORS
+    ```
 
 ---
 
