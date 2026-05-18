@@ -56,11 +56,13 @@
 
     - name: Auto-discover and deploy foundation plugins
       ansible.builtin.include_tasks:
-        file: tasks/deploy_foundation_plugins.yaml
+        file: tasks/deploy_plugins.yaml
         apply:
           tags:
             - foundation-plugins
             - operators
+      vars:
+        plugin_type: foundation
       tags:
         - foundation-plugins
         - operators
@@ -84,11 +86,13 @@
 
     - name: Auto-discover and deploy addon plugins
       ansible.builtin.include_tasks:
-        file: tasks/deploy_addon_plugins.yaml
+        file: tasks/deploy_plugins.yaml
         apply:
           tags:
             - addon-plugins
             - operators
+      vars:
+        plugin_type: addon
       tags:
         - addon-plugins
         - operators
