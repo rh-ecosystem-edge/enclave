@@ -41,6 +41,8 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.python-version'
+              - 'reconcile/**'
+              - 'README.md'
 
       - name: Build CI image
         if: steps.filter.outputs.changed == 'true'
