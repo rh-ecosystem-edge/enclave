@@ -29,7 +29,7 @@ operators:
     channel: stable-v1.0
     init_version: 1.0.0
   - name: rhods-operator
-    version: 3.3.0
+    version: 3.4.0
     channel: fast-3.x
     init_version: 3.3.0
   - name: servicemeshoperator3
