@@ -30,7 +30,7 @@ enclave-reconcile = "reconcile.cli:cli"
 dev = [
     "ansible-lint ==26.4.0",
     "mypy ==1.20.2",
-    "pytest ==8.4.2",
+    "pytest==9.0.3",
     "pytest-cov ==6.3.0",
     "ruff ==0.15.12",
     "yamllint ==1.38.0",
