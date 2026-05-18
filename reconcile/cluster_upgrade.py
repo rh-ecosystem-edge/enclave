@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import json
 import logging
 import math
@@ -7,19 +5,21 @@ import re
 import subprocess
 import sys
 import time
-from typing import Any, Optional
+from typing import Any
+
+VERSION_COMPONENTS = 3
+
+logger = logging.getLogger(__name__)
 
 
 class ClusterUpgradeError(Exception):
     """Base exception for cluster upgrade operations."""
 
-    pass
-
 
 class InvalidVersionError(ClusterUpgradeError):
     """Raised when a version string does not conform to semantic versioning."""
 
-    def __init__(self, version: str, reason: str):
+    def __init__(self, version: str, reason: str) -> None:
         self.version = version
         self.reason = reason
         super().__init__(f"Invalid version '{version}': {reason}")
@@ -28,7 +28,7 @@ class InvalidVersionError(ClusterUpgradeError):
 class VersionDowngradeError(ClusterUpgradeError):
     """Raised when attempting to downgrade to an older version."""
 
-    def __init__(self, current: str, desired: str):
+    def __init__(self, current: str, desired: str) -> None:
         self.current_version = current
         self.desired_version = desired
         super().__init__(
@@ -40,7 +40,7 @@ class VersionDowngradeError(ClusterUpgradeError):
 class UpdateGraphUnavailableError(ClusterUpgradeError):
     """Raised when the cluster's update graph is not available."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(
             "Cluster update graph is unavailable (availableUpdates is null). "
             "The cluster may need to sync with the update service."
@@ -50,7 +50,7 @@ class UpdateGraphUnavailableError(ClusterUpgradeError):
 class VersionNotAvailableError(ClusterUpgradeError):
     """Raised when the desired version is not in available updates."""
 
-    def __init__(self, desired: str, available: list[str]):
+    def __init__(self, desired: str, available: list[str]) -> None:
         self.desired_version = desired
         self.available_versions = available
         super().__init__(
@@ -62,7 +62,7 @@ class VersionNotAvailableError(ClusterUpgradeError):
 class ClusterOperatorsNotReadyError(ClusterUpgradeError):
     """Raised when cluster operators are not ready for upgrade."""
 
-    def __init__(self, issues: list[str]):
+    def __init__(self, issues: list[str]) -> None:
         self.issues = issues
         joined = "\n".join(f"  - {issue}" for issue in issues)
         super().__init__(
@@ -90,12 +90,11 @@ def semver_key(v_string: str) -> tuple[tuple[int, ...], tuple[int, str, int]]:
     if len(parts) == 1:
         # No suffix: (sys.maxsize, "", 0) beats any (0, "rcN", n) in element-wise tuple comparison
         return (main_version, (sys.maxsize, "", 0))
-    else:
-        # Split suffix into label + number so 'rc9' < 'rc10' (not 'rc9' > 'rc10' lexicographically)
-        m = re.match(r'^([a-zA-Z]*)(\d*)$', parts[1])
-        label = m.group(1) if m else parts[1]
-        num = int(m.group(2)) if m and m.group(2) else 0
-        return (main_version, (0, label, num))
+    # Split suffix into label + number so 'rc9' < 'rc10' (not 'rc9' > 'rc10' lexicographically)
+    m = re.match(r"^([a-zA-Z]*)(\d*)$", parts[1])
+    label = m.group(1) if m else parts[1]
+    num = int(m.group(2)) if m and m.group(2) else 0
+    return (main_version, (0, label, num))
 
 
 def log_subprocess_output(
@@ -116,11 +115,11 @@ def log_subprocess_output(
         return
 
     # Log header with first line
-    logging.log(level, "%s: %s", header, lines[0])
+    logger.log(level, "%s: %s", header, lines[0])
 
     # Log remaining lines with indentation
     for line in lines[1:]:
-        logging.log(level, "  %s", line)
+        logger.log(level, "  %s", line)
 
 
 def run_oc_command(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -136,13 +135,13 @@ def run_oc_command(args: list[str]) -> subprocess.CompletedProcess[str]:
         TimeoutError: If command exceeds 60-second timeout
     """
     try:
-        result = subprocess.run(
+        return subprocess.run(
             args,
             capture_output=True,
             text=True,
             timeout=60,
+            check=False,
         )
-        return result
     except subprocess.TimeoutExpired as exc:
         cmd_str = " ".join(args)
         raise TimeoutError(f"Command timed out after 60 seconds: {cmd_str}") from exc
@@ -153,12 +152,12 @@ def wait_for_resource_status(
     name: str,
     status_field: str,
     desired_state: str,
+    *,
     timeout_minutes: int = 180,
     sleep_interval: int = 60,
 ) -> None:
     """Poll a resource's status field until it reaches the desired state or timeout elapse."""
-
-    logging.debug(
+    logger.debug(
         "Waiting for resource %s/%s to reach status.%s=%s (timeout: %d minutes, interval: %d seconds)",
         kind,
         name,
@@ -172,18 +171,16 @@ def wait_for_resource_status(
 
     while True:
         try:
-            result = run_oc_command(
-                [
-                    "oc",
-                    "get",
-                    kind,
-                    name,
-                    "-o",
-                    f"jsonpath={{.status.{status_field}}}",
-                ]
-            )
+            result = run_oc_command([
+                "oc",
+                "get",
+                kind,
+                name,
+                "-o",
+                f"jsonpath={{.status.{status_field}}}",
+            ])
         except TimeoutError as e:
-            logging.warning(
+            logger.warning(
                 "oc get %s/%s timed out after 60 seconds, retrying",
                 kind,
                 name,
@@ -202,7 +199,7 @@ def wait_for_resource_status(
 
         current_state = parse_jsonpath_value(result.stdout or "")
         if current_state == desired_state:
-            logging.info(
+            logger.info(
                 "%s/%s has reached status.%s=%s.",
                 kind,
                 name,
@@ -219,7 +216,7 @@ def wait_for_resource_status(
             )
 
         minutes_to_limit = round((timeout - current_time) / 60)
-        logging.debug(
+        logger.debug(
             "Current status '%s' != '%s'. We still have %d minutes to reach desired status",
             current_state,
             desired_state,
@@ -231,16 +228,14 @@ def wait_for_resource_status(
 
 def get_current_version() -> str:
     """Return the cluster's current desired version from ClusterVersion."""
-    result = run_oc_command(
-        [
-            "oc",
-            "get",
-            "clusterversion.config.openshift.io",
-            "version",
-            "-o",
-            "jsonpath='{.status.desired.version}'",
-        ]
-    )
+    result = run_oc_command([
+        "oc",
+        "get",
+        "clusterversion.config.openshift.io",
+        "version",
+        "-o",
+        "jsonpath='{.status.desired.version}'",
+    ])
     if result.returncode != 0:
         header = f"oc get clusterversion failed (exit {result.returncode})"
         if result.stderr:
@@ -250,7 +245,7 @@ def get_current_version() -> str:
         raise RuntimeError(f"oc get clusterversion failed (exit {result.returncode})")
 
     version = parse_jsonpath_value(result.stdout)
-    logging.debug("Current cluster version from API: %s", version)
+    logger.debug("Current cluster version from API: %s", version)
 
     return version
 
@@ -277,10 +272,10 @@ def parse_version(
         raise InvalidVersionError(version, f"{context} cannot be empty")
 
     # Validate basic format: must have 3 version components (x.y.z)
-    main_part = version.split("-")[0]  # Remove optional prerelease suffix
+    main_part = version.split("-", maxsplit=1)[0]  # Remove optional prerelease suffix
     components = main_part.split(".")
 
-    if len(components) != 3:
+    if len(components) != VERSION_COMPONENTS:
         raise InvalidVersionError(
             version,
             f"{context} must have 3 version components (e.g., 4.20.0 or 4.20.11)",
@@ -294,11 +289,16 @@ def parse_version(
         raise InvalidVersionError(version, f"{context} has invalid format: {e}") from e
 
 
-def get_available_versions() -> Optional[list[str]]:
+def get_available_versions() -> list[str] | None:
     """Return the list of versions the cluster can upgrade to, or None if the update graph is unavailable."""
-    result = run_oc_command(
-        ["oc", "get", "clusterversion.config.openshift.io", "version", "-o", "json"]
-    )
+    result = run_oc_command([
+        "oc",
+        "get",
+        "clusterversion.config.openshift.io",
+        "version",
+        "-o",
+        "json",
+    ])
     if result.returncode != 0:
         header = f"oc get clusterversion failed (exit {result.returncode})"
         if result.stderr:
@@ -317,15 +317,19 @@ def get_available_versions() -> Optional[list[str]]:
     if raw is None:
         return None
     versions = [update["version"] for update in raw]
-    logging.debug("Available versions from API: %s", versions)
+    logger.debug("Available versions from API: %s", versions)
     return versions
 
 
 def get_cluster_operators() -> list[dict[str, Any]]:
     """Return all ClusterOperator objects from the cluster."""
-    result = run_oc_command(
-        ["oc", "get", "clusteroperator.config.openshift.io", "-o", "json"]
-    )
+    result = run_oc_command([
+        "oc",
+        "get",
+        "clusteroperator.config.openshift.io",
+        "-o",
+        "json",
+    ])
     if result.returncode != 0:
         header = f"oc get clusteroperator failed (exit {result.returncode})"
         if result.stderr:
@@ -342,8 +346,7 @@ def get_cluster_operators() -> list[dict[str, Any]]:
             log_subprocess_output(header, result.stdout, logging.ERROR)
         raise RuntimeError("oc get clusteroperator returned invalid JSON") from exc
 
-    operators = raw_json.get("items", [])
-    return operators
+    return raw_json.get("items", [])
 
 
 def check_cluster_operators_ready() -> tuple[bool, list[str]]:
@@ -378,26 +381,24 @@ def upgrade_cluster(
 
     The timeout applies to the entire upgrade operation (both wait phases combined).
     """
-    logging.info("Patching clusterversion to desired_version=%s", desired_version)
+    logger.info("Patching clusterversion to desired_version=%s", desired_version)
 
     # Calculate shared deadline for both wait operations
     deadline = time.time() + (timeout_minutes * 60)
 
-    patch_payload = json.dumps(
-        {"spec": {"desiredUpdate": {"version": desired_version}}}
-    )
-    result = run_oc_command(
-        [
-            "oc",
-            "patch",
-            "clusterversion.config.openshift.io",
-            "version",
-            "--type",
-            "merge",
-            "-p",
-            patch_payload,
-        ]
-    )
+    patch_payload = json.dumps({
+        "spec": {"desiredUpdate": {"version": desired_version}}
+    })
+    result = run_oc_command([
+        "oc",
+        "patch",
+        "clusterversion.config.openshift.io",
+        "version",
+        "--type",
+        "merge",
+        "-p",
+        patch_payload,
+    ])
     if result.returncode != 0:
         header = f"oc patch clusterversion to {desired_version} failed (exit {result.returncode})"
         if result.stderr:
@@ -418,8 +419,8 @@ def upgrade_cluster(
         "version",
         "desired.version",
         desired_version,
-        remaining_minutes,
-        sleep_interval,
+        timeout_minutes=remaining_minutes,
+        sleep_interval=sleep_interval,
     )
 
     # Second wait: history[0].state = Completed
@@ -432,8 +433,8 @@ def upgrade_cluster(
         "version",
         "history[0].state",
         "Completed",
-        remaining_minutes,
-        sleep_interval,
+        timeout_minutes=remaining_minutes,
+        sleep_interval=sleep_interval,
     )
 
 
@@ -449,7 +450,7 @@ def reconcile(
     updates, or if any ClusterOperator is not ready. In dry-run mode, stops before
     applying the upgrade.
     """
-    logging.debug(
+    logger.debug(
         "reconcile() called with desired_version=%s, dry_run=%s, timeout_minutes=%d, sleep_interval=%d",
         desired_version,
         dry_run,
@@ -462,7 +463,7 @@ def reconcile(
     current_version = get_current_version()
     current_ver = parse_version(current_version, "current cluster version")
 
-    logging.debug(
+    logger.debug(
         "Version comparison: desired=%s, current=%s", desired_version, current_version
     )
 
@@ -470,7 +471,7 @@ def reconcile(
         raise VersionDowngradeError(current_version, desired_version)
 
     if desired_ver == current_ver:
-        logging.info(
+        logger.info(
             "Cluster is already at or moving towards version %s", desired_version
         )
         wait_for_resource_status(
@@ -478,32 +479,30 @@ def reconcile(
             "version",
             "history[0].state",
             "Completed",
-            timeout_minutes,
-            sleep_interval,
+            timeout_minutes=timeout_minutes,
+            sleep_interval=sleep_interval,
         )
         return
 
     available_versions = get_available_versions()
 
     if available_versions is None:
-        raise UpdateGraphUnavailableError()
+        raise UpdateGraphUnavailableError
 
-    logging.debug(
-        "Checking if desired version %s is in available list", desired_version
-    )
+    logger.debug("Checking if desired version %s is in available list", desired_version)
 
     if desired_version not in available_versions:
         raise VersionNotAvailableError(desired_version, available_versions)
 
-    logging.debug("Checking cluster operators readiness...")
+    logger.debug("Checking cluster operators readiness...")
     ready, issues = check_cluster_operators_ready()
     if not ready:
         raise ClusterOperatorsNotReadyError(issues)
 
-    logging.info("Upgrading cluster to %s", desired_version)
+    logger.info("Upgrading cluster to %s", desired_version)
 
     if dry_run:
-        logging.info("Execution is set to DRY-RUN. Exiting.")
+        logger.info("Execution is set to DRY-RUN. Exiting.")
         return
 
     upgrade_cluster(desired_version, timeout_minutes, sleep_interval)

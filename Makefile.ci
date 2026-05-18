@@ -22,6 +22,7 @@ include Makefile
 
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
         validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
+        validate-python \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-pre-install-validate \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
@@ -261,6 +262,9 @@ validate-makefile:
 validate-plugins:
 	@./scripts/verification/validate.sh plugins
 
+validate-python:
+	@./scripts/verification/validate.sh python
+
 # --- CI Image targets ---
 
 build-ci-image:
@@ -285,6 +289,7 @@ push-ci-image:
 	podman push $$sha_image; \
 	echo "CI image pushed successfully: $(CI_IMAGE_FULL), $$sha_image"
 
+# TODO: replace with a proper container structure test (e.g. goss/dgoss)
 test-ci-image:
 	@echo "Testing CI image: $(CI_IMAGE_FULL)"
 	@echo ""
@@ -305,6 +310,18 @@ test-ci-image:
 	@echo ""
 	@echo "Test 6: Verify docker CLI is installed..."
 	@podman run --rm $(CI_IMAGE_FULL) docker --version
+	@echo ""
+	@echo "Test 7: Verify enclave-reconcile CLI is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) enclave-reconcile --help
+	@echo ""
+	@echo "Test 8: Verify ruff is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) ruff --version
+	@echo ""
+	@echo "Test 9: Verify mypy is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) mypy --version
+	@echo ""
+	@echo "Test 10: Verify pytest is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) pytest --version
 	@echo ""
 	@echo "All CI image tests passed!"
 

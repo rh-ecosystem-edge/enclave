@@ -1,8 +1,9 @@
-#!/bin/sh
+#!/bin/bash
+
+set -e
 
 # Install prerequisites
 dnf install -y \
-    ansible-core \
     awscli2 \
     bind-utils \
     curl \
@@ -14,6 +15,7 @@ dnf install -y \
     nmstate \
     openssl \
     podman \
+    python3 \
     python3-pip \
     rsync \
     skopeo \
@@ -21,3 +23,5 @@ dnf install -y \
     vim
 
 systemctl enable --now httpd
+mkdir -p /var/www/html
+chmod 755 /var/www/html

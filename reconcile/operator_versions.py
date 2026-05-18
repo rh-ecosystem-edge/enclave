@@ -1,8 +1,11 @@
 import ast
 import json
+import logging
 import subprocess
 import sys
 import time
+
+logger = logging.getLogger(__name__)
 
 
 def parse_jsonpath_value(raw: str) -> str:
@@ -10,7 +13,11 @@ def parse_jsonpath_value(raw: str) -> str:
 
 
 def wait_for_resource_status(
-    kind: str, name: str, namespace: str, status_field: str, desired_state: str
+    kind: str,
+    name: str,
+    namespace: str,
+    status_field: str,
+    desired_state: str,
 ) -> None:
     timeout_minutes = 30
     timeout = time.time() + (timeout_minutes * 60)
@@ -28,40 +35,61 @@ def wait_for_resource_status(
             ],
             capture_output=True,
             text=True,
+            check=False,
         )
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
-            print(f"Failed to read {kind}/{name} in namespace {namespace}: {stderr}")
+            logger.warning(
+                "Failed to read %s/%s in namespace %s: %s",
+                kind,
+                name,
+                namespace,
+                stderr,
+            )
 
         current_state = parse_jsonpath_value(result.stdout or "")
         if current_state == desired_state:
-            print(
-                f"{kind}/{name} in namespace {namespace} has reached status.{status_field}={desired_state}."
+            logger.info(
+                "%s/%s in namespace %s has reached status.%s=%s.",
+                kind,
+                name,
+                namespace,
+                status_field,
+                desired_state,
             )
             return
         if time.time() > timeout:
-            raise TimeoutError(
-                f"{kind}/{name} in namespace {namespace} did not reach status.{status_field}={desired_state} within {timeout_minutes} minutes (current state: {current_state})"
+            msg = (
+                f"{kind}/{name} in namespace {namespace}"
+                f" did not reach status.{status_field}"
+                f"={desired_state}"
+                f" within {timeout_minutes} minutes"
+                f" (current state: {current_state})"
             )
+            raise TimeoutError(msg)
         time.sleep(10)
 
 
-def semver_key(v_string):
+def semver_key(
+    v_string: str,
+) -> tuple[tuple[int, ...], tuple[tuple[int, object], ...]]:
     main, sep, prerelease = v_string.partition("-")
     main_version = tuple(map(int, main.split(".")))
 
     if not sep:
-        # Release versions sort after prerelease versions with same core.
         return (main_version, ((2, 0),))
 
-    parsed = []
-    for token in prerelease.split("."):
-        parsed.append((0, int(token)) if token.isdigit() else (1, token))
+    parsed = [
+        (0, int(token)) if token.isdigit() else (1, token)
+        for token in prerelease.split(".")
+    ]
     return (main_version, tuple(parsed))
 
 
 def approve_install_plans(
-    dry_run: bool, namespace: str, approved_op_version_map: dict[str, str]
+    dry_run: bool,
+    namespace: str,
+    approved_op_version_map: dict[str, str],
 ) -> None:
     result = subprocess.run(
         [
@@ -82,33 +110,52 @@ def approve_install_plans(
         install_plan_status_phase = install_plan["status"]["phase"]
         install_plan_spec_csv_names = install_plan["spec"]["clusterServiceVersionNames"]
         if install_plan_status_phase != "RequiresApproval":
-            print(
-                f"Install plan {install_plan_name} is in phase {install_plan_status_phase} with csvNames {install_plan_spec_csv_names}"
+            logger.info(
+                "Install plan %s is in phase %s with csvNames %s",
+                install_plan_name,
+                install_plan_status_phase,
+                install_plan_spec_csv_names,
             )
             continue
         version_ok = True
+        csv_op_name = ""
+        csv_version = ""
         for csv in install_plan_spec_csv_names:
             csv_op_name, csv_version = csv.rsplit(".v", 1)
             desired_op_version = approved_op_version_map.get(csv_op_name)
             if desired_op_version is None:
                 version_ok = False
-                print(
-                    f"Install plan {install_plan_name} includes unmanaged CSV {csv_op_name}. Skipping."
+                logger.info(
+                    "Install plan %s includes unmanaged CSV %s. Skipping.",
+                    install_plan_name,
+                    csv_op_name,
                 )
                 break
             version_ok = semver_key(csv_version) <= semver_key(desired_op_version)
             if not version_ok:
-                print(
-                    f"Install plan {install_plan_name} for {csv_op_name} {csv_version} is not at a desired version {desired_op_version}. Skipping."
+                logger.info(
+                    "Install plan %s for %s %s is not at desired version %s. Skipping.",
+                    install_plan_name,
+                    csv_op_name,
+                    csv_version,
+                    desired_op_version,
                 )
                 break
         if not version_ok:
             continue
 
-        print(
-            f"Approving InstallPlan {install_plan_name} for {csv_op_name} {csv_version}."
+        logger.info(
+            "Approving InstallPlan %s for %s %s.",
+            install_plan_name,
+            csv_op_name,
+            csv_version,
         )
-        print(f"[UPDATE] {namespace}/{csv_op_name}:{csv_version}")
+        logger.info(
+            "[UPDATE] %s/%s:%s",
+            namespace,
+            csv_op_name,
+            csv_version,
+        )
         if not dry_run:
             subprocess.run(
                 [
@@ -126,8 +173,11 @@ def approve_install_plans(
                 capture_output=True,
                 check=True,
             )
-            print(
-                f"Approved InstallPlan {install_plan_name} for {csv_op_name} {csv_version}."
+            logger.info(
+                "Approved InstallPlan %s for %s %s.",
+                install_plan_name,
+                csv_op_name,
+                csv_version,
             )
 
 
@@ -149,22 +199,30 @@ def init_ns_op_version_map(
     return ns_op_version_map
 
 
-def reconcile():
+_ARG_OPERATORS = 1
+_ARG_DRY_RUN = 2
+
+
+def reconcile() -> None:
     try:
-        operators = ast.literal_eval(sys.argv[1])
-    except (IndexError, ValueError, SyntaxError) as e:
-        print(f"Error parsing operator list: {e}")
+        operators = ast.literal_eval(sys.argv[_ARG_OPERATORS])
+    except (IndexError, ValueError, SyntaxError):
+        logger.exception("Error parsing operator list")
         sys.exit(1)
 
-    raw_dry_run = sys.argv[2] if len(sys.argv) > 2 else "False"
-    dry_run = raw_dry_run.lower() in ("true", "yes")
+    raw_dry_run = sys.argv[_ARG_DRY_RUN] if len(sys.argv) > _ARG_DRY_RUN else "False"
+    dry_run = raw_dry_run.lower() in {"true", "yes"}
 
     ns_op_version_map = init_ns_op_version_map(operators)
     for op_namespace, op_name_version_map in ns_op_version_map.items():
         approve_install_plans(dry_run, op_namespace, op_name_version_map)
         for op_name, op_version in op_name_version_map.items():
-            print(
-                f"Waiting for CSV {op_name}.v{op_version} in namespace {op_namespace} to reach status.phase=Succeeded."
+            logger.info(
+                "Waiting for CSV %s.v%s in namespace %s"
+                " to reach status.phase=Succeeded.",
+                op_name,
+                op_version,
+                op_namespace,
             )
             if not dry_run:
                 wait_for_resource_status(
@@ -174,8 +232,11 @@ def reconcile():
                     "phase",
                     "Succeeded",
                 )
-            print(
-                f"CSV {op_name}.v{op_version} in namespace {op_namespace} reached status.phase=Succeeded."
+            logger.info(
+                "CSV %s.v%s in namespace %s reached status.phase=Succeeded.",
+                op_name,
+                op_version,
+                op_namespace,
             )
 
 

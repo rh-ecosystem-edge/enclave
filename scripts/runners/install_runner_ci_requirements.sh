@@ -138,49 +138,9 @@ sudo dnf install -y python3-kubernetes 2>/dev/null || warning "python3-kubernete
 
 echo ""
 
-info "Step 5a: Installing Ansible"
-# Try ansible-core first (newer), then ansible (older), then pip
-if sudo dnf install -y ansible-core 2>/dev/null; then
-    success "Ansible (ansible-core) installed from repository"
-elif sudo dnf install -y ansible 2>/dev/null; then
-    success "Ansible installed from repository"
-else
-    warning "Ansible not available in repos, installing via pip..."
-    sudo pip3 install ansible-core
-    success "Ansible installed via pip"
-fi
-echo ""
-
-info "Step 6: Installing Python packages from requirements"
-if [ -f "ansible_pip_requirements.txt" ]; then
-    info "  Installing Python packages from ansible_pip_requirements.txt..."
-    sudo pip3 install -r ansible_pip_requirements.txt
-    success "Python packages installed from requirements file"
-else
-    warning "ansible_pip_requirements.txt not found, installing packages manually..."
-    sudo pip3 install \
-        kubernetes \
-        jsonschema \
-        rpds-py
-    success "Python packages installed manually"
-fi
-echo ""
-
-info "Step 7: Installing Ansible collections"
-if [ -f "ansible_collections.txt" ]; then
-    info "  Installing from ansible_collections.txt..."
-    ansible-galaxy collection install -r ansible_collections.txt --force
-else
-    info "  Installing required collections manually..."
-    ansible-galaxy collection install \
-        community.crypto \
-        containers.podman \
-        kubernetes.core \
-        community.general \
-        ansible.utils \
-        --force
-fi
-success "Ansible collections installed"
+info "Step 6: Installing Ansible, Python packages and collections via setup_ansible.sh"
+(cd "${ENCLAVE_DIR}" && bash setup_ansible.sh)
+success "Ansible, Python packages and collections installed"
 echo ""
 
 info "Step 8: Installing ansible-lint"

@@ -32,16 +32,21 @@ RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.rep
     dnf install -y gh && \
     dnf clean all
 
-# Install Python packages
-RUN pip3 install --no-cache-dir \
-    yamllint \
-    ansible-core \
-    ansible-lint
+# Install uv (pinned version)
+COPY --from=ghcr.io/astral-sh/uv:0.11.13 /uv /usr/local/bin/uv
 
-# Install Python dependencies (kubernetes client, etc.)
-COPY ansible_pip_requirements.txt /tmp/ansible_pip_requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/ansible_pip_requirements.txt && \
-    rm /tmp/ansible_pip_requirements.txt
+# Set working directory
+WORKDIR /workspace
+
+# Copy project metadata and source for dependency installation
+COPY pyproject.toml uv.lock .python-version README.md /workspace/
+COPY reconcile/ /workspace/reconcile/
+
+# Install all dependency groups into the project venv
+RUN uv sync --all-groups --no-editable
+
+# Put venv on PATH so all commands are available
+ENV PATH="/workspace/.venv/bin:$PATH"
 
 # Pre-install Ansible Galaxy collections
 COPY ansible_collections.txt /tmp/ansible_collections.txt
@@ -54,8 +59,5 @@ RUN mkdir -p /usr/local/share/ansible/collections && \
 
 # Set environment variable for Ansible to find collections
 ENV ANSIBLE_COLLECTIONS_PATH=/usr/local/share/ansible/collections:/root/.ansible/collections
-
-# Set working directory
-WORKDIR /workspace
 
 CMD ["/bin/bash"]

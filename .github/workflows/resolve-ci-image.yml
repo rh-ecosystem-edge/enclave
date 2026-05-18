@@ -38,7 +38,9 @@ jobs:
             changed:
               - '.github/workflows/Dockerfile.ci'
               - 'ansible_collections.txt'
-              - 'ansible_pip_requirements.txt'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - '.python-version'
 
       - name: Build CI image
         if: steps.filter.outputs.changed == 'true'

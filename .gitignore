@@ -12,6 +12,10 @@ bin/
 dist/
 ocp-cluster/
 *.pyc
+__pycache__/
+*.egg-info/
+.ruff_cache/
+.coverage
 
 # IDE folders
 .vscode/
