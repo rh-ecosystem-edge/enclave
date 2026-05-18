@@ -1,89 +1,109 @@
-import ast
 import json
 import logging
-import subprocess
-import sys
-import time
+
+from reconcile.utils import (
+    log_subprocess_output,
+    run_oc_command,
+    semver_key,
+    wait_for_resource_status,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def parse_jsonpath_value(raw: str) -> str:
-    return raw.strip().strip("'\"")
+def _plan_version_ok(
+    install_plan_name: str,
+    csv_names: list[str],
+    approved_op_version_map: dict[str, str],
+) -> tuple[bool, str, str]:
+    """Check whether every CSV in an InstallPlan is within the approved version range.
 
+    Each CSV name is split on '.v' to extract the operator name and version.
+    A plan is rejected if any CSV belongs to an operator not in
+    approved_op_version_map (unmanaged) or if its version exceeds the
+    approved one (would install a newer release than desired).
 
-def wait_for_resource_status(
-    kind: str,
-    name: str,
-    namespace: str,
-    status_field: str,
-    desired_state: str,
-) -> None:
-    timeout_minutes = 30
-    timeout = time.time() + (timeout_minutes * 60)
-    while True:
-        result = subprocess.run(
-            [
-                "oc",
-                "get",
-                kind,
-                name,
-                "-n",
-                namespace,
-                "-o",
-                f"jsonpath='{{.status.{status_field}}}'",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip()
-            logger.warning(
-                "Failed to read %s/%s in namespace %s: %s",
-                kind,
-                name,
-                namespace,
-                stderr,
-            )
-
-        current_state = parse_jsonpath_value(result.stdout or "")
-        if current_state == desired_state:
+    Returns a (ok, csv_op_name, csv_version) triple where ok is False on
+    the first rejected CSV, with the name and version of that CSV for logging.
+    """
+    csv_op_name = ""
+    csv_version = ""
+    for csv in csv_names:
+        try:
+            csv_op_name, csv_version = csv.rsplit(".v", 1)
+        except ValueError:
             logger.info(
-                "%s/%s in namespace %s has reached status.%s=%s.",
-                kind,
-                name,
-                namespace,
-                status_field,
-                desired_state,
+                "Install plan %s has malformed CSV name %s. Skipping.",
+                install_plan_name,
+                csv,
             )
-            return
-        if time.time() > timeout:
-            msg = (
-                f"{kind}/{name} in namespace {namespace}"
-                f" did not reach status.{status_field}"
-                f"={desired_state}"
-                f" within {timeout_minutes} minutes"
-                f" (current state: {current_state})"
+            return False, "", ""
+        desired_op_version = approved_op_version_map.get(csv_op_name)
+        if desired_op_version is None:
+            logger.info(
+                "Install plan %s includes unmanaged CSV %s. Skipping.",
+                install_plan_name,
+                csv_op_name,
             )
-            raise TimeoutError(msg)
-        time.sleep(10)
+            return False, csv_op_name, csv_version
+        if semver_key(csv_version) > semver_key(desired_op_version):
+            logger.info(
+                "Install plan %s for %s %s is not at desired version %s. Skipping.",
+                install_plan_name,
+                csv_op_name,
+                csv_version,
+                desired_op_version,
+            )
+            return False, csv_op_name, csv_version
+    return True, csv_op_name, csv_version
 
 
-def semver_key(
-    v_string: str,
-) -> tuple[tuple[int, ...], tuple[tuple[int, object], ...]]:
-    main, sep, prerelease = v_string.partition("-")
-    main_version = tuple(map(int, main.split(".")))
+def _approve_plan(
+    dry_run: bool,
+    namespace: str,
+    install_plan_name: str,
+    csv_op_name: str,
+    csv_version: str,
+) -> None:
+    """Patch a single InstallPlan's spec.approved field to True.
 
-    if not sep:
-        return (main_version, ((2, 0),))
-
-    parsed = [
-        (0, int(token)) if token.isdigit() else (1, token)
-        for token in prerelease.split(".")
-    ]
-    return (main_version, tuple(parsed))
+    Logs the approval intent before acting. In dry-run mode the patch is
+    skipped. Raises RuntimeError if the oc patch command fails.
+    """
+    logger.info(
+        "Approving InstallPlan %s for %s %s.",
+        install_plan_name,
+        csv_op_name,
+        csv_version,
+    )
+    logger.info("[UPDATE] %s/%s:%s", namespace, csv_op_name, csv_version)
+    if not dry_run:
+        patch_result = run_oc_command([
+            "oc",
+            "patch",
+            "installplan.operators.coreos.com",
+            install_plan_name,
+            "-n",
+            namespace,
+            "--type",
+            "merge",
+            "-p",
+            json.dumps({"spec": {"approved": True}}),
+        ])
+        if patch_result.returncode != 0:
+            log_subprocess_output(
+                f"oc patch installplan/{install_plan_name} failed (exit {patch_result.returncode})",
+                patch_result.stderr or "",
+            )
+            raise RuntimeError(
+                f"oc patch installplan/{install_plan_name} failed (exit {patch_result.returncode})"
+            )
+        logger.info(
+            "Approved InstallPlan %s for %s %s.",
+            install_plan_name,
+            csv_op_name,
+            csv_version,
+        )
 
 
 def approve_install_plans(
@@ -91,20 +111,39 @@ def approve_install_plans(
     namespace: str,
     approved_op_version_map: dict[str, str],
 ) -> None:
-    result = subprocess.run(
-        [
-            "oc",
-            "get",
-            "installplan.operators.coreos.com",
-            "-n",
-            namespace,
-            "-o",
-            "json",
-        ],
-        capture_output=True,
-        check=True,
-    ).stdout
-    install_plans = json.loads(result)["items"]
+    """Approve pending InstallPlans whose CSV versions are within the approved range.
+
+    Fetches all InstallPlans in the namespace and iterates over those in
+    RequiresApproval phase. Each plan is approved only if all its CSVs are
+    known (present in approved_op_version_map) and their versions do not
+    exceed the desired version. Plans in other phases or with unmanaged /
+    too-new CSVs are skipped with an info log.
+
+    Raises RuntimeError on oc command failures or unexpected API output.
+    """
+    result = run_oc_command([
+        "oc",
+        "get",
+        "installplan.operators.coreos.com",
+        "-n",
+        namespace,
+        "-o",
+        "json",
+    ])
+    if result.returncode != 0:
+        log_subprocess_output(
+            f"oc get installplan failed (exit {result.returncode})",
+            result.stderr or "",
+        )
+        raise RuntimeError(
+            f"oc get installplan in {namespace} failed (exit {result.returncode})"
+        )
+    try:
+        install_plans = json.loads(result.stdout)["items"]
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise RuntimeError(
+            f"oc get installplan in {namespace} returned unexpected output"
+        ) from exc
     for install_plan in install_plans:
         install_plan_name = install_plan["metadata"]["name"]
         install_plan_status_phase = install_plan["status"]["phase"]
@@ -117,128 +156,50 @@ def approve_install_plans(
                 install_plan_spec_csv_names,
             )
             continue
-        version_ok = True
-        csv_op_name = ""
-        csv_version = ""
-        for csv in install_plan_spec_csv_names:
-            csv_op_name, csv_version = csv.rsplit(".v", 1)
-            desired_op_version = approved_op_version_map.get(csv_op_name)
-            if desired_op_version is None:
-                version_ok = False
-                logger.info(
-                    "Install plan %s includes unmanaged CSV %s. Skipping.",
-                    install_plan_name,
-                    csv_op_name,
-                )
-                break
-            version_ok = semver_key(csv_version) <= semver_key(desired_op_version)
-            if not version_ok:
-                logger.info(
-                    "Install plan %s for %s %s is not at desired version %s. Skipping.",
-                    install_plan_name,
-                    csv_op_name,
-                    csv_version,
-                    desired_op_version,
-                )
-                break
-        if not version_ok:
-            continue
+        ok, csv_op_name, csv_version = _plan_version_ok(
+            install_plan_name, install_plan_spec_csv_names, approved_op_version_map
+        )
+        if ok:
+            _approve_plan(
+                dry_run, namespace, install_plan_name, csv_op_name, csv_version
+            )
 
-        logger.info(
-            "Approving InstallPlan %s for %s %s.",
-            install_plan_name,
-            csv_op_name,
-            csv_version,
-        )
-        logger.info(
-            "[UPDATE] %s/%s:%s",
-            namespace,
-            csv_op_name,
-            csv_version,
-        )
+
+def reconcile(
+    version: str,
+    namespace: str,
+    csv_names: list[str],
+    dry_run: bool,
+) -> None:
+    """Approve pending InstallPlans and wait for each CSV to reach Succeeded.
+
+    Normalises the version string ('+' → '-') to match the format OLM uses
+    in CSV names, then delegates approval to approve_install_plans. For each
+    CSV, waits up to 30 minutes (polling every 10 s) for its phase to become
+    Succeeded. The wait is skipped in dry-run mode.
+    """
+    op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
+    approve_install_plans(dry_run, namespace, op_version_map)
+    for csv_name, csv_version in op_version_map.items():
         if not dry_run:
-            subprocess.run(
-                [
-                    "oc",
-                    "patch",
-                    "installplan.operators.coreos.com",
-                    install_plan_name,
-                    "-n",
-                    namespace,
-                    "--type",
-                    "merge",
-                    "-p",
-                    json.dumps({"spec": {"approved": True}}),
-                ],
-                capture_output=True,
-                check=True,
-            )
             logger.info(
-                "Approved InstallPlan %s for %s %s.",
-                install_plan_name,
-                csv_op_name,
+                "Waiting for CSV %s.v%s in namespace %s to reach status.phase=Succeeded.",
+                csv_name,
                 csv_version,
+                namespace,
             )
-
-
-def init_ns_op_version_map(
-    operators: list[dict[str, str]],
-) -> dict[str, dict[str, str]]:
-    ns_op_version_map: dict[str, dict[str, str]] = {}
-
-    for op in operators:
-        op_name = op["name"]
-        op_version = op["version"]
-        op_namespace = op["namespace"]
-        op_csv_names = op.get("csvNames") or [op_name]
-        for op_csv_name in op_csv_names:
-            ns_op_version_map.setdefault(op_namespace, {})[op_csv_name] = (
-                op_version.replace("+", "-")
+            wait_for_resource_status(
+                "clusterserviceversion.operators.coreos.com",
+                f"{csv_name}.v{csv_version}",
+                "phase",
+                "Succeeded",
+                namespace=namespace,
+                timeout_minutes=30,
+                sleep_interval=10,
             )
-
-    return ns_op_version_map
-
-
-_ARG_OPERATORS = 1
-_ARG_DRY_RUN = 2
-
-
-def reconcile() -> None:
-    try:
-        operators = ast.literal_eval(sys.argv[_ARG_OPERATORS])
-    except (IndexError, ValueError, SyntaxError):
-        logger.exception("Error parsing operator list")
-        sys.exit(1)
-
-    raw_dry_run = sys.argv[_ARG_DRY_RUN] if len(sys.argv) > _ARG_DRY_RUN else "False"
-    dry_run = raw_dry_run.lower() in {"true", "yes"}
-
-    ns_op_version_map = init_ns_op_version_map(operators)
-    for op_namespace, op_name_version_map in ns_op_version_map.items():
-        approve_install_plans(dry_run, op_namespace, op_name_version_map)
-        for op_name, op_version in op_name_version_map.items():
-            logger.info(
-                "Waiting for CSV %s.v%s in namespace %s"
-                " to reach status.phase=Succeeded.",
-                op_name,
-                op_version,
-                op_namespace,
-            )
-            if not dry_run:
-                wait_for_resource_status(
-                    "clusterserviceversion.operators.coreos.com",
-                    f"{op_name}.v{op_version}",
-                    op_namespace,
-                    "phase",
-                    "Succeeded",
-                )
             logger.info(
                 "CSV %s.v%s in namespace %s reached status.phase=Succeeded.",
-                op_name,
-                op_version,
-                op_namespace,
+                csv_name,
+                csv_version,
+                namespace,
             )
-
-
-if __name__ == "__main__":
-    reconcile()

@@ -1,0 +1,205 @@
+apiVersion: v1
+items:
+- apiVersion: operators.coreos.com/v1alpha1
+  kind: InstallPlan
+  metadata:
+    creationTimestamp: "2026-04-17T11:42:39Z"
+    generateName: install-
+    generation: 2
+    name: install-72xtr
+    namespace: quay-enterprise
+    ownerReferences:
+    - apiVersion: operators.coreos.com/v1alpha1
+      blockOwnerDeletion: false
+      controller: false
+      kind: Subscription
+      name: quay-operator
+      uid: 48f4a867-d3a3-42c3-8def-d7fd6cbb8ee5
+    resourceVersion: "1573761"
+    uid: 2ea4d746-0c6c-4cb1-89d2-46cb9c0d9b71
+  spec:
+    approval: Manual
+    approved: true
+    clusterServiceVersionNames:
+    - quay-operator.v3.15.3
+    generation: 1
+  status:
+    bundleLookups:
+    - catalogSourceRef:
+        name: redhat-operators
+        namespace: openshift-marketplace
+      identifier: quay-operator.v3.15.3
+      path: registry.redhat.io/quay/quay-operator-bundle@sha256:197ae6472f0a4fcb33363ed461ea9f465eeff043d88c9d2e27f419f3e68a1a7d
+      properties: '{"properties":[{"type":"olm.gvk","value":{"group":"quay.redhat.com","kind":"QuayRegistry","version":"v1"}},{"type":"olm.package","value":{"packageName":"quay-operator","version":"3.15.3"}}]}'
+      replaces: quay-operator.v3.15.2
+    catalogSources:
+    - redhat-operators
+    conditions:
+    - lastTransitionTime: "2026-04-17T11:42:43Z"
+      lastUpdateTime: "2026-04-17T11:42:43Z"
+      status: "True"
+      type: Installed
+    phase: Complete
+    plan:
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: operators.coreos.com
+        kind: ClusterServiceVersion
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quay-operator.v3.15.3
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1alpha1
+      status: Created
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: ""
+        kind: Service
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quay-operator
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Created
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: apiextensions.k8s.io
+        kind: CustomResourceDefinition
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quayregistries.quay.redhat.com
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Created
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: ""
+        kind: ServiceAccount
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quay-operator
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Created
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: rbac.authorization.k8s.io
+        kind: Role
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quay-operator.v3.15.3-qu-4gE3gtGZmbwyW57ScsbgNAR4CiTl12IyELMeFN
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Created
+    - resolving: quay-operator.v3.15.3
+      resource:
+        group: rbac.authorization.k8s.io
+        kind: RoleBinding
+        manifest: '{"kind":"ConfigMap","name":"bbfc39f8182c84d96587e09c60d507aa6953af06ddd4352f1f467bb2ebf3707","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.2","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.3\"}}]}"}'
+        name: quay-operator.v3.15.3-qu-4gE3gtGZmbwyW57ScsbgNAR4CiTl12IyELMeFN
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Created
+    startTime: "2026-04-17T11:42:43Z"
+- apiVersion: operators.coreos.com/v1alpha1
+  kind: InstallPlan
+  metadata:
+    creationTimestamp: "2026-04-17T11:42:54Z"
+    generateName: install-
+    generation: 1
+    labels:
+      operators.coreos.com/quay-operator.quay-enterprise: ""
+    name: install-9h5cl
+    namespace: quay-enterprise
+    ownerReferences:
+    - apiVersion: operators.coreos.com/v1alpha1
+      blockOwnerDeletion: false
+      controller: false
+      kind: Subscription
+      name: quay-operator
+      uid: 48f4a867-d3a3-42c3-8def-d7fd6cbb8ee5
+    resourceVersion: "1573760"
+    uid: 642e9af8-5dda-46bd-bd29-443b4bc6a442
+  spec:
+    approval: Manual
+    approved: false
+    clusterServiceVersionNames:
+    - quay-operator.v3.15.4
+    generation: 2
+  status:
+    bundleLookups:
+    - catalogSourceRef:
+        name: redhat-operators
+        namespace: openshift-marketplace
+      identifier: quay-operator.v3.15.4
+      path: registry.redhat.io/quay/quay-operator-bundle@sha256:dec2520d12b13cd73ebceb03a82daddfff4b06e57e993268ea52cd21c0136147
+      properties: '{"properties":[{"type":"olm.gvk","value":{"group":"quay.redhat.com","kind":"QuayRegistry","version":"v1"}},{"type":"olm.package","value":{"packageName":"quay-operator","version":"3.15.4"}}]}'
+      replaces: quay-operator.v3.15.3
+    catalogSources:
+    - redhat-operators
+    phase: RequiresApproval
+    plan:
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: operators.coreos.com
+        kind: ClusterServiceVersion
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quay-operator.v3.15.4
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1alpha1
+      status: Unknown
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: ""
+        kind: Service
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quay-operator
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Unknown
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: apiextensions.k8s.io
+        kind: CustomResourceDefinition
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quayregistries.quay.redhat.com
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Unknown
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: ""
+        kind: ServiceAccount
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quay-operator
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Unknown
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: rbac.authorization.k8s.io
+        kind: Role
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quay-operator.v3.15.4-qu-2zyWBj2a3uj4M4EStuIEahthbI0HhUB3e4FhbT
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Unknown
+    - resolving: quay-operator.v3.15.4
+      resource:
+        group: rbac.authorization.k8s.io
+        kind: RoleBinding
+        manifest: '{"kind":"ConfigMap","name":"e1e8aa98ec41eb0fffbbeb4ef199eb0e6a4733bff6f358791b08e7b9abd7bbb","namespace":"openshift-marketplace","catalogSourceName":"redhat-operators","catalogSourceNamespace":"openshift-marketplace","replaces":"quay-operator.v3.15.3","properties":"{\"properties\":[{\"type\":\"olm.gvk\",\"value\":{\"group\":\"quay.redhat.com\",\"kind\":\"QuayRegistry\",\"version\":\"v1\"}},{\"type\":\"olm.package\",\"value\":{\"packageName\":\"quay-operator\",\"version\":\"3.15.4\"}}]}"}'
+        name: quay-operator.v3.15.4-qu-2zyWBj2a3uj4M4EStuIEahthbI0HhUB3e4FhbT
+        sourceName: redhat-operators
+        sourceNamespace: openshift-marketplace
+        version: v1
+      status: Unknown
+kind: List
+metadata:
+  resourceVersion: ""

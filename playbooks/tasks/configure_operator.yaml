@@ -143,7 +143,12 @@
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.shell: |
-    enclave-reconcile operator-versions --operators "{{ [operator] }}" --no-dry-run
+    enclave-reconcile operator-versions \
+      --name "{{ operator.name }}" \
+      --version "{{ operator.version }}" \
+      --namespace "{{ operator.namespace }}" \
+      {% for csv in (operator.csvNames | default([operator.name])) %}--csv-name "{{ csv }}" {% endfor %}\
+      --no-dry-run
   register: operator_update_result
 
 - name: Print the output

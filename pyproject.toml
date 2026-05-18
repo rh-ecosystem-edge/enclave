@@ -17,6 +17,7 @@ dependencies = [
     "oauthlib ==3.2.2",
     "pyasn1 ==0.6.3",
     "pyasn1-modules ==0.4.2",
+    "pyyaml ==6.0.3",
     "requests-oauthlib ==2.0.0",
     "rpds-py ==0.30.0",
     "rsa ==4.9.1",
@@ -44,10 +45,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["reconcile"]
+only-include = ["reconcile", "defaults/operators.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["reconcile"]
+only-include = ["reconcile", "defaults/operators.yaml"]
 
 [tool.ruff]
 line-length = 88
@@ -80,6 +81,7 @@ ignore = [
     "D4",      # Docstring style
     "E501",    # Line too long (handled by formatter)
     "PLR0913", # Too many arguments (some functions need descriptive params)
+    "PLR0917", # Too many positional arguments (Click commands need one param per option)
     "S404",    # subprocess import
     "S603",    # subprocess call (we call oc with known args)
     "S607",    # partial executable path (oc is expected on PATH)
@@ -137,12 +139,16 @@ disallow_incomplete_defs = true
 module = ["anymarkup"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 omit = ["*/tests/*"]
 
 [tool.coverage.report]
-fail_under = 72
+fail_under = 90
 
 [tool.pytest.ini_options]
 testpaths = ["reconcile/tests"]
