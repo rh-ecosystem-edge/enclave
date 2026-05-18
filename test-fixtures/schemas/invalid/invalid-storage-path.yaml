@@ -22,7 +22,7 @@ quayBackendRGWConfiguration:
   bucket_name: quay-storage
   hostname: radosgw.enclave-test.nodns.in
   storage_path: no-leading-slash
-blockStorageBackend: lvms
+storage_plugin: lvms
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:

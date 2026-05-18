@@ -1,7 +1,6 @@
 ---
-# Fixture: LocalStorage backend + lvms block storage
-# Validates that quayBackendRGWConfiguration is NOT required for LocalStorage
-# and that odfExternalConfig is NOT required for lvms.
+# Fixture: redfish BMC address with explicit port
+# Validates that redfish accepts ip:port format (e.g. sushy-tools emulator).
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -23,22 +22,21 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 192.168.1.101
+    redfish: 100.64.1.1:8008
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
-    redfish: 192.168.1.102
+    redfish: 100.64.1.1:8008
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:62:fe:ee
     ipAddress: 192.168.2.26
-    redfish: 192.168.1.103
+    redfish: 100.64.1.1:8008
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
-

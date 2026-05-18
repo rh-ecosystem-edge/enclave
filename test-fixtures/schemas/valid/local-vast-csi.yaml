@@ -1,7 +1,7 @@
 ---
-# Fixture: LocalStorage backend + lvms block storage
-# Validates that quayBackendRGWConfiguration is NOT required for LocalStorage
-# and that odfExternalConfig is NOT required for lvms.
+# Fixture: LocalStorage backend + vast-csi block storage
+# Validates that LocalStorage + vast-csi is accepted with all required
+# VAST properties (vastEndpoint, vastAdminUsername, vastAdminPassword, vastVipPool).
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -16,7 +16,15 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
-storage_plugin: lvms
+storage_plugin: vast-csi
+vastEndpoint: https://vms.example.com
+vastAdminUsername: admin
+vastAdminPassword: password
+vastVipPool:
+  subnet_cidr: 24
+  ip_ranges:
+    - start: 10.0.100.10
+      end: 10.0.100.50
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
@@ -41,4 +49,3 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
-

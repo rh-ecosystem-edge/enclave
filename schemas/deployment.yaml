@@ -21,7 +21,7 @@ properties:
       Path to the pull secret JSON file. Default: {{ workingDir }}/config/pull-secret.json.
   storage_plugin:
     type: string
-    enum: [lvms, odf]
+    enum: [lvms, odf, vast-csi]
     description: >-
       Which storage plugin to deploy. Default: lvms.
   enabled_plugins:
@@ -30,11 +30,6 @@ properties:
       type: string
     description: >-
       List of plugins to deploy during the pipeline. Default: [storage_plugin].
-  blockStorageBackend:
-    type: string
-    description: >-
-      Backward-compatible alias for storage_plugin. Will be removed after migration.
-
 required:
   - disconnected
   - fresh

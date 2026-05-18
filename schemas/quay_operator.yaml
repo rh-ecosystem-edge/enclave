@@ -61,9 +61,8 @@ properties:
         description: Organization name for OAuth application
         pattern: "^[a-z0-9]+(?:[._-][a-z0-9]+)*$"
       redirect_uri:
-        type: string
+        "$ref": "#/definitions/httpUrl"
         description: Redirect URI for OAuth application
-        pattern: "^https?://.+"
       scopes:
         type: string
         description: Space-separated list of OAuth scopes

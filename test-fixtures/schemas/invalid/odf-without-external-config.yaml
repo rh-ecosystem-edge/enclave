@@ -1,7 +1,7 @@
 ---
 # Invalid fixture: odf block storage without odfExternalConfig
 # Expected failure: variables schema requires odfExternalConfig
-# when blockStorageBackend is odf.
+# when storage_plugin is odf.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -16,7 +16,7 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
-blockStorageBackend: odf
+storage_plugin: odf
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:

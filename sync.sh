@@ -69,7 +69,7 @@ done
 step_done
 
 echo "Validating Config .. " | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e fresh=false -e@$global_vars -e@$certs_vars --tags schema-validation
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e fresh=false -e@$global_vars -e@$certs_vars --tags validate-config
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
 step_done
 

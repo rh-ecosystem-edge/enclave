@@ -1,6 +1,6 @@
 ---
-# Invalid fixture: unknown blockStorageBackend value
-# Expected failure: blockStorageBackend must be one of [lvms, odf].
+# Invalid fixture: unknown storage_plugin value
+# Expected failure: storage_plugin must be one of [lvms, odf].
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -15,7 +15,7 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
-blockStorageBackend: nfs
+storage_plugin: nfs
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
