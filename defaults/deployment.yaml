@@ -22,6 +22,7 @@ blockStorageBackend: "{{ storage_plugin }}"
 # By default only the selected storage plugin is enabled.
 enabled_plugins:
   - "{{ storage_plugin }}"
+  - external-secrets
 
 # Default pull secret path. Override in config/global.yaml if stored elsewhere.
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
