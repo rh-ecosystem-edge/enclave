@@ -1,6 +1,6 @@
 ---
 # Invalid fixture: unknown storage_plugin value
-# Expected failure: storage_plugin must be one of [lvms, odf].
+# Expected failure: storage_plugin must be one of [lvms, odf, vast-csi].
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
