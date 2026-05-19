@@ -25,6 +25,11 @@ definitions:
     description: >-
       Whether the deployment is disconnected (air-gapped). Default: true.
       Set to false for connected deployments.
+  fresh:
+    type: boolean
+    description: >-
+      Whether this is a fresh install. default: true.
+      Set to false to mirror multiple OpenShift versions.
   masterMaxPods:
     type: integer
     minimum: 1

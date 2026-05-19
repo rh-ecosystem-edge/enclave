@@ -29,3 +29,8 @@
 - name: Ensure storage plugin is in enabled_plugins
   ansible.builtin.set_fact:
     enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"
+
+- name: Override OpenShift versions on fresh install
+  ansible.builtin.set_fact:
+    openshift_versions: "{{ [{'version': mgmt_openshift_version}] }}"
+  when: fresh | default(true) | bool

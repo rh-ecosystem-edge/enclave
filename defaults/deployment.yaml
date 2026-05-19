@@ -2,6 +2,9 @@
 # Default deployment mode. Override in config/global.yaml to deploy in connected mode.
 disconnected: true
 
+# Fresh install mode. Override in config/global.yaml to mirror multiple OpenShift versions.
+fresh: true
+
 # Configure High Density Pod Limits for ABI. Override in config/global.yaml.
 masterMaxPods: 500
 
