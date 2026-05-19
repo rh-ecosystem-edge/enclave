@@ -336,7 +336,7 @@ echo ""
 info "To run Enclave Lab:"
 info "  ssh $LZ_SSH"
 info "  cd $LZ_ENCLAVE_DIR"
-info "  ansible-playbook -e@config/global.yaml -e@config/certificates.yaml -e@config/cloud_infra.yaml playbooks/main.yaml"
+info "  ansible-playbook playbooks/main.yaml"
 echo ""
 
 # Exit with failure if any tests failed

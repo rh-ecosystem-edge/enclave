@@ -9,13 +9,11 @@
 # - Additional content images
 #
 # Usage:
-#   ansible-playbook playbooks/01-prepare.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/01-prepare.yaml
 
 - name: Phase 1 - Prepare environment
   hosts: localhost
   gather_facts: false
-  environment:
-    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
   tasks:
     - name: Load common variables
       ansible.builtin.include_tasks:
@@ -24,38 +22,42 @@
           tags: always
       tags: always
 
-    - name: Validate enabled plugin requirements
-      ansible.builtin.include_tasks:
-        file: tasks/validate_enabled_plugins.yaml
-        apply:
+    - name: Execute tasks with workingDir in PATH
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+      block:
+        - name: Validate enabled plugin requirements
+          ansible.builtin.include_tasks:
+            file: tasks/validate_enabled_plugins.yaml
+            apply:
+              tags: always
           tags: always
-      tags: always
 
-    - name: Ensure pull secret directory exists
-      ansible.builtin.file:
-        path: "{{ pullSecretPath | dirname }}"
-        state: directory
-        mode: "0700"
-      tags: always
+        - name: Ensure pull secret directory exists
+          ansible.builtin.file:
+            path: "{{ pullSecretPath | dirname }}"
+            state: directory
+            mode: "0700"
+          tags: always
 
-    - name: Write pull secret to file
-      no_log: true
-      ansible.builtin.copy:
-        content: "{{ pullSecret | to_json }}"
-        dest: "{{ pullSecretPath }}"
-        mode: "0600"
-      tags: always
+        - name: Write pull secret to file
+          no_log: true
+          ansible.builtin.copy:
+            content: "{{ pullSecret | to_json }}"
+            dest: "{{ pullSecretPath }}"
+            mode: "0600"
+          tags: always
 
-    - name: Download control binaries
-      ansible.builtin.include_tasks:
-        file: tasks/download_control_binaries.yaml
-        apply:
+        - name: Download control binaries
+          ansible.builtin.include_tasks:
+            file: tasks/download_control_binaries.yaml
+            apply:
+              tags: download-control-binaries
           tags: download-control-binaries
-      tags: download-control-binaries
 
-    - name: Download content
-      ansible.builtin.include_tasks:
-        file: tasks/download_content.yaml
-        apply:
+        - name: Download content
+          ansible.builtin.include_tasks:
+            file: tasks/download_content.yaml
+            apply:
+              tags: download-content
           tags: download-content
-      tags: download-content

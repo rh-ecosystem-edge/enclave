@@ -92,7 +92,7 @@ validate-config:
 	@bash ./validations.sh --global-vars $(GLOBAL_VARS) --certs-vars $(CERTS_VARS)
 
 validate-schema:
-	@$(AP) playbooks/validate-schema.yaml -e@$(GLOBAL_VARS) -e@$(CERTS_VARS) --tags validate-config
+	@$(AP) playbooks/validation/validate-schema.yaml --tags validate-config
 
 # Deploy targets
 deploy-cluster:
@@ -120,7 +120,7 @@ deploy-cluster-day2:
 	@$(AP) playbooks/06-day2.yaml $(AP_FLAGS)
 
 deploy-cluster-discovery:
-	@$(AP) playbooks/07-configure-discovery.yaml $(AP_FLAGS) -e@$(CLOUD_INFRA_VARS)
+	@$(AP) playbooks/07-configure-discovery.yaml $(AP_FLAGS)
 
 deploy-cluster-connected:
 	@$(MAKE) deploy-cluster DISCONNECTED=false

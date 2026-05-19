@@ -10,13 +10,11 @@
 # - Rendered imagesetconfiguration.yaml
 #
 # Usage (on Landing Zone after Phase 2):
-#   ansible-playbook playbooks/validation/validate-mirror.yaml -e @phase_vars.yaml
+#   ansible-playbook playbooks/validation/validate-mirror.yaml
 
 - name: Validate Mirror Artifacts
   hosts: localhost
   gather_facts: false
-  environment:
-    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
   tasks:
     - name: Load common variables
       ansible.builtin.include_tasks:
@@ -25,9 +23,13 @@
           tags: always
       tags: always
 
-    - name: Include mirror validation tasks
-      ansible.builtin.include_tasks:
-        file: ../tasks/mirror_validation.yaml
-        apply:
+    - name: Execute tasks with workingDir in PATH
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+      block:
+        - name: Include mirror validation tasks
+          ansible.builtin.include_tasks:
+            file: ../tasks/mirror_validation.yaml
+            apply:
+              tags: mirror-validation
           tags: mirror-validation
-      tags: mirror-validation

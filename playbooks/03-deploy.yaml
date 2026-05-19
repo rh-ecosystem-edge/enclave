@@ -15,13 +15,11 @@
 # - Clean up Ironic
 #
 # Usage:
-#   ansible-playbook playbooks/03-deploy.yaml -e workingDir=/home/cloud-user [-e disconnected=false]
+#   ansible-playbook playbooks/03-deploy.yaml [-e disconnected=false]
 
 - name: Phase 3 - Deploy OpenShift cluster
   hosts: localhost
   gather_facts: false
-  environment:
-    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
   tasks:
     - name: Load common variables
       ansible.builtin.include_tasks:
@@ -30,55 +28,59 @@
           tags: always
       tags: always
 
-    - name: Display deployment mode
-      ansible.builtin.debug:
-        msg: "Deploying in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
-      tags: always
+    - name: Execute tasks with workingDir in PATH
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+      block:
+        - name: Display deployment mode
+          ansible.builtin.debug:
+            msg: "Deploying in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+          tags: always
 
-    - name: Include tasks for OCP ABI
-      ansible.builtin.include_tasks:
-        file: tasks/configure_ocp_abi.yaml
-        apply:
+        - name: Include tasks for OCP ABI
+          ansible.builtin.include_tasks:
+            file: tasks/configure_ocp_abi.yaml
+            apply:
+              tags: configure-abi
           tags: configure-abi
-      tags: configure-abi
 
-    - name: Setup Ironic for hardware configuration
-      ansible.builtin.include_tasks:
-        file: tasks/configure_hardware_ironic_setup.yaml
-        apply:
+        - name: Setup Ironic for hardware configuration
+          ansible.builtin.include_tasks:
+            file: tasks/configure_hardware_ironic_setup.yaml
+            apply:
+              tags: hardware
           tags: hardware
-      tags: hardware
 
-    - name: Configure and boot hosts via Ironic
-      loop: "{{ agent_hosts }}"
-      loop_control:
-        loop_var: agent_host
-      ansible.builtin.include_tasks:
-        file: tasks/configure_hardware_ironic_boot.yaml
-        apply:
+        - name: Configure and boot hosts via Ironic
+          loop: "{{ agent_hosts }}"
+          loop_control:
+            loop_var: agent_host
+          ansible.builtin.include_tasks:
+            file: tasks/configure_hardware_ironic_boot.yaml
+            apply:
+              tags: hardware
           tags: hardware
-      tags: hardware
 
-    - name: Wait for all hosts to reach active state
-      loop: "{{ agent_hosts }}"
-      loop_control:
-        loop_var: agent_host
-      ansible.builtin.include_tasks:
-        file: tasks/configure_hardware_ironic_wait.yaml
-        apply:
+        - name: Wait for all hosts to reach active state
+          loop: "{{ agent_hosts }}"
+          loop_control:
+            loop_var: agent_host
+          ansible.builtin.include_tasks:
+            file: tasks/configure_hardware_ironic_wait.yaml
+            apply:
+              tags: hardware
           tags: hardware
-      tags: hardware
 
-    - name: Pre-install validate plugins
-      ansible.builtin.include_tasks:
-        file: tasks/pre_install_validate_plugins.yaml
-        apply:
+        - name: Pre-install validate plugins
+          ansible.builtin.include_tasks:
+            file: tasks/pre_install_validate_plugins.yaml
+            apply:
+              tags: pre-install-validate
           tags: pre-install-validate
-      tags: pre-install-validate
 
-    - name: Wait for deployment
-      ansible.builtin.include_tasks:
-        file: tasks/wait_for_deployment.yaml
-        apply:
+        - name: Wait for deployment
+          ansible.builtin.include_tasks:
+            file: tasks/wait_for_deployment.yaml
+            apply:
+              tags: wait-deployment
           tags: wait-deployment
-      tags: wait-deployment

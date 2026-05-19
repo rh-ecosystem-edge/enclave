@@ -8,13 +8,11 @@
 # - API server health checks
 #
 # Usage:
-#   ansible-playbook playbooks/04-post-install.yaml -e workingDir=/home/cloud-user
+#   ansible-playbook playbooks/04-post-install.yaml
 
 - name: Phase 4 - Post-installation configuration
   hosts: localhost
   gather_facts: false
-  environment:
-    PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
   tasks:
     - name: Load common variables
       ansible.builtin.include_tasks:
@@ -23,14 +21,18 @@
           tags: always
       tags: always
 
-    - name: Display post-install mode
-      ansible.builtin.debug:
-        msg: "Running post-install configuration in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
-      tags: always
+    - name: Execute tasks with workingDir in PATH
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+      block:
+        - name: Display post-install mode
+          ansible.builtin.debug:
+            msg: "Running post-install configuration in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
+          tags: always
 
-    - name: Post-install configurations
-      ansible.builtin.include_tasks:
-        file: tasks/post_install_config.yaml
-        apply:
+        - name: Post-install configurations
+          ansible.builtin.include_tasks:
+            file: tasks/post_install_config.yaml
+            apply:
+              tags: post-install-config
           tags: post-install-config
-      tags: post-install-config

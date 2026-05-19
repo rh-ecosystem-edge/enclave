@@ -796,13 +796,13 @@ Each node in `discovery_hosts` requires:
 
 2. **Run the discovery playbook**:
    ```bash
-   ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/07-configure-discovery.yaml
+   ansible-playbook playbooks/07-configure-discovery.yaml
    ```
 
    Or if you're on the Landing Zone and Enclave is installed:
    ```bash
    cd /home/cloud-user/enclave
-   ansible-playbook -e @config/global.yaml -e @config/certificates.yaml -e @config/cloud_infra.yaml playbooks/07-configure-discovery.yaml
+   ansible-playbook playbooks/07-configure-discovery.yaml
    ```
 
 ### What the Discovery Process Does
