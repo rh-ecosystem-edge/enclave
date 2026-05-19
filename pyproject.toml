@@ -20,6 +20,7 @@ dependencies = [
     "requests-oauthlib ==2.0.0",
     "rpds-py ==0.30.0",
     "rsa ==4.9.1",
+    "requests ==2.34.2",
     "websocket-client ==1.9.0",
 ]
 
@@ -29,9 +30,11 @@ enclave-reconcile = "reconcile.cli:cli"
 [dependency-groups]
 dev = [
     "ansible-lint ==26.4.0",
+    "anymarkup ==0.8.1",
     "mypy ==1.20.2",
     "pytest ==9.0.3",
     "pytest-cov ==7.1.0",
+    "pytest-mock ==3.15.1",
     "ruff ==0.15.12",
     "yamllint ==1.38.0",
 ]
@@ -107,9 +110,13 @@ preview = true
 
 [tool.ruff.lint.per-file-ignores]
 "reconcile/tests/**" = [
+    "PLR2004", # magic values in test assertions are readable without named constants
     "S101",    # assert is idiomatic in pytest
     "PLC1901", # empty-string comparisons are fine in test assertions
     "PLR6301", # test methods don't need to use self
+]
+"reconcile/tests/fixtures.py" = [
+    "ANN401",  # anymarkup.parse returns Any; no tighter type available
 ]
 
 [tool.ruff.lint.isort]
@@ -126,12 +133,16 @@ show_error_codes = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
 
+[[tool.mypy.overrides]]
+module = ["anymarkup"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
 omit = ["*/tests/*"]
 
 [tool.coverage.report]
-fail_under = 15
+fail_under = 72
 
 [tool.pytest.ini_options]
 testpaths = ["reconcile/tests"]
