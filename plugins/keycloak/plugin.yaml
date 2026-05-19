@@ -1,0 +1,10 @@
+---
+name: keycloak
+type: addon
+order: 101
+
+defaults:
+  keycloak_image: quay.io/keycloak/keycloak:latest
+  keycloak_db_image: quay.io/sclorg/postgresql-15-c9s:latest
+  keycloak_db_wait_image: quay.io/sclorg/postgresql-15-c9s:latest
+  keycloak_cli_image: quay.io/openshift/origin-cli:latest

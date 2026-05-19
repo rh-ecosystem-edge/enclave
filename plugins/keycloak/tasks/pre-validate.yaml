@@ -1,0 +1,24 @@
+---
+- name: Check default-ca ClusterIssuer exists
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: ClusterIssuer
+    name: default-ca
+  register: __r_ca_issuer
+  failed_when: false
+
+- name: Fail if default-ca ClusterIssuer is not ready
+  ansible.builtin.fail:
+    msg: >-
+      ClusterIssuer default-ca not found, not ready, or cert-manager API is unavailable.
+      The trust-manager plugin must be deployed before keycloak.
+  when: >
+    __r_ca_issuer.failed | default(false) or
+    __r_ca_issuer.resources | default([]) | length == 0 or
+    (
+      __r_ca_issuer.resources | default([]) | length > 0 and
+      (__r_ca_issuer.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length == 0)
+    )
