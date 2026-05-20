@@ -314,7 +314,7 @@ agent_hosts:
 | `name` | Hostname for the node | `mgmt-ctl01` |
 | `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
 | `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
-| `redfish` | BMC IP address for Redfish API access | `100.64.1.24` |
+| `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Override Username for Redfish API authentication on BMCs | `admin-override` |
 | `redfishPassword` | Override Password for Redfish API authentication on BMCs | `YourSecurePassword-override` |
@@ -751,6 +751,22 @@ quayBackendRGWConfiguration:
 - `is_secure`, `port`, and `storage_path` have defaults in `defaults/quay_operator.yaml` and only need to be set here when overriding those defaults
 - `minimum_chunk_size_mb` and `maximum_chunk_size_mb` default to `100` and `500` respectively; override in `quayBackendRGWConfiguration` if needed
 - `server_side_assembly` is always enabled as it is included in the defaults alongside `maximum_chunk_size_mb`
+
+#### `quayBackendLocalStorageConfiguration`
+
+**Description**: Optional overrides for the LocalStorage backend configuration merged with the default `storage_path: /datastorage/registry`. Only relevant when `quayBackend` is `LocalStorage`.
+
+**Type**: Dictionary
+
+**Default**: `{}` (uses `quayBackendDefaults` as-is)
+
+**Example**:
+```yaml
+quayBackendLocalStorageConfiguration:
+  storage_path: /custom/registry/path
+```
+
+**Note**: If omitted, Quay uses `storage_path: /datastorage/registry` from `defaults/quay_operator.yaml`.
 
 ### Pull Secrets
 

@@ -16,7 +16,7 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: RadosGWStorage
-blockStorageBackend: lvms
+storage_plugin: lvms
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:

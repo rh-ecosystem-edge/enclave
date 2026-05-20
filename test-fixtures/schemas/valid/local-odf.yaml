@@ -16,7 +16,7 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
-blockStorageBackend: odf
+storage_plugin: odf
 odfExternalConfig: >-
   [{"name": "external-cluster-user-command", "kind": "ConfigMap",
   "data": {"userKey": "AQBf0000000000000000000000==", "userID": "ocs-client"}}]

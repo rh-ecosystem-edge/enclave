@@ -92,7 +92,7 @@ validate-config:
 	@bash ./validations.sh --global-vars $(GLOBAL_VARS) --certs-vars $(CERTS_VARS)
 
 validate-schema:
-	@$(AP) playbooks/validate-schema.yaml -e@$(GLOBAL_VARS) -e@$(CERTS_VARS) --tags schema-validation
+	@$(AP) playbooks/validate-schema.yaml -e@$(GLOBAL_VARS) -e@$(CERTS_VARS) --tags validate-config
 
 # Deploy targets
 deploy-cluster:

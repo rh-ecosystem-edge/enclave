@@ -197,7 +197,9 @@ step_setup() {
 
 step_validate() {
     echo "Validating Config .. "  | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e@$global_vars -e@$certs_vars $EXTRA_VARS --tags schema-validation
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml $EXTRA_VARS \
+        -e@$global_vars -e@$certs_vars -e@$cloud_infra_vars \
+        --tags validate-config
     bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
     step_done
 }

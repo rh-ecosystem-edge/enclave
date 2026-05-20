@@ -578,6 +578,45 @@ collect_lz_config_files() {
     scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
 }
 
+collect_lz_enclave_config() {
+    local lz_ip="$1"
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
+    local config_dir="${OUTPUT_DIR}/landing-zone/config"
+
+    mkdir -p "$config_dir"
+    info "Collecting enclave configuration files from Landing Zone..."
+
+    # Redact any key matching /password|secret|key|cert/i at all nesting levels before collecting.
+    # String values that are valid JSON are parsed and redacted recursively (e.g. odfExternalConfig).
+    local redact_py='
+import yaml, sys, re, json
+PATTERN = re.compile(r"password|secret|key|cert", re.IGNORECASE)
+def redact(obj):
+    if isinstance(obj, dict):
+        return {k: "REDACTED" if PATTERN.search(k) else redact(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact(i) for i in obj]
+    if isinstance(obj, str):
+        try:
+            return json.dumps(redact(json.loads(obj)))
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return obj
+data = yaml.safe_load(open(sys.argv[1]))
+print(yaml.dump(redact(data), default_flow_style=False))
+'
+
+    for cfg in global.yaml certificates.yaml cloud_infra.yaml; do
+        local remote_path="/home/cloud-user/enclave/config/${cfg}"
+        local out
+        out=$(ssh $ssh_opts cloud-user@"$lz_ip" \
+            "[ -f ${remote_path} ] && python3 -c '${redact_py}' ${remote_path}" 2>/dev/null) \
+            && [ -n "$out" ] \
+            && echo "$out" > "${config_dir}/${cfg}" \
+            || warn "Could not collect ${cfg}"
+    done
+}
+
 collect_lz_services() {
     local lz_ip="$1"
     local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
@@ -787,6 +826,7 @@ collect_deployment() {
     collect_lz_deployment_logs "$lz_ip"
     collect_lz_oc_mirror_logs "$lz_ip"
     collect_lz_config_files "$lz_ip"
+    collect_lz_enclave_config "$lz_ip"
     collect_lz_services "$lz_ip"
     collect_lz_registry "$lz_ip"
 

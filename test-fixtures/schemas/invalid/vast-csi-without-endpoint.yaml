@@ -1,7 +1,7 @@
 ---
-# Fixture: LocalStorage backend + lvms block storage
-# Validates that quayBackendRGWConfiguration is NOT required for LocalStorage
-# and that odfExternalConfig is NOT required for lvms.
+# Invalid fixture: vast-csi block storage without required VAST properties
+# Expected failure: variables schema requires vastEndpoint, vastAdminUsername,
+# vastAdminPassword, and vastVipPool when storage_plugin is vast-csi.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -16,7 +16,7 @@ lzBmcIP: 100.64.1.10
 quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
-storage_plugin: lvms
+storage_plugin: vast-csi
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
@@ -41,4 +41,3 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
-

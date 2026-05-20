@@ -1,16 +1,18 @@
 ---
 
+- name: Set user config file paths
+  ansible.builtin.set_fact:
+    user_config_files:
+      - "{{ vars_file | default('../../config/global.yaml', true) }}"
+      - "{{ certs_vars_file | default('../../config/certificates.yaml', true) }}"
+      - "{{ cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true) }}"
+
 - name: Include deployment defaults
   ansible.builtin.include_vars: ../../defaults/deployment.yaml
 
-- name: Include global deployment vars
-  ansible.builtin.include_vars: "{{ vars_file | default('../../config/global.yaml') }}"
-
-- name: Include certificate vars
-  ansible.builtin.include_vars: ../../config/certificates.yaml
-
-- name: Include cloud infra vars
-  ansible.builtin.include_vars: ../../config/cloud_infra.yaml
+- name: Include user config vars
+  ansible.builtin.include_vars: "{{ item }}"
+  loop: "{{ user_config_files }}"
 
 - name: Include common configuration
   ansible.builtin.include_vars: "../../defaults/{{ config_file }}"

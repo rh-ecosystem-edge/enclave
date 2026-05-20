@@ -13,12 +13,19 @@
       ansible.builtin.include_tasks:
         file: tasks/defaults_schema_validation.yaml
         apply:
-          tags: schema-validation
-      tags: schema-validation
+          tags: test-fixtures
+      tags: test-fixtures
+
+    - name: Include variables fixtures validation tasks
+      ansible.builtin.include_tasks:
+        file: tasks/variables_fixtures_validation.yaml
+        apply:
+          tags: test-fixtures
+      tags: test-fixtures
 
     - name: Include variables schema validation tasks
       ansible.builtin.include_tasks:
         file: tasks/variables_schema_validation.yaml
         apply:
-          tags: schema-validation
-      tags: schema-validation
+          tags: validate-config
+      tags: validate-config

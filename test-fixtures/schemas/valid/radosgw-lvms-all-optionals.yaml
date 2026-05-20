@@ -35,7 +35,7 @@ quayBackendRGWConfiguration:
   maximum_chunk_size_mb: 250
   server_side_assembly: false
   storage_path: /custom/registry
-blockStorageBackend: lvms
+storage_plugin: lvms
 lvmsConfig:
   deviceSelector:
     optionalPaths:

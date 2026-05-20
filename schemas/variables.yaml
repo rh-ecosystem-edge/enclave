@@ -16,10 +16,27 @@ properties:
     "$ref": "#/definitions/ipv4Address"
   baseDomain:
     "$ref": "#/definitions/nonEmptyString"
-  blockStorageBackend:
+  storage_plugin:
     type: string
-    enum: [lvms, odf]
-    description: Block storage backend for Quay database and assisted installer
+    enum: [lvms, odf, vast-csi]
+    description: Storage plugin to deploy for Quay database and assisted installer
+  enabled_plugins:
+    type: array
+    description: List of plugins to deploy during the pipeline
+    items:
+      "$ref": "#/definitions/nonEmptyString"
+  pullSecretPath:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Path to the pull secret JSON file
+  dc_cache_address:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Address of the disconnected cache registry
+  dc_cache_user:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Username for the disconnected cache registry
+  dc_cache_password:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Password for the disconnected cache registry
   clusterName:
     "$ref": "#/definitions/nonEmptyString"
   defaultDNS:
@@ -78,6 +95,9 @@ properties:
     type: string
     enum: [RadosGWStorage, LocalStorage]
     description: Quay storage backend type
+  quayBackendLocalStorageConfiguration:
+    type: object
+    description: Custom LocalStorage backend configuration merged with quayBackendDefaults
   quayBackendRGWConfiguration:
     type: object
     description: RadosGW/S3 backend configuration for Quay
@@ -137,6 +157,87 @@ properties:
   sslIngressCertificateKey:
     type: string
     description: PEM-encoded private key for ingress wildcard certificate
+  vastAdminPassword:
+    "$ref": "#/definitions/nonEmptyString"
+  vastAdminUsername:
+    "$ref": "#/definitions/nonEmptyString"
+  vastDefaults:
+    type: object
+    description: VAST CSI default configuration
+    additionalProperties: false
+    properties:
+      infraTenant:
+        "$ref": "#/definitions/nonEmptyString"
+      storagePath:
+        "$ref": "#/definitions/nonEmptyString"
+      validateCerts:
+        type: boolean
+      apiTimeout:
+        type: integer
+        minimum: 1
+      apiVersion:
+        "$ref": "#/definitions/nonEmptyString"
+      csiProvisioners:
+        type: object
+        additionalProperties: false
+        properties:
+          nfs:
+            "$ref": "#/definitions/nonEmptyString"
+          block:
+            "$ref": "#/definitions/nonEmptyString"
+      csiDriverName:
+        "$ref": "#/definitions/nonEmptyString"
+      quayPvcSize:
+        "$ref": "#/definitions/nonEmptyString"
+      tiers:
+        type: array
+        minItems: 1
+        maxItems: 20
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+              maxLength: 63
+            protocol:
+              type: string
+              enum: [nfs, block]
+            default:
+              type: boolean
+          required:
+            - name
+            - protocol
+  vastEndpoint:
+    "$ref": "#/definitions/httpUrl"
+    description: VAST management endpoint URL
+  vastVipPool:
+    type: object
+    description: VAST VIP pool configuration
+    additionalProperties: false
+    properties:
+      subnet_cidr:
+        type: integer
+        minimum: 1
+        maximum: 32
+      ip_ranges:
+        type: array
+        items:
+          type: object
+          properties:
+            start:
+              "$ref": "#/definitions/ipv4Address"
+            end:
+              "$ref": "#/definitions/ipv4Address"
+          required:
+            - start
+            - end
+      role:
+        type: string
+    required:
+      - subnet_cidr
+      - ip_ranges
   workingDir:
     "$ref": "#/definitions/nonEmptyString"
 
@@ -144,7 +245,6 @@ required:
   - agent_hosts
   - apiVIP
   - baseDomain
-  - blockStorageBackend
   - clusterName
   - defaultDNS
   - defaultGateway
@@ -170,11 +270,25 @@ allOf:
         - quayBackendRGWConfiguration
   - if:
       properties:
-        blockStorageBackend:
+        storage_plugin:
           const: odf
+      required:
+        - storage_plugin
     then:
       required:
         - odfExternalConfig
+  - if:
+      properties:
+        storage_plugin:
+          const: vast-csi
+      required:
+        - storage_plugin
+    then:
+      required:
+        - vastEndpoint
+        - vastAdminUsername
+        - vastAdminPassword
+        - vastVipPool
   - if:
       properties:
         sslAPICertificateFullChain:

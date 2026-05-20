@@ -21,7 +21,7 @@ quayBackendRGWConfiguration:
   secret_key: EXAMPLE_SECRET_KEY
   bucket_name: quay-storage
   hostname: radosgw.enclave-test.nodns.in
-blockStorageBackend: odf
+storage_plugin: odf
 odfExternalConfig: >-
   [{"name": "external-cluster-user-command", "kind": "ConfigMap",
   "data": {"userKey": "AQBf0000000000000000000000==", "userID": "ocs-client"}}]
