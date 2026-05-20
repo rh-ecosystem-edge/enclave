@@ -76,8 +76,8 @@
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml
 
-- name: Validate mgmt_openshift_version is in the versions list
+- name: Validate a single default version is in the versions list
   ansible.builtin.assert:
     that:
-      - mgmt_openshift_version in (openshift_versions | map(attribute='version') | list)
-    fail_msg: "mgmt_openshift_version {{ mgmt_openshift_version }} is not in the openshift_versions list!"
+      - openshift_versions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | list | length == 1
+    fail_msg: "a single default version is required in the openshift_versions list!"

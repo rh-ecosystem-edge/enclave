@@ -30,6 +30,10 @@
   ansible.builtin.set_fact:
     enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"
 
+- name: Set Management cluster OpenShift version from default
+  ansible.builtin.set_fact:
+    mgmt_openshift_version: "{{ (openshift_versions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | first).version }}"
+
 - name: Override OpenShift versions on fresh install
   ansible.builtin.set_fact:
     openshift_versions: "{{ [{'version': mgmt_openshift_version}] }}"
