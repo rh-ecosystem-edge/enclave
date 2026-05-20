@@ -103,6 +103,7 @@ cat > "$GLOBAL_VARS_OUTPUT" <<EOF
 # Base Configuration
 # ============================================================================
 workingDir: "/home/cloud-user"
+schemaValidationNoLog: true
 
 # ============================================================================
 # Network Configuration
