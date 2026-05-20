@@ -6,8 +6,6 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --global-vars FILE    Path to global vars file (default: config/global.yaml)"
-    echo "  --certs-vars FILE     Path to certificates vars file (default: config/certificates.yaml)"
     echo "  --step STEP           Run a single step instead of all steps"
     echo "  --non-interactive     Skip interactive prompts"
     echo "  -h, --help            Show this help message"
@@ -27,22 +25,17 @@ usage() {
     exit "${1:-0}"
 }
 
+# Config file paths — single source of truth is load-vars.yaml inside playbooks.
+# These are only used for shell-level checks and getValue before Ansible runs.
 global_vars=config/global.yaml
 certs_vars=config/certificates.yaml
 cloud_infra_vars=config/cloud_infra.yaml
+
 run_step=""
 non_interactive=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --global-vars)
-            global_vars="$2"
-            shift 2
-            ;;
-        --certs-vars)
-            certs_vars="$2"
-            shift 2
-            ;;
         --step)
             run_step="$2"
             shift 2
@@ -89,11 +82,6 @@ echo " "
 echo "This script is designed to be re-run on demand "
 echo "NOTE: Every run will destroy the entire cloud  "
 echo "      Some functions will reuse local caches   "
-echo ""
-echo "Config files:"
-echo "  Global vars:  $global_vars"
-echo "  Certificates: $certs_vars"
-echo "  Cloud infra:  $cloud_infra_vars"
 echo ""
 
 getValue(){
@@ -198,7 +186,7 @@ step_setup() {
 step_validate() {
     echo "Validating Config .. "  | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml $EXTRA_VARS --tags validate-config
-    bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
+    bash ./validations.sh 2>&1 | tee -a ${log}
     step_done
 }
 

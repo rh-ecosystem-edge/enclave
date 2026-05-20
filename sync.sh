@@ -2,6 +2,11 @@
 set -o pipefail
 set -e
 
+# Config file paths — single source of truth is load-vars.yaml inside playbooks.
+# These are only used for shell-level checks and getValue before Ansible runs.
+global_vars=config/global.yaml
+certs_vars=config/certificates.yaml
+
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $global_vars \
         | jq -r $1
@@ -12,8 +17,6 @@ step_done(){
     date | tee -a ${log}
 }
 
-global_vars=${1:-config/global.yaml}
-certs_vars=${2:-config/certificates.yaml}
 workingDir=$(getValue .workingDir)
 lck=~/.lck-rh-lz
 DSTAMP=$(date +%Y%m%d_%H%M%S)
@@ -70,7 +73,7 @@ step_done
 
 echo "Validating Config .. " | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e fresh=false --tags validate-config
-    bash ./validations.sh --global-vars $global_vars --certs-vars $certs_vars 2>&1 | tee -a ${log}
+    bash ./validations.sh 2>&1 | tee -a ${log}
 step_done
 
 echo "Building local cache .. " | tee -a ${log}
