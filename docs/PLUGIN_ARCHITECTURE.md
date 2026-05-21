@@ -75,7 +75,7 @@ registries:
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
 | `requires` | Declarative requirements validated at load time, before any deployment work begins. See [Load-Time Validation](#load-time-validation). |
-| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts and remote repos. Each entry specifies `release`, `namespace`, and optional `repo`, `version`, and values template. |
+| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts and remote repos. Each entry specifies `release`, `namespace`, and optional `repo`, `version`, values template, and `extractImages`. When `extractImages: true` is set on a local chart, `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. |
 
 The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during `make validate`. The validator (`make validate-plugins`) also checks directory structure.
 
@@ -91,17 +91,20 @@ Here's what runs and in what order:
  3. Validate requirements          <- assert requires.vars and requires.files
  4. tasks/early-validate.yaml     <- custom validation (no cluster access)
  5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
- 6. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
- 7. Install operators              <- from plugin.yaml operators list (if installOperators != false)
- 8. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
- 9. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
-10. tasks/deploy.yaml             <- "create my CRs"
-11. tasks/post-validate.yaml      <- "did it work?"
+ 6. Extract Helm images            <- helm template on charts with extractImages: true, merge into additionalImages
+ 7. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
+ 8. Install operators              <- from plugin.yaml operators list (if installOperators != false)
+ 9. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
+10. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
+11. tasks/deploy.yaml             <- "create my CRs"
+12. tasks/post-validate.yaml      <- "did it work?"
 ```
 
 Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
 
-Step 8 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before Helm charts or deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that the Helm values template depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
+Step 6 runs `helm template` (with chart defaults, no custom values) on local charts that have `extractImages: true`. The discovered image references are merged into `additionalImages` before mirroring. This is opt-in because `helm template` can fail if sub-chart dependencies aren't populated. Remote charts (with `repo` set) are skipped.
+
+Step 9 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before Helm charts or deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that the Helm values template depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
 
 Separately, during Quay operator setup:
 
@@ -338,7 +341,7 @@ requires:
 5. Add `requires` to declare variables or files that must exist at load time
 6. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
 7. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
-8. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`
+8. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
 9. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
 10. Add `tasks/quay.yaml` if your plugin provides storage for Quay
 11. Run `make validate-plugins` to verify
