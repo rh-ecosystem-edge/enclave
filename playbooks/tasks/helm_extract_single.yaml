@@ -1,0 +1,52 @@
+---
+# Extract container images from a single local Helm chart via helm template.
+#
+# Required loop_var: _extract_chart (helm entry with extractImages: true)
+# Required variables: plugin_dir, workingDir
+
+- name: "HelmExtract | Set chart path for {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _extract_chart_path: >-
+      {{ plugin_dir ~ '/' ~ (_extract_chart.chart | default('charts/' ~ _extract_chart.release)) }}
+
+- name: "HelmExtract | Verify chart exists: {{ _extract_chart.release }}"
+  ansible.builtin.stat:
+    path: "{{ _extract_chart_path }}"
+  register: _r_extract_chart_stat
+
+- name: "HelmExtract | Assert chart exists: {{ _extract_chart.release }}"
+  ansible.builtin.assert:
+    that: _r_extract_chart_stat.stat.exists
+    fail_msg: >-
+      Helm chart not found at {{ _extract_chart_path }}.
+      Cannot extract images for release '{{ _extract_chart.release }}'.
+
+- name: "HelmExtract | Run helm template: {{ _extract_chart.release }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ workingDir }}/bin/helm template _extract {{ _extract_chart_path }}
+  register: _r_helm_template
+  failed_when: false
+  changed_when: false
+
+- name: "HelmExtract | Fail on template error: {{ _extract_chart.release }}"
+  ansible.builtin.fail:
+    msg: >-
+      helm template failed for chart '{{ _extract_chart.release }}' at {{ _extract_chart_path }}.
+      If the chart has sub-chart dependencies, run 'helm dependency build' first.
+      Error: {{ _r_helm_template.stderr | default('unknown') }}
+  when: _r_helm_template.rc != 0
+
+- name: "HelmExtract | Parse images from template output: {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _chart_images: >-
+      {{ _r_helm_template.stdout_lines
+         | select('match', '^\s*image:\s*')
+         | map('regex_replace', '^\s*image:\s*["'']?([^"''\s]+)["'']?\s*$', '\1')
+         | reject('match', '^\s*$')
+         | unique | sort | list }}
+
+- name: "HelmExtract | Accumulate images from {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _helm_all_extracted_images: >-
+      {{ (_helm_all_extracted_images | default([])) + _chart_images }}

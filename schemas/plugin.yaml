@@ -199,6 +199,12 @@ definitions:
       wait:
         type: boolean
         description: "Pass --wait. Default: true."
+      extractImages:
+        type: boolean
+        description: >-
+          Extract container image references from the chart's default values
+          via helm template and merge into additionalImages for mirroring.
+          Only works for local charts (repo must not be set). Default: false.
     required:
       - release
       - namespace
