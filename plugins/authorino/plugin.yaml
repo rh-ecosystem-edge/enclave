@@ -1,0 +1,13 @@
+---
+name: authorino
+type: addon
+order: 102
+
+operators:
+  - name: authorino-operator
+    version: 1.3.0
+    channel: stable
+    init_version: 1.3.0
+    namespace: openshift-operators
+
+defaults: {}
