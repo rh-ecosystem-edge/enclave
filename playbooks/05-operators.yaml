@@ -93,6 +93,7 @@
             - operators
       vars:
         plugin_type: addon
+        plugin_mirror: true
       tags:
         - addon-plugins
         - operators
