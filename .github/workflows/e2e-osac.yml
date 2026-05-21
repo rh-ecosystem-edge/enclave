@@ -1,0 +1,44 @@
+name: E2E OSAC
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'plugins/trust-manager/**'
+      - 'plugins/keycloak/**'
+      - 'plugins/authorino/**'
+      - 'plugins/cnv/**'
+      - 'plugins/aap/**'
+      - '.github/workflows/e2e-osac.yml'
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: e2e-osac-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-osac:
+    uses: ./.github/workflows/e2e-deployment.yml
+    with:
+      run-connected: true
+      run-disconnected: false
+      enabled-plugins: 'lvms,trust-manager,keycloak,authorino,cnv,aap'
+      heavy-workload: true
+      skip-cleanup: ${{ inputs.skip-cleanup || false }}
+      send-slack-notification: ${{ inputs.send-slack-notification || false }}
+    secrets: inherit
