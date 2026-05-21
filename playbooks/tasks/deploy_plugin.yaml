@@ -114,6 +114,20 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
+- name: Extract images from Helm charts for mirroring
+  ansible.builtin.include_tasks:
+    file: tasks/helm_extract_images.yaml
+    apply:
+      tags: mirror
+  when:
+    - plugin.helm is defined
+    - plugin.helm
+      | selectattr('extractImages', 'defined')
+      | selectattr('extractImages', 'equalto', true)
+      | rejectattr('repo', 'defined')
+      | list | length > 0
+  tags: mirror
+
 - name: Set catalog image and mirror defaults
   set_fact:
     catalog_image: "{{ rh_operator_catalog }}"

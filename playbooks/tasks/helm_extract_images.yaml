@@ -1,0 +1,40 @@
+---
+# Extract container image references from local Helm charts that have
+# extractImages: true and merge them into plugin.additionalImages.
+#
+# Required variables: plugin, plugin_dir, workingDir
+#
+# This task file is included from deploy_plugin.yaml before the mirror step.
+# It runs `helm template` with chart defaults (no custom values) to discover
+# upstream image references that need mirroring in disconnected environments.
+
+- name: "HelmExtract | Filter qualifying charts"
+  ansible.builtin.set_fact:
+    _helm_extract_charts: >-
+      {{ plugin.helm
+         | selectattr('extractImages', 'defined')
+         | selectattr('extractImages', 'equalto', true)
+         | rejectattr('repo', 'defined')
+         | list }}
+
+- name: "HelmExtract | Process charts"
+  ansible.builtin.include_tasks:
+    file: tasks/helm_extract_single.yaml
+  loop: "{{ _helm_extract_charts }}"
+  loop_control:
+    loop_var: _extract_chart
+    label: "{{ _extract_chart.release }}"
+
+- name: "HelmExtract | Merge extracted images into plugin.additionalImages"
+  ansible.builtin.set_fact:
+    plugin: >-
+      {{ plugin | combine({
+           'additionalImages': (plugin.additionalImages | default([]) + _helm_all_extracted_images | default([]))
+                               | unique | sort
+         }) }}
+  when: _helm_all_extracted_images | default([]) | length > 0
+
+- name: "HelmExtract | Show extracted images"
+  ansible.builtin.debug:
+    msg: "Extracted {{ _helm_all_extracted_images | default([]) | length }} image(s) from Helm charts: {{ _helm_all_extracted_images | default([]) }}"
+  when: _helm_all_extracted_images | default([]) | length > 0
