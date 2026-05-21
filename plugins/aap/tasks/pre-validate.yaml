@@ -1,0 +1,15 @@
+---
+- name: Check AAP license file exists
+  ansible.builtin.stat:
+    path: "{{ aap_license_file | default('') }}"
+  register: __r_aap_license_stat
+  when: aap_license_file is defined and aap_license_file | length > 0
+
+- name: Fail if AAP license file not found
+  ansible.builtin.fail:
+    msg: >-
+      AAP license file not found at {{ aap_license_file }}.
+      Set aap_license_file to the path of your AAP license manifest.zip.
+  when: >
+    aap_license_file is not defined or
+    not (__r_aap_license_stat.stat.exists | default(false))
