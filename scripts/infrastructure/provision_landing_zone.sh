@@ -333,6 +333,7 @@ sudo virt-install \
     --boot hd,cdrom \
     --os-variant "$OS_VARIANT" \
     --graphics vnc \
+    --serial file,path=/var/log/libvirt/qemu/${LZ_VM_NAME}-console.log \
     --noautoconsole \
     --import
 

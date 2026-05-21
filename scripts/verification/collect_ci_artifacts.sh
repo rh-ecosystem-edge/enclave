@@ -413,6 +413,26 @@ collect_bmc_status() {
 # LANDING ZONE COLLECTION FUNCTIONS
 #####################################
 
+get_landing_zone_vm_name() {
+    local lz_vm_name=""
+
+    if [ -n "${WORKING_DIR:-}" ]; then
+        local env_file
+        env_file=$(ls -t "$WORKING_DIR"/environment*.json 2>/dev/null | head -1)
+
+        if [ -f "$env_file" ]; then
+            lz_vm_name=$(jq -r '.vms.landing_zone.name // empty' "$env_file" 2>/dev/null || true)
+        fi
+    fi
+
+    # Fallback to constructed name
+    if [ -z "$lz_vm_name" ]; then
+        lz_vm_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0"
+    fi
+
+    echo "$lz_vm_name"
+}
+
 get_landing_zone_ip() {
     local lz_ip=""
 
@@ -429,8 +449,7 @@ get_landing_zone_ip() {
 
             if [ -z "$lz_ip" ]; then
                 local lz_vm_name
-                lz_vm_name=$(jq -r '.vms.landing_zone.name // empty' "$env_file" 2>/dev/null || true)
-                [ -z "$lz_vm_name" ] && lz_vm_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0"
+                lz_vm_name=$(get_landing_zone_vm_name)
 
                 local cluster_network
                 cluster_network=$(jq -r '.networks.cluster.cidr // empty' "$env_file" 2>/dev/null || true)
@@ -657,6 +676,23 @@ collect_lz_registry() {
     " > "${OUTPUT_DIR}/landing-zone/registry.txt" 2>&1 || warn "Could not collect registry info"
 }
 
+collect_lz_cloud_init() {
+    local lz_ip="$1"
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
+
+    info "Collecting cloud-init logs from Landing Zone..."
+    ssh $ssh_opts cloud-user@"$lz_ip" "
+        echo '=== cloud-init Status ==='
+        cloud-init status --long 2>&1 || echo 'cloud-init not available'
+        echo ''
+        echo '=== cloud-init Journal Logs ==='
+        sudo journalctl -u cloud-init -u cloud-init-local -u cloud-config -u cloud-final --no-pager 2>&1 || echo 'No cloud-init logs'
+        echo ''
+        echo '=== cloud-init Result ==='
+        cat /run/cloud-init/result.json 2>&1 || echo 'No result file'
+    " > "${OUTPUT_DIR}/landing-zone/cloud-init.txt" 2>&1 || warn "Could not collect LZ cloud-init logs"
+}
+
 #####################################
 # CLUSTER COLLECTION FUNCTIONS
 #####################################
@@ -803,6 +839,41 @@ collect_infra() {
     info "✓ Infrastructure collection complete"
 }
 
+collect_lz_fallback_logs() {
+    mkdir -p "${OUTPUT_DIR}/landing-zone"
+    info "Collecting Landing Zone logs without SSH (fallback)..."
+
+    local lz_vm_name
+    lz_vm_name=$(get_landing_zone_vm_name)
+    info "Using VM name: $lz_vm_name"
+
+    # Collect serial console log (contains boot messages, cloud-init output)
+    local console_log="/var/log/libvirt/qemu/${lz_vm_name}-console.log"
+    if sudo test -f "$console_log"; then
+        info "Collecting serial console log: $console_log"
+        # shellcheck disable=SC2024  # Redirect as user intentional - output file must be user-owned for artifact upload
+        sudo cat "$console_log" > "${OUTPUT_DIR}/landing-zone/serial-console.log" 2>&1 || warn "Could not collect serial console log"
+    else
+        warn "Serial console log not found: $console_log"
+    fi
+
+    # Collect qemu domain log (contains qemu command line, not console output)
+    local domain_log="/var/log/libvirt/qemu/${lz_vm_name}.log"
+    if sudo test -f "$domain_log"; then
+        # shellcheck disable=SC2024  # Redirect as user intentional - output file must be user-owned for artifact upload
+        sudo cat "$domain_log" > "${OUTPUT_DIR}/landing-zone/qemu-domain.log" 2>&1 || true
+    fi
+
+    # Collect VM state for debugging
+    {
+        echo "=== VM State ==="
+        sudo virsh domstate "$lz_vm_name" 2>&1 || echo "Could not get VM state"
+        echo ""
+        echo "=== VM Info ==="
+        sudo virsh dominfo "$lz_vm_name" 2>&1 || echo "Could not get VM info"
+    } > "${OUTPUT_DIR}/landing-zone/vm-state.txt" 2>&1 || true
+}
+
 collect_deployment() {
     info "=== DEPLOYMENT COLLECTION ==="
 
@@ -810,19 +881,22 @@ collect_deployment() {
     lz_ip=$(get_landing_zone_ip)
 
     if [ -z "$lz_ip" ]; then
-        warn "Landing Zone IP not found, skipping LZ collection"
+        warn "Landing Zone IP not found, attempting fallback collection"
+        collect_lz_fallback_logs
         return
     fi
 
     info "Landing Zone IP: $lz_ip"
 
     if ! test_lz_ssh "$lz_ip"; then
-        warn "Cannot SSH to Landing Zone, skipping LZ collection"
+        warn "Cannot SSH to Landing Zone, attempting fallback collection"
+        collect_lz_fallback_logs
         return
     fi
 
     collect_lz_system_info "$lz_ip"
     collect_lz_dns_config "$lz_ip"
+    collect_lz_cloud_init "$lz_ip"
     collect_lz_deployment_logs "$lz_ip"
     collect_lz_oc_mirror_logs "$lz_ip"
     collect_lz_config_files "$lz_ip"
