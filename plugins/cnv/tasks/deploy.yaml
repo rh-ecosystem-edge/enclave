@@ -1,0 +1,47 @@
+---
+- name: Wait for HyperConverged CRD to be registered
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: hyperconvergeds.hco.kubevirt.io
+  register: __r_cnv_crd
+  retries: 60
+  delay: 10
+  until:
+    - __r_cnv_crd.resources | default([]) | length > 0
+
+- name: Deploy HyperConverged CR
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: hco.kubevirt.io/v1beta1
+      kind: HyperConverged
+      metadata:
+        name: kubevirt-hyperconverged
+        namespace: openshift-cnv
+      spec: {}
+  register: __r_cnv_hco
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_cnv_hco is success
+
+- name: Wait for HyperConverged CR (Available=True)
+  kubernetes.core.k8s_info:
+    api_version: hco.kubevirt.io/v1beta1
+    kind: HyperConverged
+    name: kubevirt-hyperconverged
+    namespace: openshift-cnv
+  register: __r_cnv_hco_status
+  retries: 90
+  delay: 30
+  until:
+    - __r_cnv_hco_status is not failed
+    - __r_cnv_hco_status.resources | default([]) | length > 0
+    - __r_cnv_hco_status.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Available')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+
+- name: Debug HyperConverged status
+  ansible.builtin.debug:
+    msg: "HyperConverged is available in openshift-cnv namespace"

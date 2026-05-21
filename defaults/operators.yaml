@@ -111,5 +111,3 @@ operators:
     global: true
     csvNames:
       - metallb-operator
-    extraMirrorPackages:
-      - kubevirt-hyperconverged
