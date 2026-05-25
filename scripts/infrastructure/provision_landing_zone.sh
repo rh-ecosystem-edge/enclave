@@ -76,7 +76,7 @@ echo ""
 # Create working directory
 info "Creating working directory: $LZ_WORKING_DIR"
 sudo mkdir -p "$LZ_WORKING_DIR"
-sudo chown $USER:$USER "$LZ_WORKING_DIR"
+sudo chown "$USER":"$USER" "$LZ_WORKING_DIR"
 
 # Copy cloud image from cache or download
 # Each job gets its own copy to avoid I/O conflicts during parallel execution
@@ -88,7 +88,7 @@ elif [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
     cp "${CLOUD_IMAGE_URL#file://}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
 else
     info "Downloading cloud image: ${CLOUD_IMAGE_NAME}..."
-    wget -nv -O "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
+    curl -fL --progress-bar -o "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
 fi
 info "✓ Cloud image ready"
 
@@ -113,20 +113,6 @@ users:
 hostname: enclave-lz
 fqdn: enclave-lz.${CLUSTER_DOMAIN:-enclave-test.lab}
 
-packages:
-  - git
-  - vim
-  - curl
-  - wget
-  - jq
-  - python3
-  - python3-pip
-  - ansible-core
-
-runcmd:
-  - systemctl disable cloud-init
-  - touch /etc/cloud/cloud-init.disabled
-
 timezone: UTC
 
 ssh_pwauth: false
@@ -135,7 +121,8 @@ disable_root: true
 final_message: "Enclave Landing Zone VM is ready. Time: \$UPTIME"
 EOF
 
-# Conditionally add RHSM subscription for RHEL images
+# rh_subscription must appear before runcmd in the file so cloud-init registers
+# the system before the runcmd stage attempts to use subscription-manager
 if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
     info "Adding RHSM subscription to cloud-init configuration..."
     cat >> "${LZ_WORKING_DIR}/user-data" <<RHSM_EOF
@@ -145,6 +132,26 @@ rh_subscription:
   org: "${LZ_RHSM_ORG}"
 RHSM_EOF
 fi
+
+cat >> "${LZ_WORKING_DIR}/user-data" <<'EOF'
+
+runcmd:
+EOF
+
+if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
+    cat >> "${LZ_WORKING_DIR}/user-data" <<'RUNCMD_EOF'
+  - |
+    subscription-manager refresh
+    subscription-manager repos --disable='*-eus-*' --disable='*-debug-rpms' --disable='*-source-rpms'
+    dnf clean metadata
+RUNCMD_EOF
+fi
+
+cat >> "${LZ_WORKING_DIR}/user-data" <<'EOF'
+  - dnf install -y git
+  - systemctl disable cloud-init
+  - touch /etc/cloud/cloud-init.disabled
+EOF
 
 # Note: Skipping network-config - let cloud-init use DHCP from libvirt networks
 # This ensures the VM gets network connectivity quickly

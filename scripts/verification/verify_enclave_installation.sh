@@ -162,7 +162,7 @@ fi
 
 # Test 4: Required tools installed
 info "Test 4: Checking required tools on Landing Zone..."
-REQUIRED_TOOLS=("git" "ansible" "python3" "curl" "jq" "podman" "httpd" "nmstatectl")
+REQUIRED_TOOLS=("git" "ansible-playbook" "python3" "curl" "jq" "podman" "httpd" "nmstatectl")
 for tool in "${REQUIRED_TOOLS[@]}"; do
     if ssh $SSH_OPTS "$LZ_SSH" "command -v $tool &>/dev/null"; then
         success "$tool is installed"
