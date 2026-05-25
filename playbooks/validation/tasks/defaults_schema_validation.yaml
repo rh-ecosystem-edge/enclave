@@ -71,7 +71,7 @@
     engine: ansible.utils.jsonschema
   loop: "{{ r_plugin_files.files }}"
   loop_control:
-    label: "{{ item.path | basename }}"
+    label: "{{ item.path | dirname | basename }}"
 
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml
