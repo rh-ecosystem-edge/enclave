@@ -277,3 +277,12 @@ properties:
 required:
   - name
   - type
+# if plugin type is foundation - catalog must be redhat
+if:
+  properties:
+    type:
+      const: foundation
+then:
+  properties:
+    catalog:
+      const: redhat
