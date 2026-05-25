@@ -58,7 +58,7 @@
 
 - name: Find all plugin.yaml files
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../plugins"
+    paths: "{{ playbook_dir }}/../../plugins"
     patterns: "plugin.yaml"
     recurse: true
     depth: 2
