@@ -11,6 +11,7 @@ from reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from reconcile.operator_versions import reconcile as operator_versions_reconcile
+from reconcile.quay_registry_ca import reconcile as quay_registry_ca_reconcile
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -30,6 +31,22 @@ def cli(log_level: str) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
         stream=sys.stdout,
     )
+
+
+@cli.command("resolve-quay-registry-ca")
+@click.option("--hostname", required=True, help="Quay registry route hostname.")
+@click.option(
+    "--oc",
+    default="oc",
+    show_default=True,
+    help="Path to the oc binary.",
+)
+def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
+    """Print the CA PEM that trusts the Quay registry route TLS certificate."""
+    try:
+        quay_registry_ca_reconcile(hostname, oc=oc)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command()
