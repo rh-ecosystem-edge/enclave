@@ -1,0 +1,135 @@
+- name: Load shared schema definitions
+  ansible.builtin.set_fact:
+    schema_definitions: "{{ lookup('ansible.builtin.file', '../../schemas/definitions.yaml') | from_yaml }}"
+
+- name: Load global schema
+  ansible.builtin.set_fact:
+    _global_schema: "{{ lookup('ansible.builtin.file', '../../schemas/global.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+
+- name: Find valid global fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/global/valid"
+    patterns: "*.yaml"
+  register: global_valid_fixtures
+
+- name: Validate valid global fixtures
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _global_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ global_valid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Find invalid global fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/global/invalid"
+    patterns: "*.yaml"
+  register: global_invalid_fixtures
+
+- name: Validate invalid global fixtures (expect failure)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _global_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ global_invalid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: global_invalid_results
+  ignore_errors: true
+
+- name: Assert invalid global fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid fixture {{ item.item.path | basename }} unexpectedly passed global schema validation"
+  loop: "{{ global_invalid_results.results }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+
+- name: Load certificates schema
+  ansible.builtin.set_fact:
+    _certs_schema: "{{ lookup('ansible.builtin.file', '../../schemas/certificates.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+
+- name: Find valid certificates fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/certificates/valid"
+    patterns: "*.yaml"
+  register: certs_valid_fixtures
+
+- name: Validate valid certificates fixtures
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _certs_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ certs_valid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Find invalid certificates fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/certificates/invalid"
+    patterns: "*.yaml"
+  register: certs_invalid_fixtures
+
+- name: Validate invalid certificates fixtures (expect failure)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _certs_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ certs_invalid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: certs_invalid_results
+  ignore_errors: true
+
+- name: Assert invalid certificates fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid fixture {{ item.item.path | basename }} unexpectedly passed certificates schema validation"
+  loop: "{{ certs_invalid_results.results }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+
+- name: Load cloud_infra schema
+  ansible.builtin.set_fact:
+    _cloud_infra_schema: "{{ lookup('ansible.builtin.file', '../../schemas/cloud_infra.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+
+- name: Find valid cloud_infra fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/cloud_infra/valid"
+    patterns: "*.yaml"
+  register: cloud_infra_valid_fixtures
+
+- name: Validate valid cloud_infra fixtures
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _cloud_infra_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ cloud_infra_valid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+- name: Find invalid cloud_infra fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/schemas/cloud_infra/invalid"
+    patterns: "*.yaml"
+  register: cloud_infra_invalid_fixtures
+
+- name: Validate invalid cloud_infra fixtures (expect failure)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ _cloud_infra_schema }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ cloud_infra_invalid_fixtures.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: cloud_infra_invalid_results
+  ignore_errors: true
+
+- name: Assert invalid cloud_infra fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid fixture {{ item.item.path | basename }} unexpectedly passed cloud_infra schema validation"
+  loop: "{{ cloud_infra_invalid_results.results }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"

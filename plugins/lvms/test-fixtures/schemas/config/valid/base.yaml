@@ -1,0 +1,7 @@
+---
+# Fixture: valid lvmsConfig with device selector
+lvmsConfig:
+  deviceSelector:
+    optionalPaths:
+      - /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+      - /dev/disk/by-path/pci-0000:00:11.4-ata-2.0

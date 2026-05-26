@@ -149,11 +149,6 @@ quayBackendLocalStorageConfiguration:
 storage_plugin: lvms
 
 # ============================================================================
-# Storage Configuration (LVMS) (optional)
-# ============================================================================
-lvmsConfig: {}
-
-# ============================================================================
 # OpenShift Deployment Configuration (optional)
 # ============================================================================
 # Leaving default values

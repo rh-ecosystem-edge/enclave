@@ -1,0 +1,8 @@
+---
+# Invalid fixture: ironicHTTPSCertificate present but ironicHTTPSKey omitted.
+# Expected failure: certificates schema requires ironicHTTPSKey when
+# ironicHTTPSCertificate is present and non-empty.
+ironicHTTPSCertificate: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_IRONIC_CERT
+  -----END CERTIFICATE-----

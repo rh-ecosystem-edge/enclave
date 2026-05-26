@@ -16,16 +16,16 @@
           tags: test-fixtures
       tags: test-fixtures
 
-    - name: Include variables fixtures validation tasks
+    - name: Include config fixtures validation tasks
       ansible.builtin.include_tasks:
-        file: tasks/variables_fixtures_validation.yaml
+        file: tasks/config_fixtures_validation.yaml
         apply:
           tags: test-fixtures
       tags: test-fixtures
 
-    - name: Include variables schema validation tasks
+    - name: Include config schema validation tasks
       ansible.builtin.include_tasks:
-        file: tasks/variables_schema_validation.yaml
+        file: tasks/config_schema_validation.yaml
         apply:
           tags: validate-config
       tags: validate-config

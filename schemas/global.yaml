@@ -55,28 +55,12 @@ properties:
     description: Network prefix length (subnet mask bits)
   disconnected:
     "$ref": "#/definitions/disconnected"
-  discovery_hosts:
-    type: array
-    description: List of discovery hosts for hardware discovery
-    items:
-      "$ref": "#/definitions/hostEntry"
   masterMaxPods:
     "$ref": "#/definitions/masterMaxPods"
   diskEncryption:
     "$ref": "#/definitions/diskEncryption"
   ingressVIP:
     "$ref": "#/definitions/ipv4Address"
-  lvmsConfig:
-    type: object
-    description: LVMS storage configuration
-    properties:
-      deviceSelector:
-        type: object
-        properties:
-          optionalPaths:
-            type: array
-            items:
-              type: string
   lzBmcHostname:
     "$ref": "#/definitions/hostname"
   lzBmcIP:
@@ -134,35 +118,14 @@ properties:
     "$ref": "#/definitions/nonEmptyString"
   rendezvousIP:
     "$ref": "#/definitions/ipv4Address"
-  sshPubPath:
-    "$ref": "#/definitions/nonEmptyString"
-  ironicHTTPSCertificate:
-    type: string
-    description: PEM-encoded TLS certificate for Ironic vmedia HTTPS server
-  ironicHTTPSKey:
-    type: string
-    description: PEM-encoded private key for Ironic vmedia HTTPS certificate
   schemaValidationNoLog:
     type: boolean
     default: false
     description: >-
       Whether to suppress schema validation task output (no_log). Default: false.
       Set to true in CI to avoid leaking secrets in logs.
-  sslAPICertificateFullChain:
-    type: string
-    description: PEM-encoded full certificate chain for API server
-  sslAPICertificateKey:
-    type: string
-    description: PEM-encoded private key for API server certificate
-  sslCACertificate:
-    type: string
-    description: PEM-encoded root CA certificate
-  sslIngressCertificateFullChain:
-    type: string
-    description: PEM-encoded full certificate chain for ingress wildcard certificate
-  sslIngressCertificateKey:
-    type: string
-    description: PEM-encoded private key for ingress wildcard certificate
+  sshPubPath:
+    "$ref": "#/definitions/nonEmptyString"
   vastAdminPassword:
     "$ref": "#/definitions/nonEmptyString"
   vastAdminUsername:
@@ -295,39 +258,3 @@ allOf:
         - vastAdminUsername
         - vastAdminPassword
         - vastVipPool
-  - if:
-      properties:
-        sslAPICertificateFullChain:
-          type: string
-          minLength: 1
-      required:
-        - sslAPICertificateFullChain
-    then:
-      required:
-        - sslAPICertificateKey
-        - sslIngressCertificateFullChain
-        - sslIngressCertificateKey
-      properties:
-        sslAPICertificateKey:
-          type: string
-          minLength: 1
-        sslIngressCertificateFullChain:
-          type: string
-          minLength: 1
-        sslIngressCertificateKey:
-          type: string
-          minLength: 1
-  - if:
-      properties:
-        ironicHTTPSCertificate:
-          type: string
-          minLength: 1
-      required:
-        - ironicHTTPSCertificate
-    then:
-      required:
-        - ironicHTTPSKey
-      properties:
-        ironicHTTPSKey:
-          type: string
-          minLength: 1

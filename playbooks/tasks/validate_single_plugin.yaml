@@ -12,13 +12,32 @@
 
 # Load defaults so that variables provided by the plugin itself are in scope
 # before we check requires.vars.
-- name: "Validate {{ _vp_plugin.name }} | Load plugin defaults"  # noqa: var-naming[no-jinja]
+- name: "Validate {{ _vp_plugin.name }} | Stat defaults.yaml"
+  ansible.builtin.stat:
+    path: "{{ _vp_plugin_dir }}/defaults.yaml"
+  register: r_vp_defaults_yaml
+
+- name: "Validate {{ _vp_plugin.name }} | Fail if both defaults.yaml and defaults field are defined"
+  ansible.builtin.fail:
+    msg: "Plugin '{{ _vp_plugin.name }}' has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
+  when:
+    - r_vp_defaults_yaml.stat.exists
+    - _vp_plugin.defaults is defined
+
+- name: "Validate {{ _vp_plugin.name }} | Load plugin defaults from defaults.yaml"
+  ansible.builtin.include_vars:
+    file: "{{ _vp_plugin_dir }}/defaults.yaml"
+  when: r_vp_defaults_yaml.stat.exists
+
+- name: "Validate {{ _vp_plugin.name }} | Load plugin defaults from plugin.yaml"  # noqa: var-naming[no-jinja]
   ansible.builtin.set_fact:
     "{{ item.key }}": "{{ item.value }}"
-  loop: "{{ _vp_plugin.defaults | default({}) | dict2items }}"
+  loop: "{{ _vp_plugin.defaults | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
-  when: _vp_plugin.defaults is defined
+  when:
+    - _vp_plugin.defaults is defined
+    - not r_vp_defaults_yaml.stat.exists
 
 - name: "Validate {{ _vp_plugin.name }} | Validate required variables"
   ansible.builtin.assert:

@@ -15,6 +15,11 @@ This directory contains the configuration files needed for your enclave deployme
 2. **Fill in `global.yaml` with your environment details**
 3. **Fill in `certificates.yaml` with your SSL certificates**
 4. **Fill in `cloud_infra.yaml` with your discovery hosts (or leave `discovery_hosts: []` if not needed)**
+5. **Optionally configure plugin-specific settings** (e.g. restrict which disks LVMS manages):
+   ```bash
+   cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
+   # Edit config/plugins/lvms.yaml as needed
+   ```
 
 ## Configuration Files
 
@@ -26,6 +31,12 @@ Contains SSL certificates for the cluster.
 
 ### `cloud_infra.yaml` (required)
 Contains cloud infrastructure configuration, including the list of worker nodes to be discovered and added to the cluster. Set `discovery_hosts: []` if no discovery hosts are needed.
+
+### `plugins/` subdirectory (optional)
+Contains per-plugin configuration files, named after the plugin (e.g. `config/plugins/lvms.yaml`).
+Copy from `config/plugins/<name>.example.yaml` and fill in values.
+Plugin configuration is auto-loaded at deployment time — only create the file if you need to provide plugin-specific settings.
+See each plugin's `plugins/<name>/schemas/config.yaml` for the available settings.
 
 ## Security
 - **Never commit `global.yaml`, `certificates.yaml` or `cloud_infra.yaml` to version control**

@@ -1,0 +1,16 @@
+---
+# Valid fixture: all 4 required SSL fields present; sslCACertificate is optional.
+sslAPICertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_API_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslAPICertificateKey: DUMMY_PRIVATE_KEY_DO_NOT_USE
+sslIngressCertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_INGRESS_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslIngressCertificateKey: DUMMY_PRIVATE_KEY_DO_NOT_USE
+sslCACertificate: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_CA_CERT
+  -----END CERTIFICATE-----

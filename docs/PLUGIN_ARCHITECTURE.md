@@ -10,7 +10,19 @@ A plugin is a directory under `plugins/` with a single descriptor and optional t
 
 ```
 plugins/lvms/
-  plugin.yaml              <- the descriptor (required) -- all data in one file
+  plugin.yaml              <- the descriptor (required)
+  defaults.yaml            <- plugin defaults (optional; alternative to defaults: in plugin.yaml)
+  schemas/
+    defaults.yaml          <- JSON Schema validating defaults.yaml (optional)
+    config.yaml            <- JSON Schema validating config/plugins/lvms.yaml (optional)
+  test-fixtures/
+    schemas/
+      defaults/
+        valid/             <- fixtures that must pass defaults schema validation
+        invalid/           <- fixtures that must fail defaults schema validation
+      config/
+        valid/             <- fixtures that must pass config schema validation
+        invalid/           <- fixtures that must fail config schema validation
   tasks/
     early-validate.yaml    <- custom validation before downloads, no cluster access (optional)
     deploy.yaml            <- post-operator deployment logic
@@ -26,7 +38,7 @@ plugins/lvms/
 
 ### The Descriptor: `plugin.yaml`
 
-This is the only required file. It contains all plugin data: metadata, operator definitions, defaults, and registry entries.
+This is the only required file. It contains plugin metadata, operator definitions, and registry entries.
 
 ```yaml
 name: lvms
@@ -47,15 +59,6 @@ requires:
     - path: "tasks/quay.yaml"
       description: "LVMS Quay storage configuration"
 
-defaults:
-  lvmsDefaults:
-    deviceClassName: vg1
-    defaultStorageClass: true
-    thinPoolConfig:
-      name: vg1-pool-1
-      sizePercent: 90
-      overprovisionRatio: 10
-
 registries:
   - location: "registry.redhat.io/lvms4"
     mirror: "lvms4"
@@ -70,7 +73,7 @@ registries:
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
 | `installOperators` | Set to `false` to skip operator installation (mirror-only plugins). Defaults to `true`. |
 | `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). |
-| `defaults` | Variables loaded into Ansible scope before tasks run. Keeps config namespaced per plugin. |
+| `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). |
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
@@ -87,7 +90,7 @@ Here's what runs and in what order:
 
 ```
  1. Load plugin.yaml              <- always
- 2. Load defaults                  <- from plugin.yaml defaults section
+ 2. Load defaults                  <- from `defaults.yaml` (if present) or `plugin.yaml` defaults field (cannot have both)
  3. Validate requirements          <- assert requires.vars and requires.files
  4. tasks/early-validate.yaml     <- custom validation (no cluster access)
  5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
@@ -137,24 +140,29 @@ requires:
     - path: "tasks/quay.yaml"
       description: "LVMS Quay storage configuration"
 
-defaults:
-  lvmsConfigDefaults:
-    deviceSelector:
-      forceWipeDevicesAndDestroyAllData: true
-  lvmsDefaults:
-    deviceClassName: vg1
-    defaultStorageClass: true
-    thinPoolConfig:
-      name: vg1-pool-1
-      sizePercent: 90
-      overprovisionRatio: 10
-
 registries:
   - location: "registry.redhat.io/lvms4"
     mirror: "lvms4"
 ```
 
-The `defaults` section gets loaded into Ansible scope. The naming convention `lvmsDefaults.*` keeps things namespaced so plugins don't step on each other's variables. Users can override them in `config/global.yaml`.
+### `defaults.yaml`
+
+Plugin defaults live in `defaults.yaml` (alternative to the `defaults:` field in `plugin.yaml` — cannot use both):
+
+```yaml
+lvmsConfigDefaults:
+  deviceSelector:
+    forceWipeDevicesAndDestroyAllData: true
+lvmsDefaults:
+  deviceClassName: vg1
+  defaultStorageClass: true
+  thinPoolConfig:
+    name: vg1-pool-1
+    sizePercent: 90
+    overprovisionRatio: 10
+```
+
+These variables get loaded into Ansible scope before tasks run. The naming convention `lvmsDefaults.*` keeps things namespaced so plugins don't step on each other's variables.
 
 ### `tasks/deploy.yaml`
 
@@ -254,12 +262,41 @@ The `storage_plugin` value (set in `config/global.yaml`) is automatically unione
 
 Every plugin is validated at two levels:
 
-1. **JSON Schema** (`schemas/plugin.yaml`) -- validates field types, required fields, enum values, operator structure, and registry entries. Runs via `ansible.utils.validate` during `make validate`.
+1. **JSON Schema** (`schemas/plugin.yaml`) -- validates field types, required fields, enum values, operator structure, and registry entries. Runs via `ansible.utils.validate` during `make validate`. If a plugin provides `schemas/defaults.yaml` or `schemas/config.yaml`, those are validated against defaults and user config files as well. Test fixtures under `test-fixtures/schemas/` are also run automatically: valid fixtures must pass, invalid fixtures must fail.
 
 2. **Shell script** (`scripts/verification/validate_plugins.sh`) -- validates directory structure:
    - `plugin.yaml` exists with required fields
+   - `name` field matches the directory name
+   - Plugin cannot have both `defaults.yaml` and a `defaults:` field in `plugin.yaml`
+   - Top-level property names in `schemas/defaults.yaml` and `schemas/config.yaml` must start with the plugin name prefix (e.g. `lvms` → `lvmsConfig`, `lvmsDefaults`)
    - Task files are valid Ansible task lists
-   - No unexpected files outside `plugin.yaml`, `tasks/`, `files/`, `charts/`, and `templates/`
+   - No unexpected files outside `plugin.yaml`, `defaults.yaml`, `schemas/`, `test-fixtures/`, `tasks/`, `files/`, `charts/`, and `templates/`
+
+## Plugin Configuration
+
+Plugins may require user-provided deployment configuration (e.g., which disks LVMS should manage, external cluster credentials). This config goes in `config/plugins/<name>.yaml`, separate from `config/global.yaml`.
+
+- The file is auto-discovered at load time by matching `plugins/<name>/` directories — no explicit include is needed
+- If no `config/plugins/<name>.yaml` exists for a plugin, nothing is loaded (no error)
+- Files in `config/plugins/` that don't match any plugin directory are ignored
+- Plugin authors provide `plugins/<name>/schemas/config.yaml` to validate the config file; validation runs automatically during `make validate` when the schema file exists
+
+Example: the LVMS plugin's defaults cover most setups, but you can restrict which disks it manages:
+
+```bash
+# Create from template
+cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
+```
+
+```yaml
+# config/plugins/lvms.yaml
+lvmsConfig:
+  deviceSelector:
+    optionalPaths:
+      - /dev/disk/by-path/pci-0000:00:1f.2-ata-1
+```
+
+If `config/plugins/lvms.yaml` is absent, LVMS auto-detects all available disks (its default behaviour).
 
 ## Load-Time Validation
 
@@ -334,18 +371,21 @@ requires:
 
 ## Adding a New Plugin
 
-1. Create `plugins/your-plugin/plugin.yaml` with `name` and `type`
-2. Add `operators` list if you need OLM operators
-3. Add `defaults` with your configurable parameters
-4. Add `registries` if disconnected mirroring is needed
-5. Add `requires` to declare variables or files that must exist at load time
-6. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
-7. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
-8. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
-9. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
-10. Add `tasks/quay.yaml` if your plugin provides storage for Quay
-11. Run `make validate-plugins` to verify
-12. Add your plugin name to `enabled_plugins` in `config/global.yaml`
+1. Create `plugins/your-plugin/plugin.yaml` with `name` (must match the directory name) and `type`
+1. Add `operators` list if you need OLM operators
+1. Add `defaults.yaml` with your configurable parameters (or a `defaults:` field in `plugin.yaml` — not both). Prefix all top-level variable names with the plugin name (e.g. `yourPluginDefaults`, not just `defaults`).
+1. If your plugin needs user-provided deployment configuration, document the expected properties and provide `plugins/your-plugin/schemas/config.yaml`. Users put their values in `config/plugins/your-plugin.yaml`.
+1. Optionally add `plugins/your-plugin/schemas/defaults.yaml` to validate your defaults, with test fixtures under `plugins/your-plugin/test-fixtures/schemas/`.
+1. Add `registries` if disconnected mirroring is needed
+1. Add `requires` to declare variables or files that must exist at load time
+1. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
+1. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
+1. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`
+10. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
+1. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
+1. Add `tasks/quay.yaml` if your plugin provides storage for Quay
+1. Run `make validate-plugins` to verify
+1. Add your plugin name to `enabled_plugins` in `config/global.yaml`
 
 No core files need to be modified.
 

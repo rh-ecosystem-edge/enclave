@@ -1,6 +1,8 @@
 ---
-# Fixture: LocalStorage + lvms with discovery_hosts
-# Validates discovery_hosts with one host entry. No SSL vars.
+# Fixture: RadosGWStorage + lvms with all optional global.yaml fields set.
+# Exercises: disconnected, masterMaxPods, diskEncryption, ocMirrorLogLevel,
+# defaultNtpServers, bmcSystemId, all quayBackendRGWConfiguration overrides.
+# Certificate and discovery_hosts fields are tested in their own schema fixtures.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -12,20 +14,30 @@ defaultGateway: 192.168.2.10
 defaultPrefix: 24
 rendezvousIP: 192.168.2.24
 lzBmcIP: 100.64.1.10
+disconnected: false
+masterMaxPods: 250
+diskEncryption: true
+ocMirrorLogLevel: trace
+defaultNtpServers:
+  - 192.168.2.5
+  - 192.168.2.6
 quayUser: admin
 quayPassword: password
-quayBackend: LocalStorage
+quayBackend: RadosGWStorage
+quayBackendRGWConfiguration:
+  access_key: EXAMPLE_ACCESS_KEY
+  secret_key: EXAMPLE_SECRET_KEY
+  bucket_name: quay-storage
+  hostname: radosgw.enclave-test.nodns.in
+  is_secure: false
+  port: 8080
+  minimum_chunk_size_mb: 50
+  maximum_chunk_size_mb: 250
+  server_side_assembly: false
+  storage_path: /custom/registry
 storage_plugin: lvms
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
-discovery_hosts:
-  - name: discovery-host-01
-    macAddress: 0c:c4:7a:62:ff:01
-    ipAddress: 192.168.2.30
-    redfish: 192.168.1.201
-    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: password
 agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
@@ -34,6 +46,7 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
+    bmcSystemId: "1"
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
@@ -41,6 +54,7 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
+    bmcSystemId: "2"
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:62:fe:ee
     ipAddress: 192.168.2.26
@@ -48,4 +62,4 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: password
-
+    bmcSystemId: "3"

@@ -1,0 +1,12 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  discovery_hosts:
+    type: array
+    description: List of discovery hosts for hardware discovery
+    items:
+      "$ref": "#/definitions/hostEntry"

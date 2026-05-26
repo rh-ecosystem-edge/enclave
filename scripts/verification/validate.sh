@@ -136,7 +136,7 @@ validate_tags() {
         "playbooks/06-day2.yaml:clair-disconnected:Configure Clair in disconnected environments"
         "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
         "playbooks/validation/validate-schema.yaml:test-fixtures:Include defaults schema validation tasks"
-        "playbooks/validation/validate-schema.yaml:validate-config:Include variables schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:validate-config:Include config schema validation tasks"
         "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
     )
 

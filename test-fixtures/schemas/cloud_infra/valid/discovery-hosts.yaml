@@ -1,0 +1,10 @@
+---
+# Valid fixture: discovery_hosts with one complete entry.
+discovery_hosts:
+  - name: discovery-host-01
+    macAddress: 0c:c4:7a:62:ff:01
+    ipAddress: 192.168.2.30
+    redfish: 192.168.1.201
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    redfishUser: admin
+    redfishPassword: YOUR_REDFISH_PASSWORD

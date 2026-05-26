@@ -1,0 +1,17 @@
+---
+# Invalid fixture: sslAPICertificateKey is empty.
+# Expected failure: certificates schema requires sslAPICertificateKey to be non-empty
+# when sslAPICertificateFullChain is provided.
+sslAPICertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_API_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslAPICertificateKey: ""
+sslIngressCertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_INGRESS_CERT_CHAIN
+  -----END CERTIFICATE-----
+sslIngressCertificateKey: |
+  -----BEGIN DUMMY KEY-----
+  DUMMY_INGRESS_KEY
+  -----END DUMMY KEY-----

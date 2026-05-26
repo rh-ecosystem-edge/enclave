@@ -1,0 +1,13 @@
+---
+##############################################################################
+# LVMS PLUGIN CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'config/plugins/lvms.yaml' and set values.
+# Only needed to restrict which disks LVMS manages; omit to use all disks.
+##############################################################################
+
+# lvmsConfig:
+#   deviceSelector:
+#     optionalPaths:
+#       - /dev/disk/by-path/YOUR_DISK_PATH_1
+#       - /dev/disk/by-path/YOUR_DISK_PATH_2
+#       - /dev/disk/by-path/YOUR_DISK_PATH_3

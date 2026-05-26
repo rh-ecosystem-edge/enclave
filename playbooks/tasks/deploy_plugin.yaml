@@ -45,19 +45,37 @@
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
   tags: always
 
-# Dynamically set each key in plugin.defaults as an Ansible fact.
-# The dict2items loop is required because set_fact needs explicit key: value
-# pairs — the free-form `set_fact: "{{ dict }}"` renders to a string and
-# does not expand into individual facts.
-# noqa: var-naming[no-jinja] is needed because Jinja2 in the variable name
-# is the only way to set dynamic fact names from a dict.
-- name: Load plugin defaults  # noqa: var-naming[no-jinja]
+- name: Stat plugin defaults.yaml
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/defaults.yaml"
+  register: r_plugin_defaults_yaml
+  tags: always
+
+- name: Fail if both defaults.yaml and defaults field are defined
+  ansible.builtin.fail:
+    msg: "Plugin '{{ plugin.name }}' has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
+  when:
+    - r_plugin_defaults_yaml.stat.exists
+    - plugin.defaults is defined
+  tags: always
+
+- name: Load plugin defaults from defaults.yaml
+  ansible.builtin.include_vars:
+    file: "{{ plugin_dir }}/defaults.yaml"
+  when: r_plugin_defaults_yaml.stat.exists
+  tags: always
+
+# noqa: var-naming[no-jinja] — Jinja2 in the variable name is the only way
+# to set dynamic fact names from a dict.
+- name: Load plugin defaults from plugin.yaml  # noqa: var-naming[no-jinja]
   ansible.builtin.set_fact:
     "{{ item.key }}": "{{ item.value }}"
-  loop: "{{ plugin.defaults | default({}) | dict2items }}"
+  loop: "{{ plugin.defaults | dict2items }}"
   loop_control:
     label: "{{ item.key }}"
-  when: plugin.defaults is defined
+  when:
+    - plugin.defaults is defined
+    - not r_plugin_defaults_yaml.stat.exists
   tags: always
 
 - name: Validate plugin requirements (vars)

@@ -73,6 +73,130 @@
   loop_control:
     label: "{{ item.path | dirname | basename }}"
 
+- name: Find plugin directories
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../plugins"
+    file_type: directory
+    depth: 1
+  register: r_plugin_dirs
+
+- name: Validate plugin defaults against schemas/defaults.yaml (if present)
+  ansible.utils.validate:
+    data: >-
+      {{
+        (lookup('ansible.builtin.file', item.path + '/defaults.yaml') | from_yaml | to_json)
+        if (lookup('ansible.builtin.fileglob', item.path + '/defaults.yaml') | length > 0)
+        else ((lookup('ansible.builtin.file', item.path + '/plugin.yaml') | from_yaml).get('defaults', {}) | to_json)
+      }}
+    criteria: "{{ lookup('ansible.builtin.file', item.path + '/schemas/defaults.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: lookup('ansible.builtin.fileglob', item.path + '/schemas/defaults.yaml') | length > 0
+
+- name: Find plugin defaults valid fixtures
+  ansible.builtin.find:
+    paths: "{{ item.path }}/test-fixtures/schemas/defaults/valid"
+    patterns: "*.yaml"
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: r_plugin_defaults_valid_fixtures
+  when: lookup('ansible.builtin.fileglob', item.path + '/test-fixtures/schemas/defaults/valid/*.yaml') | length > 0
+
+- name: Find plugin defaults invalid fixtures
+  ansible.builtin.find:
+    paths: "{{ item.path }}/test-fixtures/schemas/defaults/invalid"
+    patterns: "*.yaml"
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: r_plugin_defaults_invalid_fixtures
+  when: lookup('ansible.builtin.fileglob', item.path + '/test-fixtures/schemas/defaults/invalid/*.yaml') | length > 0
+
+- name: Find plugin config valid fixtures
+  ansible.builtin.find:
+    paths: "{{ item.path }}/test-fixtures/schemas/config/valid"
+    patterns: "*.yaml"
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: r_plugin_config_valid_fixtures
+  when: lookup('ansible.builtin.fileglob', item.path + '/test-fixtures/schemas/config/valid/*.yaml') | length > 0
+
+- name: Find plugin config invalid fixtures
+  ansible.builtin.find:
+    paths: "{{ item.path }}/test-fixtures/schemas/config/invalid"
+    patterns: "*.yaml"
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: r_plugin_config_invalid_fixtures
+  when: lookup('ansible.builtin.fileglob', item.path + '/test-fixtures/schemas/config/invalid/*.yaml') | length > 0
+
+- name: Validate plugin defaults valid fixtures (must pass)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.1.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', item.0.item.path + '/schemas/defaults.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_plugin_defaults_valid_fixtures.results | selectattr('files', 'defined') | subelements('files') }}"
+  loop_control:
+    label: "{{ item.0.item.path | basename }}/defaults/valid/{{ item.1.path | basename }}"
+  when: lookup('ansible.builtin.fileglob', item.0.item.path + '/schemas/defaults.yaml') | length > 0
+
+- name: Validate plugin defaults invalid fixtures (must fail)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.1.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', item.0.item.path + '/schemas/defaults.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_plugin_defaults_invalid_fixtures.results | selectattr('files', 'defined') | subelements('files') }}"
+  loop_control:
+    label: "{{ item.0.item.path | basename }}/defaults/invalid/{{ item.1.path | basename }}"
+  register: r_defaults_invalid_results
+  ignore_errors: true
+  when: lookup('ansible.builtin.fileglob', item.0.item.path + '/schemas/defaults.yaml') | length > 0
+
+- name: Assert plugin defaults invalid fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid defaults fixture {{ item.item.1.path | basename }} for plugin {{ item.item.0.item.path | basename }} unexpectedly passed schema validation"
+  loop: "{{ r_defaults_invalid_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.0.item.path | basename }}/defaults/invalid/{{ item.item.1.path | basename }}"
+  when: r_defaults_invalid_results.results is defined
+
+- name: Validate plugin config valid fixtures (must pass)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.1.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', item.0.item.path + '/schemas/config.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_plugin_config_valid_fixtures.results | selectattr('files', 'defined') | subelements('files') }}"
+  loop_control:
+    label: "{{ item.0.item.path | basename }}/config/valid/{{ item.1.path | basename }}"
+  when: lookup('ansible.builtin.fileglob', item.0.item.path + '/schemas/config.yaml') | length > 0
+
+- name: Validate plugin config invalid fixtures (must fail)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.1.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', item.0.item.path + '/schemas/config.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_plugin_config_invalid_fixtures.results | selectattr('files', 'defined') | subelements('files') }}"
+  loop_control:
+    label: "{{ item.0.item.path | basename }}/config/invalid/{{ item.1.path | basename }}"
+  register: r_config_invalid_results
+  ignore_errors: true
+  when: lookup('ansible.builtin.fileglob', item.0.item.path + '/schemas/config.yaml') | length > 0
+
+- name: Assert plugin config invalid fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid config fixture {{ item.item.1.path | basename }} for plugin {{ item.item.0.item.path | basename }} unexpectedly passed schema validation"
+  loop: "{{ r_config_invalid_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.0.item.path | basename }}/config/invalid/{{ item.item.1.path | basename }}"
+  when: r_config_invalid_results.results is defined
+
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml
 

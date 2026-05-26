@@ -1,0 +1,9 @@
+---
+# Invalid fixture: sslAPICertificateFullChain present but sslAPICertificateKey omitted.
+# Expected failure: certificates schema requires sslAPICertificateKey,
+# sslIngressCertificateFullChain, and sslIngressCertificateKey when
+# sslAPICertificateFullChain is present and non-empty.
+sslAPICertificateFullChain: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_API_CERT_CHAIN
+  -----END CERTIFICATE-----

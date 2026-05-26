@@ -1,0 +1,9 @@
+---
+# Invalid fixture: ironicHTTPSKey is empty.
+# Expected failure: certificates schema requires ironicHTTPSKey to be non-empty
+# when ironicHTTPSCertificate is provided.
+ironicHTTPSCertificate: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_IRONIC_CERT
+  -----END CERTIFICATE-----
+ironicHTTPSKey: ""

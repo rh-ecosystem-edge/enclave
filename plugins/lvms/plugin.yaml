@@ -17,18 +17,6 @@ requires:
     - path: "tasks/quay.yaml"
       description: "LVMS Quay storage configuration"
 
-defaults:
-  lvmsConfigDefaults:
-    deviceSelector:
-      forceWipeDevicesAndDestroyAllData: true
-  lvmsDefaults:
-    deviceClassName: vg1
-    defaultStorageClass: true
-    thinPoolConfig:
-      name: vg1-pool-1
-      sizePercent: 90
-      overprovisionRatio: 10
-
 registries:
   - location: "registry.redhat.io/lvms4"
     mirror: "lvms4"

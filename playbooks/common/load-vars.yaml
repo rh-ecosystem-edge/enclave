@@ -28,6 +28,26 @@
   loop_control:
     loop_var: config_file
 
+- name: Find plugin directories
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    file_type: directory
+    depth: 1
+  register: r_plugin_dirs
+
+- name: Stat plugin config files
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../config/plugins/{{ item }}.yaml"
+  loop: "{{ r_plugin_dirs.files | map(attribute='path') | map('basename') | list }}"
+  register: r_plugin_config_stats
+
+- name: Load plugin config files
+  ansible.builtin.include_vars:
+    file: "{{ item.stat.path }}"
+  loop: "{{ r_plugin_config_stats.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.stat.path | basename }}"
+
 - name: Ensure storage plugin is in enabled_plugins
   ansible.builtin.set_fact:
     enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"

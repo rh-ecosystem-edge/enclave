@@ -4,8 +4,12 @@
 #
 # Checks per plugin:
 #   1. plugin.yaml exists and is a valid YAML mapping with required fields (name, type)
-#   2. Task files under tasks/ are valid YAML task lists (if present)
-#   3. No unexpected files outside plugin.yaml and tasks/ directory
+#   2. plugin.yaml name field matches the plugin directory name (enforces uniqueness)
+#   3. Plugin cannot have both defaults.yaml and a defaults: field in plugin.yaml
+#   4. Top-level properties in schemas/config.yaml and schemas/defaults.yaml must be
+#      prefixed with the plugin name (e.g. lvms → lvms*, vast-csi → vastCsi*/vast_csi*/vastCSI*)
+#   5. Task files under tasks/ are valid YAML task lists (if present)
+#   6. No unexpected files outside plugin.yaml and tasks/ directory
 #
 # Full field validation (types, enums, operator structure) is handled by JSON Schema
 # in playbooks/tasks/schema_validation.yaml using schemas/plugin.yaml.
@@ -77,9 +81,10 @@ for plugin_dir in "$PLUGINS_DIR"/*/; do
     fi
 
     if ! python3 -c "
-import yaml, sys
+import yaml, sys, os
 
 filepath = sys.argv[1]
+dir_name = sys.argv[2]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
                 'installOperators', 'registries', 'additionalImages', 'blockedImages',
@@ -101,16 +106,69 @@ if missing:
     print(f'  plugin.yaml missing required fields: {missing}', file=sys.stderr)
     sys.exit(1)
 
+if data['name'] != dir_name:
+    print(f'  plugin.yaml name \"{data[\"name\"]}\" must match directory name \"{dir_name}\"', file=sys.stderr)
+    sys.exit(1)
+
 unexpected = [f for f in data if f not in valid_fields]
 if unexpected:
     print(f'  plugin.yaml has unexpected fields: {unexpected}', file=sys.stderr)
     sys.exit(1)
-" "$plugin_yaml" 2>&1; then
+" "$plugin_yaml" "$plugin_name" 2>&1; then
         FAILED=1
         plugin_failed=1
     fi
 
-    # 2. Validate task files under tasks/ are valid task lists
+    # 2. Check defaults.yaml and defaults: field are mutually exclusive
+    if [ -f "${plugin_dir}defaults.yaml" ] && python3 -c "
+import yaml, sys
+with open(sys.argv[1]) as f:
+    data = yaml.safe_load(f)
+sys.exit(0 if 'defaults' in data else 1)
+" "$plugin_yaml" 2>/dev/null; then
+        error "  Has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
+        FAILED=1
+        plugin_failed=1
+    fi
+
+    # 3. Check top-level schema property names are prefixed with the plugin name
+    if [ -d "${plugin_dir}schemas" ]; then
+        for schema_file in "${plugin_dir}schemas/config.yaml" "${plugin_dir}schemas/defaults.yaml"; do
+            [ -f "$schema_file" ] || continue
+            if ! python3 -c "
+import re, yaml, sys
+
+def valid_prefixes(name):
+    segs = re.split(r'[^a-zA-Z0-9]+', name)
+    segs = [s for s in segs if s]
+    if len(segs) == 1:
+        return [segs[0].lower()]
+    first = segs[0].lower()
+    rest = segs[1:]
+    return [
+        '_'.join(s.lower() for s in segs),
+        first + ''.join(s.capitalize() for s in rest),
+        first + ''.join(s.upper() for s in rest),
+    ]
+
+plugin_name = sys.argv[1]
+schema_file = sys.argv[2]
+with open(schema_file) as f:
+    schema = yaml.safe_load(f)
+props = list(schema.get('properties', {}).keys())
+prefixes = valid_prefixes(plugin_name)
+bad = [p for p in props if not any(p.startswith(px) for px in prefixes)]
+if bad:
+    print(f'  {schema_file}: properties {bad} must start with one of {prefixes}', file=sys.stderr)
+    sys.exit(1)
+" "$plugin_name" "$schema_file" 2>&1; then
+                FAILED=1
+                plugin_failed=1
+            fi
+        done
+    fi
+
+    # 4. Validate task files under tasks/ are valid task lists
     if [ -d "${plugin_dir}tasks" ]; then
         for task_file in "${plugin_dir}"tasks/*.yaml; do
             [ -f "$task_file" ] || continue
@@ -122,13 +180,14 @@ if unexpected:
         done
     fi
 
-    # 3. Check for unexpected files/directories (only plugin.yaml and tasks/ allowed)
+    # 5. Check for unexpected files/directories (only plugin.yaml, defaults.yaml, tasks/, schemas/ allowed)
     for entry in "${plugin_dir}"*; do
         entry_name=$(basename "$entry")
-        if [ "$entry_name" != "plugin.yaml" ] && [ "$entry_name" != "tasks" ] && \
-           [ "$entry_name" != "files" ] && [ "$entry_name" != "charts" ] && \
-           [ "$entry_name" != "templates" ]; then
-            error "  Unexpected file or directory: $entry_name (only plugin.yaml, tasks/, files/, charts/ and templates/ are allowed)"
+        if [ "$entry_name" != "plugin.yaml" ] && [ "$entry_name" != "defaults.yaml" ] && \
+           [ "$entry_name" != "tasks" ] && [ "$entry_name" != "files" ] && \
+           [ "$entry_name" != "charts" ] && [ "$entry_name" != "templates" ] && \
+           [ "$entry_name" != "schemas" ] && [ "$entry_name" != "test-fixtures" ]; then
+            error "  Unexpected file or directory: $entry_name (only plugin.yaml, defaults.yaml, tasks/, files/, charts/, templates/, schemas/ and test-fixtures/ are allowed)"
             FAILED=1
             plugin_failed=1
         fi

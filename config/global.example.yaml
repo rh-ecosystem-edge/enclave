@@ -76,13 +76,8 @@ storage_plugin: lvms
 # ============================================================================
 # Storage Configuration (LVMS) (optional)
 # ============================================================================
-# Device selector — restrict which disks LVMS manages (omit to use all disks)
-#lvmsConfig:
-#  deviceSelector:
-#    optionalPaths:
-#      - /dev/disk/by-path/YOUR_DISK_PATH_1
-#      - /dev/disk/by-path/YOUR_DISK_PATH_2
-#      - /dev/disk/by-path/YOUR_DISK_PATH_3
+# LVMS plugin configuration is now in config/plugins/lvms.yaml.
+# See config/plugins/lvms.example.yaml for available options.
 
 # ============================================================================
 # Storage Configuration (ODF)

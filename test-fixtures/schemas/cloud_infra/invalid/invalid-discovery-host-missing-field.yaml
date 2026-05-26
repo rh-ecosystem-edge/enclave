@@ -1,0 +1,10 @@
+---
+# Invalid fixture: discovery_hosts item missing required rootDisk field.
+# Expected failure: cloud_infra schema requires rootDisk for each discovery_hosts item.
+discovery_hosts:
+  - name: discovery-host-01
+    macAddress: 0c:c4:7a:62:ff:01
+    ipAddress: 192.168.2.30
+    redfish: 192.168.1.201
+    redfishUser: admin
+    redfishPassword: YOUR_REDFISH_PASSWORD

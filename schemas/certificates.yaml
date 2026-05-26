@@ -1,0 +1,68 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  ironicHTTPSCertificate:
+    type: string
+    minLength: 1
+    description: PEM-encoded TLS certificate for Ironic vmedia HTTPS server
+  ironicHTTPSKey:
+    type: string
+    description: PEM-encoded private key for Ironic vmedia HTTPS certificate
+  sslAPICertificateFullChain:
+    type: string
+    minLength: 1
+    description: PEM-encoded full certificate chain for API server
+  sslAPICertificateKey:
+    type: string
+    description: PEM-encoded private key for API server certificate
+  sslCACertificate:
+    type: string
+    description: PEM-encoded root CA certificate
+  sslIngressCertificateFullChain:
+    type: string
+    description: PEM-encoded full certificate chain for ingress wildcard certificate
+  sslIngressCertificateKey:
+    type: string
+    description: PEM-encoded private key for ingress wildcard certificate
+
+allOf:
+  - if:
+      properties:
+        sslAPICertificateFullChain:
+          type: string
+          minLength: 1
+      required:
+        - sslAPICertificateFullChain
+    then:
+      required:
+        - sslAPICertificateKey
+        - sslIngressCertificateFullChain
+        - sslIngressCertificateKey
+      properties:
+        sslAPICertificateKey:
+          type: string
+          minLength: 1
+        sslIngressCertificateFullChain:
+          type: string
+          minLength: 1
+        sslIngressCertificateKey:
+          type: string
+          minLength: 1
+  - if:
+      properties:
+        ironicHTTPSCertificate:
+          type: string
+          minLength: 1
+      required:
+        - ironicHTTPSCertificate
+    then:
+      required:
+        - ironicHTTPSKey
+      properties:
+        ironicHTTPSKey:
+          type: string
+          minLength: 1

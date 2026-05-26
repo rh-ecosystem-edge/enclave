@@ -1,0 +1,41 @@
+- name: Load shared schema definitions
+  ansible.builtin.set_fact:
+    schema_definitions: "{{ lookup('ansible.builtin.file', '../../schemas/definitions.yaml') | from_yaml }}"
+
+- name: Include load-vars to resolve user config file paths
+  ansible.builtin.include_tasks:
+    file: ../../common/load-vars.yaml
+
+- name: Validate global.yaml against global schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', vars_file | default('../../config/global.yaml', true)) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/global.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+
+- name: Validate certificates.yaml against certificates schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', certs_vars_file | default('../../config/certificates.yaml', true)) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/certificates.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+
+- name: Validate cloud_infra.yaml against cloud_infra schema
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true)) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/cloud_infra.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+
+- name: Validate plugin config against schemas/config.yaml (if present and config file exists)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../config/plugins/' + item.path | basename + '.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', item.path + '/schemas/config.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+  loop: "{{ r_plugin_dirs.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when:
+    - lookup('ansible.builtin.fileglob', item.path + '/schemas/config.yaml') | length > 0
+    - lookup('ansible.builtin.fileglob', playbook_dir + '/../../config/plugins/' + item.path | basename + '.yaml') | length > 0

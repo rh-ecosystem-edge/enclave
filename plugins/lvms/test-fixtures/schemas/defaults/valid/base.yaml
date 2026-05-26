@@ -1,0 +1,12 @@
+---
+# Fixture: full valid defaults
+lvmsConfigDefaults:
+  deviceSelector:
+    forceWipeDevicesAndDestroyAllData: true
+lvmsDefaults:
+  deviceClassName: vg1
+  defaultStorageClass: true
+  thinPoolConfig:
+    name: vg1-pool-1
+    sizePercent: 90
+    overprovisionRatio: 10

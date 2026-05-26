@@ -19,33 +19,51 @@ Configuration is split across multiple files for better organization and maintai
 | `defaults/mirror_registry.yaml` | Quay hostname and CA path defaults |
 | `defaults/k8s.yaml` | Kubernetes retry settings for k8s module calls |
 | `defaults/quay_operator.yaml` | Quay feature flags and backend storage defaults |
-| `plugins/<name>/plugin.yaml` | Plugin configuration (operators, defaults, registries) |
+| `plugins/<name>/plugin.yaml` | Plugin descriptor (operators, registries, requires). Not a user config file. |
+| `config/plugins/<name>.yaml` | Plugin-specific user configuration. One file per plugin, named after the plugin. Auto-loaded during deployment. See each plugin's `plugins/<name>/schemas/config.yaml` for available settings. |
 
 Copy the example files to get started:
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
 cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+# For plugin-specific config (e.g. restrict which disks LVMS manages):
+cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
 
 All configuration files in the `defaults/` directory are automatically loaded by the phase playbooks at runtime via `playbooks/common/load-vars.yaml`.
 
 ## Table of Contents
 
-1. [Base Configuration](#base-configuration)
-2. [Network Configuration](#network-configuration)
-3. [Hardware Configuration](#hardware-configuration)
-4. [Discovery Hosts Configuration](#discovery-hosts-configuration)
-5. [Registry Configuration](#registry-configuration)
-6. [Storage Configuration](#storage-configuration)
-7. [SSL Certificate Configuration](#ssl-certificate-configuration)
-8. [Operator Configuration](#operator-configuration)
-9. [Content Configuration](#content-configuration)
-10. [Complete Example](#complete-example)
+1. [`config/global.yaml`](#configglobalyaml)
+   - [Base Configuration](#base-configuration)
+   - [Network Configuration](#network-configuration)
+   - [Hardware Configuration](#hardware-configuration)
+   - [Registry Configuration](#registry-configuration)
+   - [Storage Configuration](#storage-configuration)
+   - [Operator Catalog Configuration](#operator-catalog-configuration)
+   - [Datacenter Cache Configuration](#datacenter-cache-configuration)
+2. [`config/certificates.yaml`](#configcertificatesyaml)
+   - [API Server Certificate](#api-server-certificate)
+   - [Ingress Certificate](#ingress-certificate)
+   - [Root CA Certificate](#root-ca-certificate)
+   - [Ironic HTTPS Certificate](#ironic-https-certificate-optional)
+3. [`config/cloud_infra.yaml`](#configcloud_infrayaml)
+   - [Discovery Hosts Configuration](#discovery-hosts-configuration)
+4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
+   - [LVMS Configuration](#lvms-configuration)
+5. [System Defaults (read-only)](#system-defaults-read-only)
+6. [Complete Example](#complete-example)
+7. [Security Best Practices](#security-best-practices)
+8. [Validation](#validation)
 
-## Base Configuration
+## `config/global.yaml`
 
-### `workingDir`
+Main deployment configuration file. Contains cluster identity, network settings, hardware configuration, registry settings, and storage plugin selection.
+
+### Base Configuration
+
+#### `workingDir`
 
 **Description**: Root directory where all deployment files, binaries, and cluster data will be stored.
 
@@ -65,9 +83,7 @@ workingDir: "/home/enclave"
   - Registry data (`{{ workingDir }}/data/`)
   - Pull secrets (`{{ workingDir }}/config/pull-secret.json`)
 
-## Network Configuration
-
-### Cluster Network Settings
+### Network Configuration
 
 #### `baseDomain`
 
@@ -98,9 +114,9 @@ clusterName: mgmt
 
 **Resulting domain**: `mgmt.enclave-test.nodns.in`
 
-### Virtual IPs (VIPs)
+#### Virtual IPs (VIPs)
 
-#### `apiVIP`
+##### `apiVIP`
 
 **Description**: Virtual IP address for the Kubernetes API server. This IP must be:
 - In the same subnet as `machineNetwork`
@@ -119,7 +135,7 @@ apiVIP: 192.168.2.201
 - Must be available before cluster installation
 
 
-#### `ingressVIP`
+##### `ingressVIP`
 
 **Description**: Virtual IP address for the Ingress router. This IP must be:
 - In the same subnet as `machineNetwork`
@@ -137,7 +153,7 @@ ingressVIP: 192.168.2.202
 - Used for `*.apps.{{ clusterName }}.{{ baseDomain }}`
 - Must be available before cluster installation
 
-#### `machineNetwork`
+##### `machineNetwork`
 
 **Description**: Network CIDR for the cluster nodes. All nodes must have IP addresses in this range.
 
@@ -152,8 +168,6 @@ machineNetwork: 192.168.2.0/24
 - Must match your actual network configuration
 - VIPs must be in this range
 - All `agent_hosts` IPs must be in this range
-
-### Network Infrastructure
 
 #### `defaultDNS`
 
@@ -270,9 +284,7 @@ defaultNtpServers:
 - Only needed when cluster nodes cannot reach the default public NTP pool
 - Useful in air-gapped or firewalled environments
 
-## Hardware Configuration
-
-### Agent Hosts Configuration
+### Hardware Configuration
 
 #### `agent_hosts`
 
@@ -326,13 +338,13 @@ agent_hosts:
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
 
-### Advanced Network Configuration
+#### Advanced Network Configuration
 
 For complex network setups (bonding, VLANs, multiple interfaces, etc.), you can use `mapInterfaces` and `networkConfig` instead of the simple `macAddress`/`ipAddress` approach.
 
 When `networkConfig` is defined for a host, the template uses the custom configuration instead of generating the default single-interface setup.
 
-#### `mapInterfaces`
+##### `mapInterfaces`
 
 **Description**: List of interface name to MAC address mappings. This tells the installer which physical interface corresponds to which MAC address.
 
@@ -347,7 +359,7 @@ mapInterfaces:
     macAddress: "0c:c4:7a:62:fe:ed"
 ```
 
-#### `networkConfig`
+##### `networkConfig`
 
 **Description**: Full nmstate network configuration in YAML format. This allows you to define complex network setups including bonds, VLANs, bridges, and multiple interfaces.
 
@@ -517,87 +529,11 @@ ip link show
 curl -k -u user:pass https://<redfish-ip>/redfish/v1/Systems/1/EthernetInterfaces
 ```
 
-## Discovery Hosts Configuration
+### Registry Configuration
 
-> **⚠️ Important: Use Red Hat ACM for Production Host Management**
->
-> **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations.** The discovery hosts configuration in this file is provided as a convenience for initial one-time setup only.
->
-> For ongoing operations such as adding nodes, removing nodes, changing configurations, or scaling the cluster, use Red Hat ACM instead. See the [Managing bare metal hosts documentation](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.12/html/clusters/cluster_mce_overview#managing-bare-metal-hosts-console) for details.
+#### Quay Registry Settings
 
-The discovery hosts configuration is defined in `config/cloud_infra.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
-
-### Discovery Hosts Settings
-
-#### `discovery_hosts`
-
-**Description**: List of nodes to discover and add to the cluster. These nodes will be discovered via the Assisted Installer service.
-
-**Type**: List of dictionaries
-
-**Example**:
-```yaml
-discovery_hosts:
-  - name: node01
-    macAddress: 0c:c4:7a:d3:bc:30
-    ipAddress: 192.168.2.21
-    redfish: 100.64.1.21
-    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
-  - name: node02
-    macAddress: 0c:c4:7a:65:d0:84
-    ipAddress: 192.168.2.22
-    redfish: 100.64.1.22
-    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    # Optional: override default Redfish credentials
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
-```
-
-**Required fields for each host**:
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| `name` | Hostname for the node | `node01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
-| `ipAddress` | Static IP address for the node | `192.168.2.21` |
-| `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
-| `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
-| `redfishUser` | Username for Redfish API authentication | `admin` |
-| `redfishPassword` | Password for Redfish API authentication | `YourSecurePassword` |
-
-**Notes**:
-- MAC addresses must be unique
-- IP addresses must be unique and in the same network as the cluster
-- `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.
-- `rootDisk` should be the primary disk (not a partition)
-- Nodes are automatically skipped if already discovered (based on BMC address)
-- If a node is pending restart after cluster destroy, it will be discovered again
-- The discovery process creates NMStateConfig and BareMetalHost resources to trigger discovery
-
-**Network Configuration**:
-
-The discovery hosts use the same network configuration variables as the main cluster:
-- `defaultDNS`: DNS server for the nodes
-- `defaultGateway`: Default gateway for the nodes
-- `defaultPrefix`: Network prefix length (subnet mask)
-
-These are used to configure the network interface on each discovered node.
-
-**Discovery Process**:
-
-1. Ensures the namespace, infraenv, and pull secret have been created in the management cluster
-2. Checks for already discovered agents to avoid duplicates
-3. Creates NMStateConfig, BareMetalHost, and BMC credential secret for new hosts
-4. Waits for BareMetalHost to report "provisioned" state
-5. Waits for agents to register
-
-## Registry Configuration
-
-### Quay Registry Settings
-
-#### `quayUser`
+##### `quayUser`
 
 **Description**: Administrator username for the Quay registry.
 
@@ -613,7 +549,7 @@ quayUser: quayadmin
 - Used for registry authentication
 - Should be different from system users
 
-#### `quayPassword`
+##### `quayPassword`
 
 **Description**: Administrator password for the Quay registry.
 
@@ -628,7 +564,7 @@ quayPassword: YourSecurePassword
 
 **Security Note**: Consider using Ansible Vault to encrypt this value.
 
-#### `quayHostname`
+##### `quayHostname`
 
 **Description**: Hostname for the Quay registry. Auto-derived from `baseDomain` in `defaults/mirror_registry.yaml` — only set this in `config/global.yaml` if a non-standard hostname is needed.
 
@@ -644,7 +580,7 @@ quayHostname: "mirror.{{ baseDomain }}"
 - Used in pull secrets
 - Should match DNS configuration
 
-#### `quayCAPath`
+##### `quayCAPath`
 
 **Description**: Path to the Quay registry CA certificate file. Auto-derived from `workingDir` in `defaults/mirror_registry.yaml` — only set this in `config/global.yaml` if the CA file is stored at a non-standard path.
 
@@ -660,7 +596,7 @@ quayCAPath: "{{ workingDir }}/data/quay-rootCA/rootCA.pem"
 - Used to trust self-signed certificates
 - Included in `install-config.yaml` as `additionalTrustBundle`
 
-#### `quayFeatureProxyStorage`
+##### `quayFeatureProxyStorage`
 
 **Description**: Enables or disables the Quay proxy storage feature. Auto-set in `defaults/quay_operator.yaml` — only override in `config/global.yaml` when a non-default value is needed.
 
@@ -671,7 +607,7 @@ quayCAPath: "{{ workingDir }}/data/quay-rootCA/rootCA.pem"
 quayFeatureProxyStorage: true
 ```
 
-#### `quayFeatureQuotaManagement`
+##### `quayFeatureQuotaManagement`
 
 **Description**: Enables or disables Quay's quota management feature. Auto-set in `defaults/quay_operator.yaml` — only override in `config/global.yaml` when a non-default value is needed.
 
@@ -682,7 +618,7 @@ quayFeatureProxyStorage: true
 quayFeatureQuotaManagement: true
 ```
 
-#### `quayMaximumLayerSize`
+##### `quayMaximumLayerSize`
 
 **Description**: Maximum layer size for the Quay registry. Auto-set in `defaults/quay_operator.yaml` — only override in `config/global.yaml` when a non-default value is needed.
 
@@ -693,9 +629,9 @@ quayFeatureQuotaManagement: true
 quayMaximumLayerSize: "100G"
 ```
 
-### Quay Backend Storage
+#### Quay Backend Storage
 
-#### `quayBackend`
+##### `quayBackend`
 
 **Description**: Storage backend type for Quay registry.
 
@@ -710,7 +646,7 @@ quayBackend: RadosGWStorage
 - `RadosGWStorage`: Ceph Rados Gateway (S3-compatible)
 - `LocalStorage`: Local filesystem (default, not recommended for production)
 
-#### `quayBackendRGWConfiguration`
+##### `quayBackendRGWConfiguration`
 
 **Description**: Configuration for the RadosGW (Ceph S3-compatible) storage backend. Required when `quayBackend` is `RadosGWStorage`.
 
@@ -752,7 +688,7 @@ quayBackendRGWConfiguration:
 - `minimum_chunk_size_mb` and `maximum_chunk_size_mb` default to `100` and `500` respectively; override in `quayBackendRGWConfiguration` if needed
 - `server_side_assembly` is always enabled as it is included in the defaults alongside `maximum_chunk_size_mb`
 
-#### `quayBackendLocalStorageConfiguration`
+##### `quayBackendLocalStorageConfiguration`
 
 **Description**: Optional overrides for the LocalStorage backend configuration merged with the default `storage_path: /datastorage/registry`. Only relevant when `quayBackend` is `LocalStorage`.
 
@@ -768,9 +704,9 @@ quayBackendLocalStorageConfiguration:
 
 **Note**: If omitted, Quay uses `storage_path: /datastorage/registry` from `defaults/quay_operator.yaml`.
 
-### Pull Secrets
+#### Pull Secrets
 
-#### `pullSecret`
+##### `pullSecret`
 
 **Description**: JSON-formatted pull secret containing authentication for container registries.
 
@@ -806,7 +742,7 @@ pullSecret: |
   - `registry.connect.redhat.com`
 - Internal registry credentials are automatically merged
 
-#### `pullSecretPath`
+##### `pullSecretPath`
 
 **Description**: Path to pull secret JSON file. Defaults to `{{ workingDir }}/config/pull-secret.json`. Override in `config/global.yaml` if your pull secret is stored elsewhere.
 
@@ -819,7 +755,7 @@ pullSecret: |
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 ```
 
-## Storage Configuration
+### Storage Configuration
 
 Storage is configured via the plugin system. The `storage_plugin` variable selects which storage plugin to deploy, and each plugin provides its own operator definitions, defaults, and registry mirrors in `plugins/<name>/plugin.yaml`.
 
@@ -864,30 +800,9 @@ enabled_plugins:
 - Each entry must match a directory name under `plugins/`
 - Available plugins: `lvms`, `odf`, `openshift-ai`, `nvidia-gpu`, `example`
 
-#### LVMS Configuration
-
-#### `lvmsConfig`
-
-**Description**: Optional device selector for the LVMS plugin. When omitted, LVMS auto-detects and uses all available disks on each node (LVMS default behaviour). Set this variable to restrict which physical disks LVMS manages.
-
-**Type**: Dictionary (optional)
-
-**Example**:
-```yaml
-lvmsConfig:
-  deviceSelector:
-    optionalPaths:
-      - /dev/disk/by-path/YOUR_DISK_PATH_1
-```
-
-**Notes**:
-- Use paths from `/dev/disk/by-path/` for stable device identification across reboots
-- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in the LVMS plugin defaults)
-- Only needed when you want to restrict which disks LVMS uses; omit to let LVMS manage all disks automatically
-
 #### ODF Configuration
 
-#### `odfExternalConfig`
+##### `odfExternalConfig`
 
 **Description**: External Ceph cluster configuration required when `storage_plugin: odf`. Contains the JSON output from the `ceph-external-cluster-details-exporter.py` script.
 
@@ -904,7 +819,7 @@ odfExternalConfig:
 - Only required when `storage_plugin` is set to `odf`
 - If `storage_plugin: odf` and this variable is missing, the ODF plugin fails at load-time validation with a clear error message
 
-#### `odfDefaults`
+##### `odfDefaults`
 
 **Description**: ODF plugin defaults. The plugin sets `defaultStorageClass: true` automatically. Override in `config/global.yaml` only if you need to change the default.
 
@@ -924,6 +839,52 @@ odfDefaults:
 
 **Notes**:
 - Controls whether the ODF block pool is set as the default StorageClass on the cluster
+
+### Operator Catalog Configuration
+
+#### `certified_operator_catalog`
+
+**Description**: Address of the _certified-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+certified_operator_catalog: "registry.redhat.io/redhat/certified-operator-index"
+```
+
+#### `certified_operator_catalog_version`
+
+**Description**: Version of the _certified-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+certified_operator_catalog_version: "v4.20"
+```
+
+#### `rh_operator_catalog`
+
+**Description**: Address of the _redhat-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
+```
+
+#### `rh_operator_catalog_version`
+
+**Description**: Version of the _redhat-operator_ index.
+
+**Type**: String
+
+**Example**:
+```yaml
+rh_operator_catalog_version: "v4.20"
+```
 
 ### Datacenter Cache Configuration
 
@@ -964,56 +925,9 @@ dc_cache_password: YourSecurePassword
 
 **Security Note**: Consider using Ansible Vault to encrypt this value.
 
-### Operator Catalog Configuration
+## `config/certificates.yaml`
 
-#### `certified_operator_catalog`
-
-**Description**: Address of the _certified-operator_ index.
-
-**Type**: String
-
-**Example**:
-```yaml
-certified_operator_catalog: "registry.redhat.io/redhat/certified-operator-index"
-```
-
-#### `certified_operator_catalog_version`
-
-**Description**: Version of the _certified-operator_ index.
-
-**Type**: String
-
-**Example**:
-```yaml
-certified_operator_catalog_version: "v4.20"
-```
-
-#### `rh_operator_catalog`
-
-**Description**: Address of the _redhat-operator_ index.
-
-**Type**: String
-
-**Example**:
-```yaml
-rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
-
-```
-
-#### `rh_operator_catalog_version`
-
-**Description**: Version of the _redhat-operator_ index.
-
-**Type**: String
-
-**Example**:
-```yaml
-rh_operator_catalog_version: "v4.20"
-```
-
-## SSL Certificate Configuration
-
-SSL certificates are stored in `config/certificates.yaml`, separated from the main configuration in `config/global.yaml`.
+SSL certificates for the cluster API server, ingress router, and optionally the Ironic vmedia server. All properties are optional individually, but the API cert, ingress cert, and root CA must all be set together if any one of them is set.
 
 ### API Server Certificate
 
@@ -1107,6 +1021,8 @@ sslIngressCertificateFullChain: |
 - Use internal CA
 - Use commercial certificate authority
 
+### Root CA Certificate
+
 #### `sslCACertificate`
 
 **Description**: Root CA certificate.
@@ -1161,14 +1077,128 @@ ironicHTTPSKey: |
   <PEM-encoded private key>
 ```
 
+## `config/cloud_infra.yaml`
 
-## Operator Configuration
+Cloud infrastructure configuration. Contains the list of bare metal nodes to discover and add to the cluster after the initial installation.
+
+### Discovery Hosts Configuration
+
+> **⚠️ Important: Use Red Hat ACM for Production Host Management**
+>
+> **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations.** The discovery hosts configuration in this file is provided as a convenience for initial one-time setup only.
+>
+> For ongoing operations such as adding nodes, removing nodes, changing configurations, or scaling the cluster, use Red Hat ACM instead. See the [Managing bare metal hosts documentation](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.12/html/clusters/cluster_mce_overview#managing-bare-metal-hosts-console) for details.
+
+The discovery hosts configuration is defined in `config/cloud_infra.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
+
+#### `discovery_hosts`
+
+**Description**: List of nodes to discover and add to the cluster. These nodes will be discovered via the Assisted Installer service.
+
+**Type**: List of dictionaries
+
+**Example**:
+```yaml
+discovery_hosts:
+  - name: node01
+    macAddress: 0c:c4:7a:d3:bc:30
+    ipAddress: 192.168.2.21
+    redfish: 100.64.1.21
+    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+    redfishUser: admin
+    redfishPassword: YourSecurePassword
+  - name: node02
+    macAddress: 0c:c4:7a:65:d0:84
+    ipAddress: 192.168.2.22
+    redfish: 100.64.1.22
+    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+    # Optional: override default Redfish credentials
+    redfishUser: admin
+    redfishPassword: YourSecurePassword
+```
+
+**Required fields for each host**:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `name` | Hostname for the node | `node01` |
+| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
+| `ipAddress` | Static IP address for the node | `192.168.2.21` |
+| `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
+| `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
+| `redfishUser` | Username for Redfish API authentication | `admin` |
+| `redfishPassword` | Password for Redfish API authentication | `YourSecurePassword` |
+
+**Notes**:
+- MAC addresses must be unique
+- IP addresses must be unique and in the same network as the cluster
+- `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.
+- `rootDisk` should be the primary disk (not a partition)
+- Nodes are automatically skipped if already discovered (based on BMC address)
+- If a node is pending restart after cluster destroy, it will be discovered again
+- The discovery process creates NMStateConfig and BareMetalHost resources to trigger discovery
+
+**Network Configuration**:
+
+The discovery hosts use the same network configuration variables as the main cluster:
+- `defaultDNS`: DNS server for the nodes
+- `defaultGateway`: Default gateway for the nodes
+- `defaultPrefix`: Network prefix length (subnet mask)
+
+These are used to configure the network interface on each discovered node.
+
+**Discovery Process**:
+
+1. Ensures the namespace, infraenv, and pull secret have been created in the management cluster
+2. Checks for already discovered agents to avoid duplicates
+3. Creates NMStateConfig, BareMetalHost, and BMC credential secret for new hosts
+4. Waits for BareMetalHost to report "provisioned" state
+5. Waits for agents to register
+
+## `config/plugins/<name>.yaml`
+
+Plugin-specific user configuration. Each plugin that requires user input provides a `schemas/config.yaml` to document and validate its settings. See [Plugin Configuration](PLUGIN_ARCHITECTURE.md#plugin-configuration) for the full description of how plugin config files are auto-loaded.
+
+Copy from the plugin's `.example.yaml` template before editing:
+
+```bash
+cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
+```
+
+### LVMS Configuration
+
+#### `lvmsConfig`
+
+**Description**: Optional device selector for the LVMS plugin. When omitted, LVMS auto-detects and uses all available disks on each node (LVMS default behaviour). Set this variable to restrict which physical disks LVMS manages.
+
+**Type**: Dictionary (optional)
+
+**File**: `config/plugins/lvms.yaml` (copy from `config/plugins/lvms.example.yaml`)
+
+**Example**:
+```yaml
+# config/plugins/lvms.yaml
+lvmsConfig:
+  deviceSelector:
+    optionalPaths:
+      - /dev/disk/by-path/YOUR_DISK_PATH_1
+```
+
+**Notes**:
+- Set in `config/plugins/lvms.yaml`, not `config/global.yaml`
+- If `config/plugins/lvms.yaml` is absent, LVMS auto-detects and uses all available disks
+- Use paths from `/dev/disk/by-path/` for stable device identification across reboots
+- `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in `plugins/lvms/defaults.yaml`)
+
+## System Defaults (read-only)
+
+These files are part of the repository and provide system-level defaults. They do not require user modification — override individual variables in `config/global.yaml` only when you need a non-default value.
+
+### Operator Configuration
 
 Operator configuration is stored in:
 - `defaults/operators.yaml` - General cluster operators
 - `plugins/<name>/plugin.yaml` - Storage and other plugin operators (selected via `storage_plugin` / `enabled_plugins`)
-
-### Operator List Structure
 
 #### `operators`
 
@@ -1189,7 +1219,7 @@ operators:
     source: catalog-source-name
 ```
 
-### Operator Fields
+**Operator fields**:
 
 | Field | Description | Required |
 |-------|-------------|----------|
@@ -1204,11 +1234,6 @@ operators:
 | `csvMirror` | Set to `true` to mirror packages listed in `csvNames` | No |
 
 Core operators are defined in `defaults/operators.yaml`. Plugin operators are defined in each plugin's `plugin.yaml` under the `operators` field. See `schemas/plugin.yaml` for the full operator schema.
-
-## Content Configuration
-
-Content configuration is stored in the `defaults/` directory:
-- `defaults/control_binaries.yaml` - Binary downloads (oc, helm, mirror-registry, oc-mirror)
 
 ### Control Binaries
 
@@ -1259,7 +1284,7 @@ RHCOS ISOs are automatically extracted from OpenShift release images during the 
 
 ## Complete Example
 
-Configuration is split across two files. Here are complete examples for each.
+Configuration is split across multiple files. Here are complete examples for each.
 
 ### `config/global.yaml`
 
@@ -1310,6 +1335,9 @@ storage_plugin: lvms
 #   - openshift-ai
 #   - nvidia-gpu
 
+# Plugin-specific configuration goes in config/plugins/<name>.yaml, not here.
+# Example: to restrict which disks LVMS manages, create config/plugins/lvms.yaml.
+
 # Agent Hosts (control plane nodes)
 agent_hosts:
   - name: mgmt-ctl01
@@ -1343,7 +1371,6 @@ quayBackendRGWConfiguration:
   secret_key: YOUR_S3_SECRET_KEY_HERE
   bucket_name: quay-bucket-name
   hostname: ocs-storagecluster-cephobjectstore-openshift-storage.apps.store.enclave-test.nodns.in
-
 ```
 
 ### `config/certificates.yaml`
@@ -1383,6 +1410,32 @@ sslCACertificate: |
   ...
   -----END CERTIFICATE-----
 ```
+
+### `config/cloud_infra.yaml`
+
+```yaml
+discovery_hosts:
+  - name: node01
+    macAddress: 0c:c4:7a:d3:bc:30
+    ipAddress: 192.168.2.21
+    redfish: 100.64.1.21
+    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+    redfishUser: admin
+    redfishPassword: YourSecurePassword
+```
+
+### `config/plugins/lvms.yaml` (optional)
+
+Only needed when you want to restrict which disks LVMS manages. Copy from `config/plugins/lvms.example.yaml`.
+
+```yaml
+lvmsConfig:
+  deviceSelector:
+    optionalPaths:
+      - /dev/disk/by-path/pci-0000:00:1f.2-ata-1
+```
+
+If this file is absent, LVMS auto-detects and uses all available disks.
 
 ## Security Best Practices
 
@@ -1428,4 +1481,3 @@ Before running the deployment, validate your configuration:
    test -d $workingDir || mkdir -p $workingDir
    test -f pull-secret.json || echo "Pull secret missing"
    ```
-

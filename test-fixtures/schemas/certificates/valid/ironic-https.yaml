@@ -1,0 +1,7 @@
+---
+# Valid fixture: ironicHTTPSCertificate and ironicHTTPSKey both present and non-empty.
+ironicHTTPSCertificate: |
+  -----BEGIN CERTIFICATE-----
+  DUMMY_IRONIC_CERT
+  -----END CERTIFICATE-----
+ironicHTTPSKey: DUMMY_PRIVATE_KEY_DO_NOT_USE
