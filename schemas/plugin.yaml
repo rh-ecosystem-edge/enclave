@@ -277,12 +277,18 @@ properties:
 required:
   - name
   - type
-# if plugin type is foundation - catalog must be redhat
+# if catalog is not redhat - type must not be foundation
 if:
   properties:
-    type:
-      const: foundation
+    catalog:
+      not:
+        const: redhat
+  required:
+    - catalog
 then:
   properties:
-    catalog:
-      const: redhat
+    type:
+      not:
+        const: foundation
+  required:
+    - type
