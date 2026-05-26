@@ -75,7 +75,6 @@ info "Step 2: Installing core system tools"
 sudo dnf install -y \
     git \
     curl \
-    wget \
     vim \
     make \
     tar \
@@ -107,7 +106,7 @@ else
     warning "shellcheck not available in repos, installing via binary..."
     # Install shellcheck from GitHub releases
     SHELLCHECK_VERSION="v0.10.0"
-    wget -qO- "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJv
+    curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" | tar -xJv
     sudo cp "shellcheck-${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/
     rm -rf "shellcheck-${SHELLCHECK_VERSION}"
     success "shellcheck installed from binary"
