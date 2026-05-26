@@ -118,6 +118,9 @@ properties:
     "$ref": "#/definitions/nonEmptyString"
   rendezvousIP:
     "$ref": "#/definitions/ipv4Address"
+  sshPubKey:
+    type: string
+    description: SSH public key content (e.g. ssh-rsa AAAA...). If set, overrides sshPubPath.
   schemaValidationNoLog:
     type: boolean
     default: false
@@ -229,8 +232,11 @@ required:
   - quayPassword
   - quayUser
   - rendezvousIP
-  - sshPubPath
   - workingDir
+
+anyOf:
+  - required: [sshPubKey]
+  - required: [sshPubPath]
 
 allOf:
   - if:
