@@ -28,10 +28,10 @@ spec:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_rh_operator_catalog }}-openshift-ai
+              name: {{ catalog_mirror }}
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:{{ rh_operator_catalog_version }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ catalog_mirror }}:{{ catalog_version }}
               sourceType: grpc
         - complianceType: musthave
           metadataComplianceType: musthave
@@ -39,7 +39,7 @@ spec:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_rh_operator_catalog }}-openshift-ai
+              name: {{ catalog_mirror }}
               namespace: openshift-marketplace
             status:
               connectionState:
@@ -62,7 +62,7 @@ spec:
               name: redhat-operators
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}-openshift-ai:{{ rh_operator_catalog_version }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ catalog_mirror }}:{{ catalog_version }}
               sourceType: grpc
         - complianceType: musthave
           metadataComplianceType: musthave

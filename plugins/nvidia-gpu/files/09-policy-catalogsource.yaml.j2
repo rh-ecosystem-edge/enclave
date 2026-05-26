@@ -28,10 +28,10 @@ spec:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
+              name: {{ catalog_mirror }}
               namespace: openshift-marketplace
             spec:
-              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_certified_rh_operator_catalog }}-nvidia-gpu:{{ certified_operator_catalog_version }}
+              image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ catalog_mirror }}:{{ catalog_version }}
               sourceType: grpc
         - complianceType: musthave
           metadataComplianceType: musthave
@@ -39,7 +39,7 @@ spec:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_certified_rh_operator_catalog }}-nvidia-gpu
+              name: {{ catalog_mirror }}
               namespace: openshift-marketplace
             status:
               connectionState:
