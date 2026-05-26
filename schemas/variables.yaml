@@ -144,6 +144,7 @@ properties:
     description: PEM-encoded private key for Ironic vmedia HTTPS certificate
   schemaValidationNoLog:
     type: boolean
+    default: false
     description: >-
       Whether to suppress schema validation task output (no_log). Default: false.
       Set to true in CI to avoid leaking secrets in logs.
