@@ -1,0 +1,5 @@
+---
+name: certified
+image: registry.redhat.io/redhat/certified-operator-index
+version: v4.20
+mirror: mirror-certified-operators

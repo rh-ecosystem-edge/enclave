@@ -1,0 +1,27 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    description: Operator Catalog name
+  default:
+    type: boolean
+    description: Whether the catalog is the default catalog
+  image:
+    type: string
+    description: Operator Catalog address
+  version:
+    type: string
+    description: Operator Catalog version
+  mirror:
+    type: string
+    description: Mirror Operator Catalog name
+required:
+- name
+- image
+- version
+- mirror
