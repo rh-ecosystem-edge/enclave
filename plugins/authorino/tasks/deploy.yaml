@@ -4,7 +4,7 @@
     api_version: apps/v1
     kind: Deployment
     name: authorino-operator
-    namespace: openshift-operators
+    namespace: authorino-operator
   register: __r_authorino_deploy
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -17,4 +17,4 @@
 
 - name: Debug Authorino operator status
   ansible.builtin.debug:
-    msg: "Authorino operator deployment is ready in openshift-operators namespace"
+    msg: "Authorino operator deployment is ready in authorino-operator namespace"
