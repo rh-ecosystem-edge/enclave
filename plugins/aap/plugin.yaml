@@ -14,7 +14,7 @@ operators:
 
 requires:
   vars:
-    - name: aap_license_file
+    - name: aapLicenseFile
       description: "Path to AAP license manifest.zip file on the Landing Zone"
 
 defaults:

@@ -17,7 +17,7 @@
 
 - name: Read AAP license file
   ansible.builtin.slurp:
-    src: "{{ aap_license_file }}"
+    src: "{{ aapLicenseFile }}"
   register: __r_aap_license_content
   no_log: true
 

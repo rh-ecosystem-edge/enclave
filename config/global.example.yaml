@@ -129,7 +129,7 @@ storage_plugin: lvms
 # Path to the AAP license manifest.zip file on the Landing Zone.
 # See https://github.com/osac-project/osac-installer#obtaining-an-aap-license-subscription-manifest
 #
-# aap_license_file: "/path/to/aap-license.zip"
+# aapLicenseFile: "/path/to/aap-license.zip"
 
 # ============================================================================
 # OpenShift Deployment Configuration (optional)

@@ -207,7 +207,7 @@ properties:
     required:
       - subnet_cidr
       - ip_ranges
-  aap_license_file:
+  aapLicenseFile:
     "$ref": "#/definitions/nonEmptyString"
     description: Path to AAP license manifest.zip file on the Landing Zone
   workingDir:
