@@ -5,7 +5,6 @@ config/*.json
 !config/*.validation.yaml
 debug.yaml
 .claude
-CLAUDE.md
 AGENTS.md
 tmp/
 bin/
