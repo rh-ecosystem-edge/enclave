@@ -1,3 +1,2 @@
-## Git commits
+@AGENTS.md
 
-- All commits must end with: `Assisted-by: Claude Code <noreply@anthropic.com>`
