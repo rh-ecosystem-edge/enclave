@@ -28,7 +28,7 @@ AWSCLI_TMP=$(mktemp -d)
 trap 'rm -rf "${AWSCLI_TMP}"' EXIT
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "${AWSCLI_TMP}/awscliv2.zip"
 unzip -q "${AWSCLI_TMP}/awscliv2.zip" -d "${AWSCLI_TMP}"
-"${AWSCLI_TMP}/aws/install"
+"${AWSCLI_TMP}/aws/install" --update
 
 systemctl enable --now httpd
 mkdir -p /var/www/html
