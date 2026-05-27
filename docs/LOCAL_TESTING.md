@@ -27,6 +27,9 @@ make ci-flow-connected
 
 # Or disconnected mode (full validation)
 make ci-flow-disconnected
+
+# Or just prepare the environment (no cluster deployment)
+make -f Makefile.ci e2e-test-env
 ```
 
 The flow automatically:
@@ -125,6 +128,42 @@ export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 make ci-flow-connected
+```
+
+### Environment Only (For External Projects)
+
+Prepare infrastructure, Landing Zone, and Enclave Lab without deploying a cluster. Use this when another project (e.g. an installation wizard) drives cluster deployment:
+
+```bash
+export DEV_SCRIPTS_PATH=/path/to/dev-scripts
+export BASE_WORKING_DIR=/opt/clusters
+
+# Prepare environment (connected mode)
+make -f Makefile.ci e2e-test-env
+
+# Or disconnected mode
+ENCLAVE_DEPLOYMENT_MODE=disconnected make -f Makefile.ci e2e-test-env
+```
+
+**What happens:**
+1. Preflight checks validate environment
+2. Generates unique cluster name
+3. Creates cluster-specific working directory
+4. Creates VMs, networks, and BMC emulation
+5. Provisions Landing Zone VM with CentOS Stream 10
+6. Installs Enclave Lab on Landing Zone
+7. Prints summary with Landing Zone IP and config paths
+
+**Duration:** ~30-40 minutes (connected), ~50-60 minutes (disconnected)
+
+After completion, the Landing Zone has:
+- Enclave Lab at `/home/cloud-user/enclave/`
+- Configuration at `/home/cloud-user/enclave/config/global.yaml`
+- All dependencies installed and BMC emulator running
+
+To later deploy the cluster manually:
+```bash
+make -f Makefile.ci e2e-deploy-cluster
 ```
 
 ## Individual Components
