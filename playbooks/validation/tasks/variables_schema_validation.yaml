@@ -17,7 +17,7 @@
          | combine(lookup('ansible.builtin.file', item) | from_yaml) }}
   loop: "{{ user_config_files }}"
   when: user_config_files is defined
-  no_log: true
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
 
 - name: Validate merged config against variables schema
   ansible.utils.validate:
@@ -25,4 +25,4 @@
     criteria: "{{ variables_schema }}"
     engine: ansible.utils.jsonschema
   when: merged_config is defined
-  no_log: true
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
