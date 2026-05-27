@@ -1,0 +1,6 @@
+---
+name: osac
+description: Open Sovereign AI Cloud experience
+plugins:
+  - name: vast-csi
+  - name: authorino
