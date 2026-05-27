@@ -1,0 +1,20 @@
+---
+- name: Wait for Authorino operator deployment (Available=True)
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: authorino-operator
+    namespace: authorino-operator
+  register: __r_authorino_deploy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until:
+    - __r_authorino_deploy.resources | length > 0
+    - __r_authorino_deploy.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Available')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+
+- name: Debug Authorino operator status
+  ansible.builtin.debug:
+    msg: "Authorino operator deployment is ready in authorino-operator namespace"
