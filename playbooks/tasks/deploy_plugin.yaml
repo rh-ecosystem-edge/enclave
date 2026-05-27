@@ -45,6 +45,43 @@
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
   tags: always
 
+# Auto-fallback: when deploying a foundation plugin standalone (plugin_mirror=true)
+# or in the core pipeline, check whether its CatalogSource already exists.
+# If not, enable mirroring so the plugin's operators are mirrored on the spot.
+- name: Check if plugin CatalogSource already exists
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ plugin.operators[0].source }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_check
+  when:
+    - not (plugin_mirror | default(false) | bool)
+    - disconnected | default(true) | bool
+    - plugin.operators is defined and plugin.operators | length > 0
+  tags: always
+
+- name: Auto-enable plugin mirroring (CatalogSource not found)
+  ansible.builtin.set_fact:
+    plugin_mirror: true
+    _plugin_mirror_auto: true
+  when:
+    - not (plugin_mirror | default(false) | bool)
+    - disconnected | default(true) | bool
+    - r_catalog_check is defined
+    - r_catalog_check.resources | default([]) | length == 0
+  tags: always
+
+- name: Report auto-enabled plugin mirroring
+  ansible.builtin.debug:
+    msg: >-
+      Plugin '{{ plugin.name }}': CatalogSource '{{ plugin.operators[0].source }}'
+      not found. Auto-enabling plugin mirroring.
+  when: _plugin_mirror_auto | default(false)
+  tags: always
+
 # Dynamically set each key in plugin.defaults as an Ansible fact.
 # The dict2items loop is required because set_fact needs explicit key: value
 # pairs — the free-form `set_fact: "{{ dict }}"` renders to a string and
