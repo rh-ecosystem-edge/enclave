@@ -77,7 +77,7 @@ jobs:
       - name: Build tarball
         run: |
           tar --exclude='.git' --exclude='.gitignore' --exclude='.github' --exclude='scripts' \
-            --exclude='Makefile.ci' \
+            --exclude='Makefile.ci' --exclude='.coderabbit.yaml' \
             -czvf /tmp/enclave.tar.gz .
           mv /tmp/enclave.tar.gz .
           ls -lh enclave.tar.gz
