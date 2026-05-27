@@ -1,0 +1,36 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+definitions:
+  plugin:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Plugin name to include in the experience
+    required:
+      - name
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    description: >-
+      Unique identifier for the experience (e.g., ai-as-a-service, clusters-as-a-service).
+  description:
+    type: string
+    description: >-
+      Human-readable description of what this experience provides.
+  plugins:
+    type: array
+    items:
+      "$ref": "#/definitions/plugin"
+    description: >-
+      List of plugins that together form this customer experience.
+    minItems: 1
+required:
+  - name
+  - plugins

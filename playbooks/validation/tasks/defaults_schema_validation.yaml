@@ -81,3 +81,20 @@
     that:
       - openshift_versions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | list | length == 1
     fail_msg: "a single default version is required in the openshift_versions list!"
+
+- name: Find all experience.yaml files
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../experiences"
+    patterns: "experience.yaml"
+    recurse: true
+    depth: 2
+  register: r_experience_files
+
+- name: "Validate experiences schema"
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/expeience.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_experience_files.files }}"
+  loop_control:
+    label: "{{ item.path | dirname | basename }}"
