@@ -31,7 +31,8 @@ include Makefile
         verify clean verify-cluster verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
-        collect-artifacts-full ci-flow-connected ci-flow-disconnected
+        collect-artifacts-full e2e-test-env e2e-deploy-cluster \
+        ci-flow-connected ci-flow-disconnected
 
 # Override default help to show both LZ and CI targets
 help:
@@ -90,6 +91,8 @@ help:
 	@echo "  make -f Makefile.ci collect-artifacts-full           - Collect all artifacts"
 	@echo ""
 	@echo "Local CI Testing targets:"
+	@echo "  make -f Makefile.ci e2e-test-env                     - Prepare test environment (infra + LZ + enclave, no cluster deploy)"
+	@echo "  make -f Makefile.ci e2e-deploy-cluster               - Deploy and verify OpenShift cluster"
 	@echo "  make -f Makefile.ci ci-flow-connected                - Run full CI flow locally (connected mode)"
 	@echo "  make -f Makefile.ci ci-flow-disconnected             - Run full CI flow locally (disconnected mode)"
 	@echo ""
@@ -482,10 +485,11 @@ collect-artifacts-deployment:
 collect-artifacts-full:
 	@./scripts/verification/collect_ci_artifacts.sh full artifacts
 
-# Full CI flow for local testing
-ci-flow-connected:
+# Prepare test environment: infrastructure + Landing Zone + Enclave Lab installed
+# Use this as a standalone target when an external project (e.g. wizard) drives cluster deployment
+e2e-test-env:
 	@echo "=========================================="
-	@echo "Running full CI flow (connected mode)"
+	@echo "Preparing e2e test environment"
 	@echo "=========================================="
 	@echo ""
 	@$(MAKE) -f Makefile.ci preflight-checks
@@ -494,8 +498,39 @@ ci-flow-connected:
 	@$(MAKE) -f Makefile.ci provision-landing-zone
 	@$(MAKE) -f Makefile.ci install-enclave
 	@$(MAKE) -f Makefile.ci setup-ceph
+	@echo ""
+	@echo "=========================================="
+	@echo "Test environment ready!"
+	@echo "=========================================="
+	@echo ""
+	@echo "Landing Zone IP: $$(./scripts/utils/get_landing_zone_ip.sh 2>/dev/null || echo '<run verify-landing-zone>')"
+	@echo "Cluster name:    $(ENCLAVE_CLUSTER_NAME)"
+	@echo "Working dir:     $(WORKING_DIR)"
+	@echo "Config files on LZ:"
+	@echo "  /home/cloud-user/enclave/config/global.yaml"
+	@echo "  /home/cloud-user/enclave/config/certificates.yaml"
+	@echo "  /home/cloud-user/enclave/config/cloud_infra.yaml"
+
+# Deploy and verify OpenShift cluster (assumes e2e-test-env has been run)
+e2e-deploy-cluster:
+	@echo "=========================================="
+	@echo "Deploying and verifying OpenShift cluster"
+	@echo "=========================================="
+	@echo ""
 	@$(MAKE) -f Makefile.ci deploy-cluster
 	@$(MAKE) -f Makefile.ci verify-cluster
+	@echo ""
+	@echo "=========================================="
+	@echo "Cluster deployment complete!"
+	@echo "=========================================="
+
+ci-flow-connected:
+	@echo "=========================================="
+	@echo "Running full CI flow (connected mode)"
+	@echo "=========================================="
+	@echo ""
+	@$(MAKE) -f Makefile.ci e2e-test-env
+	@$(MAKE) -f Makefile.ci e2e-deploy-cluster
 	@echo ""
 	@echo "=========================================="
 	@echo "CI flow complete!"
