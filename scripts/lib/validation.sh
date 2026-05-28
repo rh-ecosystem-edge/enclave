@@ -17,6 +17,7 @@
 #   require_command COMMAND [ERROR_MSG]       - Require command to be available in PATH
 #   require_file FILE_PATH [ERROR_MSG]        - Require file to exist
 #   require_dir DIR_PATH [ERROR_MSG]          - Require directory to exist
+#   require_path_within CHILD PARENT          - Require child path resolves inside parent
 #   validate_ip IP_ADDRESS                    - Validate IP address format
 
 # Require an environment variable to be set
@@ -97,6 +98,22 @@ require_dir() {
         echo "ERROR: $error_msg" >&2
         exit 1
     fi
+}
+
+# Require child_path to resolve strictly inside parent_path
+# Uses realpath -m so the child need not exist yet (covers setup before clone)
+# Args: $1 = child path   $2 = parent path
+# Exits with error if child is outside parent
+# Example: require_path_within "${DEV_SCRIPTS_PATH}" "${WORKING_DIR}"
+require_path_within() {
+    local child_path="$1" parent_path="$2"
+    local child_real parent_real
+    parent_real="$(realpath "${parent_path}")"
+    child_real="$(realpath -m "${child_path}")"
+    case "${child_real}" in
+        "${parent_real}/"*) ;;
+        *) echo "ERROR: ${child_path} is outside ${parent_path}" >&2; exit 1 ;;
+    esac
 }
 
 # Validate IP address format

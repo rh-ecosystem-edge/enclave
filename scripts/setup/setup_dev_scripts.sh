@@ -24,14 +24,10 @@ require_env_var "DEV_SCRIPTS_REPO"
 require_env_var "DEV_SCRIPTS_BRANCH"
 require_env_var "WORKING_DIR"
 
-real_working_dir="$(realpath "${WORKING_DIR}")"
-real_dev_scripts_path="$(realpath -m "${DEV_SCRIPTS_PATH}")"
-case "${real_dev_scripts_path}" in
-    "${real_working_dir}/"*) ;;
-    *) error "DEV_SCRIPTS_PATH (${DEV_SCRIPTS_PATH}) is outside WORKING_DIR (${WORKING_DIR})"; exit 1 ;;
-esac
+require_path_within "${DEV_SCRIPTS_PATH}" "${WORKING_DIR}"
 
-if [ ! -d "${DEV_SCRIPTS_PATH}" ]; then
+if [ ! -d "${DEV_SCRIPTS_PATH}/.git" ]; then
+    rm -rf "${DEV_SCRIPTS_PATH}"
     info "Cloning dev-scripts (${DEV_SCRIPTS_BRANCH}) into ${DEV_SCRIPTS_PATH}..."
     if [ "${DEV_SCRIPTS_BRANCH}" = "master" ]; then
         git clone --depth=1 "${DEV_SCRIPTS_REPO}" "${DEV_SCRIPTS_PATH}"
@@ -54,5 +50,6 @@ if [ ! -f "${pull_secret_file}" ] || [ -n "${PULL_SECRET:-}" ]; then
     info "Writing pull secret to ${pull_secret_file}..."
     umask 077
     printf '%s' "${PULL_SECRET}" > "${pull_secret_file}"
+    chmod 600 "${pull_secret_file}"
     success "Pull secret written"
 fi

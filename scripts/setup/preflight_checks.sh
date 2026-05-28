@@ -19,7 +19,7 @@
 #   WORKING_DIR - Cluster working directory (required)
 #   PULL_SECRET - OpenShift pull secret (required if --check-pull-secret)
 
-set +e  # Don't exit on first error, collect all failures
+set +e  # collect all failures rather than exiting on first error
 
 # Detect Enclave repository root
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -28,11 +28,19 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 # Source shared utilities
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
+# Normalize a boolean string to lowercase true/false; reject any other value
+normalize_bool() {
+    case "${1,,}" in
+        true|false) printf '%s' "${1,,}" ;;
+        *) echo "ERROR: invalid boolean value '${1}' (expected true or false)" >&2; exit 1 ;;
+    esac
+}
+
 # Defaults — env vars take precedence over hardcoded defaults; CLI flags override both
 TITLE="${PREFLIGHT_TITLE:-Pre-flight Checks}"
-CHECK_PULL_SECRET="${PREFLIGHT_CHECK_PULL_SECRET:-false}"
-CHECK_SYSTEM_RESOURCES="${PREFLIGHT_CHECK_SYSTEM_RESOURCES:-false}"
-CHECK_LIBVIRT="${PREFLIGHT_CHECK_LIBVIRT:-false}"
+CHECK_PULL_SECRET="$(normalize_bool "${PREFLIGHT_CHECK_PULL_SECRET:-false}")"
+CHECK_SYSTEM_RESOURCES="$(normalize_bool "${PREFLIGHT_CHECK_SYSTEM_RESOURCES:-false}")"
+CHECK_LIBVIRT="$(normalize_bool "${PREFLIGHT_CHECK_LIBVIRT:-false}")"
 DEPLOYMENT_MODE="${PREFLIGHT_DEPLOYMENT_MODE:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -117,7 +125,7 @@ if [ "$CHECK_SYSTEM_RESOURCES" = true ]; then
     output "${GREEN}✅ Total RAM: ${TOTAL_RAM}GB${NC}"
 
     # Check disk space on WORKING_DIR if set, otherwise BASE_WORKING_DIR
-    CHECK_DIR="${WORKING_DIR:-${BASE_WORKING_DIR}}"
+    CHECK_DIR="${WORKING_DIR:-${BASE_WORKING_DIR:-}}"
     if [ -n "$CHECK_DIR" ]; then
         AVAILABLE_DISK_GB=$(df -B 1G --output=avail "$CHECK_DIR" 2>/dev/null | tail -n 1 | xargs)
         REQUIRED_DISK_GB=80

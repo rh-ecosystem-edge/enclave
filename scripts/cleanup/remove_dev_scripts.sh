@@ -24,13 +24,7 @@ if [ ! -d "${DEV_SCRIPTS_PATH}" ]; then
     exit 0
 fi
 
-real_working_dir="$(realpath "${WORKING_DIR}")"
-real_dev_scripts_path="$(realpath "${DEV_SCRIPTS_PATH}")"
-
-case "${real_dev_scripts_path}" in
-    "${real_working_dir}/"*) ;;
-    *) error "DEV_SCRIPTS_PATH (${DEV_SCRIPTS_PATH}) is outside WORKING_DIR (${WORKING_DIR}), aborting removal"; exit 1 ;;
-esac
+require_path_within "${DEV_SCRIPTS_PATH}" "${WORKING_DIR}"
 
 info "Removing dev-scripts clone: ${DEV_SCRIPTS_PATH}"
 rm -rf "${DEV_SCRIPTS_PATH}"
