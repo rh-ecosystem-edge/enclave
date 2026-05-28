@@ -513,6 +513,10 @@ e2e-test-env:
 
 # Deploy and verify OpenShift cluster (assumes e2e-test-env has been run)
 e2e-deploy-cluster:
+	@if [ ! -f "$(ENVIRONMENT_JSON)" ]; then \
+		echo "Error: Environment not prepared. Run 'make -f Makefile.ci e2e-test-env' first."; \
+		exit 1; \
+	fi
 	@echo "=========================================="
 	@echo "Deploying and verifying OpenShift cluster"
 	@echo "=========================================="

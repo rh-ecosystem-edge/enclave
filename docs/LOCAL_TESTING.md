@@ -162,6 +162,7 @@ After completion, the Landing Zone has:
 - All dependencies installed and BMC emulator running
 
 To later deploy the cluster manually:
+
 ```bash
 make -f Makefile.ci e2e-deploy-cluster
 ```
