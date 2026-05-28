@@ -95,6 +95,7 @@ An SSH public key is required for accessing cluster nodes. You must provide **on
 **Type**: String
 
 **Example**:
+
 ```yaml
 sshPubKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... user@host"
 ```
@@ -111,6 +112,7 @@ sshPubKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... user@host"
 **Type**: String (file path)
 
 **Example**:
+
 ```yaml
 sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
 ```

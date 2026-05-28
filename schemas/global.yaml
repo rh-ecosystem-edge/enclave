@@ -119,8 +119,7 @@ properties:
   rendezvousIP:
     "$ref": "#/definitions/ipv4Address"
   sshPubKey:
-    type: string
-    description: SSH public key content (e.g. ssh-rsa AAAA...). If set, overrides sshPubPath.
+    "$ref": "#/definitions/nonEmptyString"
   schemaValidationNoLog:
     type: boolean
     default: false
