@@ -51,6 +51,7 @@ definitions:
     - name
     - version
     - channel
+    - namespace
 
 additionalProperties: false
 properties:

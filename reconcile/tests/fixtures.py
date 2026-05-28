@@ -1,8 +1,12 @@
 import json
+from collections.abc import Callable
 from pathlib import Path
+from subprocess import CompletedProcess
 from typing import Any
 
 import anymarkup
+
+OcResultFactory = Callable[..., CompletedProcess[str]]
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

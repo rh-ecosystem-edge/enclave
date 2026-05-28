@@ -1,11 +1,16 @@
 import json
 import logging
 import math
-import re
-import subprocess
-import sys
 import time
 from typing import Any
+
+from reconcile.utils import (
+    log_subprocess_output,
+    parse_jsonpath_value,
+    run_oc_command,
+    semver_key,
+    wait_for_resource_status,
+)
 
 VERSION_COMPONENTS = 3
 
@@ -68,162 +73,6 @@ class ClusterOperatorsNotReadyError(ClusterUpgradeError):
         super().__init__(
             f"Cluster operators are not ready for upgrade. Issues found:\n{joined}"
         )
-
-
-def parse_jsonpath_value(raw: str) -> str:
-    """Strip surrounding whitespace and quotes from a JSONPath output value."""
-    return raw.strip().strip("'\"")
-
-
-def semver_key(v_string: str) -> tuple[tuple[int, ...], tuple[int, str, int]]:
-    """Return a sort key for semantic version strings so release versions rank above pre-releases.
-
-    A version without a suffix (e.g. '4.20.0') sorts higher than one with a suffix
-    (e.g. '4.20.0-rc1'), matching the convention that release > pre-release.
-    Suffixes are split into a label and a number (e.g. 'rc10' -> ('rc', 10)) so that
-    numeric ordering is used instead of lexicographic ('rc9' < 'rc10').
-    """
-    # Separate the numeric part from the tag (e.g., '1.2.0-rc1' -> ['1.2.0', 'rc1'])
-    parts = v_string.split("-", 1)
-    main_version = tuple(map(int, parts[0].split(".")))
-
-    if len(parts) == 1:
-        # No suffix: (sys.maxsize, "", 0) beats any (0, "rcN", n) in element-wise tuple comparison
-        return (main_version, (sys.maxsize, "", 0))
-    # Split suffix into label + number so 'rc9' < 'rc10' (not 'rc9' > 'rc10' lexicographically)
-    m = re.match(r"^([a-zA-Z]*)(\d*)$", parts[1])
-    label = m.group(1) if m else parts[1]
-    num = int(m.group(2)) if m and m.group(2) else 0
-    return (main_version, (0, label, num))
-
-
-def log_subprocess_output(
-    header: str, output: str, level: int = logging.WARNING
-) -> None:
-    """Log multiline subprocess output with proper formatting.
-
-    Args:
-        header: Description of the command (e.g., "oc get clusterversion failed")
-        output: The stdout or stderr string to log
-        level: Logging level (default: WARNING)
-    """
-    if not output or not output.strip():
-        return
-
-    lines = [line for line in output.splitlines() if line.strip()]
-    if not lines:
-        return
-
-    # Log header with first line
-    logger.log(level, "%s: %s", header, lines[0])
-
-    # Log remaining lines with indentation
-    for line in lines[1:]:
-        logger.log(level, "  %s", line)
-
-
-def run_oc_command(args: list[str]) -> subprocess.CompletedProcess[str]:
-    """Run an oc command with timeout and standard options.
-
-    Args:
-        args: Command arguments (should start with "oc")
-
-    Returns:
-        CompletedProcess object with stdout/stderr
-
-    Raises:
-        TimeoutError: If command exceeds 60-second timeout
-    """
-    try:
-        return subprocess.run(
-            args,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        cmd_str = " ".join(args)
-        raise TimeoutError(f"Command timed out after 60 seconds: {cmd_str}") from exc
-
-
-def wait_for_resource_status(
-    kind: str,
-    name: str,
-    status_field: str,
-    desired_state: str,
-    *,
-    timeout_minutes: int = 180,
-    sleep_interval: int = 60,
-) -> None:
-    """Poll a resource's status field until it reaches the desired state or timeout elapse."""
-    logger.debug(
-        "Waiting for resource %s/%s to reach status.%s=%s (timeout: %d minutes, interval: %d seconds)",
-        kind,
-        name,
-        status_field,
-        desired_state,
-        timeout_minutes,
-        sleep_interval,
-    )
-
-    timeout = time.time() + (timeout_minutes * 60)  # Convert minutes to seconds
-
-    while True:
-        try:
-            result = run_oc_command([
-                "oc",
-                "get",
-                kind,
-                name,
-                "-o",
-                f"jsonpath={{.status.{status_field}}}",
-            ])
-        except TimeoutError as e:
-            logger.warning(
-                "oc get %s/%s timed out after 60 seconds, retrying",
-                kind,
-                name,
-            )
-            # Check if we've exceeded global timeout before retrying. This is to avoid
-            # oc timeout errors potentially consuming the whole timeout.
-            if time.time() > timeout:
-                raise TimeoutError(
-                    f"{kind}/{name} polling exceeded global timeout of {timeout_minutes} minutes"
-                ) from e
-            continue
-
-        if result.returncode != 0:
-            header = f"oc get {kind}/{name} failed (exit {result.returncode})"
-            log_subprocess_output(header, result.stderr or "", logging.WARNING)
-
-        current_state = parse_jsonpath_value(result.stdout or "")
-        if current_state == desired_state:
-            logger.info(
-                "%s/%s has reached status.%s=%s.",
-                kind,
-                name,
-                status_field,
-                desired_state,
-            )
-            return
-
-        current_time = time.time()
-        if current_time > timeout:
-            raise TimeoutError(
-                f"{kind}/{name} did not reach status.{status_field}={desired_state} within {timeout_minutes} minutes"
-                f" (last observed: {current_state!r})"
-            )
-
-        minutes_to_limit = round((timeout - current_time) / 60)
-        logger.debug(
-            "Current status '%s' != '%s'. We still have %d minutes to reach desired status",
-            current_state,
-            desired_state,
-            minutes_to_limit,
-        )
-
-        time.sleep(sleep_interval)
 
 
 def get_current_version() -> str:
