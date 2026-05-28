@@ -170,7 +170,6 @@ jobs:
       cancel-in-progress: false
 
     env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
@@ -257,7 +256,7 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
-        run: ./scripts/deployment/generate_ironic_cert.sh
+        run: make -f Makefile.ci generate-ironic-cert
 
       - name: Setup Ceph on Landing Zone
         if: env.STORAGE_PLUGIN == 'odf'
@@ -575,7 +574,6 @@ jobs:
       cancel-in-progress: false
 
     env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: disconnected
@@ -661,7 +659,7 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
-        run: ./scripts/deployment/generate_ironic_cert.sh
+        run: make -f Makefile.ci generate-ironic-cert
 
       - name: Setup Ceph on Landing Zone
         if: env.STORAGE_PLUGIN == 'odf'

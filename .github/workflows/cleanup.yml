@@ -29,7 +29,6 @@ jobs:
     timeout-minutes: 30
 
     env:
-      DEV_SCRIPTS_PATH: ${{ vars.DEV_SCRIPTS_PATH }}
       WORKING_DIR: ${{ vars.WORKING_DIR }}
       CLEANUP_LEVEL: ${{ inputs.cleanup_level || 'standard' }}
 
@@ -65,13 +64,12 @@ jobs:
           echo "## Running Standard Cleanup" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Clean up Enclave test infrastructure using make clean
-          if [ -d "$DEV_SCRIPTS_PATH" ]; then
-            echo "Running: make clean" >> $GITHUB_STEP_SUMMARY
-            make -f Makefile.ci clean || true
+          # Clean up Enclave test infrastructure using make clean (best-effort)
+          echo "Running: make clean" >> $GITHUB_STEP_SUMMARY
+          if make -f Makefile.ci clean; then
             echo "✅ Standard cleanup complete" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ DEV_SCRIPTS_PATH not found: $DEV_SCRIPTS_PATH" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ Standard cleanup encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Deep cleanup

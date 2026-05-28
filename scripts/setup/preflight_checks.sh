@@ -28,12 +28,12 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 # Source shared utilities
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
-# Parse command-line arguments
-TITLE="Pre-flight Checks"
-CHECK_PULL_SECRET=false
-CHECK_SYSTEM_RESOURCES=false
-CHECK_LIBVIRT=false
-DEPLOYMENT_MODE=""
+# Defaults — env vars take precedence over hardcoded defaults; CLI flags override both
+TITLE="${PREFLIGHT_TITLE:-Pre-flight Checks}"
+CHECK_PULL_SECRET="${PREFLIGHT_CHECK_PULL_SECRET:-false}"
+CHECK_SYSTEM_RESOURCES="${PREFLIGHT_CHECK_SYSTEM_RESOURCES:-false}"
+CHECK_LIBVIRT="${PREFLIGHT_CHECK_LIBVIRT:-false}"
+DEPLOYMENT_MODE="${PREFLIGHT_DEPLOYMENT_MODE:-}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in

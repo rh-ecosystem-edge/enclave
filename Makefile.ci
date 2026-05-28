@@ -4,8 +4,14 @@
 # Adds CI-only infrastructure, validation, and image build targets
 
 # CI Configuration (set before include so these defaults take precedence)
-DEV_SCRIPTS_PATH ?=
+DEV_SCRIPTS_REPO   ?= https://github.com/openshift-metal3/dev-scripts
+DEV_SCRIPTS_BRANCH ?= master
 WORKING_DIR ?= /opt/dev-scripts
+
+# Path to dev-scripts checkout; defaults to WORKING_DIR/dev-scripts-CLUSTER_NAME.
+# export makes the value visible to all recipe shells and recursive make invocations.
+DEV_SCRIPTS_PATH ?= $(WORKING_DIR)/dev-scripts-$(ENCLAVE_CLUSTER_NAME)
+export DEV_SCRIPTS_PATH
 
 # Cluster name for parallel execution isolation (can be overridden)
 ENCLAVE_CLUSTER_NAME ?= enclave-test
@@ -31,7 +37,8 @@ include Makefile
         verify clean verify-cluster verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
-        collect-artifacts-full ci-flow-connected ci-flow-disconnected
+        collect-artifacts-full ci-flow-connected ci-flow-disconnected \
+	generate-ironic-cert setup-dev-scripts clean-infra clean-dev-scripts \
 
 # Override default help to show both LZ and CI targets
 help:
@@ -81,6 +88,9 @@ help:
 	@echo "  make -f Makefile.ci verify-cleanup                   - Verify infrastructure cleanup"
 	@echo ""
 	@echo "CI Helper targets:"
+	@echo "  make -f Makefile.ci setup-dev-scripts                - Clone dev-scripts and write pull secret"
+	@echo "  make -f Makefile.ci clean-infra                      - Tear down infrastructure (keep dev-scripts clone)"
+	@echo "  make -f Makefile.ci clean-dev-scripts                - Tear down infrastructure and remove dev-scripts clone"
 	@echo "  make -f Makefile.ci generate-cluster-name            - Generate unique cluster name"
 	@echo "  make -f Makefile.ci setup-working-dir                - Setup cluster-specific working directory"
 	@echo "  make -f Makefile.ci collect-step-logs                - Collect logs from dev-scripts and cluster"
@@ -108,13 +118,15 @@ help:
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
 	@echo ""
-	@echo "Required configuration for CI targets:"
-	@echo "  DEV_SCRIPTS_PATH  - Path to dev-scripts installation (must be set)"
-	@echo ""
 	@echo "Optional configuration:"
-	@echo "  WORKING_DIR       - Working directory (default: /opt/dev-scripts)"
+	@echo "  DEV_SCRIPTS_REPO   - dev-scripts repo to clone (default: https://github.com/openshift-metal3/dev-scripts)"
+	@echo "  DEV_SCRIPTS_BRANCH - branch, tag, or SHA to check out (default: master; master = shallow clone)"
+	@echo "  DEV_SCRIPTS_PATH   - where to clone dev-scripts (default: WORKING_DIR/dev-scripts-CLUSTER_NAME)"
+	@echo "  WORKING_DIR        - Working directory (default: /opt/dev-scripts)"
 	@echo ""
 	@echo "Current values:"
+	@echo "  DEV_SCRIPTS_REPO=$(DEV_SCRIPTS_REPO)"
+	@echo "  DEV_SCRIPTS_BRANCH=$(DEV_SCRIPTS_BRANCH)"
 	@echo "  DEV_SCRIPTS_PATH=$(DEV_SCRIPTS_PATH)"
 	@echo "  WORKING_DIR=$(WORKING_DIR)"
 	@echo "  BASE_WORKING_DIR=$(BASE_WORKING_DIR)"
@@ -126,7 +138,6 @@ help:
 	@echo ""
 	@echo "Example workflow (full deployment):"
 	@echo "  make -f Makefile.ci validate                # Validate code quality"
-	@echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
 	@echo "  export BASE_WORKING_DIR=/opt/clusters"
 	@echo "  export CI_TOKEN=your-token"
 	@echo ""
@@ -139,91 +150,91 @@ help:
 	@echo "  make -f Makefile.ci ci-flow-connected          # Runs all steps above automatically"
 	@echo ""
 	@echo "Requirements for CI targets:"
-	@echo "  - dev-scripts with infra_only target support"
+	@echo "  - git (to clone dev-scripts)"
 	@echo "  - libvirt installed and running"
 	@echo "  - Sufficient resources (64GB+ RAM recommended)"
 	@echo "  - CI_TOKEN environment variable set"
 
 # --- Override deploy targets to use SSH-based scripts ---
 
-deploy-cluster:
+deploy-cluster: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Deploying OpenShift Cluster with Enclave Lab"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_cluster.sh
 
-deploy-cluster-setup:
+deploy-cluster-setup: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Setup environment on Landing Zone"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh setup
 
-deploy-cluster-validate:
+deploy-cluster-validate: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Validate configuration"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh validate
 
-deploy-cluster-prepare:
+deploy-cluster-prepare: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 1: Prepare - Download dependency content"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh download-content
 
-deploy-cluster-mirror:
+deploy-cluster-mirror: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 2: Mirror - Build local cache"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh build-cache
 
-deploy-cluster-acquire-hardware:
+deploy-cluster-acquire-hardware: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 3a: Acquire and validate hardware"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh acquire-hardware
 
-deploy-cluster-install:
+deploy-cluster-install: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 3b: Deploy OpenShift cluster"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh deploy
 
-deploy-cluster-post-install:
+deploy-cluster-post-install: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 4: Post-Install - Cluster configuration"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh post-install
 
-deploy-cluster-operators:
+deploy-cluster-operators: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 5: Operators - Install and configure operators"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh operators
 
-deploy-cluster-day2:
+deploy-cluster-day2: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 6: Day-2 - Advanced features and policies"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh day2
 
-deploy-cluster-discovery:
+deploy-cluster-discovery: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Phase 7: Configure Discovery - Hardware discovery"
 	@echo "=========================================="
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh discovery
 
-deploy-plugin:
+deploy-plugin: setup-dev-scripts
 	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
 
 # --- Validation targets (CI only) ---
@@ -328,10 +339,28 @@ test-ci-image:
 build-push-ci-image: build-ci-image push-ci-image
 	@echo "CI image built and pushed successfully!"
 
+# --- dev-scripts lifecycle targets ---
+
+# Clone dev-scripts and write pull secret (idempotent — skips clone if already present)
+setup-dev-scripts: export DEV_SCRIPTS_REPO   := $(DEV_SCRIPTS_REPO)
+setup-dev-scripts: export DEV_SCRIPTS_BRANCH := $(DEV_SCRIPTS_BRANCH)
+setup-dev-scripts: export WORKING_DIR        := $(WORKING_DIR)
+setup-dev-scripts:
+	@./scripts/setup/setup_dev_scripts.sh
+
+# Tear down test infrastructure (VMs, networks, BMC) — keeps the dev-scripts clone
+clean-infra:
+	@./scripts/cleanup/cleanup.sh
+
+# Remove the dev-scripts clone (always after infrastructure teardown)
+clean-dev-scripts: export WORKING_DIR := $(WORKING_DIR)
+clean-dev-scripts: clean-infra
+	@./scripts/cleanup/remove_dev_scripts.sh
+
 # --- CI Infrastructure targets ---
 
 # Create test infrastructure
-environment:
+environment: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Creating Enclave test environment"
 	@echo "=========================================="
@@ -344,11 +373,9 @@ environment:
 	@echo ""
 	@echo "Step 3: Creating infrastructure (VMs, networks, BMC)..."
 	@echo "  (Using lock to prevent conflicts with parallel runners)"
-	@if [ -z "$(DEV_SCRIPTS_PATH)" ]; then \
-		echo "Error: DEV_SCRIPTS_PATH is not set. Set it to the path of your dev-scripts installation."; \
-		exit 1; \
-	fi
-	@./scripts/utils/with_libvirt_lock.sh sh -c "cd $(DEV_SCRIPTS_PATH) && CONFIG=$(CONFIG_NAME) make infra_only && $(CURDIR)/scripts/infrastructure/configure_gpu_passthrough.sh"
+	@./scripts/utils/with_libvirt_lock.sh sh -c \
+	    "cd \"$(DEV_SCRIPTS_PATH)\" && CONFIG=$(CONFIG_NAME) make infra_only && \
+	     \"$(CURDIR)/scripts/infrastructure/configure_gpu_passthrough.sh\""
 	@echo ""
 	@echo "Step 4: Verifying networks were created..."
 	@./scripts/infrastructure/verify_networks.sh
@@ -374,7 +401,7 @@ environment:
 	@echo "=========================================="
 
 # Provision Landing Zone VM with CentOS Stream 10
-provision-landing-zone:
+provision-landing-zone: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Provisioning Landing Zone VM"
 	@echo "=========================================="
@@ -389,7 +416,7 @@ provision-landing-zone:
 	@echo "=========================================="
 
 # Verify Landing Zone VM
-verify-landing-zone:
+verify-landing-zone: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Verifying Landing Zone VM"
 	@echo "=========================================="
@@ -397,7 +424,7 @@ verify-landing-zone:
 	@./scripts/verification/verify_landing_zone.sh
 
 # Install Enclave Lab on Landing Zone VM
-install-enclave:
+install-enclave: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Installing Enclave Lab on Landing Zone"
 	@echo "=========================================="
@@ -412,7 +439,7 @@ install-enclave:
 	@echo "=========================================="
 
 # Verify Enclave Lab installation
-verify-enclave-installation:
+verify-enclave-installation: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Verifying Enclave Lab Installation"
 	@echo "=========================================="
@@ -420,7 +447,7 @@ verify-enclave-installation:
 	@./scripts/verification/verify_enclave_installation.sh
 
 # Setup Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
-setup-ceph:
+setup-ceph: setup-dev-scripts
 	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \
 		echo "=========================================="; \
 		echo "Setting up Ceph on Landing Zone for ODF"; \
@@ -432,7 +459,7 @@ setup-ceph:
 	fi
 
 # Verify Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
-verify-ceph:
+verify-ceph: setup-dev-scripts
 	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \
 		echo "=========================================="; \
 		echo "Verifying Ceph on Landing Zone"; \
@@ -444,13 +471,12 @@ verify-ceph:
 	fi
 
 # Verify infrastructure
-verify:
+verify: setup-dev-scripts
 	@echo "Verifying infrastructure..."
 	@./scripts/verification/verify_infrastructure.sh
 
-# Clean up infrastructure
-clean:
-	@./scripts/cleanup/cleanup.sh
+# Clean up infrastructure and remove dev-scripts clone
+clean: clean-infra clean-dev-scripts
 
 # Verification targets
 verify-cluster:
@@ -466,7 +492,7 @@ generate-cluster-name:
 setup-working-dir:
 	@./scripts/setup/setup_working_dir.sh
 
-collect-step-logs:
+collect-step-logs: setup-dev-scripts
 	@./scripts/verification/collect_step_logs.sh step-logs
 
 preflight-checks:
@@ -504,3 +530,6 @@ ci-flow-connected:
 ci-flow-disconnected:
 	@echo "Running full CI flow (disconnected mode)"
 	@ENCLAVE_DEPLOYMENT_MODE=disconnected $(MAKE) -f Makefile.ci ci-flow-connected
+
+generate-ironic-cert: setup-dev-scripts
+	@./scripts/deployment/generate_ironic_cert.sh

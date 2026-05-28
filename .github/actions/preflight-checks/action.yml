@@ -28,25 +28,11 @@ runs:
   steps:
     - name: Run preflight checks
       shell: bash
+      env:
+        PREFLIGHT_TITLE: ${{ inputs.title }}
+        PREFLIGHT_CHECK_PULL_SECRET: ${{ inputs.check-pull-secret }}
+        PREFLIGHT_CHECK_SYSTEM_RESOURCES: ${{ inputs.check-system-resources }}
+        PREFLIGHT_CHECK_LIBVIRT: ${{ inputs.check-libvirt }}
+        PREFLIGHT_DEPLOYMENT_MODE: ${{ inputs.deployment-mode }}
       run: |
-        # Build arguments for the script based on inputs (using array for safety)
-        ARGS=(--title "${{ inputs.title }}")
-
-        if [ "${{ inputs.check-pull-secret }}" = "true" ]; then
-          ARGS+=(--check-pull-secret)
-        fi
-
-        if [ "${{ inputs.check-system-resources }}" = "true" ]; then
-          ARGS+=(--check-system-resources)
-        fi
-
-        if [ "${{ inputs.check-libvirt }}" = "true" ]; then
-          ARGS+=(--check-libvirt)
-        fi
-
-        if [ -n "${{ inputs.deployment-mode }}" ]; then
-          ARGS+=(--deployment-mode "${{ inputs.deployment-mode }}")
-        fi
-
-        # Call the preflight checks script
-        ./scripts/setup/preflight_checks.sh "${ARGS[@]}"
+        make -f Makefile.ci preflight-checks
