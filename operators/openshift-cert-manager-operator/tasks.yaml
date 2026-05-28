@@ -104,4 +104,3 @@
           cert-manager-webhook replicas did not become available.
           Expected: {{ cert_manager_webhook_replicas }}
           Available: {{ r_cert_manager_webhook.resources[0].status.availableReplicas | default('undefined') }}
-
