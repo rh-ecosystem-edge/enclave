@@ -1,0 +1,16 @@
+---
+name: trust-manager
+type: addon
+order: 100
+
+helm:
+  - release: trust-manager
+    repo: https://charts.jetstack.io
+    chart: trust-manager
+    version: v0.20.0
+    namespace: cert-manager
+    createNamespace: false
+
+defaults:
+  ca_issuer_duration: 87600h   # 10 years
+  ca_issuer_renew_before: 8760h  # 1 year
