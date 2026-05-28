@@ -270,7 +270,7 @@ if [[ ",${ENABLED_PLUGINS:-}," == *",aap,"* ]]; then
     AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-${DEV_SCRIPTS_PATH}/aap-license.zip}"
     if [ -f "$AAP_LICENSE_SOURCE" ]; then
         info "Step 6b: Copying AAP license file..."
-        AAP_LICENSE_LZ_PATH="${LZ_ROOT_DIR}/config/aap-license.zip"
+        AAP_LICENSE_LZ_PATH="${LZ_ENCLAVE_DIR}/config/aap-license.zip"
         scp $SSH_OPTS "$AAP_LICENSE_SOURCE" "${LZ_SSH}:${AAP_LICENSE_LZ_PATH}"
         success "AAP license copied to ${AAP_LICENSE_LZ_PATH}"
     else
