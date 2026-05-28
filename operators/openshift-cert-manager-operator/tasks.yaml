@@ -1,52 +1,107 @@
 ---
-- name: Patch CertManager to set resources
-  kubernetes.core.k8s:
-    state: patched
-    definition:
-      apiVersion: operator.openshift.io/v1alpha1
-      kind: CertManager
-      metadata:
-        name: cluster
-      spec:
-        cainjectorConfig:
-          overrideReplicas: 2
-          overrideResources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
-            requests:
-              cpu: 200m
-              memory: 256Mi
-        controllerConfig:
-          overrideReplicas: 2
-          overrideResources:
-            limits:
-              cpu: 200m
-              memory: 128Mi
-            requests:
-              cpu: 200m
-              memory: 128Mi
-        webhookConfig:
-          overrideReplicas: 3
-          overrideResources:
-            limits:
-              cpu: 20m
-              memory: 32Mi
-            requests:
-              cpu: 20m
-              memory: 32Mi
+- name: Configure and validate cert-manager
+  vars:
+    cert_manager_cainjector_replicas: 2
+    cert_manager_controller_replicas: 2
+    cert_manager_webhook_replicas: 3
+  block:
+    - name: Patch CertManager configuration
+      kubernetes.core.k8s:
+        state: patched
+        merge_type:
+          - merge
+        definition:
+          apiVersion: operator.openshift.io/v1alpha1
+          kind: CertManager
+          metadata:
+            name: cluster
+          spec:
+            cainjectorConfig:
+              overrideReplicas: "{{ cert_manager_cainjector_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+            controllerConfig:
+              overrideReplicas: "{{ cert_manager_controller_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+                requests:
+                  cpu: 200m
+                  memory: 128Mi
+            webhookConfig:
+              overrideReplicas: "{{ cert_manager_webhook_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 20m
+                  memory: 32Mi
+                requests:
+                  cpu: 20m
+                  memory: 32Mi
 
-- name: Wait for cert-manager webhook to be available
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: cert-manager-webhook
-    namespace: cert-manager
-  register: r_cert_manager_webhook
-  retries: 60
-  delay: 10
-  until:
-    - r_cert_manager_webhook.resources is defined
-    - r_cert_manager_webhook.resources | length > 0
-    - r_cert_manager_webhook.resources[0].status.availableReplicas is defined
-    - r_cert_manager_webhook.resources[0].status.availableReplicas >= 3
+    - name: Read back CertManager CR
+      kubernetes.core.k8s_info:
+        api_version: operator.openshift.io/v1alpha1
+        kind: CertManager
+        name: cluster
+      register: r_certmanager_cr
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until:
+        - r_certmanager_cr.resources is defined
+        - r_certmanager_cr.resources | length > 0
+
+    - name: Verify CertManager webhook replica override was accepted
+      ansible.builtin.assert:
+        that:
+          - r_certmanager_cr.resources[0].spec.webhookConfig is defined
+          - r_certmanager_cr.resources[0].spec.webhookConfig.overrideReplicas is defined
+          - r_certmanager_cr.resources[0].spec.webhookConfig.overrideReplicas | int == cert_manager_webhook_replicas | int
+        fail_msg: >-
+          CertManager operator did not accept
+          webhookConfig.overrideReplicas={{ cert_manager_webhook_replicas }}.
+          This may indicate:
+          - unsupported cert-manager operator version
+          - CRD schema mismatch
+          - unknown field pruning by the Kubernetes API server
+
+    - name: Wait for CertManager webhook deployment replica count to reconcile
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: cert-manager-webhook
+        namespace: cert-manager
+      register: r_cert_manager_webhook
+      retries: 60
+      delay: 10
+      until:
+        - r_cert_manager_webhook.resources is defined
+        - r_cert_manager_webhook.resources | length > 0
+        - r_cert_manager_webhook.resources[0].spec.replicas | int == cert_manager_webhook_replicas | int
+        - r_cert_manager_webhook.resources[0].status.availableReplicas is defined
+        - r_cert_manager_webhook.resources[0].status.availableReplicas | int >= cert_manager_webhook_replicas | int
+      failed_when: false
+
+    - name: Assert CertManager webhook deployment reconciled
+      ansible.builtin.assert:
+        that:
+          - r_cert_manager_webhook.resources[0].spec.replicas | int == cert_manager_webhook_replicas | int
+        fail_msg: >-
+          cert-manager-webhook deployment replicas did not reconcile.
+          Expected: {{ cert_manager_webhook_replicas }}
+          Actual: {{ r_cert_manager_webhook.resources[0].spec.replicas | default('undefined') }}
+
+    - name: Assert CertManager webhook replicas are available
+      ansible.builtin.assert:
+        that:
+          - r_cert_manager_webhook.resources[0].status.availableReplicas | default(0) | int >= cert_manager_webhook_replicas | int
+        fail_msg: >-
+          cert-manager-webhook replicas did not become available.
+          Expected: {{ cert_manager_webhook_replicas }}
+          Available: {{ r_cert_manager_webhook.resources[0].status.availableReplicas | default('undefined') }}
+
