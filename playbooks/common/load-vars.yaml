@@ -38,5 +38,5 @@
 
 - name: Override OpenShift versions on fresh install
   ansible.builtin.set_fact:
-    openshift_versions: "{{ [{'version': mgmt_openshift_version}] }}"
+    openshift_versions: "{{ [{'version': mgmt_openshift_version, 'default': true}] }}"
   when: fresh | default(true) | bool
