@@ -90,17 +90,21 @@
     - name: Assert CertManager webhook deployment reconciled
       ansible.builtin.assert:
         that:
+          - r_cert_manager_webhook.resources is defined
+          - r_cert_manager_webhook.resources | length > 0
           - r_cert_manager_webhook.resources[0].spec.replicas | int == cert_manager_webhook_replicas | int
         fail_msg: >-
           cert-manager-webhook deployment replicas did not reconcile.
           Expected: {{ cert_manager_webhook_replicas }}
-          Actual: {{ r_cert_manager_webhook.resources[0].spec.replicas | default('undefined') }}
+          Actual: {{ (r_cert_manager_webhook.resources | default([{}]))[0].spec.replicas | default('undefined') }}
 
     - name: Assert CertManager webhook replicas are available
       ansible.builtin.assert:
         that:
+          - r_cert_manager_webhook.resources is defined
+          - r_cert_manager_webhook.resources | length > 0
           - r_cert_manager_webhook.resources[0].status.availableReplicas | default(0) | int >= cert_manager_webhook_replicas | int
         fail_msg: >-
           cert-manager-webhook replicas did not become available.
           Expected: {{ cert_manager_webhook_replicas }}
-          Available: {{ r_cert_manager_webhook.resources[0].status.availableReplicas | default('undefined') }}
+          Available: {{ (r_cert_manager_webhook.resources | default([{}]))[0].status.availableReplicas | default('undefined') }}
