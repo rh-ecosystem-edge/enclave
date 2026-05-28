@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: osac-config
+  namespace: "{{ osacDefaults.osacNamespace }}"
+type: Opaque
+stringData:
+  OSAC_AAP_URL: "{{ osac_aap_url }}"
+  OSAC_AAP_TOKEN: "{{ osac_aap_token }}"

@@ -1,0 +1,32 @@
+---
+# Pre-deployment validation for OSAC plugin.
+# Runs before mirroring/operators — checks cluster prerequisites.
+
+- name: Verify at least one StorageClass exists
+  kubernetes.core.k8s_info:
+    api_version: storage.k8s.io/v1
+    kind: StorageClass
+  register: r_storageclasses
+
+- name: Assert StorageClass is available
+  ansible.builtin.assert:
+    that: r_storageclasses.resources | length > 0
+    fail_msg: >-
+      No StorageClass found on the cluster. OSAC requires storage for AAP
+      (PostgreSQL PVCs). Install a storage plugin (e.g. lvms, odf) first.
+
+- name: Log available StorageClasses
+  ansible.builtin.debug:
+    msg: "Available StorageClasses: {{ r_storageclasses.resources | map(attribute='metadata.name') | list | join(', ') }}"
+
+- name: Verify AAP license file exists
+  ansible.builtin.stat:
+    path: "{{ aap_license_file }}"
+  register: r_aap_license
+
+- name: Assert AAP license file is present
+  ansible.builtin.assert:
+    that: r_aap_license.stat.exists
+    fail_msg: >-
+      AAP license file not found at '{{ aap_license_file }}'.
+      Set aap_license_file to the path of the AAP license zip on the Landing Zone.

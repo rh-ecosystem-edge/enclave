@@ -1,0 +1,76 @@
+---
+# Post-deployment validation for OSAC plugin.
+# Verifies that AAP and OSAC components are running.
+
+- name: Check AAP controller deployments
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component=automationcontroller"
+  register: r_aap_deployments
+
+- name: Assert AAP controller is running
+  ansible.builtin.assert:
+    that:
+      - r_aap_deployments.resources | length > 0
+      - r_aap_deployments.resources | map(attribute='status.readyReplicas') | select('defined') | list | length > 0
+    fail_msg: "AAP controller deployment not found or not ready in {{ osacDefaults.aapNamespace }}"
+
+- name: Check AAP EDA controller deployments
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component=eda"
+  register: r_eda_deployments
+
+- name: Assert AAP EDA controller is running
+  ansible.builtin.assert:
+    that:
+      - r_eda_deployments.resources | length > 0
+    fail_msg: "AAP EDA controller deployment not found in {{ osacDefaults.aapNamespace }}"
+
+- name: Check OSAC namespace exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Namespace
+    name: "{{ osacDefaults.osacNamespace }}"
+  register: r_osac_namespace
+
+- name: Assert OSAC namespace exists
+  ansible.builtin.assert:
+    that: r_osac_namespace.resources | length > 0
+    fail_msg: "OSAC namespace '{{ osacDefaults.osacNamespace }}' not found"
+
+- name: Check OSAC Helm release status
+  ansible.builtin.command:
+    cmd: "{{ workingDir }}/bin/helm status osac --namespace {{ osacDefaults.osacNamespace }}"
+  register: r_osac_helm_status
+  changed_when: false
+
+- name: Assert OSAC Helm release is deployed
+  ansible.builtin.assert:
+    that: "'deployed' in r_osac_helm_status.stdout"
+    fail_msg: "OSAC Helm release is not in 'deployed' state"
+
+- name: Check OSAC operator deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ osacDefaults.osacNamespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name=osac-operator"
+  register: r_osac_operator
+
+- name: Assert OSAC operator is deployed
+  ansible.builtin.assert:
+    that:
+      - r_osac_operator.resources | length > 0
+    fail_msg: "OSAC operator deployment not found in {{ osacDefaults.osacNamespace }}"
+
+- name: Log OSAC validation success
+  ansible.builtin.debug:
+    msg: "OSAC post-validate passed: AAP controller running, EDA running, OSAC namespace exists, Helm release deployed, OSAC operator deployed"
