@@ -380,8 +380,7 @@ requires:
 1. Add `requires` to declare variables or files that must exist at load time
 1. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
 1. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
-1. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`
-10. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
+1. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
 1. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
 1. Add `tasks/quay.yaml` if your plugin provides storage for Quay
 1. Run `make validate-plugins` to verify
