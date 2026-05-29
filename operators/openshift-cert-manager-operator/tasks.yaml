@@ -112,7 +112,7 @@
         fail_msg: >-
           {{ item.item.name }} deployment replicas did not reconcile.
           Expected: {{ item.item.replicas }}
-          Actual: {{ (item.resources | default([{}]))[0].spec.replicas | default('undefined') }}
+          Actual: {{ ((item.resources | default([], true) | first | default({})).spec | default({})).replicas | default('undefined') }}
       loop: "{{ r_cert_manager_deployment.results }}"
       loop_control:
         label: "{{ item.item.name }}"
@@ -126,7 +126,7 @@
         fail_msg: >-
           {{ item.item.name }} replicas did not become available.
           Expected: {{ item.item.replicas }}
-          Available: {{ (item.resources | default([{}]))[0].status.availableReplicas | default('undefined') }}
+          Available: {{ ((item.resources | default([], true) | first | default({})).status | default({})).availableReplicas | default('undefined') }}
       loop: "{{ r_cert_manager_deployment.results }}"
       loop_control:
         label: "{{ item.item.name }}"
