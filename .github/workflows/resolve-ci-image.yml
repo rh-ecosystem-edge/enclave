@@ -41,7 +41,7 @@ jobs:
               - 'pyproject.toml'
               - 'uv.lock'
               - '.python-version'
-              - 'reconcile/**'
+              - 'src/**'
               - 'README.md'
 
       - name: Build CI image

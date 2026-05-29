@@ -27,6 +27,7 @@ dependencies = [
 
 [project.scripts]
 enclave-reconcile = "reconcile.cli:cli"
+enclave-tools = "tools.cli:cli"
 
 [dependency-groups]
 dev = [
@@ -45,14 +46,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["reconcile", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["reconcile", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
 
 [tool.ruff]
 line-length = 88
-src = ["reconcile"]
+src = ["src"]
 extend-exclude = [
     ".local",
     ".cache",
@@ -111,22 +115,24 @@ ignore = [
 preview = true
 
 [tool.ruff.lint.per-file-ignores]
-"reconcile/tests/**" = [
+"src/tests/**" = [
     "PLR2004", # magic values in test assertions are readable without named constants
     "S101",    # assert is idiomatic in pytest
     "PLC1901", # empty-string comparisons are fine in test assertions
     "PLR6301", # test methods don't need to use self
+    "PLC2701", # tests legitimately import private symbols to unit-test internals
 ]
-"reconcile/tests/fixtures.py" = [
+"src/tests/fixtures.py" = [
     "ANN401",  # anymarkup.parse returns Any; no tighter type available
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["reconcile"]
+known-first-party = ["src"]
 combine-as-imports = true
 
 [tool.mypy]
-files = ["reconcile"]
+files = ["src"]
+mypy_path = "src"
 enable_error_code = ["truthy-bool", "redundant-expr"]
 no_implicit_optional = true
 check_untyped_defs = true
@@ -151,5 +157,5 @@ omit = ["*/tests/*"]
 fail_under = 90
 
 [tool.pytest.ini_options]
-testpaths = ["reconcile/tests"]
-
+testpaths = ["src/tests"]
+pythonpath = ["src"]

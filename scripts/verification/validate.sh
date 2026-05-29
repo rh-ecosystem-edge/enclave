@@ -247,7 +247,7 @@ validate_python() {
     local failed=0
 
     echo "Running ruff check..."
-    if ruff check reconcile/; then
+    if ruff check src/; then
         print_success "ruff check passed"
     else
         print_error "ruff check failed"
@@ -255,7 +255,7 @@ validate_python() {
     fi
 
     echo "Running ruff format check..."
-    if ruff format --check reconcile/; then
+    if ruff format --check src/; then
         print_success "ruff format check passed"
     else
         print_error "ruff format check failed"
@@ -263,7 +263,7 @@ validate_python() {
     fi
 
     echo "Running mypy..."
-    if mypy reconcile/; then
+    if mypy; then
         print_success "mypy check passed"
     else
         print_error "mypy check failed"
@@ -271,7 +271,7 @@ validate_python() {
     fi
 
     echo "Running pytest..."
-    if pytest reconcile/tests/ -v --cov=reconcile --cov-report=term-missing; then
+    if pytest -v --cov --cov-report=term-missing; then
         print_success "pytest passed"
     else
         print_error "pytest failed"

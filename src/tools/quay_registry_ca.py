@@ -129,5 +129,5 @@ def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc") -> str:
     return f"{chain[-1]}\n"
 
 
-def reconcile(hostname: str, *, oc: str = "oc") -> None:
+def main(hostname: str, *, oc: str = "oc") -> None:
     sys.stdout.write(resolve_registry_ca_pem(hostname, oc=oc))

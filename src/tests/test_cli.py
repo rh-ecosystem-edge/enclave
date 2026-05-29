@@ -1,53 +1,14 @@
-import pathlib
-
 import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from reconcile.cli import cli
+from reconcile.cli import cli, defaults_path
 
 
 def test_cli_help() -> None:
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "Reconcile CLI" in result.output
-
-
-def test_resolve_quay_registry_ca_help() -> None:
-    result = CliRunner().invoke(cli, ["resolve-quay-registry-ca", "--help"])
-    assert result.exit_code == 0
-    assert "--hostname" in result.output
-
-
-def test_resolve_quay_registry_ca_forwards_args(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.quay_registry_ca_reconcile")
-    result = CliRunner().invoke(
-        cli,
-        [
-            "resolve-quay-registry-ca",
-            "--hostname",
-            "registry.example.com",
-            "--oc",
-            "/usr/bin/oc",
-        ],
-    )
-    assert result.exit_code == 0
-    mock_reconcile.assert_called_once_with("registry.example.com", oc="/usr/bin/oc")
-
-
-def test_resolve_quay_registry_ca_runtime_error(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "reconcile.cli.quay_registry_ca_reconcile",
-        side_effect=RuntimeError(
-            "unable to resolve registry CA for registry.example.com"
-        ),
-    )
-    result = CliRunner().invoke(
-        cli,
-        ["resolve-quay-registry-ca", "--hostname", "registry.example.com"],
-    )
-    assert result.exit_code != 0
-    assert "unable to resolve registry CA for registry.example.com" in result.output
 
 
 def test_operator_versions_help() -> None:
@@ -134,7 +95,8 @@ def test_operator_versions_multiple_csv_names(mocker: MockerFixture) -> None:
 
 def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
-    with pathlib.Path("defaults/operators.yaml").open(encoding="utf-8") as fh:
+    defaults_file = defaults_path("operators.yaml")
+    with defaults_file.open(encoding="utf-8") as fh:
         operators = yaml.safe_load(fh)["operators"]
     dry_run = True
     result = CliRunner().invoke(

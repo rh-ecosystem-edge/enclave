@@ -8,7 +8,7 @@ ingress into air-gapped environments.
 ## Languages and tooling
 
 - **Ansible** — deployment automation (playbooks/, 66+ playbooks in 7 phases)
-- **Python 3.12** — reconciliation engine and CLI (`reconcile/`)
+- **Python 3.12** — reconciliation engine and tools (`src/`)
 - **Bash** — provisioning and setup scripts (`scripts/`, 53+ scripts)
 - **Jinja2** — cluster config templates (`templates/`)
 - **YAML/JSON** — configuration and schema validation (`config/`, `schemas/`)
@@ -19,7 +19,11 @@ ingress into air-gapped environments.
 playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
 plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, authorino, vast-csi)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
-reconcile/       Python CLI for cluster/operator version reconciliation
+src/             Python source root (src layout)
+  reconcile/     CLI for cluster/operator version reconciliation (enclave-reconcile)
+  tools/         Additional Python tools (enclave-tools); new tools go here
+  utils.py       Shared utilities for all Python packages under src/
+  tests/         All Python tests (pytest, shared fixtures)
 scripts/         Shell scripts organized by function (setup, infrastructure, deployment, …)
 templates/       Jinja2 templates for cluster and registry configs
 schemas/         JSON schemas for config and plugin descriptor validation
@@ -47,11 +51,12 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 
 ## Code conventions
 
-### Python (`reconcile/`)
+### Python (`src/`)
 - Strict mypy: all functions must have type annotations
 - ruff: 88-char line limit, comprehensive linting and import sorting
 - Custom exception hierarchy with descriptive messages
-- Click-based CLI with subcommands
+- Click-based CLIs with subcommands (one per package)
+- Shared utilities live in `src/utils.py`; new Python tools go under `src/tools/`
 - Check python-*-test Makefile targets
 
 ### Ansible (`playbooks/`)

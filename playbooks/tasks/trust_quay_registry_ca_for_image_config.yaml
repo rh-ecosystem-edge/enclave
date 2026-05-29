@@ -10,7 +10,7 @@
 - name: Resolve Quay registry CA PEM for trust ConfigMap
   ansible.builtin.command:
     argv:
-      - enclave-reconcile
+      - enclave-tools
       - resolve-quay-registry-ca
       - --hostname
       - "{{ quay_registry_hostname }}"
