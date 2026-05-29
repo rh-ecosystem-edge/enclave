@@ -38,7 +38,12 @@
 - name: Stat plugin config files
   ansible.builtin.stat:
     path: "{{ playbook_dir }}/../config/plugins/{{ item }}.yaml"
-  loop: "{{ r_plugin_dirs.files | map(attribute='path') | map('basename') | list }}"
+  loop: >-
+    {{ r_plugin_dirs.files
+       | map(attribute='path')
+       | map('basename')
+       | select('in', enabled_plugins)
+       | list }}
   register: r_plugin_config_stats
 
 - name: Load plugin config files
