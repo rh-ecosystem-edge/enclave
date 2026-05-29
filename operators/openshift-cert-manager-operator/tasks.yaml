@@ -56,55 +56,77 @@
         - r_certmanager_cr.resources is defined
         - r_certmanager_cr.resources | length > 0
 
-    - name: Verify CertManager webhook replica override was accepted
+    - name: Verify CertManager replica overrides were accepted
       ansible.builtin.assert:
         that:
-          - r_certmanager_cr.resources[0].spec.webhookConfig is defined
-          - r_certmanager_cr.resources[0].spec.webhookConfig.overrideReplicas is defined
-          - r_certmanager_cr.resources[0].spec.webhookConfig.overrideReplicas | int == cert_manager_webhook_replicas | int
+          - r_certmanager_cr.resources[0].spec[item.config] is defined
+          - r_certmanager_cr.resources[0].spec[item.config].overrideReplicas is defined
+          - r_certmanager_cr.resources[0].spec[item.config].overrideReplicas | int == item.replicas | int
         fail_msg: >-
           CertManager operator did not accept
-          webhookConfig.overrideReplicas={{ cert_manager_webhook_replicas }}.
+          {{ item.config }}.overrideReplicas={{ item.replicas }}.
           This may indicate:
           - unsupported cert-manager operator version
           - CRD schema mismatch
           - unknown field pruning by the Kubernetes API server
+      loop:
+        - config: controllerConfig
+          replicas: "{{ cert_manager_controller_replicas }}"
+        - config: cainjectorConfig
+          replicas: "{{ cert_manager_cainjector_replicas }}"
+        - config: webhookConfig
+          replicas: "{{ cert_manager_webhook_replicas }}"
+      loop_control:
+        label: "{{ item.config }}"
 
-    - name: Wait for CertManager webhook deployment replica count to reconcile
+    - name: Wait for cert-manager deployments to reconcile replica counts
       kubernetes.core.k8s_info:
         api_version: apps/v1
         kind: Deployment
-        name: cert-manager-webhook
+        name: "{{ item.name }}"
         namespace: cert-manager
-      register: r_cert_manager_webhook
+      register: r_cert_manager_deployment
       retries: 60
       delay: 10
       until:
-        - r_cert_manager_webhook.resources is defined
-        - r_cert_manager_webhook.resources | length > 0
-        - r_cert_manager_webhook.resources[0].spec.replicas | int == cert_manager_webhook_replicas | int
-        - r_cert_manager_webhook.resources[0].status.availableReplicas is defined
-        - r_cert_manager_webhook.resources[0].status.availableReplicas | int >= cert_manager_webhook_replicas | int
+        - r_cert_manager_deployment.resources is defined
+        - r_cert_manager_deployment.resources | length > 0
+        - r_cert_manager_deployment.resources[0].spec.replicas | int == item.replicas | int
+        - r_cert_manager_deployment.resources[0].status.availableReplicas is defined
+        - r_cert_manager_deployment.resources[0].status.availableReplicas | int >= item.replicas | int
       failed_when: false
+      loop:
+        - name: cert-manager
+          replicas: "{{ cert_manager_controller_replicas }}"
+        - name: cert-manager-cainjector
+          replicas: "{{ cert_manager_cainjector_replicas }}"
+        - name: cert-manager-webhook
+          replicas: "{{ cert_manager_webhook_replicas }}"
 
-    - name: Assert CertManager webhook deployment reconciled
+    - name: Assert cert-manager deployments reconciled
       ansible.builtin.assert:
         that:
-          - r_cert_manager_webhook.resources is defined
-          - r_cert_manager_webhook.resources | length > 0
-          - r_cert_manager_webhook.resources[0].spec.replicas | int == cert_manager_webhook_replicas | int
+          - item.resources is defined
+          - item.resources | length > 0
+          - item.resources[0].spec.replicas | int == item.item.replicas | int
         fail_msg: >-
-          cert-manager-webhook deployment replicas did not reconcile.
-          Expected: {{ cert_manager_webhook_replicas }}
-          Actual: {{ (r_cert_manager_webhook.resources | default([{}]))[0].spec.replicas | default('undefined') }}
+          {{ item.item.name }} deployment replicas did not reconcile.
+          Expected: {{ item.item.replicas }}
+          Actual: {{ (item.resources | default([{}]))[0].spec.replicas | default('undefined') }}
+      loop: "{{ r_cert_manager_deployment.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
-    - name: Assert CertManager webhook replicas are available
+    - name: Assert cert-manager replicas are available
       ansible.builtin.assert:
         that:
-          - r_cert_manager_webhook.resources is defined
-          - r_cert_manager_webhook.resources | length > 0
-          - r_cert_manager_webhook.resources[0].status.availableReplicas | default(0) | int >= cert_manager_webhook_replicas | int
+          - item.resources is defined
+          - item.resources | length > 0
+          - item.resources[0].status.availableReplicas | default(0) | int >= item.item.replicas | int
         fail_msg: >-
-          cert-manager-webhook replicas did not become available.
-          Expected: {{ cert_manager_webhook_replicas }}
-          Available: {{ (r_cert_manager_webhook.resources | default([{}]))[0].status.availableReplicas | default('undefined') }}
+          {{ item.item.name }} replicas did not become available.
+          Expected: {{ item.item.replicas }}
+          Available: {{ (item.resources | default([{}]))[0].status.availableReplicas | default('undefined') }}
+      loop: "{{ r_cert_manager_deployment.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
