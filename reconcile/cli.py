@@ -1,6 +1,7 @@
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 import click
 import yaml
@@ -96,7 +97,15 @@ def operator_versions(
 
 
 @cli.command()
-@click.argument("version")
+@click.option(
+    "--version", "version", default=None, help="OpenShift version to upgrade to"
+)
+@click.option(
+    "--use-defaults",
+    is_flag=True,
+    default=False,
+    help="Load the default version from defaults/platforms.yaml (mutually exclusive with --version)",
+)
 @click.option("--dry-run/--no-dry-run", default=False)
 @click.option(
     "--timeout-minutes",
@@ -111,10 +120,54 @@ def operator_versions(
     help="Sleep interval between polling attempts in seconds (default: 60)",
 )
 def mgmt_cluster_version(
-    version: str, dry_run: bool, timeout_minutes: int, sleep_interval: int
+    version: str | None,
+    use_defaults: bool,
+    dry_run: bool,
+    timeout_minutes: int,
+    sleep_interval: int,
 ) -> None:
+    if use_defaults and version:
+        raise click.UsageError("--use-defaults is mutually exclusive with --version")
+
+    if not use_defaults and not version:
+        raise click.UsageError("Either --version or --use-defaults must be provided")
+
+    resolved_version: str
+    if use_defaults:
+        defaults_path = (
+            Path(__file__).resolve().parent.parent / "defaults" / "platforms.yaml"
+        )
+        try:
+            with defaults_path.open(encoding="utf-8") as fh:
+                platforms = yaml.safe_load(fh)
+        except FileNotFoundError as exc:
+            raise click.ClickException(
+                f"{defaults_path} not found; run from the repo root"
+            ) from exc
+        except yaml.YAMLError as exc:
+            raise click.ClickException(
+                f"Failed to parse {defaults_path}: {exc}"
+            ) from exc
+
+        openshift_versions: list[dict[str, object]] = platforms.get(
+            "openshift_versions", []
+        )
+        default_entry = next(
+            (v for v in openshift_versions if v.get("default") is True), None
+        )
+        if default_entry is None:
+            raise click.ClickException(
+                "No default version found in defaults/platforms.yaml; "
+                "set 'default: true' on one entry"
+            )
+        resolved_version = str(default_entry["version"])
+    else:
+        resolved_version = cast("str", version)
+
     try:
-        cluster_upgrade_reconcile(version, dry_run, timeout_minutes, sleep_interval)
+        cluster_upgrade_reconcile(
+            resolved_version, dry_run, timeout_minutes, sleep_interval
+        )
     except (ClusterUpgradeError, RuntimeError, TimeoutError) as e:
         raise click.ClickException(str(e)) from e
 

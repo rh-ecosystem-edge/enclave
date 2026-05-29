@@ -28,6 +28,8 @@ def test_operator_versions_help() -> None:
 def test_mgmt_cluster_version_help() -> None:
     result = CliRunner().invoke(cli, ["mgmt-cluster-version", "--help"])
     assert result.exit_code == 0
+    assert "--version" in result.output
+    assert "--use-defaults" in result.output
     assert "--timeout-minutes" in result.output
     assert "--sleep-interval" in result.output
 
@@ -140,3 +142,37 @@ def test_operator_versions_missing_required_without_defaults() -> None:
     result = CliRunner().invoke(cli, ["operator-versions", "--name", "foo"])
     assert result.exit_code != 0
     assert "Missing option" in result.output
+
+
+def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("reconcile.cli.cluster_upgrade_reconcile")
+    dry_run = True
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with("4.20.21", dry_run, 180, 60)
+
+
+def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("reconcile.cli.cluster_upgrade_reconcile")
+    dry_run = True
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with("4.20.21", dry_run, 180, 60)
+
+
+def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--use-defaults", "--version", "4.20.8"]
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
+def test_mgmt_cluster_version_neither_version_nor_defaults() -> None:
+    result = CliRunner().invoke(cli, ["mgmt-cluster-version"])
+    assert result.exit_code != 0
+    assert "Either --version or --use-defaults" in result.output
