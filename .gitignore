@@ -2,7 +2,7 @@
 config/*.yaml
 config/*.json
 !config/*.example.yaml
-!config/*.validation.yaml
+!config/plugins/*.example.yaml
 debug.yaml
 .claude/settings.local.json
 tmp/
