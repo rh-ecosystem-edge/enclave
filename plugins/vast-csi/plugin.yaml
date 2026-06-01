@@ -1,6 +1,6 @@
 ---
 name: vast-csi
-type: addon
+type: foundation
 order: 10
 
 catalog: certified

@@ -55,11 +55,15 @@
       --dest-tls-verify=false \
       --retry-times {{ ocMirrorRetryTimes }} \
       --retry-delay {{ ocMirrorRetryDelay }} \
-      docker://{{ rh_operator_catalog }}:{{ rh_operator_catalog_version }} \
-      docker://{{ quayHostname }}:8443/redhat/redhat-operator-index{{ (item == 'core') | ternary('', '-' ~ item) }}:{{ rh_operator_catalog_version }}
-  loop: "{{ catalog_operators.keys() | list }}"
+      docker://{{ _src_catalog }}:{{ _version }} \
+      docker://{{ quayHostname }}:8443/redhat/{{ _dest_catalog }}:{{ _version }}
+  vars:
+    _src_catalog: "{{ certified_operator_catalog if item.value.catalog == 'certified' else rh_operator_catalog }}"
+    _dest_catalog: "{{ mirror_certified_rh_operator_catalog if item.value.catalog == 'certified' else mirror_rh_operator_catalog }}{{ (item.key == 'core') | ternary('', '-' ~ item.key) }}"
+    _version: "{{ certified_operator_catalog_version if item.value.catalog == 'certified' else rh_operator_catalog_version }}"
+  loop: "{{ catalog_operators | dict2items }}"
   loop_control:
-    label: "{{ item }}"
+    label: "{{ item.key }}"
   register: skopeo_result
   changed_when: "'Copying blob' in skopeo_result.stdout"
   retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
@@ -75,7 +79,13 @@
   ansible.builtin.replace:
     path: "{{ workingDir }}/config/imagesetconfiguration.yaml"
     regexp: 'catalog: {{ rh_operator_catalog }}'
-    replace: "catalog: {{ quayHostname }}:8443/redhat/redhat-operator-index"
+    replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_rh_operator_catalog }}"
+
+- name: Replace registry.redhat.io with certified-operator-index in mirror-registry
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/imagesetconfiguration.yaml"
+    regexp: 'catalog: {{ certified_operator_catalog }}'
+    replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_certified_rh_operator_catalog }}"
 
 - name: Ensure oc-mirror log directory exists
   ansible.builtin.file:

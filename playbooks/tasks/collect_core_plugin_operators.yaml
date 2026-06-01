@@ -31,11 +31,13 @@
          | selectattr('name', 'in', enabled_plugins)
          | list }}
   ansible.builtin.set_fact:
-    _core_plugin_operators: >-
-      {{ _foundation
-         | selectattr('operators', 'defined')
-         | items2dict(key_name='name', value_name='operators') }}
+    _core_plugin_operators: |-
+      {% set tmp = {} %}
+      {% for p in _foundation if p.operators is defined %}
+      {% set _ = tmp.update({p.name: {'operators': p.operators, 'catalog': p.catalog | default('redhat')}}) %}
+      {% endfor %}
+      {{ tmp }}
 
 - name: Display plugin operators to mirror
   ansible.builtin.debug:
-    msg: "Plugin operators to include in imageset: {{ _core_plugin_operators.values() | flatten | map(attribute='name') | list }}"
+    msg: "Plugin operators to include in imageset: {{ _core_plugin_operators.values() | map(attribute='operators') | flatten | map(attribute='name') | list }}"

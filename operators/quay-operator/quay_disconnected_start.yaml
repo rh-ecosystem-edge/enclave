@@ -17,6 +17,12 @@
     regexp: 'catalog: {{ quayHostname }}:8443/redhat/redhat-operator-index'
     replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_rh_operator_catalog }}"
 
+- name: Replace certified-operator-index with internal mirror
+  ansible.builtin.replace:
+    path: "{{ workingDir }}/config/imagesetconfiguration.internal.yaml"
+    regexp: 'catalog: {{ quayHostname }}:8443/redhat/certified-operator-index'
+    replace: "catalog: {{ quayHostname }}:8443/redhat/{{ mirror_certified_rh_operator_catalog }}"
+
 - name: Ensure .config/containers/ exists
   ansible.builtin.file:
     path: "{{ lookup('env','HOME') }}/.config/containers/"
