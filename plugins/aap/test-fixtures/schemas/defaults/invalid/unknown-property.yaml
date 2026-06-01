@@ -1,0 +1,5 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+aap_name: aap
+unknownField: this-should-fail

@@ -1,0 +1,41 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  aap_name:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Name of the AAP instance.
+  aap_ns:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Namespace for the AAP deployment.
+  aap_license_secret:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Name of the Kubernetes secret holding the AAP license.
+  aap_controller_disabled:
+    type: boolean
+    description: Disable the Automation Controller component.
+  aap_eda_disabled:
+    type: boolean
+    description: Disable the Event-Driven Ansible component.
+  aap_hub_disabled:
+    type: boolean
+    description: Disable the Automation Hub component.
+  aap_image_pull_policy:
+    type: string
+    enum: [Always, IfNotPresent, Never]
+    description: Image pull policy for AAP pods.
+  aap_lightspeed_disabled:
+    type: boolean
+    description: Disable the Ansible Lightspeed component.
+  aap_no_log:
+    type: boolean
+    description: Suppress sensitive log output.
+  aap_redis_mode:
+    type: string
+    enum: [standalone, cluster]
+    description: Redis deployment mode.
+  aap_route_tls_termination:
+    type: string
+    enum: [Edge, Passthrough, Reencrypt]
+    description: TLS termination type for AAP routes.

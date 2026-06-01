@@ -1,0 +1,12 @@
+---
+aap_name: aap
+aap_ns: ansible-aap
+aap_license_secret: aap-license
+aap_controller_disabled: false
+aap_eda_disabled: false
+aap_hub_disabled: true
+aap_image_pull_policy: IfNotPresent
+aap_lightspeed_disabled: true
+aap_no_log: true
+aap_redis_mode: standalone
+aap_route_tls_termination: Edge

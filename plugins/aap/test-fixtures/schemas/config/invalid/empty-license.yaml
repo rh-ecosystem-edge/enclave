@@ -1,0 +1,4 @@
+---
+# Fixture: aapLicenseFile must be non-empty
+# Expected failure: minLength violation
+aapLicenseFile: ""
