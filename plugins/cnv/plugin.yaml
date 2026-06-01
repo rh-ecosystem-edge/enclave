@@ -1,0 +1,13 @@
+---
+name: cnv
+type: addon
+order: 104
+
+operators:
+  - name: kubevirt-hyperconverged
+    version: 4.20.14
+    channel: stable
+    init_version: 4.20.14
+    namespace: openshift-cnv
+    csvNames:
+      - kubevirt-hyperconverged-operator
