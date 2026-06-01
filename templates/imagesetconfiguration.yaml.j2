@@ -26,16 +26,19 @@ mirror:
 {% endfor %}
     graph: true
   operators:
-{% for c_name, c_operators in catalog_operators.items() %}
+{% for c_name, c_catalog_operators in catalog_operators.items() %}
 {% if c_name == 'core' %}
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
+{% elif c_catalog_operators.catalog == 'certified' %}
+    - catalog: {{ certified_operator_catalog }}-{{ c_name }}:{{ certified_operator_catalog_version }}
+      targetCatalog: redhat/{{ mirror_certified_rh_operator_catalog }}-{{ c_name }}
 {% else %}
     - catalog: {{ rh_operator_catalog }}-{{ c_name }}:{{ rh_operator_catalog_version }}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}-{{ c_name }}
 {% endif %}
       packages:
-{% for operator in c_operators %}
+{% for operator in c_catalog_operators.operators %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
 {% for operator_name in [operator.name] + additional_operator_names %}
         - name: {{ operator_name }}

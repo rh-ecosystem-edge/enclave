@@ -60,7 +60,7 @@
 
     - name: Combine core operators with core plugin operators
       set_fact:
-        catalog_operators: "{{ {'core': operators} | combine(_core_plugin_operators | default({})) }}"
+        catalog_operators: "{{ {'core': {'operators': operators, 'catalog': 'redhat'}} | combine(_core_plugin_operators | default({})) }}"
       tags: mirror-registry
 
     - name: Include tasks for mirror-registry
