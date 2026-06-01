@@ -1,52 +1,132 @@
 ---
-- name: Patch CertManager to set resources
-  kubernetes.core.k8s:
-    state: patched
-    definition:
-      apiVersion: operator.openshift.io/v1alpha1
-      kind: CertManager
-      metadata:
-        name: cluster
-      spec:
-        cainjectorConfig:
-          overrideReplicas: 2
-          overrideResources:
-            limits:
-              cpu: 200m
-              memory: 256Mi
-            requests:
-              cpu: 200m
-              memory: 256Mi
-        controllerConfig:
-          overrideReplicas: 2
-          overrideResources:
-            limits:
-              cpu: 200m
-              memory: 128Mi
-            requests:
-              cpu: 200m
-              memory: 128Mi
-        webhookConfig:
-          overrideReplicas: 3
-          overrideResources:
-            limits:
-              cpu: 20m
-              memory: 32Mi
-            requests:
-              cpu: 20m
-              memory: 32Mi
+- name: Configure and validate cert-manager
+  vars:
+    cert_manager_cainjector_replicas: 2
+    cert_manager_controller_replicas: 2
+    cert_manager_webhook_replicas: 3
+  block:
+    - name: Patch CertManager configuration
+      kubernetes.core.k8s:
+        state: patched
+        merge_type:
+          - merge
+        definition:
+          apiVersion: operator.openshift.io/v1alpha1
+          kind: CertManager
+          metadata:
+            name: cluster
+          spec:
+            cainjectorConfig:
+              overrideReplicas: "{{ cert_manager_cainjector_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+            controllerConfig:
+              overrideReplicas: "{{ cert_manager_controller_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+                requests:
+                  cpu: 200m
+                  memory: 128Mi
+            webhookConfig:
+              overrideReplicas: "{{ cert_manager_webhook_replicas }}"
+              overrideResources:
+                limits:
+                  cpu: 20m
+                  memory: 32Mi
+                requests:
+                  cpu: 20m
+                  memory: 32Mi
 
-- name: Wait for cert-manager webhook to be available
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: cert-manager-webhook
-    namespace: cert-manager
-  register: r_cert_manager_webhook
-  retries: 60
-  delay: 10
-  until:
-    - r_cert_manager_webhook.resources is defined
-    - r_cert_manager_webhook.resources | length > 0
-    - r_cert_manager_webhook.resources[0].status.availableReplicas is defined
-    - r_cert_manager_webhook.resources[0].status.availableReplicas >= 3
+    - name: Read back CertManager CR
+      kubernetes.core.k8s_info:
+        api_version: operator.openshift.io/v1alpha1
+        kind: CertManager
+        name: cluster
+      register: r_certmanager_cr
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until:
+        - r_certmanager_cr.resources is defined
+        - r_certmanager_cr.resources | length > 0
+
+    - name: Verify CertManager replica overrides were accepted
+      ansible.builtin.assert:
+        that:
+          - r_certmanager_cr.resources[0].spec[item.config] is defined
+          - r_certmanager_cr.resources[0].spec[item.config].overrideReplicas is defined
+          - r_certmanager_cr.resources[0].spec[item.config].overrideReplicas | int == item.replicas | int
+        fail_msg: >-
+          CertManager operator did not accept
+          {{ item.config }}.overrideReplicas={{ item.replicas }}.
+          This may indicate:
+          - unsupported cert-manager operator version
+          - CRD schema mismatch
+          - unknown field pruning by the Kubernetes API server
+      loop:
+        - config: controllerConfig
+          replicas: "{{ cert_manager_controller_replicas }}"
+        - config: cainjectorConfig
+          replicas: "{{ cert_manager_cainjector_replicas }}"
+        - config: webhookConfig
+          replicas: "{{ cert_manager_webhook_replicas }}"
+      loop_control:
+        label: "{{ item.config }}"
+
+    - name: Wait for cert-manager deployments to reconcile replica counts
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: "{{ item.name }}"
+        namespace: cert-manager
+      register: r_cert_manager_deployment
+      retries: 60
+      delay: 10
+      until:
+        - r_cert_manager_deployment.resources is defined
+        - r_cert_manager_deployment.resources | length > 0
+        - r_cert_manager_deployment.resources[0].spec.replicas | int == item.replicas | int
+        - r_cert_manager_deployment.resources[0].status.availableReplicas is defined
+        - r_cert_manager_deployment.resources[0].status.availableReplicas | int >= item.replicas | int
+      failed_when: false
+      loop:
+        - name: cert-manager
+          replicas: "{{ cert_manager_controller_replicas }}"
+        - name: cert-manager-cainjector
+          replicas: "{{ cert_manager_cainjector_replicas }}"
+        - name: cert-manager-webhook
+          replicas: "{{ cert_manager_webhook_replicas }}"
+
+    - name: Assert cert-manager deployments reconciled
+      ansible.builtin.assert:
+        that:
+          - item.resources is defined
+          - item.resources | length > 0
+          - item.resources[0].spec.replicas | int == item.item.replicas | int
+        fail_msg: >-
+          {{ item.item.name }} deployment replicas did not reconcile.
+          Expected: {{ item.item.replicas }}
+          Actual: {{ ((item.resources | default([], true) | first | default({})).spec | default({})).replicas | default('undefined') }}
+      loop: "{{ r_cert_manager_deployment.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Assert cert-manager replicas are available
+      ansible.builtin.assert:
+        that:
+          - item.resources is defined
+          - item.resources | length > 0
+          - item.resources[0].status.availableReplicas | default(0) | int >= item.item.replicas | int
+        fail_msg: >-
+          {{ item.item.name }} replicas did not become available.
+          Expected: {{ item.item.replicas }}
+          Available: {{ ((item.resources | default([], true) | first | default({})).status | default({})).availableReplicas | default('undefined') }}
+      loop: "{{ r_cert_manager_deployment.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
