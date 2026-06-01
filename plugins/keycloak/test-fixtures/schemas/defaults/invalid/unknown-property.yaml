@@ -1,0 +1,5 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+keycloak_image: quay.io/keycloak/keycloak:latest
+unknownField: this-should-fail

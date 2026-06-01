@@ -1,0 +1,17 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  keycloak_image:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Keycloak server container image.
+  keycloak_db_image:
+    "$ref": "#/definitions/nonEmptyString"
+    description: PostgreSQL database container image for Keycloak.
+  keycloak_db_wait_image:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Init container image used to wait for the database.
+  keycloak_cli_image:
+    "$ref": "#/definitions/nonEmptyString"
+    description: OpenShift CLI container image for Keycloak setup jobs.
