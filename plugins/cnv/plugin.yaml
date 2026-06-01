@@ -11,5 +11,3 @@ operators:
     namespace: openshift-cnv
     csvNames:
       - kubevirt-hyperconverged-operator
-
-defaults: {}
