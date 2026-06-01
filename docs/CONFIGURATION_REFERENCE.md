@@ -102,7 +102,7 @@ sshPubKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... user@host"
 
 **Notes**:
 - Useful for the wizard, where the user can paste the key content directly instead of having to provide a file path on the remote host
-- If both `sshPubKey` and `sshPubPath` are set, `sshPubKey` overrides `sshPubPath`
+- Mutually exclusive with `sshPubPath` — set one or the other, not both
 - The key must be in standard OpenSSH format (e.g. `ssh-rsa`, `ssh-ed25519`, `ecdsa-sha2-nistp256`)
 
 #### `sshPubPath`

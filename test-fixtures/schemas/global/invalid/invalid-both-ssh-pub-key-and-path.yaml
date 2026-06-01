@@ -1,6 +1,6 @@
 ---
-# Fixture: sshPubKey inline content instead of sshPubPath
-# Validates that sshPubKey satisfies the oneOf requirement (mutually exclusive with sshPubPath)
+# Fixture: both sshPubKey and sshPubPath provided
+# Expected failure: oneOf requires exactly one of sshPubKey or sshPubPath
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -18,6 +18,7 @@ quayBackend: LocalStorage
 storage_plugin: lvms
 pullSecret: {"auths":{}}
 sshPubKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7 user@host"
+sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec

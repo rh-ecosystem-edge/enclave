@@ -233,7 +233,7 @@ required:
   - rendezvousIP
   - workingDir
 
-anyOf:
+oneOf:
   - required: [sshPubKey]
   - required: [sshPubPath]
 
