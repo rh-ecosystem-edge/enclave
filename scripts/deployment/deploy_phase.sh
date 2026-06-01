@@ -129,12 +129,6 @@ if [ "${ENCLAVE_QUAY_PINNEDIMAGESET_ENABLED:-}" = "false" ]; then
 "
 fi
 
-# Load ODF external config and Quay RGW config (from env vars or LZ files)
-if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
-    source "${ENCLAVE_DIR}/scripts/lib/odf.sh"
-    append_odf_extra_vars
-fi
-
 # Log when HTTPS is requested for the Ironic ISO server
 # Note: ironic_https_configured is computed by the playbook from the cert/key vars
 if [ "${ENCLAVE_IRONIC_HTTPS:-}" = "true" ]; then

@@ -131,12 +131,6 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
-# Load ODF external config and Quay RGW config (from env vars or LZ files)
-if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
-    source "${ENCLAVE_DIR}/scripts/lib/odf.sh"
-    append_odf_extra_vars
-fi
-
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF

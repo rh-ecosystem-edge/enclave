@@ -1,0 +1,4 @@
+---
+odfDefaults:
+  defaultStorageClass: true
+  unknownProperty: value

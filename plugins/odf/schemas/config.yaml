@@ -1,0 +1,10 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  odfExternalConfig:
+    "$ref": "#/definitions/nonEmptyString"
+    description: External Ceph cluster connection details JSON from ceph-external-cluster-details-exporter.py.
+required:
+  - odfExternalConfig

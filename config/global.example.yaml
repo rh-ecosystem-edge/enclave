@@ -80,13 +80,10 @@ storage_plugin: lvms
 # See config/plugins/lvms.example.yaml for available options.
 
 # ============================================================================
-# Storage Configuration (ODF)
+# Storage Configuration (ODF) (optional)
 # ============================================================================
-# When odf is set, configure the odfExternalConfig variable
-# with the data obtained from ceph-external-cluster-details-exporter.py script
-# odfExternalConfig:
-#  '[{"name": "external-cluster-user-command",
-#     "kind": "ConfigMap", "data": ..}]'
+# ODF plugin configuration is now in config/plugins/odf.yaml.
+# See config/plugins/odf.example.yaml for available options.
 
 # ============================================================================
 # Storage Configuration (VAST CSI) (optional)

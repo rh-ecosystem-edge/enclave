@@ -1,7 +1,6 @@
 ---
 # Fixture: RadosGWStorage backend + odf block storage
-# Validates that both quayBackendRGWConfiguration and odfExternalConfig are
-# accepted together, and that both conditional requirements are satisfied.
+# Validates that quayBackendRGWConfiguration is accepted with odf storage.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -22,9 +21,6 @@ quayBackendRGWConfiguration:
   bucket_name: quay-storage
   hostname: radosgw.enclave-test.nodns.in
 storage_plugin: odf
-odfExternalConfig: >-
-  [{"name": "external-cluster-user-command", "kind": "ConfigMap",
-  "data": {"userKey": "AQBf0000000000000000000000==", "userID": "ocs-client"}}]
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:

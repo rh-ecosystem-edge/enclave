@@ -857,43 +857,41 @@ enabled_plugins:
 
 #### ODF Configuration
 
+ODF plugin configuration lives in `config/plugins/odf.yaml`. See
+`config/plugins/odf.example.yaml` for the full template.
+
 ##### `odfExternalConfig`
 
-**Description**: External Ceph cluster configuration required when `storage_plugin: odf`. Contains the JSON output from the `ceph-external-cluster-details-exporter.py` script.
+**Description**: External Ceph cluster configuration required when `storage_plugin: odf`.
+Contains the JSON output from the `ceph-external-cluster-details-exporter.py` script.
 
 **Type**: String (JSON, required when `storage_plugin: odf`)
 
+**File**: `config/plugins/odf.yaml`
+
 **Example**:
 ```yaml
-odfExternalConfig:
-  '[{"name": "external-cluster-user-command",
-     "kind": "ConfigMap", "data": ..}]'
+odfExternalConfig: >-
+  [{"name": "external-cluster-user-command",
+    "kind": "ConfigMap", "data": {"userKey": "AQBf...==", "userID": "ocs-client"}}]
 ```
 
 **Notes**:
 - Only required when `storage_plugin` is set to `odf`
-- If `storage_plugin: odf` and this variable is missing, the ODF plugin fails at load-time validation with a clear error message
+- Validated by `plugins/odf/schemas/config.yaml` at CI time
 
 ##### `odfDefaults`
 
-**Description**: ODF plugin defaults. The plugin sets `defaultStorageClass: true` automatically. Override in `config/global.yaml` only if you need to change the default.
+**Description**: ODF plugin defaults. Controls whether the ODF StorageClass is set as the
+cluster default.
 
 **Type**: Dictionary (optional)
 
-**Default** (from `plugins/odf/plugin.yaml`):
+**Default** (from `plugins/odf/defaults.yaml`):
 ```yaml
 odfDefaults:
   defaultStorageClass: true
 ```
-
-**Example** (to override):
-```yaml
-odfDefaults:
-  defaultStorageClass: false
-```
-
-**Notes**:
-- Controls whether the ODF block pool is set as the default StorageClass on the cluster
 
 ### Operator Catalog Configuration
 
@@ -1386,9 +1384,7 @@ storage_plugin: lvms
 
 # To use ODF instead:
 # storage_plugin: odf
-# odfExternalConfig:
-#   '[{"name": "external-cluster-user-command",
-#      "kind": "ConfigMap", "data": ..}]'
+# ODF plugin configuration (odfExternalConfig) goes in config/plugins/odf.yaml.
 
 # To deploy additional plugins (addon plugins):
 # enabled_plugins:

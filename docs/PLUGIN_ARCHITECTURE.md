@@ -311,7 +311,7 @@ Two requirement types are supported:
 
 | Type | Purpose | Example |
 |------|---------|---------|
-| `vars` | Assert an Ansible variable is defined | `odfExternalConfig` |
+| `vars` | Assert an Ansible variable is defined | rarely used, see note below |
 | `files` | Assert a file exists in the plugin directory | `tasks/deploy.yaml` |
 
 Each entry supports an optional `when` condition (Jinja2 expression). If the condition evaluates to false, the check is skipped.
@@ -320,10 +320,6 @@ Example from the ODF plugin:
 
 ```yaml
 requires:
-  vars:
-    - name: odfExternalConfig
-      when: "{{ storage_plugin == 'odf' }}"
-      description: "External Ceph cluster connection details from ceph-external-cluster-details-exporter.py"
   files:
     - path: "tasks/deploy.yaml"
       description: "ODF deployment tasks"
@@ -331,7 +327,16 @@ requires:
       description: "ODF Quay storage configuration"
 ```
 
-Don't add `requires.vars` entries for variables that come from `plugin.defaults` -- those are always defined after defaults loading. Don't validate cluster state here (KUBECONFIG, CRDs) -- that's what `pre-validate` is for.
+**Prefer `schemas/config.yaml` over `requires.vars`** for plugin configuration variables.
+If a plugin needs a user-supplied value (e.g. an endpoint URL or a license file path),
+declare it as a required property in `plugins/<name>/schemas/config.yaml` and have users
+supply it via `config/plugins/<name>.yaml`. Schema validation at CI time is the primary
+enforcement mechanism; the playbooks trust that CI has already validated the config.
+
+Reserve `requires.vars` for variables that genuinely cannot come from a plugin config file
+(e.g. vars injected by external orchestration). Don't use it for variables that come from
+`defaults.yaml` or `config/plugins/<name>.yaml`. Don't validate cluster state here
+(KUBECONFIG, CRDs) -- that's what `pre-validate` is for.
 
 ## Validation-Only Plugins
 
@@ -359,7 +364,7 @@ order: 1
 requires:
   vars:
     - name: externalGateway
-      description: "Gateway IP for external network"
+      description: "Gateway IP from outside plugin config"
 ```
 
 ```yaml
