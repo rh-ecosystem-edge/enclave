@@ -57,7 +57,7 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - ruff: 88-char line limit, comprehensive linting and import sorting
 - Custom exception hierarchy with descriptive messages
 - Click-based CLIs with subcommands (one per package)
-- Shared utilities live in `src/utils.py`; new Python tools go under `src/tools/`
+- Shared utilities live in `src/utils.py` (includes `configure_logging()` for CLI entry points); new Python tools go under `src/tools/`
 - Check python-*-test Makefile targets
 
 ### Ansible (`playbooks/`)
