@@ -12,8 +12,6 @@ operators:
 
 installOperators: false
 
-defaults: {}
-
 registries:
   - location: "nvcr.io/nvidia"
     mirror: "nvidia"
