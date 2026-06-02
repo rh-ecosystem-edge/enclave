@@ -7,6 +7,9 @@ on:
   merge_group:
     types: [checks_requested]
 
+permissions:
+  contents: read
+
 # Cancel previous runs when a PR is updated
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
