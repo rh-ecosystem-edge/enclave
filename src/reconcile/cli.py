@@ -34,12 +34,14 @@ def defaults_path(filename: str) -> Path:
 )
 def cli(log_level: str) -> None:
     """Reconcile CLI."""
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format="%(asctime)s %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-        stream=sys.stdout,
-    )
+    # Only set up logging if running as standalone CLI (not as subcommand)
+    if __name__ == "__main__":
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper()),
+            format="%(asctime)s %(levelname)-8s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+            stream=sys.stdout,
+        )
 
 
 @cli.command()
