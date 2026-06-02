@@ -274,7 +274,7 @@ if [[ ",${ENABLED_PLUGINS:-}," == *",aap,"* ]]; then
         scp $SSH_OPTS "$AAP_LICENSE_SOURCE" "${LZ_SSH}:${AAP_LICENSE_LZ_PATH}"
         success "AAP license copied to ${AAP_LICENSE_LZ_PATH}"
     else
-        warn "Step 6b: AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
+        warning "Step 6b: AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
     fi
 fi
 

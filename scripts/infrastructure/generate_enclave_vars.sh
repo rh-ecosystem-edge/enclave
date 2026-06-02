@@ -315,7 +315,7 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
             echo "aapLicenseFile: \"${AAP_LICENSE_LZ_PATH}\"" >> "$GLOBAL_VARS_OUTPUT"
             info "AAP license file configured: ${AAP_LICENSE_LZ_PATH}"
         else
-            warn "AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
+            warning "AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
         fi
     fi
 fi
