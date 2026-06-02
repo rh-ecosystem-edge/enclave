@@ -269,3 +269,17 @@ def test_operator_versions_plugin_no_operators(mocker: MockerFixture) -> None:
     result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test-plugin"])
     assert result.exit_code != 0
     assert "no operators defined" in result.output
+
+
+def test_operator_versions_plugin_install_operators_false(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data="name: test-plugin\ntype: addon\norder: 1\ninstallOperators: false\n"
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test-plugin"])
+    assert result.exit_code != 0
+    assert "installOperators set to false" in result.output

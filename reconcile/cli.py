@@ -73,6 +73,11 @@ def _load_plugin_operators(plugin_name: str) -> list[dict]:
     except yaml.YAMLError as exc:
         raise click.ClickException(f"Failed to parse {plugin_path}: {exc}") from exc
 
+    if plugin_data.get("installOperators") is False:
+        raise click.ClickException(
+            f"Plugin {plugin_name} has installOperators set to false"
+        )
+
     operators = plugin_data.get("operators", [])
     if not operators:
         raise click.ClickException(
