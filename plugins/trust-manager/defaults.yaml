@@ -1,0 +1,3 @@
+---
+trust_manager_ca_issuer_duration: 87600h
+trust_manager_ca_issuer_renew_before: 8760h
