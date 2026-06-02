@@ -283,3 +283,21 @@ def test_operator_versions_plugin_install_operators_false(
     result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test-plugin"])
     assert result.exit_code != 0
     assert "installOperators set to false" in result.output
+
+
+def test_operator_versions_plugin_path_traversal_double_dot() -> None:
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "../../../etc"])
+    assert result.exit_code != 0
+    assert "Invalid plugin name" in result.output
+
+
+def test_operator_versions_plugin_path_traversal_slash() -> None:
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "foo/bar"])
+    assert result.exit_code != 0
+    assert "Invalid plugin name" in result.output
+
+
+def test_operator_versions_plugin_path_traversal_backslash() -> None:
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "foo\\bar"])
+    assert result.exit_code != 0
+    assert "Invalid plugin name" in result.output

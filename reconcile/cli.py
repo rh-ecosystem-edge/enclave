@@ -50,7 +50,13 @@ def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
 
 
 def _reconcile_operators_from_list(operators: list[dict], dry_run: bool) -> None:
-    """Reconcile operator versions from a list of operator definitions."""
+    """Reconcile operator versions from a list of operator definitions.
+
+    Args:
+        operators: List of operator definitions, each with 'name', 'version', 'namespace',
+            and optionally 'csvNames'.
+        dry_run: If True, only print what would be done without making changes.
+    """
     for op in operators:
         csv_names_list: list[str] = op.get("csvNames") or [op["name"]]
         operator_versions_reconcile(
@@ -59,7 +65,29 @@ def _reconcile_operators_from_list(operators: list[dict], dry_run: bool) -> None
 
 
 def _load_plugin_operators(plugin_name: str) -> list[dict]:
-    """Load operator definitions from a plugin descriptor."""
+    """Load operator definitions from a plugin descriptor.
+
+    Args:
+        plugin_name: Name of the plugin (must be a simple name without path separators).
+
+    Returns:
+        List of operator definitions from the plugin's plugin.yaml file.
+
+    Raises:
+        click.ClickException: If plugin_name contains invalid characters, plugin not found,
+            YAML parsing fails, installOperators is false, or no operators defined.
+    """
+    # Validate plugin_name to prevent path traversal attacks
+    if (
+        not plugin_name
+        or "/" in plugin_name
+        or "\\" in plugin_name
+        or ".." in plugin_name
+    ):
+        raise click.ClickException(
+            f"Invalid plugin name: {plugin_name!r}. Plugin name must be a simple name without path separators or '..'."
+        )
+
     plugin_path = (
         Path(__file__).resolve().parent.parent / "plugins" / plugin_name / "plugin.yaml"
     )
@@ -70,8 +98,10 @@ def _load_plugin_operators(plugin_name: str) -> list[dict]:
         raise click.ClickException(
             f"{plugin_path} not found; check plugin name or run from repo root"
         ) from exc
-    except yaml.YAMLError as exc:
-        raise click.ClickException(f"Failed to parse {plugin_path}: {exc}") from exc
+    except yaml.YAMLError:
+        raise click.ClickException(
+            f"Failed to parse {plugin_path}: invalid YAML syntax"
+        ) from None
 
     if plugin_data.get("installOperators") is False:
         raise click.ClickException(
@@ -87,7 +117,14 @@ def _load_plugin_operators(plugin_name: str) -> list[dict]:
 
 
 def _load_defaults_operators() -> list[dict]:
-    """Load operator definitions from defaults/operators.yaml."""
+    """Load operator definitions from defaults/operators.yaml.
+
+    Returns:
+        List of operator definitions from defaults/operators.yaml.
+
+    Raises:
+        click.ClickException: If file not found, YAML parsing fails, or 'operators' key missing.
+    """
     defaults_path = (
         Path(__file__).resolve().parent.parent / "defaults" / "operators.yaml"
     )
@@ -98,8 +135,14 @@ def _load_defaults_operators() -> list[dict]:
         raise click.ClickException(
             f"{defaults_path} not found; run from the repo root"
         ) from exc
-    except (yaml.YAMLError, KeyError) as exc:
-        raise click.ClickException(f"Failed to parse {defaults_path}: {exc}") from exc
+    except yaml.YAMLError:
+        raise click.ClickException(
+            f"Failed to parse {defaults_path}: invalid YAML syntax"
+        ) from None
+    except KeyError as exc:
+        raise click.ClickException(
+            f"Failed to parse {defaults_path}: missing 'operators' key"
+        ) from exc
 
 
 @cli.command()
@@ -210,10 +253,10 @@ def mgmt_cluster_version(
             raise click.ClickException(
                 f"{defaults_path} not found; run from the repo root"
             ) from exc
-        except yaml.YAMLError as exc:
+        except yaml.YAMLError:
             raise click.ClickException(
-                f"Failed to parse {defaults_path}: {exc}"
-            ) from exc
+                f"Failed to parse {defaults_path}: invalid YAML syntax"
+            ) from None
 
         openshift_versions: list[dict[str, object]] = platforms.get(
             "openshift_versions", []
