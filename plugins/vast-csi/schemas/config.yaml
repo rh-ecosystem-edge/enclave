@@ -1,0 +1,113 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  vastCSIEndpoint:
+    "$ref": "#/definitions/httpUrl"
+    description: VAST management endpoint URL (e.g. https://vms.example.com).
+  vastCSIAdminUsername:
+    "$ref": "#/definitions/nonEmptyString"
+    description: VAST management API username.
+  vastCSIAdminPassword:
+    "$ref": "#/definitions/nonEmptyString"
+    description: VAST management API password.
+  vastCSIVipPool:
+    type: object
+    description: VIP pool network configuration for CSI traffic.
+    additionalProperties: false
+    properties:
+      subnet_cidr:
+        type: integer
+        minimum: 1
+        maximum: 32
+        description: CIDR prefix length for the VIP pool subnet.
+      ip_ranges:
+        type: array
+        description: IP ranges allocated to the VIP pool.
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            start:
+              "$ref": "#/definitions/ipv4Address"
+              description: First IP address in the range.
+            end:
+              "$ref": "#/definitions/ipv4Address"
+              description: Last IP address in the range.
+          required:
+            - start
+            - end
+      role:
+        type: string
+        description: VIP pool role (default PROTOCOLS).
+    required:
+      - subnet_cidr
+      - ip_ranges
+  vastCSIDefaults:
+    type: object
+    description: Overrides for VAST CSI driver defaults (see plugins/vast-csi/defaults.yaml).
+    additionalProperties: false
+    properties:
+      infraTenant:
+        "$ref": "#/definitions/nonEmptyString"
+        description: VAST tenant name used for infra storage views.
+      storagePath:
+        "$ref": "#/definitions/nonEmptyString"
+        description: Root path on VAST for all CSI storage views.
+      validateCerts:
+        type: boolean
+        description: Whether to validate TLS certificates on the VAST management API.
+      apiTimeout:
+        type: integer
+        minimum: 1
+        description: Timeout in seconds for VAST management API calls.
+      apiVersion:
+        "$ref": "#/definitions/nonEmptyString"
+        description: VAST API version to target (e.g. latest).
+      csiProvisioners:
+        type: object
+        description: CSI provisioner driver names keyed by protocol.
+        additionalProperties: false
+        properties:
+          nfs:
+            "$ref": "#/definitions/nonEmptyString"
+            description: CSI provisioner name for NFS protocol.
+          block:
+            "$ref": "#/definitions/nonEmptyString"
+            description: CSI provisioner name for block protocol.
+      csiDriverName:
+        "$ref": "#/definitions/nonEmptyString"
+        description: Name of the VastData CSI driver resource.
+      quayPvcSize:
+        "$ref": "#/definitions/nonEmptyString"
+        description: Size of the PVC created for Quay storage (e.g. 1000Gi).
+      tiers:
+        type: array
+        description: Storage tiers; each creates a VAST view and a StorageClass.
+        minItems: 1
+        maxItems: 20
+        items:
+          type: object
+          additionalProperties: false
+          properties:
+            name:
+              type: string
+              description: Tier name (used in StorageClass name as {infraTenant}-{name}).
+              pattern: "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+              maxLength: 63
+            protocol:
+              type: string
+              description: Storage protocol for this tier.
+              enum: [nfs, block]
+            default:
+              type: boolean
+              description: Whether this tier is the default StorageClass.
+          required:
+            - name
+            - protocol
+required:
+  - vastCSIEndpoint
+  - vastCSIAdminUsername
+  - vastCSIAdminPassword
+  - vastCSIVipPool

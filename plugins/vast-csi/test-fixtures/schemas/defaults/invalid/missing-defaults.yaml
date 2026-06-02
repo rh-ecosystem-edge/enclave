@@ -1,0 +1,4 @@
+---
+# Fixture: vastCSIDefaults missing entirely
+# Expected failure: required property vastCSIDefaults is absent
+{}

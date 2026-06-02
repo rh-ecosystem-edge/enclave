@@ -89,39 +89,11 @@ storage_plugin: lvms
 #     "kind": "ConfigMap", "data": ..}]'
 
 # ============================================================================
-# Storage Configuration (VAST CSI)
+# Storage Configuration (VAST CSI) (optional)
 # ============================================================================
-# When storage_plugin is vast-csi, configure the VAST management endpoint
-# and admin credentials. The plugin creates an "infra" tenant following the
-# osac-aap naming convention so both systems can reason about resources.
-# Also set quayBackend: LocalStorage (VAST NFS uses PVC mount for Quay).
-#
-# vastEndpoint: "https://vms.example.com"
-# vastAdminUsername: "admin"
-# vastAdminPassword: "YOUR_VAST_ADMIN_PASSWORD"
-#
-# VIP pool network configuration (required).
-# The plugin creates a VIP pool on the VAST cluster for CSI traffic.
-# vastVipPool:
-#   subnet_cidr: 24
-#   ip_ranges:
-#     - start: "10.0.100.10"
-#       end: "10.0.100.50"
-#
-# Configure storage tiers (default: single NFS tier for Quay).
-# Each tier creates a VAST view and a K8s StorageClass named {infraTenant}-{tierName}.
-# vastDefaults:
-#   infraTenant: infra
-#   storagePath: /osac
-#   viewPolicyId: 1
-#   quayPvcSize: 2000Gi
-#   tiers:
-#     - name: quay
-#       protocol: nfs
-#     - name: fast
-#       protocol: block
-#     - name: archive
-#       protocol: nfs
+# VAST CSI plugin configuration is now in config/plugins/vast-csi.yaml.
+# See config/plugins/vast-csi.example.yaml for available options.
+# Only needed when storage_plugin: vast-csi.
 
 # ============================================================================
 # AAP Plugin Configuration (optional)

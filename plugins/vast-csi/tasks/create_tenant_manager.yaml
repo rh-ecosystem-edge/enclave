@@ -14,9 +14,9 @@
 # Requires in scope:
 #   vast_tenant       — infra tenant name
 #   vast_host         — VMS API hostname (no protocol prefix)
-#   vastAdminUsername  — admin credentials for initial setup
-#   vastAdminPassword  — admin credentials for initial setup
-#   vastDefaults       — plugin defaults (validateCerts, apiTimeout)
+#   vastCSIAdminUsername  — admin credentials for initial setup
+#   vastCSIAdminPassword  — admin credentials for initial setup
+#   vastCSIDefaults       — plugin defaults (validateCerts, apiTimeout)
 #   r_tenant.tenants.id — VAST tenant ID (from deploy.yaml)
 #
 # Sets output facts (cleared by deploy.yaml):
@@ -78,10 +78,10 @@
         method: POST
         body_format: json
         body:
-          username: "{{ vastAdminUsername }}"
-          password: "{{ vastAdminPassword }}"
-        validate_certs: "{{ vastDefaults.validateCerts }}"
-        timeout: "{{ vastDefaults.apiTimeout | int }}"
+          username: "{{ vastCSIAdminUsername }}"
+          password: "{{ vastCSIAdminPassword }}"
+        validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+        timeout: "{{ vastCSIDefaults.apiTimeout | int }}"
         status_code: [200, 201]
       register: r_admin_auth
 
@@ -94,8 +94,8 @@
         method: GET
         headers:
           Authorization: "Bearer {{ r_admin_auth.json.access }}"
-        validate_certs: "{{ vastDefaults.validateCerts }}"
-        timeout: "{{ vastDefaults.apiTimeout | int }}"
+        validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+        timeout: "{{ vastCSIDefaults.apiTimeout | int }}"
         status_code: [200]
       register: r_role_check
 
@@ -116,8 +116,8 @@
             - delete_logical
         headers:
           Authorization: "Bearer {{ r_admin_auth.json.access }}"
-        validate_certs: "{{ vastDefaults.validateCerts }}"
-        timeout: "{{ vastDefaults.apiTimeout | int }}"
+        validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+        timeout: "{{ vastCSIDefaults.apiTimeout | int }}"
         status_code: [200, 201]
       register: r_role_create
 
@@ -142,8 +142,8 @@
         method: GET
         headers:
           Authorization: "Bearer {{ r_admin_auth.json.access }}"
-        validate_certs: "{{ vastDefaults.validateCerts }}"
-        timeout: "{{ vastDefaults.apiTimeout | int }}"
+        validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+        timeout: "{{ vastCSIDefaults.apiTimeout | int }}"
         status_code: [200]
       register: r_manager_check
 
@@ -171,8 +171,8 @@
           is_temporary_password: false
         headers:
           Authorization: "Bearer {{ r_admin_auth.json.access }}"
-        validate_certs: "{{ vastDefaults.validateCerts }}"
-        timeout: "{{ vastDefaults.apiTimeout | int }}"
+        validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+        timeout: "{{ vastCSIDefaults.apiTimeout | int }}"
         status_code: [200, 201]
       register: r_manager_create
 

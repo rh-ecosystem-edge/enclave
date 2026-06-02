@@ -1,0 +1,9 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+vastCSIDefaults:
+  infraTenant: infra
+  unknownField: this-should-fail
+  tiers:
+    - name: quay
+      protocol: nfs

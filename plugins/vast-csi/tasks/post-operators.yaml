@@ -4,7 +4,7 @@
 
 - name: Collect protocols from configured tiers
   ansible.builtin.set_fact:
-    vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_protocols: "{{ vastCSIDefaults.tiers | map(attribute='protocol') | unique | list }}"
 
 - name: Wait for VastCSIDriver CRD to be registered
   kubernetes.core.k8s_info:
@@ -25,7 +25,7 @@
       apiVersion: csi.vastdata.com/v1
       kind: VastCSIDriver
       metadata:
-        name: "{{ (item == vast_protocols[0]) | ternary(vastDefaults.csiDriverName, vastDefaults.csiDriverName ~ '-' ~ item) }}"
+        name: "{{ (item == vast_protocols[0]) | ternary(vastCSIDefaults.csiDriverName, vastCSIDefaults.csiDriverName ~ '-' ~ item) }}"
         namespace: vast-csi
       spec:
         driverType: "{{ item }}"
@@ -39,7 +39,7 @@
   kubernetes.core.k8s_info:
     api_version: storage.k8s.io/v1
     kind: CSIDriver
-    name: "{{ vastDefaults.csiProvisioners[item] }}"
+    name: "{{ vastCSIDefaults.csiProvisioners[item] }}"
   loop: "{{ vast_protocols }}"
   register: r_csi_registered
   retries: 30

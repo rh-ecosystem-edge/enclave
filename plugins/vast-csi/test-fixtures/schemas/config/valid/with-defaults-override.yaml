@@ -1,0 +1,18 @@
+---
+# Fixture: valid config with vastCSIDefaults override
+vastCSIEndpoint: "https://vms.example.com"
+vastCSIAdminUsername: admin
+vastCSIAdminPassword: password
+vastCSIVipPool:
+  subnet_cidr: 24
+  ip_ranges:
+    - start: 10.0.100.10
+      end: 10.0.100.50
+vastCSIDefaults:
+  infraTenant: custom-tenant
+  quayPvcSize: 2000Gi
+  tiers:
+    - name: quay
+      protocol: nfs
+    - name: fast
+      protocol: block

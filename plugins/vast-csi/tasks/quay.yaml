@@ -7,8 +7,8 @@
 
 - name: Set Quay storage variables
   ansible.builtin.set_fact:
-    vast_quay_storageclass: "{{ vastDefaults.infraTenant }}-quay"
-    vast_quay_pvc_size: "{{ vastDefaults.quayPvcSize }}"
+    vast_quay_storageclass: "{{ vastCSIDefaults.infraTenant }}-quay"
+    vast_quay_pvc_size: "{{ vastCSIDefaults.quayPvcSize }}"
 
 - name: Ensure QuayRegistry is present (VAST Backend)
   kubernetes.core.k8s:
@@ -97,7 +97,7 @@
           namespace: quay-enterprise
           labels:
             app.kubernetes.io/managed-by: enclave
-            osac.openshift.io/tenant: "{{ vastDefaults.infraTenant }}"
+            osac.openshift.io/tenant: "{{ vastCSIDefaults.infraTenant }}"
         spec:
           accessModes:
             - ReadWriteMany
