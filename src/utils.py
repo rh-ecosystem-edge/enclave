@@ -12,10 +12,9 @@ LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 def configure_logging(log_level: str) -> None:
     """Configure logging with the specified level if not already configured.
 
-    This helper is shared across all CLI entry points (enclave, enclave-reconcile,
-    enclave-tools) to avoid duplication. Logging is only configured if the root
-    logger has no handlers yet, so parent CLIs can set up logging once and
-    subcommands will skip reconfiguration.
+    This helper is shared across all CLI entry points to avoid duplication.
+    Logging is only configured if the root logger has no handlers yet, so parent
+    CLIs can set up logging once and subcommands will skip reconfiguration.
     """
     if not logging.getLogger().handlers:
         logging.basicConfig(

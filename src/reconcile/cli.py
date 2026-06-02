@@ -31,9 +31,7 @@ def defaults_path(filename: str) -> Path:
 )
 def cli(log_level: str) -> None:
     """Reconcile CLI."""
-    # Configure logging only if not already configured by a parent group
-    # (e.g. the unified `enclave` CLI), so the standalone `enclave-reconcile`
-    # console script still gets logging.
+    # Configure logging only if not already configured by the parent enclave CLI
     configure_logging(log_level)
 
 
