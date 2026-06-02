@@ -322,8 +322,8 @@ test-ci-image:
 	@echo "Test 6: Verify docker CLI is installed..."
 	@podman run --rm $(CI_IMAGE_FULL) docker --version
 	@echo ""
-	@echo "Test 7: Verify enclave-reconcile CLI is installed..."
-	@podman run --rm $(CI_IMAGE_FULL) enclave-reconcile --help
+	@echo "Test 7: Verify enclave CLI is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) enclave --help
 	@echo ""
 	@echo "Test 8: Verify ruff is installed..."
 	@podman run --rm $(CI_IMAGE_FULL) ruff --version

@@ -20,8 +20,9 @@ playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
 plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, authorino, vast-csi)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
 src/             Python source root (src layout)
-  reconcile/     CLI for cluster/operator version reconciliation (enclave-reconcile)
-  tools/         Additional Python tools (enclave-tools); new tools go here
+  reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
+  tools/         Additional Python tools (enclave tools subcommand); new tools go here
+  cli.py         Unified CLI entry point (reconcile + tools subcommands)
   utils.py       Shared utilities for all Python packages under src/
   tests/         All Python tests (pytest, shared fixtures)
 scripts/         Shell scripts organized by function (setup, infrastructure, deployment, …)
@@ -56,7 +57,7 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - ruff: 88-char line limit, comprehensive linting and import sorting
 - Custom exception hierarchy with descriptive messages
 - Click-based CLIs with subcommands (one per package)
-- Shared utilities live in `src/utils.py`; new Python tools go under `src/tools/`
+- Shared utilities live in `src/utils.py` (includes `configure_logging()` for CLI entry points); new Python tools go under `src/tools/`
 - Check python-*-test Makefile targets
 
 ### Ansible (`playbooks/`)

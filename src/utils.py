@@ -1,9 +1,28 @@
 import logging
 import re
 import subprocess
+import sys
 import time
 
 logger = logging.getLogger(__name__)
+
+LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+def configure_logging(log_level: str) -> None:
+    """Configure logging with the specified level if not already configured.
+
+    This helper is shared across all CLI entry points to avoid duplication.
+    Logging is only configured if the root logger has no handlers yet, so parent
+    CLIs can set up logging once and subcommands will skip reconfiguration.
+    """
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper()),
+            format="%(asctime)s %(levelname)-8s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+            stream=sys.stdout,
+        )
 
 
 def parse_jsonpath_value(raw: str) -> str:

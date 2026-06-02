@@ -26,8 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
-enclave-reconcile = "reconcile.cli:cli"
-enclave-tools = "tools.cli:cli"
+enclave = "cli:cli"
 
 [dependency-groups]
 dev = [
