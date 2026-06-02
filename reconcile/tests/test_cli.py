@@ -59,6 +59,7 @@ def test_operator_versions_help() -> None:
     assert "--csv-name" in result.output
     assert "--dry-run" in result.output
     assert "--use-defaults" in result.output
+    assert "--plugin" in result.output
     assert "--operators" not in result.output
 
 
@@ -213,3 +214,58 @@ def test_mgmt_cluster_version_neither_version_nor_defaults() -> None:
     result = CliRunner().invoke(cli, ["mgmt-cluster-version"])
     assert result.exit_code != 0
     assert "Either --version or --use-defaults" in result.output
+
+
+def test_operator_versions_plugin_calls_reconcile_per_operator(
+    mocker: MockerFixture,
+) -> None:
+    mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
+    dry_run = True
+    result = CliRunner().invoke(
+        cli, ["operator-versions", "--plugin", "lvms", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with(
+        "4.20.0", "openshift-storage", ["lvms-operator"], dry_run
+    )
+
+
+def test_operator_versions_plugin_multiple_operators(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
+    result = CliRunner().invoke(
+        cli, ["operator-versions", "--plugin", "odf", "--dry-run"]
+    )
+    assert result.exit_code == 0, result.output
+    assert mock_reconcile.call_count >= 1
+
+
+def test_operator_versions_plugin_mutual_exclusive_name() -> None:
+    result = CliRunner().invoke(
+        cli, ["operator-versions", "--plugin", "lvms", "--name", "foo"]
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
+def test_operator_versions_plugin_mutual_exclusive_use_defaults() -> None:
+    result = CliRunner().invoke(
+        cli, ["operator-versions", "--plugin", "lvms", "--use-defaults"]
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
+def test_operator_versions_plugin_not_found() -> None:
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "nonexistent"])
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
+def test_operator_versions_plugin_no_operators(mocker: MockerFixture) -> None:
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(read_data="name: test-plugin\ntype: addon\norder: 1\n"),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test-plugin"])
+    assert result.exit_code != 0
+    assert "no operators defined" in result.output
