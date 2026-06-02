@@ -1,5 +1,4 @@
 import logging
-import sys
 from pathlib import Path
 from typing import cast
 
@@ -11,8 +10,7 @@ from reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from reconcile.operator_versions import reconcile as operator_versions_reconcile
-
-LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+from utils import LOG_LEVELS, configure_logging
 
 
 def defaults_path(filename: str) -> Path:
@@ -34,14 +32,10 @@ def defaults_path(filename: str) -> Path:
 )
 def cli(log_level: str) -> None:
     """Reconcile CLI."""
-    # Only set up logging if running as standalone CLI (not as subcommand)
-    if __name__ == "__main__":
-        logging.basicConfig(
-            level=getattr(logging, log_level.upper()),
-            format="%(asctime)s %(levelname)-8s %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S",
-            stream=sys.stdout,
-        )
+    # Configure logging only if not already configured by a parent group
+    # (e.g. the unified `enclave` CLI), so the standalone `enclave-reconcile`
+    # console script still gets logging.
+    configure_logging(log_level)
 
 
 @cli.command()

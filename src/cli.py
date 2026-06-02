@@ -1,12 +1,8 @@
-import logging
-import sys
-
 import click
 
 from reconcile.cli import cli as reconcile_cli
 from tools.cli import cli as tools_cli
-
-LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+from utils import LOG_LEVELS, configure_logging
 
 
 @click.group()
@@ -18,12 +14,7 @@ LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 )
 def cli(log_level: str) -> None:
     """Enclave CLI."""
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format="%(asctime)s %(levelname)-8s %(message)s",
-        datefmt="%Y-%m-%dT%H:%M:%S",
-        stream=sys.stdout,
-    )
+    configure_logging(log_level)
 
 
 # Add existing command groups as subcommands
