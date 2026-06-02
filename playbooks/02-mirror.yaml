@@ -28,18 +28,21 @@
           tags: always
       tags: always
 
+    - name: Include tasks for mirror-cache
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_cache.yaml
+        apply:
+          tags: mirror-cache
+          environment:
+            PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+      tags:
+        - mirror-cache
+        - never
+
     - name: Execute tasks with workingDir in PATH
       environment:
         PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
       block:
-        - name: Include tasks for mirror-cache
-          ansible.builtin.include_tasks:
-            file: tasks/mirror_cache.yaml
-            apply:
-              tags: mirror-cache
-          tags:
-            - mirror-cache
-            - never
 
         - name: Verify disconnected mode
           ansible.builtin.assert:
