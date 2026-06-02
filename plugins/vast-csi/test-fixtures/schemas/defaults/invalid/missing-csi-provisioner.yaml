@@ -1,0 +1,16 @@
+---
+# Fixture: csiProvisioners missing required key (block)
+# Expected failure: block is required under csiProvisioners
+vastCSIDefaults:
+  infraTenant: infra
+  storagePath: /osac
+  validateCerts: true
+  apiTimeout: 30
+  apiVersion: latest
+  csiProvisioners:
+    nfs: csi.vastdata.com
+  csiDriverName: vastcsi-driver
+  quayPvcSize: 1000Gi
+  tiers:
+    - name: quay
+      protocol: nfs

@@ -35,6 +35,9 @@ properties:
           block:
             "$ref": "#/definitions/nonEmptyString"
             description: CSI provisioner name for block protocol.
+        required:
+          - nfs
+          - block
       csiDriverName:
         "$ref": "#/definitions/nonEmptyString"
         description: Name of the VastData CSI driver resource.
@@ -65,5 +68,15 @@ properties:
           required:
             - name
             - protocol
+    required:
+      - infraTenant
+      - storagePath
+      - validateCerts
+      - apiTimeout
+      - apiVersion
+      - csiProvisioners
+      - csiDriverName
+      - quayPvcSize
+      - tiers
 required:
   - vastCSIDefaults
