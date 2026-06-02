@@ -18,7 +18,7 @@ from reconcile.cluster_upgrade import (
     semver_key,
     upgrade_cluster,
 )
-from reconcile.tests.fixtures import Fixtures, OcResultFactory
+from tests.fixtures import Fixtures, OcResultFactory
 
 fxt = Fixtures("cluster_upgrade")
 

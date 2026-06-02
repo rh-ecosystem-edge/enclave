@@ -148,18 +148,18 @@ sync:
 	@bash ./sync.sh $(GLOBAL_VARS) $(CERTS_VARS)
 
 python-format:
-	@uv run ruff format reconcile/
-	@uv run ruff check reconcile/
+	@uv run ruff format src/
+	@uv run ruff check src/
 
 python-linter-test:
-	uv run ruff check --no-fix reconcile/
-	uv run ruff format --check reconcile/
+	uv run ruff check --no-fix src/
+	uv run ruff format --check src/
 
 python-unit-test: ## Run unit tests
-	uv run pytest --cov=reconcile --cov-report=term-missing reconcile/
+	uv run pytest --cov --cov-report=term-missing
 
 python-types-test:
-	uv run mypy reconcile/
+	uv run mypy src/
 
 dev-env:
 	uv sync --all-packages

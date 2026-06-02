@@ -11,9 +11,18 @@ from reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from reconcile.operator_versions import reconcile as operator_versions_reconcile
-from reconcile.quay_registry_ca import reconcile as quay_registry_ca_reconcile
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+
+
+def defaults_path(filename: str) -> Path:
+    # Non-editable install: cli.py → site-packages/reconcile/ → site-packages/ → defaults/
+    # Editable src layout:  cli.py → src/reconcile/ → src/ → (not found) → repo root → defaults/
+    pkg_root = Path(__file__).resolve().parent.parent
+    path = pkg_root / "defaults" / filename
+    if not path.exists():
+        path = pkg_root.parent / "defaults" / filename
+    return path
 
 
 @click.group()
@@ -31,22 +40,6 @@ def cli(log_level: str) -> None:
         datefmt="%Y-%m-%dT%H:%M:%S",
         stream=sys.stdout,
     )
-
-
-@cli.command("resolve-quay-registry-ca")
-@click.option("--hostname", required=True, help="Quay registry route hostname.")
-@click.option(
-    "--oc",
-    default="oc",
-    show_default=True,
-    help="Path to the oc binary.",
-)
-def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
-    """Print the CA PEM that trusts the Quay registry route TLS certificate."""
-    try:
-        quay_registry_ca_reconcile(hostname, oc=oc)
-    except RuntimeError as exc:
-        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command()
@@ -92,18 +85,17 @@ def operator_versions(
         )
         return
 
-    defaults_path = (
-        Path(__file__).resolve().parent.parent / "defaults" / "operators.yaml"
-    )
+    defaults_file = defaults_path("operators.yaml")
+
     try:
-        with defaults_path.open(encoding="utf-8") as fh:
+        with defaults_file.open(encoding="utf-8") as fh:
             operators = yaml.safe_load(fh)["operators"]
     except FileNotFoundError as exc:
         raise click.ClickException(
-            f"{defaults_path} not found; run from the repo root"
+            f"{defaults_file} not found; run from the repo root"
         ) from exc
     except (yaml.YAMLError, KeyError) as exc:
-        raise click.ClickException(f"Failed to parse {defaults_path}: {exc}") from exc
+        raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
 
     for op in operators:
         op_name: str = op["name"]
@@ -151,19 +143,17 @@ def mgmt_cluster_version(
 
     resolved_version: str
     if use_defaults:
-        defaults_path = (
-            Path(__file__).resolve().parent.parent / "defaults" / "platforms.yaml"
-        )
+        defaults_file = defaults_path("platforms.yaml")
         try:
-            with defaults_path.open(encoding="utf-8") as fh:
+            with defaults_file.open(encoding="utf-8") as fh:
                 platforms = yaml.safe_load(fh)
         except FileNotFoundError as exc:
             raise click.ClickException(
-                f"{defaults_path} not found; run from the repo root"
+                f"{defaults_file} not found; run from the repo root"
             ) from exc
         except yaml.YAMLError as exc:
             raise click.ClickException(
-                f"Failed to parse {defaults_path}: {exc}"
+                f"Failed to parse {defaults_file}: {exc}"
             ) from exc
 
         openshift_versions: list[dict[str, object]] = platforms.get(

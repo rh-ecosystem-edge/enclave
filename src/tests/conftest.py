@@ -2,7 +2,7 @@ from subprocess import CompletedProcess
 
 import pytest
 
-from reconcile.tests.fixtures import OcResultFactory
+from tests.fixtures import OcResultFactory
 
 
 @pytest.fixture

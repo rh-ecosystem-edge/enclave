@@ -45,7 +45,7 @@ COPY pyproject.toml uv.lock .python-version README.md /workspace/
 # the project in the first uv sync so that we can can leverage the cache
 # of the deps resolution layer leading to faster builds.
 RUN uv sync --all-groups --no-install-project
-COPY reconcile/ /workspace/reconcile/
+COPY src/ /workspace/src/
 RUN uv sync --no-editable
 
 # Put venv on PATH so all commands are available

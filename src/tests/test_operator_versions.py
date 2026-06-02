@@ -4,7 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from reconcile.operator_versions import approve_install_plans, reconcile
-from reconcile.tests.fixtures import Fixtures, OcResultFactory
+from tests.fixtures import Fixtures, OcResultFactory
 
 fxt = Fixtures("operator_versions")
 

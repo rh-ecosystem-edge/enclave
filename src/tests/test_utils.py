@@ -4,8 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from reconcile.tests.fixtures import OcResultFactory
-from reconcile.utils import (
+from tests.fixtures import OcResultFactory
+from utils import (
     parse_jsonpath_value,
     run_oc_command,
     semver_key,
@@ -14,8 +14,8 @@ from reconcile.utils import (
 
 
 def _patch_time(mocker: MockerFixture, times: list[float]) -> MagicMock:
-    """Stub time.time() in reconcile.utils with a predetermined sequence of values."""
-    return mocker.patch("reconcile.utils.time.time", side_effect=times)
+    """Stub time.time() in utils with a predetermined sequence of values."""
+    return mocker.patch("utils.time.time", side_effect=times)
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ def test_semver_numeric_prerelease_ordering() -> None:
 def test_run_oc_command_timeout(mocker: MockerFixture) -> None:
     """A subprocess.TimeoutExpired is converted to TimeoutError with a clear message."""
     mocker.patch(
-        "reconcile.utils.subprocess.run",
+        "utils.subprocess.run",
         side_effect=TimeoutExpired(cmd="oc", timeout=60),
     )
     with pytest.raises(TimeoutError, match="timed out after 60 seconds"):
@@ -92,9 +92,7 @@ def test_wait_success_on_first_poll(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
     """Returns immediately when the desired state is observed on the first poll."""
-    mocker.patch(
-        "reconcile.utils.run_oc_command", return_value=oc_result(stdout="Completed")
-    )
+    mocker.patch("utils.run_oc_command", return_value=oc_result(stdout="Completed"))
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
 
 
@@ -103,10 +101,10 @@ def test_wait_success_after_one_retry(
 ) -> None:
     """Sleeps and retries when the first poll returns a non-matching state."""
     mocker.patch(
-        "reconcile.utils.run_oc_command",
+        "utils.run_oc_command",
         side_effect=[oc_result(stdout="Pending"), oc_result(stdout="Completed")],
     )
-    mock_sleep = mocker.patch("reconcile.utils.time.sleep")
+    mock_sleep = mocker.patch("utils.time.sleep")
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
     mock_sleep.assert_called_once()
 
@@ -117,10 +115,8 @@ def test_wait_global_timeout_exceeded(
     """Raises TimeoutError when the global deadline is exceeded before the state matches."""
     # timeout_minutes=1 → deadline = 0 + 60; third time.time() call returns 61 > 60
     _patch_time(mocker, [0, 1, 61])
-    mocker.patch("reconcile.utils.time.sleep")
-    mocker.patch(
-        "reconcile.utils.run_oc_command", return_value=oc_result(stdout="Pending")
-    )
+    mocker.patch("utils.time.sleep")
+    mocker.patch("utils.run_oc_command", return_value=oc_result(stdout="Pending"))
     with pytest.raises(TimeoutError):
         wait_for_resource_status(
             "cv", "version", "history[0].state", "Completed", timeout_minutes=1
@@ -132,9 +128,9 @@ def test_wait_oc_per_call_timeout_retries(
 ) -> None:
     """A per-call oc timeout is logged and retried if the global deadline allows it."""
     _patch_time(mocker, [0, 1, 2])
-    mocker.patch("reconcile.utils.time.sleep")
+    mocker.patch("utils.time.sleep")
     mocker.patch(
-        "reconcile.utils.run_oc_command",
+        "utils.run_oc_command",
         side_effect=[TimeoutError("Command timed out"), oc_result(stdout="Completed")],
     )
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
@@ -144,10 +140,8 @@ def test_wait_oc_per_call_timeout_exceeds_global(mocker: MockerFixture) -> None:
     """A per-call oc timeout raises TimeoutError when the global deadline is also exceeded."""
     # deadline = 0 + 60; warning log consumes one call, then the global-timeout check returns 61 > 60
     _patch_time(mocker, [0, 1, 61])
-    mocker.patch("reconcile.utils.time.sleep")
-    mocker.patch(
-        "reconcile.utils.run_oc_command", side_effect=TimeoutError("Command timed out")
-    )
+    mocker.patch("utils.time.sleep")
+    mocker.patch("utils.run_oc_command", side_effect=TimeoutError("Command timed out"))
     with pytest.raises(TimeoutError):
         wait_for_resource_status(
             "cv", "version", "history[0].state", "Completed", timeout_minutes=1
@@ -159,10 +153,8 @@ def test_wait_global_timeout_at_exact_deadline(
 ) -> None:
     """Raises TimeoutError when time.time() equals the deadline exactly (>= boundary)."""
     _patch_time(mocker, [0, 0, 0, 60])
-    mocker.patch("reconcile.utils.time.sleep")
-    mocker.patch(
-        "reconcile.utils.run_oc_command", return_value=oc_result(stdout="Pending")
-    )
+    mocker.patch("utils.time.sleep")
+    mocker.patch("utils.run_oc_command", return_value=oc_result(stdout="Pending"))
     with pytest.raises(TimeoutError):
         wait_for_resource_status(
             "cv", "version", "history[0].state", "Completed", timeout_minutes=1
@@ -174,10 +166,8 @@ def test_wait_oc_per_call_timeout_at_exact_deadline(mocker: MockerFixture) -> No
     # deadline=60; logger.warning consumes one time.time() call per iteration via LogRecord creation:
     # setup(0), iter1-warn(0), iter1-guard(0→sleep), iter2-warn(60), iter2-guard(60→raise)
     _patch_time(mocker, [0, 0, 0, 60, 60])
-    mocker.patch("reconcile.utils.time.sleep")
-    mocker.patch(
-        "reconcile.utils.run_oc_command", side_effect=TimeoutError("Command timed out")
-    )
+    mocker.patch("utils.time.sleep")
+    mocker.patch("utils.run_oc_command", side_effect=TimeoutError("Command timed out"))
     with pytest.raises(TimeoutError):
         wait_for_resource_status(
             "cv", "version", "history[0].state", "Completed", timeout_minutes=1
@@ -189,9 +179,9 @@ def test_wait_nonzero_returncode_continues(
 ) -> None:
     """A non-zero oc exit code is logged but polling continues rather than raising."""
     _patch_time(mocker, [0, 1, 2, 3])
-    mocker.patch("reconcile.utils.time.sleep")
+    mocker.patch("utils.time.sleep")
     mocker.patch(
-        "reconcile.utils.run_oc_command",
+        "utils.run_oc_command",
         side_effect=[oc_result(stdout="", returncode=1), oc_result(stdout="Completed")],
     )
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
@@ -202,7 +192,7 @@ def test_wait_with_namespace_includes_n_flag(
 ) -> None:
     """When namespace is provided the oc get command includes -n <namespace>."""
     mock_run = mocker.patch(
-        "reconcile.utils.run_oc_command", return_value=oc_result(stdout="Succeeded")
+        "utils.run_oc_command", return_value=oc_result(stdout="Succeeded")
     )
     wait_for_resource_status(
         "clusterserviceversion.operators.coreos.com",
@@ -221,7 +211,7 @@ def test_wait_without_namespace_omits_n_flag(
 ) -> None:
     """When namespace is omitted the oc get command has no -n flag."""
     mock_run = mocker.patch(
-        "reconcile.utils.run_oc_command", return_value=oc_result(stdout="Completed")
+        "utils.run_oc_command", return_value=oc_result(stdout="Completed")
     )
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
     args = mock_run.call_args.args[0]
