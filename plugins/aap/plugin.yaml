@@ -11,8 +11,3 @@ operators:
     namespace: ansible-aap
     csvNames:
       - aap-operator
-
-requires:
-  vars:
-    - name: aapLicenseFile
-      description: "Path to AAP license manifest.zip file on the Landing Zone"

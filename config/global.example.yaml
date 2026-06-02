@@ -124,12 +124,10 @@ storage_plugin: lvms
 #       protocol: nfs
 
 # ============================================================================
-# AAP Plugin Configuration (required when aap plugin is enabled)
+# AAP Plugin Configuration (optional)
 # ============================================================================
-# Path to the AAP license manifest.zip file on the Landing Zone.
-# See https://github.com/osac-project/osac-installer#obtaining-an-aap-license-subscription-manifest
-#
-# aapLicenseFile: "/path/to/aap-license.zip"
+# AAP plugin configuration is now in config/plugins/aap.yaml.
+# See config/plugins/aap.example.yaml for available options.
 
 # ============================================================================
 # OpenShift Deployment Configuration (optional)
