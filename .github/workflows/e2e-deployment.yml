@@ -80,7 +80,7 @@ jobs:
             e2e:
               - 'playbooks/**'
               - 'scripts/**'
-              - 'reconcile/**'
+              - 'src/**'
               - 'Makefile'
               - 'Makefile.ci'
               - 'config/**'
