@@ -2,6 +2,9 @@
 "$schema": "http://json-schema.org/draft-07/schema"
 type: object
 additionalProperties: false
+required:
+  - trust_manager_ca_issuer_duration
+  - trust_manager_ca_issuer_renew_before
 properties:
   trust_manager_ca_issuer_duration:
     type: string
