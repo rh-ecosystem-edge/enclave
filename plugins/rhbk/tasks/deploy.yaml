@@ -1,0 +1,264 @@
+---
+- name: Detect cluster ingress domain
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: Ingress
+    name: cluster
+  register: __r_ingress_config
+  when: rhbk_hostname | length == 0
+
+- name: Set Keycloak hostname from cluster ingress domain
+  ansible.builtin.set_fact:
+    rhbk_hostname: "keycloak.{{ __r_ingress_config.resources[0].spec.domain }}"
+  when: rhbk_hostname | length == 0
+
+- name: Ensure namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ rhbk_ns }}"
+  register: __r_rhbk_ns
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_rhbk_ns is success
+
+- name: Generate database password
+  ansible.builtin.set_fact:
+    __rhbk_db_password: "{{ lookup('password', '/dev/null length=24 chars=ascii_letters,digits') }}"
+  when: rhbk_deploy_database
+  no_log: true
+
+- name: Create database credentials Secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ rhbk_db_name }}-credentials"
+        namespace: "{{ rhbk_ns }}"
+      type: Opaque
+      stringData:
+        username: "{{ rhbk_db_username }}"
+        password: "{{ __rhbk_db_password }}"
+  register: __r_db_secret
+  no_log: true
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_db_secret is success
+  when: rhbk_deploy_database
+
+- name: Create TLS Certificate for Keycloak
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: rhbk-tls
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        secretName: rhbk-tls
+        issuerRef:
+          kind: ClusterIssuer
+          name: default-ca
+        dnsNames:
+          - "{{ rhbk_hostname }}"
+        privateKey:
+          rotationPolicy: Always
+  register: __r_rhbk_cert
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_rhbk_cert is success
+
+- name: Deploy PostgreSQL Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ rhbk_db_name }}"
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        selector:
+          app: "{{ rhbk_db_name }}"
+        ports:
+          - name: postgres
+            port: 5432
+            targetPort: 5432
+  register: __r_db_svc
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_db_svc is success
+  when: rhbk_deploy_database
+
+- name: Deploy PostgreSQL StatefulSet
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: "{{ rhbk_db_name }}"
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        serviceName: "{{ rhbk_db_name }}"
+        replicas: 1
+        selector:
+          matchLabels:
+            app: "{{ rhbk_db_name }}"
+        template:
+          metadata:
+            labels:
+              app: "{{ rhbk_db_name }}"
+          spec:
+            containers:
+              - name: postgresql
+                image: registry.redhat.io/rhel9/postgresql-15:latest
+                ports:
+                  - containerPort: 5432
+                env:
+                  - name: POSTGRESQL_USER
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ rhbk_db_name }}-credentials"
+                        key: username
+                  - name: POSTGRESQL_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ rhbk_db_name }}-credentials"
+                        key: password
+                  - name: POSTGRESQL_DATABASE
+                    value: keycloak
+                volumeMounts:
+                  - name: data
+                    mountPath: /var/lib/pgsql/data
+                readinessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                      - --live
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+        volumeClaimTemplates:
+          - metadata:
+              name: data
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: "{{ rhbk_db_size }}"
+  register: __r_db_sts
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_db_sts is success
+  when: rhbk_deploy_database
+
+- name: Wait for PostgreSQL ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: "{{ rhbk_db_name }}"
+    namespace: "{{ rhbk_ns }}"
+  register: __r_db_ready
+  retries: 30
+  delay: 10
+  until:
+    - __r_db_ready.resources | length > 0
+    - __r_db_ready.resources[0].status.readyReplicas | default(0) | int > 0
+  when: rhbk_deploy_database
+
+- name: Wait for Keycloak CRD to be registered
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: keycloaks.k8s.keycloak.org
+  register: __r_keycloak_crd
+  retries: 60
+  delay: 10
+  until:
+    - __r_keycloak_crd.resources | default([]) | length > 0
+
+- name: Deploy Keycloak CR (with database)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: k8s.keycloak.org/v2alpha1
+      kind: Keycloak
+      metadata:
+        name: "{{ rhbk_name }}"
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        instances: "{{ rhbk_instances }}"
+        hostname:
+          hostname: "{{ rhbk_hostname }}"
+        http:
+          tlsSecret: rhbk-tls
+        db:
+          vendor: postgres
+          host: "{{ rhbk_db_name }}"
+          port: 5432
+          database: keycloak
+          usernameSecret:
+            name: "{{ rhbk_db_name }}-credentials"
+            key: username
+          passwordSecret:
+            name: "{{ rhbk_db_name }}-credentials"
+            key: password
+  register: __r_keycloak
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_keycloak is success
+  when: rhbk_deploy_database
+
+- name: Deploy Keycloak CR (external database)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: k8s.keycloak.org/v2alpha1
+      kind: Keycloak
+      metadata:
+        name: "{{ rhbk_name }}"
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        instances: "{{ rhbk_instances }}"
+        hostname:
+          hostname: "{{ rhbk_hostname }}"
+        http:
+          tlsSecret: rhbk-tls
+  register: __r_keycloak
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_keycloak is success
+  when: not rhbk_deploy_database
+
+- name: Wait for Keycloak CR ready
+  kubernetes.core.k8s_info:
+    api_version: k8s.keycloak.org/v2alpha1
+    kind: Keycloak
+    name: "{{ rhbk_name }}"
+    namespace: "{{ rhbk_ns }}"
+  register: __r_keycloak_status
+  retries: 60
+  delay: 15
+  until:
+    - __r_keycloak_status.resources | length > 0
+    - __r_keycloak_status.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+
+- name: Debug Keycloak status
+  ansible.builtin.debug:
+    msg: "Keycloak {{ rhbk_name }} is ready at https://{{ rhbk_hostname }} in {{ rhbk_ns }} namespace"

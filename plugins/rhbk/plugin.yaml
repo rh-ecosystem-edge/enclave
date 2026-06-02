@@ -1,0 +1,13 @@
+---
+name: rhbk
+type: addon
+order: 101
+
+operators:
+  - name: rhbk-operator
+    version: 26.4.12
+    channel: stable-v26
+    init_version: 26.4.12
+    namespace: keycloak
+    csvNames:
+      - rhbk-operator

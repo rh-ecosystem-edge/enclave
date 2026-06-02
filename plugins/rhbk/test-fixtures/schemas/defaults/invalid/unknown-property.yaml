@@ -1,0 +1,5 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+rhbk_ns: keycloak
+unknownField: this-should-fail

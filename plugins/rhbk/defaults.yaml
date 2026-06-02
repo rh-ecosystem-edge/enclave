@@ -1,0 +1,9 @@
+---
+rhbk_ns: keycloak
+rhbk_name: keycloak
+rhbk_hostname: ""
+rhbk_instances: 1
+rhbk_deploy_database: true
+rhbk_db_name: keycloak-database
+rhbk_db_size: 5Gi
+rhbk_db_username: keycloak
