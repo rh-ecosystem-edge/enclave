@@ -1,0 +1,14 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+required:
+  - trust_manager_ca_issuer_duration
+  - trust_manager_ca_issuer_renew_before
+properties:
+  trust_manager_ca_issuer_duration:
+    type: string
+    description: Lifetime of the CA certificate issued by the self-signed issuer (e.g. 87600h for 10 years).
+  trust_manager_ca_issuer_renew_before:
+    type: string
+    description: How long before expiry the CA certificate is renewed (e.g. 8760h for 1 year).

@@ -19,8 +19,8 @@ spec:
   isCA: true
   commonName: default-ca
   secretName: default-ca
-  duration: {{ ca_issuer_duration }}
-  renewBefore: {{ ca_issuer_renew_before }}
+  duration: {{ trust_manager_ca_issuer_duration }}
+  renewBefore: {{ trust_manager_ca_issuer_renew_before }}
   privateKey:
     algorithm: RSA
     size: 4096
