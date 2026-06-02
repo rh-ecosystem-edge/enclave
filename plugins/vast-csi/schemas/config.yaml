@@ -25,6 +25,7 @@ properties:
       ip_ranges:
         type: array
         description: IP ranges allocated to the VIP pool.
+        minItems: 1
         items:
           type: object
           additionalProperties: false
