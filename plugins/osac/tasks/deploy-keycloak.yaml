@@ -1,0 +1,40 @@
+---
+- name: Apply Keycloak manifests
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop: "{{ lookup('file', plugin_dir ~ '/files/keycloak.yaml') | from_yaml_all | list }}"
+  register: __r_keycloak
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_keycloak is success
+
+- name: Wait for Keycloak database
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: keycloak-database
+    namespace: keycloak
+  register: __r_keycloak_db
+  retries: 30
+  delay: 10
+  until:
+    - __r_keycloak_db.resources | length > 0
+    - __r_keycloak_db.resources[0].status.readyReplicas | default(0) | int > 0
+
+- name: Wait for Keycloak service
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: keycloak-service
+    namespace: keycloak
+  register: __r_keycloak_svc
+  retries: 60
+  delay: 10
+  until:
+    - __r_keycloak_svc.resources | length > 0
+    - __r_keycloak_svc.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Debug Keycloak status
+  ansible.builtin.debug:
+    msg: "Keycloak database and service are ready in keycloak namespace"

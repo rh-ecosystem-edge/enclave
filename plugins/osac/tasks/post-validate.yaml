@@ -1,0 +1,51 @@
+---
+- name: Verify OSAC operator deployment exists
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ osac_operator.name }}-controller-manager"
+    namespace: "{{ osac_operator.ns }}"
+  register: __osac_deploy
+  retries: 30
+  delay: 10
+  until: __osac_deploy.resources | length > 0
+
+- name: Verify OSAC operator is available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ osac_operator.name }}-controller-manager"
+    namespace: "{{ osac_operator.ns }}"
+  register: __osac_ready
+  retries: 30
+  delay: 10
+  until:
+    - __osac_ready.resources | length > 0
+    - __osac_ready.resources[0].status.availableReplicas | default(0) | int > 0
+
+- name: Get OSAC operator pods
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ osac_operator.ns }}"
+  register: __osac_pods
+
+- name: Show OSAC operator pod status
+  ansible.builtin.debug:
+    msg: "{{ __osac_pods.resources | map(attribute='metadata.name') | zip(__osac_pods.resources | map(attribute='status.phase')) | list }}"
+
+- name: Get OSAC operator deployment conditions
+  ansible.builtin.debug:
+    msg: "{{ __osac_ready.resources[0].status.conditions }}"
+
+- name: Get OSAC namespace events
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Event
+    namespace: "{{ osac_operator.ns }}"
+  register: __osac_events
+
+- name: Show recent OSAC events
+  ansible.builtin.debug:
+    msg: "{{ __osac_events.resources | rejectattr('lastTimestamp', 'none') | sort(attribute='lastTimestamp') | map(attribute='message') | list }}"
+  when: __osac_events.resources | length > 0

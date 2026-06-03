@@ -1,0 +1,26 @@
+---
+- name: Apply CA issuer manifests
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ item }}"
+  loop: "{{ lookup('file', plugin_dir ~ '/files/ca-issuer.yaml') | from_yaml_all | list }}"
+  register: __r_ca_issuer
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_ca_issuer is success
+
+- name: Wait for ClusterIssuer to be ready
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: ClusterIssuer
+    name: default-ca
+  register: __r_cluster_issuer
+  retries: 30
+  delay: 10
+  until:
+    - __r_cluster_issuer.resources | length > 0
+    - __r_cluster_issuer.resources[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Ready') | selectattr('status', 'equalto', 'True') | list | length > 0
+
+- name: Debug CA issuer status
+  ansible.builtin.debug:
+    msg: "ClusterIssuer default-ca is ready"
