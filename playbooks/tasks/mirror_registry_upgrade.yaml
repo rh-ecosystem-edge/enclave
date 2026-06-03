@@ -13,21 +13,6 @@
 
 - name: Upgrade mirror-registry
   block:
-    - name: Get mirror-registry binary version
-      ansible.builtin.command: |
-        {{ workingDir }}/bin/mirror-registry --version
-      register: r_mirror_registry_version
-      changed_when: false
-
-    - name: Get deployed Quay container image
-      containers.podman.podman_container_info:
-        name: quay-app
-      register: r_quay_container_info
-
-    - name: Extract current Quay image tag
-      ansible.builtin.set_fact:
-        current_quay_image: "{{ r_quay_container_info.containers[0].Image if r_quay_container_info.containers | length > 0 else '' }}"
-
     - name: Upgrade existing mirror-registry
       no_log: true
       ansible.builtin.command: |
