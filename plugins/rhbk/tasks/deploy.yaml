@@ -133,6 +133,7 @@
             labels:
               app: "{{ rhbk_db_name }}"
           spec:
+            automountServiceAccountToken: false
             containers:
               - name: postgresql
                 image: "{{ rhbk_db_image }}"
