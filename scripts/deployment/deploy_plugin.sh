@@ -131,6 +131,27 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
+# Load ODF external config and Quay RGW config (from env vars or LZ files)
+if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
+    source "${ENCLAVE_DIR}/scripts/lib/odf.sh"
+    append_odf_extra_vars
+fi
+
+# Copy AAP license file to Landing Zone if AAP_LICENSE_FILE is set
+# shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+if [ -n "${AAP_LICENSE_FILE:-}" ]; then
+    if [ ! -f "$AAP_LICENSE_FILE" ]; then
+        error "AAP license file not found: $AAP_LICENSE_FILE"
+        exit 1
+    fi
+    LZ_AAP_LICENSE="/home/${LZ_USER}/aap-license.zip"
+    info "Copying AAP license to Landing Zone: $LZ_AAP_LICENSE"
+    scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}aap_license_file: ${LZ_AAP_LICENSE}
+"
+    info "AAP license file: $AAP_LICENSE_FILE -> $LZ_AAP_LICENSE"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF

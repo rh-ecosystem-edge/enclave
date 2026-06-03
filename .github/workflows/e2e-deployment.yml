@@ -1015,10 +1015,20 @@ jobs:
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
+      AAP_LICENSE_FILE: /etc/enclave-ci/aap-license.zip
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify AAP license file exists
+        run: |
+          if [ ! -f "$AAP_LICENSE_FILE" ]; then
+            echo "::error::AAP license file not found at $AAP_LICENSE_FILE"
+            echo "The AAP license must be pre-staged on the runner at $AAP_LICENSE_FILE"
+            exit 1
+          fi
+          echo "AAP license file found at $AAP_LICENSE_FILE"
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
@@ -1407,10 +1417,20 @@ jobs:
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
+      AAP_LICENSE_FILE: /etc/enclave-ci/aap-license.zip
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Verify AAP license file exists
+        run: |
+          if [ ! -f "$AAP_LICENSE_FILE" ]; then
+            echo "::error::AAP license file not found at $AAP_LICENSE_FILE"
+            echo "The AAP license must be pre-staged on the runner at $AAP_LICENSE_FILE"
+            exit 1
+          fi
+          echo "AAP license file found at $AAP_LICENSE_FILE"
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
