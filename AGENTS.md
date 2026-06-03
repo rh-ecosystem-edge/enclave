@@ -75,6 +75,13 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
 
+## Git workflow
+
+- **NEVER push commits directly to `main`** — all changes must go through pull requests
+- This project does not use forks — create feature branches in the main repository
+- Branch naming: use descriptive names like `feature/add-xyz`, `fix/bug-description`, `docs/update-readme`
+- When work is ready, create a PR for review — do not push to main even if you have permissions
+
 ## Issue tracking
 
 All work in this repository is tracked in the **OSAC** Jira board with the **Enclave** component:
