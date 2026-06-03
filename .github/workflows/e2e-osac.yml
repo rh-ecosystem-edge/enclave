@@ -17,7 +17,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - 'plugins/trust-manager/**'
-      - 'plugins/keycloak/**'
+      - 'plugins/rhbk/**'
       - 'plugins/authorino/**'
       - 'plugins/cnv/**'
       - 'plugins/aap/**'
@@ -37,7 +37,7 @@ jobs:
     with:
       run-connected: true
       run-disconnected: false
-      enabled-plugins: 'lvms,trust-manager,keycloak,authorino,cnv,aap'
+      enabled-plugins: 'lvms,trust-manager,rhbk,authorino,cnv,aap'
       heavy-workload: true
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
