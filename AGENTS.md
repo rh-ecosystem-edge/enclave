@@ -84,25 +84,23 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 
 ### GitHub CLI (Recommended)
 
-Use the [gh](https://cli.github.com/) tool for efficient GitHub workflow management from the command line:
+Use the [gh](https://cli.github.com/) tool for efficient GitHub workflow management from the command line.
 
+**Installation** (choose the method that fits your environment):
 ```bash
-# Install (choose one method)
-brew install gh  # macOS/Linux
-sudo dnf install gh  # Fedora/RHEL
-# Or download from: https://github.com/cli/cli/releases
+brew install gh              # macOS/Linux
+sudo dnf install gh          # Fedora/RHEL
+sudo apt install gh          # Debian/Ubuntu
+# Immutable distros: use toolbox/distrobox or download binary
+# Direct download: https://github.com/cli/cli/releases
+```
 
-# Initial setup
-gh auth login  # Interactive authentication
-
-# Common operations
+**Common operations**:
+```bash
+gh auth login  # Initial authentication
 gh pr create --title "OSAC-123: Add feature" --body "..."
 gh pr view 432
-gh pr list --head my-branch
-gh pr comment 432 --body "Updated based on review feedback"
-gh pr close 430 --comment "Incorporated into #431"
-gh pr diff 432
-gh api repos/rh-ecosystem-edge/enclave/pulls/432 -X PATCH -f title="..."
+gh pr comment 432 --body "✨ **Claude Code**: Fixed in abc1234"
 ```
 
 The CLI enables automation and improves AI agent integration with PR workflows.
@@ -121,26 +119,21 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
 
 ### Jira CLI (Recommended)
 
-Use the [jira-cli](https://github.com/ankitpokhrel/jira-cli) tool for efficient Jira workflow management from the command line:
+Use the [jira-cli](https://github.com/ankitpokhrel/jira-cli) tool for efficient Jira workflow management.
 
+**Installation** (choose the method that fits your environment):
 ```bash
-# Install (choose one method)
 go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
-brew install jira-cli  # macOS
-# Or download from: https://github.com/ankitpokhrel/jira-cli/releases
-
-# Initial setup
-jira init  # Interactive setup for Red Hat Jira (redhat.atlassian.net)
-
-# Common operations
-jira issue create --project OSAC --component Enclave --type Story --summary "..."
-jira issue view OSAC-123
-jira issue comment add OSAC-123 "PR created: https://github.com/..."
-jira epic add OSAC-670 OSAC-123
-jira issue link OSAC-123 OSAC-456 Related
+brew install jira-cli        # macOS
+# Direct download: https://github.com/ankitpokhrel/jira-cli/releases
 ```
 
-The CLI enables automation and improves AI agent integration with issue tracking.
+**Setup and usage**:
+```bash
+jira init  # Interactive setup for Red Hat Jira (redhat.atlassian.net)
+```
+
+For detailed Jira task management workflows with this project, see the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md). When creating issues, use component `Enclave` and project `OSAC`.
 
 ## Git commits
 
