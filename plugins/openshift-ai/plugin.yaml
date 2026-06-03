@@ -39,8 +39,6 @@ operators:
 
 installOperators: false
 
-defaults: {}
-
 registries:
   - location: "registry.redhat.io/rhcl-1"
     mirror: "rhcl-1"
