@@ -75,6 +75,13 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
 
+## Issue tracking
+
+All work in this repository is tracked in the **OSAC** Jira board with the **Enclave** component:
+- Create tickets for features, bugs, and documentation updates
+- Use component: `Enclave`
+- Reference the Jira ticket in commits and PRs (e.g., `OSAC-123: Add feature X`)
+
 ## Git commits
 
 - If AI assisted the commit, include an `Assisted-by: <tool>` trailer.
