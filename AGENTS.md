@@ -75,7 +75,62 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
 
+## Git workflow
+
+- **NEVER push commits directly to `main`** — all changes must go through pull requests
+- This project does not use forks — create feature branches in the main repository
+- Branch naming: use descriptive names like `feature/add-xyz`, `fix/bug-description`, `docs/update-readme`
+- When work is ready, create a PR for review — do not push to main even if you have permissions
+
+### GitHub CLI (Recommended)
+
+Use the [gh](https://cli.github.com/) tool for efficient GitHub workflow management from the command line.
+
+**Installation** (choose the method that fits your environment):
+```bash
+brew install gh              # macOS/Linux
+sudo dnf install gh          # Fedora/RHEL
+sudo apt install gh          # Debian/Ubuntu
+# Immutable distros: use toolbox/distrobox or download binary
+# Direct download: https://github.com/cli/cli/releases
+```
+
+**Common operations**:
+```bash
+gh auth login  # Initial authentication
+gh pr create --title "OSAC-123: Add feature" --body "..."
+gh pr view 432
+gh pr comment 432 --body "✨ **Claude Code**: Fixed in abc1234"
+```
+
+The CLI enables automation and improves AI agent integration with PR workflows.
+
+## Issue tracking
+
+All work in this repository is tracked in the **OSAC** Jira board with the **Enclave** component:
+- Create tickets for features, bugs, and documentation updates
+- Use component: `Enclave`
+- Reference the Jira ticket in commits and PRs (e.g., `OSAC-123: Add feature X`)
+- Update Jira tickets with PR links for traceability (a ticket may have multiple PRs if work is split across incremental changes)
+- Maintain ticket status throughout the workflow:
+  - **In Progress** — when work begins or a PR is created
+  - **In Review** — when PR(s) are submitted for review (if available in workflow)
+  - **Done/Closed** — when all PRs are merged and work is complete
+
+## Jira Task Management
+
+For detailed Jira task management workflows with this project, see the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md).
+
+When creating issues, use component `Enclave` and project `OSAC`.
+
 ## Git commits
 
 - If AI assisted the commit, include an `Assisted-by: <tool>` trailer.
 - Recommended format: `Assisted-by: Claude Code <noreply@anthropic.com>`
+
+## PR review responses
+
+When responding to PR review comments, clearly identify that the response is from an AI agent:
+- Prefix responses with `✨ **Claude Code**:` to indicate the agent is responding
+- Include the commit hash that addresses the comment
+- Keep responses concise and factual
