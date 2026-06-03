@@ -3,5 +3,11 @@ name: example
 type: addon
 order: 999
 
+requires:
+  resources:
+    - apiVersion: v1
+      kind: Namespace
+      name: default
+
 defaults:
   example_message: "Hello from example plugin"
