@@ -91,3 +91,10 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
 
 - If AI assisted the commit, include an `Assisted-by: <tool>` trailer.
 - Recommended format: `Assisted-by: Claude Code <noreply@anthropic.com>`
+
+## PR review responses
+
+When responding to PR review comments, clearly identify that the response is from an AI agent:
+- Prefix responses with `✨ **Claude Code**:` to indicate the agent is responding
+- Include the commit hash that addresses the comment
+- Keep responses concise and factual
