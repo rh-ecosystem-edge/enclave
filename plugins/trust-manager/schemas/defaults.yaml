@@ -3,9 +3,13 @@
 type: object
 additionalProperties: false
 required:
+  - trust_manager_cluster_issuer
   - trust_manager_ca_issuer_duration
   - trust_manager_ca_issuer_renew_before
 properties:
+  trust_manager_cluster_issuer:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Name of the ClusterIssuer created by the trust-manager plugin.
   trust_manager_ca_issuer_duration:
     type: string
     description: Lifetime of the CA certificate issued by the self-signed issuer (e.g. 87600h for 10 years).
