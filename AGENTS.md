@@ -82,6 +82,31 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Branch naming: use descriptive names like `feature/add-xyz`, `fix/bug-description`, `docs/update-readme`
 - When work is ready, create a PR for review — do not push to main even if you have permissions
 
+### GitHub CLI (Recommended)
+
+Use the [gh](https://cli.github.com/) tool for efficient GitHub workflow management from the command line:
+
+```bash
+# Install (choose one method)
+brew install gh  # macOS/Linux
+sudo dnf install gh  # Fedora/RHEL
+# Or download from: https://github.com/cli/cli/releases
+
+# Initial setup
+gh auth login  # Interactive authentication
+
+# Common operations
+gh pr create --title "OSAC-123: Add feature" --body "..."
+gh pr view 432
+gh pr list --head my-branch
+gh pr comment 432 --body "Updated based on review feedback"
+gh pr close 430 --comment "Incorporated into #431"
+gh pr diff 432
+gh api repos/rh-ecosystem-edge/enclave/pulls/432 -X PATCH -f title="..."
+```
+
+The CLI enables automation and improves AI agent integration with PR workflows.
+
 ## Issue tracking
 
 All work in this repository is tracked in the **OSAC** Jira board with the **Enclave** component:
