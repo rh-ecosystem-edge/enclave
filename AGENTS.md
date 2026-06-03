@@ -81,11 +81,11 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
 - Create tickets for features, bugs, and documentation updates
 - Use component: `Enclave`
 - Reference the Jira ticket in commits and PRs (e.g., `OSAC-123: Add feature X`)
-- Update Jira tickets with PR links for traceability
+- Update Jira tickets with PR links for traceability (a ticket may have multiple PRs if work is split across incremental changes)
 - Maintain ticket status throughout the workflow:
-  - **In Progress** — when work begins or PR is created
-  - **In Review** — when PR is submitted for review (if available in workflow)
-  - **Done/Closed** — when PR is merged
+  - **In Progress** — when work begins or a PR is created
+  - **In Review** — when PR(s) are submitted for review (if available in workflow)
+  - **Done/Closed** — when all PRs are merged and work is complete
 
 ## Git commits
 
