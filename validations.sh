@@ -326,15 +326,11 @@ validation_section nmstate
 
 if [[ $(getValue .agent_hosts | jq '[.[] | select(has("networkConfig"))] | length') -gt 0 ]]; then
     for agent in $(getValue .agent_hosts | jq -r ".[] | .name"); do
-        agent_host=$(getValue .agent_hosts | jq -r '.[] | select(.name=="'"$agent"'")')
+        agent_host=$(getValue .agent_hosts | jq --arg agent $agent -r '.[] | select(.name==$agent)')
         hasNetworkConfig=$(jq 'has("networkConfig")' <<< "$agent_host")
-        hasMapInterfaces=$(jq 'has("mapInterfaces")' <<< "$agent_host")
         if [[ $hasNetworkConfig == false ]]; then
             validation pass $agent "Host $agent has no networkConfig. Skipping validation"
             continue
-        fi
-        if [[ $hasMapInterfaces == false ]]; then
-            validation fail $agent "Host $agent has networkConfig but no mapInterfaces"
         fi
 
         if ! jq .networkConfig <<< "$agent_host" | toYaml | nmstatectl validate -q > /dev/null; then

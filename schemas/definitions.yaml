@@ -87,8 +87,18 @@ definitions:
       macAddress:
         "$ref": "#/definitions/macAddress"
       mapInterfaces:
-        type: object
         description: Interface mapping configuration
+        type: array
+        items:
+          type: object
+          required:
+              - name
+              - macAddress
+          properties:
+            name:
+              type: string
+            macAddress:
+              "$ref": "#/definitions/macAddress"
       name:
         "$ref": "#/definitions/nonEmptyString"
       networkConfig:
@@ -103,11 +113,27 @@ definitions:
       rootDisk:
         "$ref": "#/definitions/nonEmptyString"
     required:
-      - ipAddress
-      - macAddress
       - name
       - redfish
       - redfishPassword
       - redfishUser
       - rootDisk
-
+    oneOf:
+      - required:
+          - ipAddress
+          - macAddress
+        not:
+          anyOf:
+            - required:
+              - networkConfig
+            - required:
+              - mapInterfaces
+      - required:
+          - networkConfig
+          - mapInterfaces
+        not:
+          anyOf:
+            - required:
+              - ipAddress
+            - required:
+              - macAddress

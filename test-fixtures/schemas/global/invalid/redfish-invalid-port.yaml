@@ -13,7 +13,7 @@ defaultPrefix: 24
 rendezvousIP: 192.168.2.24
 lzBmcIP: 100.64.1.10
 quayUser: admin
-quayPassword: password
+quayPassword: YOUR_QUAY_PASSWORD
 quayBackend: LocalStorage
 storage_plugin: lvms
 pullSecret: {"auths":{}}
@@ -25,4 +25,4 @@ agent_hosts:
     redfish: 100.64.1.1:99999
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
-    redfishPassword: password
+    redfishPassword: YOUR_REDFISH_PASSWORD

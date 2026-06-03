@@ -22,7 +22,7 @@ defaultNtpServers:
   - 192.168.2.5
   - 192.168.2.6
 quayUser: admin
-quayPassword: password
+quayPassword: YOUR_QUAY_PASSWORD
 quayBackend: RadosGWStorage
 quayBackendRGWConfiguration:
   access_key: EXAMPLE_ACCESS_KEY
@@ -45,7 +45,7 @@ agent_hosts:
     redfish: 192.168.1.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
-    redfishPassword: password
+    redfishPassword: YOUR_REDFISH_PASSWORD
     bmcSystemId: "1"
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
@@ -53,7 +53,7 @@ agent_hosts:
     redfish: 192.168.1.102
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
-    redfishPassword: password
+    redfishPassword: YOUR_REDFISH_PASSWORD
     bmcSystemId: "2"
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:62:fe:ee
@@ -61,5 +61,5 @@ agent_hosts:
     redfish: 192.168.1.103
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
-    redfishPassword: password
+    redfishPassword: YOUR_REDFISH_PASSWORD
     bmcSystemId: "3"

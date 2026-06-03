@@ -1,11 +1,15 @@
 ---
-# Fixture: both sshPubKey and sshPubPath provided
-# Expected failure: oneOf requires exactly one of sshPubKey or sshPubPath
+# Fixture: Validate that nmstate style configuration validation works
+# Expects that ipAddress and macAddress are not present on a host in agent_hosts, while networkConfig and mapInterfaces are:
+#   - Does not have ipAddress field
+#   - Does not have macAddress field
+#   - Has NMState config in networkConfig
+#   - Has mapInterfaces
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
 machineNetwork: 192.168.2.0/24
-apiVIP: 192.168.2.201
+apiVIP: 192.168.1.110
 ingressVIP: 192.168.2.202
 defaultDNS: 9.30.31.32
 defaultGateway: 192.168.2.10
@@ -17,16 +21,38 @@ quayPassword: YOUR_QUAY_PASSWORD
 quayBackend: LocalStorage
 storage_plugin: lvms
 pullSecret: {"auths":{}}
-sshPubKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7 user@host"
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
   - name: mgmt-ctl01
-    macAddress: 0c:c4:7a:62:fe:ec
-    ipAddress: 192.168.2.24
-    redfish: 192.168.1.101
+    redfish: 192.168.2.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
+    mapInterfaces:
+      - name: eth0
+        macAddress: 0c:c4:7a:62:fe:ec
+    networkConfig:
+      interfaces:
+      - name: eth0
+        state: up
+        mtu: 9000
+        ipv4:
+          auto-dns: false
+          address:
+          - ip: 192.168.2.101
+            prefix-length: 24
+          enabled: true
+      dns-resolver:
+        config:
+          server:
+          - 192.168.2.1
+      routes:
+        config:
+        - destination: 0.0.0.0/0
+          metric: 100
+          next-hop-address: 192.168.2.1
+          next-hop-interface: eth0
+
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
@@ -41,3 +67,4 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
+
