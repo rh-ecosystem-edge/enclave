@@ -94,6 +94,29 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
   - **In Review** — when PR(s) are submitted for review (if available in workflow)
   - **Done/Closed** — when all PRs are merged and work is complete
 
+### Jira CLI (Recommended)
+
+Use the [jira-cli](https://github.com/ankitpokhrel/jira-cli) tool for efficient Jira workflow management from the command line:
+
+```bash
+# Install (choose one method)
+go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
+brew install jira-cli  # macOS
+# Or download from: https://github.com/ankitpokhrel/jira-cli/releases
+
+# Initial setup
+jira init  # Interactive setup for Red Hat Jira (redhat.atlassian.net)
+
+# Common operations
+jira issue create --project OSAC --component Enclave --type Story --summary "..."
+jira issue view OSAC-123
+jira issue comment add OSAC-123 "PR created: https://github.com/..."
+jira epic add OSAC-670 OSAC-123
+jira issue link OSAC-123 OSAC-456 Related
+```
+
+The CLI enables automation and improves AI agent integration with issue tracking.
+
 ## Git commits
 
 - If AI assisted the commit, include an `Assisted-by: <tool>` trailer.
