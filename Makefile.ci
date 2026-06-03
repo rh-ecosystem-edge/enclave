@@ -458,6 +458,10 @@ setup-ceph: setup-dev-scripts
 		echo "Skipping Ceph setup (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
 	fi
 
+# Create AAP plugin config on Landing Zone (only when aap is in ENABLED_PLUGINS)
+create-aap-plugin-config: setup-dev-scripts
+	./scripts/infrastructure/create_aap_plugin_config_on_lz.sh
+
 # Verify Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
 verify-ceph: setup-dev-scripts
 	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \

@@ -301,6 +301,17 @@ if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
     info "Storage plugin overridden to ODF with RadosGWStorage backend"
 fi
 
+# Override enabled_plugins when ENABLED_PLUGINS is set (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    printf '\nenabled_plugins:\n' >> "$GLOBAL_VARS_OUTPUT"
+    IFS=',' read -ra _plugins <<< "${ENABLED_PLUGINS}"
+    for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"
+        printf '  - %s\n' "${_plugin}" >> "$GLOBAL_VARS_OUTPUT"
+    done
+    info "enabled_plugins overridden to: ${ENABLED_PLUGINS}"
+fi
+
 info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
 echo ""
 info "Configuration summary:"
