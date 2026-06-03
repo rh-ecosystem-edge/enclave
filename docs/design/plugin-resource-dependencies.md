@@ -183,12 +183,11 @@ Delete `plugins/trust-manager/tasks/pre-validate.yaml` entirely. The manual vali
 
 ### 4. Update plugin validation
 
-Add resource requirement validation to `scripts/verification/validate_plugins.sh`:
-- For each plugin with `requires.resources`, validate the schema structure
-- Ensure required fields (apiVersion, kind, name) are present
-- Validate `when` conditions are valid Jinja2 syntax (best-effort)
+Resource requirement validation happens at two levels:
+- **Schema validation** (CI-time): JSON Schema validates field types and required fields (apiVersion, kind, name)
+- **Runtime validation** (deployment-time): Ansible evaluates Jinja2 `when` conditions and validates resource existence
 
-This is already handled by JSON Schema validation, so no additional code needed.
+No additional validation code needed in `scripts/verification/validate_plugins.sh` - JSON Schema handles structure, and Ansible handles Jinja2 syntax at runtime.
 
 ## Examples
 
