@@ -117,23 +117,11 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
   - **In Review** — when PR(s) are submitted for review (if available in workflow)
   - **Done/Closed** — when all PRs are merged and work is complete
 
-### Jira CLI (Recommended)
+## Jira Task Management
 
-Use the [jira-cli](https://github.com/ankitpokhrel/jira-cli) tool for efficient Jira workflow management.
+For detailed Jira task management workflows with this project, see the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md).
 
-**Installation** (choose the method that fits your environment):
-```bash
-go install github.com/ankitpokhrel/jira-cli/cmd/jira@latest
-brew install jira-cli        # macOS
-# Direct download: https://github.com/ankitpokhrel/jira-cli/releases
-```
-
-**Setup and usage**:
-```bash
-jira init  # Interactive setup for Red Hat Jira (redhat.atlassian.net)
-```
-
-For detailed Jira task management workflows with this project, see the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md). When creating issues, use component `Enclave` and project `OSAC`.
+When creating issues, use component `Enclave` and project `OSAC`.
 
 ## Git commits
 
