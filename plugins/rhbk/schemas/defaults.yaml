@@ -24,6 +24,9 @@ properties:
   rhbk_db_name:
     "$ref": "#/definitions/nonEmptyString"
     description: Name of the PostgreSQL StatefulSet and Service.
+  rhbk_db_image:
+    "$ref": "#/definitions/nonEmptyString"
+    description: PostgreSQL container image for the database.
   rhbk_db_size:
     "$ref": "#/definitions/nonEmptyString"
     description: PVC size for the PostgreSQL data volume.

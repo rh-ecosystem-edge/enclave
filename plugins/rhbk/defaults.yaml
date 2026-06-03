@@ -5,5 +5,6 @@ rhbk_hostname: ""
 rhbk_instances: 1
 rhbk_deploy_database: true
 rhbk_db_name: keycloak-database
+rhbk_db_image: registry.redhat.io/rhel9/postgresql-15:9.8
 rhbk_db_size: 5Gi
 rhbk_db_username: keycloak
