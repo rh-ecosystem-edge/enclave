@@ -26,19 +26,19 @@
     __r_cert_manager_deploy.resources | length == 0 or
     __r_cert_manager_deploy.resources[0].status.availableReplicas | default(0) | int == 0
 
-- name: Check default-ca ClusterIssuer exists
+- name: Check ClusterIssuer exists
   kubernetes.core.k8s_info:
     api_version: cert-manager.io/v1
     kind: ClusterIssuer
-    name: default-ca
+    name: "{{ rhbk_cluster_issuer }}"
   register: __r_ca_issuer
   failed_when: false
 
-- name: Fail if default-ca ClusterIssuer is not ready
+- name: Fail if ClusterIssuer is not ready
   ansible.builtin.fail:
     msg: >-
-      ClusterIssuer default-ca not found, not ready, or cert-manager API is unavailable.
-      The trust-manager plugin must be deployed before rhbk.
+      ClusterIssuer {{ rhbk_cluster_issuer }} not found, not ready, or cert-manager API is unavailable.
+      A ClusterIssuer must be available before deploying rhbk.
   when: >
     __r_ca_issuer.failed | default(false) or
     __r_ca_issuer.resources | default([]) | length == 0 or

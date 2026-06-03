@@ -5,12 +5,10 @@
     kind: Ingress
     name: cluster
   register: __r_ingress_config
-  when: rhbk_hostname | length == 0
 
 - name: Set Keycloak hostname from cluster ingress domain
   ansible.builtin.set_fact:
     rhbk_hostname: "keycloak.{{ __r_ingress_config.resources[0].spec.domain }}"
-  when: rhbk_hostname | length == 0
 
 - name: Ensure namespace exists
   kubernetes.core.k8s:
@@ -81,7 +79,7 @@
         secretName: rhbk-tls
         issuerRef:
           kind: ClusterIssuer
-          name: default-ca
+          name: "{{ rhbk_cluster_issuer }}"
         dnsNames:
           - "{{ rhbk_hostname }}"
         privateKey:

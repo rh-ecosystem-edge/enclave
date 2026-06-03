@@ -1,0 +1,4 @@
+---
+rhbk_instances: 3
+rhbk_deploy_database: true
+rhbk_db_size: 10Gi
