@@ -18,3 +18,5 @@
       ansible.builtin.command: |
         {{ workingDir }}/bin/mirror-registry upgrade --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data
       register: r_mirror_registry_upgrade
+      changed_when: r_mirror_registry_upgrade.rc == 0
+      failed_when: r_mirror_registry_upgrade.rc != 0

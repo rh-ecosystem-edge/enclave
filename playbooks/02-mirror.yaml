@@ -53,7 +53,9 @@
               - disconnected | default(true) | bool
             fail_msg: "Phase 2 (Mirror) should only run in disconnected mode. Set disconnected=true in config/global.yaml"
             success_msg: "Running in disconnected mode - proceeding with mirroring"
-          tags: mirror-registry
+          tags:
+            - mirror-registry
+            - mirror-upgrade
 
         - name: Collect plugin operators for imageset
           ansible.builtin.include_tasks:
