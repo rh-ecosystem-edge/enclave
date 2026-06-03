@@ -132,6 +132,9 @@
   loop_control:
     label: "{{ item.kind }}/{{ item.name }}"
   register: r_required_resources
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_required_resources is success and r_required_resources.resources | length > 0
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
