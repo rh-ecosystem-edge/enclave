@@ -122,42 +122,41 @@
     - item.when | default(true) | bool
   tags: always
 
-- name: Check required Kubernetes resources exist
-  kubernetes.core.k8s_info:
-    api_version: "{{ item.apiVersion }}"
-    kind: "{{ item.kind }}"
-    name: "{{ item.name }}"
-    namespace: "{{ item.namespace | default(omit) }}"
-  loop: "{{ plugin.requires.resources | default([]) }}"
-  loop_control:
-    label: "{{ item.kind }}/{{ item.name }}"
-  register: r_required_resources
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until: r_required_resources is success and r_required_resources.resources | length > 0
+- name: Validate required Kubernetes resources
+  block:
+    - name: Check required Kubernetes resources exist
+      kubernetes.core.k8s_info:
+        api_version: "{{ item.apiVersion }}"
+        kind: "{{ item.kind }}"
+        name: "{{ item.name }}"
+        namespace: "{{ item.namespace | default(omit) }}"
+      loop: "{{ plugin.requires.resources | default([]) }}"
+      loop_control:
+        label: "{{ item.kind }}/{{ item.name }}"
+      register: r_required_resources
+      retries: "{{ k8s_retries }}"
+      delay: "{{ k8s_delay }}"
+      until: r_required_resources is success and r_required_resources.resources | length > 0
+      when: item.when | default(true) | bool
+
+    - name: Fail if required resources are missing
+      ansible.builtin.fail:
+        msg: >-
+          Plugin '{{ plugin.name }}' requires {{ item.item.kind }} '{{ item.item.name }}'
+          {% if item.item.namespace is defined %}in namespace '{{ item.item.namespace }}'{% endif %}
+          but it was not found.
+          Ensure the operator or plugin that provides this resource is installed and deployed first.
+      loop: "{{ r_required_resources.results }}"
+      loop_control:
+        label: "{{ item.item.kind }}/{{ item.item.name }}"
+      when:
+        - item.item.when | default(true) | bool
+        - item.resources | length == 0
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.requires is defined
     - plugin.requires.resources is defined
-    - item.when | default(true) | bool
-  tags: pre-validate
-
-- name: Fail if required resources are missing
-  ansible.builtin.fail:
-    msg: >-
-      Plugin '{{ plugin.name }}' requires {{ item.item.kind }} '{{ item.item.name }}'
-      {% if item.item.namespace is defined %}in namespace '{{ item.item.namespace }}'{% endif %}
-      but it was not found.
-      Ensure the operator or plugin that provides this resource is installed and deployed first.
-  loop: "{{ r_required_resources.results }}"
-  loop_control:
-    label: "{{ item.item.kind }}/{{ item.item.name }}"
-  when:
-    - plugin.requires is defined
-    - plugin.requires.resources is defined
-    - item.item.when | default(true) | bool
-    - item.resources | length == 0
   tags: pre-validate
 
 - name: Run pre-validate
