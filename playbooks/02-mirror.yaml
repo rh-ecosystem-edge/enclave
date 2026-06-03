@@ -14,6 +14,9 @@
 # Usage:
 #   ansible-playbook playbooks/02-mirror.yaml
 #
+#   # Upgrade mirror-registry
+#   ansible-playbook playbooks/02-mirror.yaml --tags mirror-upgrade
+#
 #   # Mirror images to datacenter cache
 #   ansible-playbook playbooks/02-mirror.yaml --tags mirror-cache
 
@@ -74,3 +77,12 @@
             apply:
               tags: mirror-registry
           tags: mirror-registry
+
+        - name: Include tasks for mirror-registry upgrade
+          ansible.builtin.include_tasks:
+            file: tasks/mirror_registry_upgrade.yaml
+            apply:
+              tags: mirror-upgrade
+          tags:
+            - mirror-upgrade
+            - never
