@@ -2,6 +2,7 @@
 config/*.yaml
 config/*.json
 !config/*.example.yaml
+config/plugins/*.yaml
 !config/plugins/*.example.yaml
 debug.yaml
 .claude/settings.local.json
