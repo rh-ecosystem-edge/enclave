@@ -16,16 +16,16 @@
 - name: Set infra tenant variables
   no_log: true
   ansible.builtin.set_fact:
-    vast_tenant: "{{ vastDefaults.infraTenant }}"
-    vast_tiers: "{{ vastDefaults.tiers }}"
-    vast_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
-    vast_host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
+    vast_tenant: "{{ vastCSIDefaults.infraTenant }}"
+    vast_tiers: "{{ vastCSIDefaults.tiers }}"
+    vast_protocols: "{{ vastCSIDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_host: "{{ vastCSIEndpoint | regex_replace('^https?://', '') }}"
     vast_vms_conn:
-      host: "{{ vastEndpoint | regex_replace('^https?://', '') }}"
-      username: "{{ vastAdminUsername }}"
-      password: "{{ vastAdminPassword }}"
-      validate_certs: "{{ vastDefaults.validateCerts }}"
-      api_version: "{{ vastDefaults.apiVersion }}"
+      host: "{{ vastCSIEndpoint | regex_replace('^https?://', '') }}"
+      username: "{{ vastCSIAdminUsername }}"
+      password: "{{ vastCSIAdminPassword }}"
+      validate_certs: "{{ vastCSIDefaults.validateCerts }}"
+      api_version: "{{ vastCSIDefaults.apiVersion }}"
 
 - name: Provision VAST infra tenant resources
   block:
@@ -45,9 +45,9 @@
       no_log: true
       vastdata.vms.vippools:
         name: "vippool-{{ vast_tenant }}"
-        subnet_cidr: "{{ vastVipPool.subnet_cidr }}"
-        ip_ranges: "{{ vastVipPool.ip_ranges }}"
-        role: "{{ vastVipPool.role | default('PROTOCOLS') }}"
+        subnet_cidr: "{{ vastCSIVipPool.subnet_cidr }}"
+        ip_ranges: "{{ vastCSIVipPool.ip_ranges }}"
+        role: "{{ vastCSIVipPool.role | default('PROTOCOLS') }}"
         tenant_id: "{{ r_tenant.tenants.id }}"
         enabled: true
         vms: "{{ vast_vms_conn }}"
@@ -76,7 +76,7 @@
       no_log: true
       vastdata.vms.views:
         name: "view-{{ vast_tenant }}-{{ item.name }}"
-        path: "{{ vastDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
+        path: "{{ vastCSIDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
         create_dir: true
         policy_id: "{{ vast_view_policy_id }}"
         tenant_id: "{{ r_tenant.tenants.id }}"
@@ -137,10 +137,10 @@
               osac.openshift.io/tier: "{{ item.name }}"
             annotations:
               storageclass.kubernetes.io/is-default-class: "{{ (item.default | default(false)) | ternary('true', 'false') }}"
-          provisioner: "{{ vastDefaults.csiProvisioners[item.protocol] }}"
+          provisioner: "{{ vastCSIDefaults.csiProvisioners[item.protocol] }}"
           parameters:
             vipPool: "vippool-{{ vast_tenant }}"
-            storagePath: "{{ vastDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
+            storagePath: "{{ vastCSIDefaults.storagePath }}/{{ vast_tenant }}/{{ item.name }}"
             secretName: "vast-csi-{{ vast_tenant }}"
             secretNamespace: vast-csi
           reclaimPolicy: Delete
@@ -175,7 +175,7 @@
               app.kubernetes.io/managed-by: enclave
               osac.openshift.io/tenant: "{{ vast_tenant }}"
               osac.openshift.io/tier: "{{ item.name }}"
-          driver: "{{ vastDefaults.csiProvisioners[item.protocol] }}"
+          driver: "{{ vastCSIDefaults.csiProvisioners[item.protocol] }}"
           deletionPolicy: Delete
           parameters:
             secretName: "vast-csi-{{ vast_tenant }}"

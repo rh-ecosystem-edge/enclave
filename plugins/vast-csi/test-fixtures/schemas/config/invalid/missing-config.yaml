@@ -1,0 +1,4 @@
+---
+# Fixture: empty config
+# Expected failure: vastCSIEndpoint, vastCSIAdminUsername, vastCSIAdminPassword, vastCSIVipPool are required
+{}

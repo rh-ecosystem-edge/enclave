@@ -3,14 +3,14 @@
 
 - name: Set validation variables
   ansible.builtin.set_fact:
-    vast_tenant: "{{ vastDefaults.infraTenant }}"
-    vast_expected_protocols: "{{ vastDefaults.tiers | map(attribute='protocol') | unique | list }}"
+    vast_tenant: "{{ vastCSIDefaults.infraTenant }}"
+    vast_expected_protocols: "{{ vastCSIDefaults.tiers | map(attribute='protocol') | unique | list }}"
 
 - name: Verify CSI drivers are registered
   kubernetes.core.k8s_info:
     api_version: storage.k8s.io/v1
     kind: CSIDriver
-    name: "{{ vastDefaults.csiProvisioners[item] }}"
+    name: "{{ vastCSIDefaults.csiProvisioners[item] }}"
   loop: "{{ vast_expected_protocols }}"
   register: r_csi_verify
   failed_when:
@@ -21,7 +21,7 @@
     api_version: storage.k8s.io/v1
     kind: StorageClass
     name: "{{ vast_tenant }}-{{ item.name }}"
-  loop: "{{ vastDefaults.tiers }}"
+  loop: "{{ vastCSIDefaults.tiers }}"
   loop_control:
     label: "{{ vast_tenant }}-{{ item.name }}"
   register: r_sc_verify
@@ -44,4 +44,4 @@
       VAST CSI plugin deployed successfully.
       Infra tenant: {{ vast_tenant }}
       Protocols: {{ vast_expected_protocols | join(', ') }}
-      StorageClasses: {{ vastDefaults.tiers | map(attribute='name') | map('regex_replace', '^(.*)$', vast_tenant ~ '-\1') | list | join(', ') }}
+      StorageClasses: {{ vastCSIDefaults.tiers | map(attribute='name') | map('regex_replace', '^(.*)$', vast_tenant ~ '-\1') | list | join(', ') }}

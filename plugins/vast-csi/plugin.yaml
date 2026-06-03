@@ -11,36 +11,7 @@ operators:
     channel: stable
     namespace: vast-csi
 
-defaults:
-  vastDefaults:
-    infraTenant: infra
-    storagePath: /osac
-    validateCerts: true
-    apiTimeout: 30
-    apiVersion: latest
-    csiProvisioners:
-      nfs: csi.vastdata.com
-      block: block.csi.vastdata.com
-    csiDriverName: vastcsi-driver
-    quayPvcSize: 1000Gi
-    tiers:
-      - name: quay
-        protocol: nfs
-
 requires:
-  vars:
-    - name: vastEndpoint
-      description: "VAST management endpoint URL (e.g. https://vms.example.com)"
-      when: "{{ storage_plugin == 'vast-csi' }}"
-    - name: vastAdminUsername
-      description: "VAST management API username"
-      when: "{{ storage_plugin == 'vast-csi' }}"
-    - name: vastAdminPassword
-      description: "VAST management API password"
-      when: "{{ storage_plugin == 'vast-csi' }}"
-    - name: vastVipPool
-      description: "VIP pool configuration: {subnet_cidr, ip_ranges: [{start, end}]}"
-      when: "{{ storage_plugin == 'vast-csi' }}"
   files:
     - path: "tasks/deploy.yaml"
       description: "VAST CSI deployment tasks"

@@ -1,0 +1,31 @@
+---
+##############################################################################
+# VAST CSI PLUGIN CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'config/plugins/vast-csi.yaml' and set values.
+# Required when storage_plugin is vast-csi.
+# Also set quayBackend: LocalStorage in config/global.yaml (VAST NFS uses PVC
+# mount for Quay).
+##############################################################################
+
+# VAST management endpoint URL.
+# vastCSIEndpoint: "https://vms.example.com"
+
+# VAST management API credentials.
+# vastCSIAdminUsername: "admin"
+# vastCSIAdminPassword: "YOUR_VAST_ADMIN_PASSWORD"
+
+# VIP pool network configuration for CSI traffic.
+# The plugin creates a VIP pool on the VAST cluster using these ranges.
+# vastCSIVipPool:
+#   subnet_cidr: 24
+#   ip_ranges:
+#     - start: "10.0.100.10"
+#       end: "10.0.100.50"
+
+# Optional: override VAST CSI driver defaults (see plugins/vast-csi/defaults.yaml).
+# vastCSIDefaults:
+#   infraTenant: infra
+#   quayPvcSize: 1000Gi
+#   tiers:
+#     - name: quay
+#       protocol: nfs

@@ -1,7 +1,7 @@
 ---
 # Fixture: LocalStorage backend + vast-csi block storage
-# Validates that LocalStorage + vast-csi is accepted with all required
-# VAST properties (vastEndpoint, vastAdminUsername, vastAdminPassword, vastVipPool).
+# Validates that LocalStorage + vast-csi is accepted; config vars now live in
+# config/plugins/vast-csi.yaml and are validated by plugins/vast-csi/schemas/config.yaml.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -17,14 +17,6 @@ quayUser: admin
 quayPassword: password
 quayBackend: LocalStorage
 storage_plugin: vast-csi
-vastEndpoint: https://vms.example.com
-vastAdminUsername: admin
-vastAdminPassword: password
-vastVipPool:
-  subnet_cidr: 24
-  ip_ranges:
-    - start: 10.0.100.10
-      end: 10.0.100.50
 pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
