@@ -81,6 +81,7 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
 - Create tickets for features, bugs, and documentation updates
 - Use component: `Enclave`
 - Reference the Jira ticket in commits and PRs (e.g., `OSAC-123: Add feature X`)
+- Update Jira tickets with PR links for traceability
 
 ## Git commits
 
