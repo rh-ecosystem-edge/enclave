@@ -93,17 +93,20 @@ Here's what runs and in what order:
  2. Load defaults                  <- from `defaults.yaml` (if present) or `plugin.yaml` defaults field (cannot have both)
  3. Validate requirements          <- assert requires.vars and requires.files
  4. tasks/early-validate.yaml     <- custom validation (no cluster access)
- 5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
- 6. Extract Helm images            <- helm template on charts with extractImages: true, merge into additionalImages
- 7. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
- 8. Install operators              <- from plugin.yaml operators list (if installOperators != false)
- 9. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
-10. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
-11. tasks/deploy.yaml             <- "create my CRs"
-12. tasks/post-validate.yaml      <- "did it work?"
+ 5. Validate resource requirements <- assert requires.resources (with cluster access)
+ 6. tasks/pre-validate.yaml       <- "is the cluster ready for me?" (custom checks)
+ 7. Extract Helm images            <- helm template on charts with extractImages: true, merge into additionalImages
+ 8. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
+ 9. Install operators              <- from plugin.yaml operators list (if installOperators != false)
+10. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
+11. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
+12. tasks/deploy.yaml             <- "create my CRs"
+13. tasks/post-validate.yaml      <- "did it work?"
 ```
 
 Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
+
+Step 5 validates Kubernetes resource requirements with cluster access. Missing resources fail immediately with clear error messages. This runs in the `pre-validate` tag phase.
 
 Step 6 runs `helm template` (with chart defaults, no custom values) on local charts that have `extractImages: true`. The discovered image references are merged into `additionalImages` before mirroring. This is opt-in because `helm template` can fail if sub-chart dependencies aren't populated. Remote charts (with `repo` set) are skipped.
 
@@ -307,14 +310,17 @@ Plugins can declare requirements in the `requires` block. These are validated at
 
 If a requirement isn't met, the run fails with a clear error message.
 
-Two requirement types are supported:
+Three requirement types are supported:
 
-| Type | Purpose | Example |
-|------|---------|---------|
-| `vars` | Assert an Ansible variable is defined | `odfExternalConfig` |
-| `files` | Assert a file exists in the plugin directory | `tasks/deploy.yaml` |
+| Type | Purpose | Example | Validation Phase |
+|------|---------|---------|------------------|
+| `vars` | Assert an Ansible variable is defined | `odfExternalConfig` | Early + Per-plugin |
+| `files` | Assert a file exists in the plugin directory | `tasks/deploy.yaml` | Early + Per-plugin |
+| `resources` | Assert a Kubernetes resource exists in the cluster | CRD, Deployment, Namespace | Per-plugin (requires cluster access) |
 
 Each entry supports an optional `when` condition (Jinja2 expression). If the condition evaluates to false, the check is skipped.
+
+### Variable and File Requirements
 
 Example from the ODF plugin:
 
@@ -331,7 +337,36 @@ requires:
       description: "ODF Quay storage configuration"
 ```
 
-Don't add `requires.vars` entries for variables that come from `plugin.defaults` -- those are always defined after defaults loading. Don't validate cluster state here (KUBECONFIG, CRDs) -- that's what `pre-validate` is for.
+Don't add `requires.vars` entries for variables that come from `plugin.defaults` -- those are always defined after defaults loading.
+
+### Resource Requirements
+
+Resource requirements validate that Kubernetes resources exist before deploying the plugin. This is useful for checking dependencies on other operators or plugins. Validation runs during the `pre-validate` phase with cluster access (step 5 in the lifecycle).
+
+Resource checks are retried with configurable backoff (`k8s_retries` and `k8s_delay`) to handle resources that may not be immediately available after operator installation.
+
+Example from the trust-manager plugin:
+
+```yaml
+requires:
+  resources:
+    - apiVersion: apiextensions.k8s.io/v1
+      kind: CustomResourceDefinition
+      name: certificates.cert-manager.io
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: cert-manager
+      namespace: cert-manager
+```
+
+Each resource requirement specifies:
+- `apiVersion` -- API version (e.g., `apiextensions.k8s.io/v1`, `apps/v1`, `v1`)
+- `kind` -- Resource kind (e.g., `CustomResourceDefinition`, `Deployment`, `Namespace`)
+- `name` -- Resource name
+- `namespace` -- (Optional) Namespace for namespaced resources. Omit for cluster-scoped resources like CRDs, ClusterRoles, or Namespaces.
+- `when` -- (Optional) Jinja2 condition to skip the check conditionally
+
+This replaces manual validation boilerplate in `tasks/pre-validate.yaml`. If a required resource is missing, deployment fails with a clear error message before any plugin-specific deployment logic runs.
 
 ## Validation-Only Plugins
 
