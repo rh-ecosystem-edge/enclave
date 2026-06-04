@@ -1,0 +1,15 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  rhbk_instances:
+    type: integer
+    minimum: 1
+    description: Number of Keycloak replicas.
+  rhbk_deploy_database:
+    type: boolean
+    description: Deploy a PostgreSQL StatefulSet alongside Keycloak.
+  rhbk_db_size:
+    "$ref": "#/definitions/k8sQuantity"
+    description: PVC size for the PostgreSQL data volume.

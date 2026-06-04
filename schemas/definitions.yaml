@@ -20,6 +20,10 @@ definitions:
     type: string
     pattern: "^https?://[^/]"
     description: HTTP or HTTPS URL with a non-empty hostname
+  k8sQuantity:
+    type: string
+    pattern: "^([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][+-]?[0-9]+|Ki|Mi|Gi|Ti|Pi|Ei|m|k|M|G|T|P|E)?$"
+    description: A Kubernetes resource quantity (e.g. 5Gi, 100m, 512Mi)
   nonEmptyString:
     type: string
     minLength: 1

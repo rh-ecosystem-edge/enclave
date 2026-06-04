@@ -1,0 +1,16 @@
+---
+##############################################################################
+# RHBK PLUGIN CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'config/plugins/rhbk.yaml' and set values.
+# All fields are optional; defaults are shown below.
+##############################################################################
+
+# Number of Keycloak replicas.
+# rhbk_instances: 1
+
+# Deploy a PostgreSQL StatefulSet alongside Keycloak.
+# Set to false if using an external database.
+# rhbk_deploy_database: true
+
+# PVC size for the PostgreSQL data volume.
+# rhbk_db_size: 5Gi
