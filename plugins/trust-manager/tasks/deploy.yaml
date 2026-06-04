@@ -47,10 +47,10 @@
   kubernetes.core.k8s_info:
     api_version: cert-manager.io/v1
     kind: ClusterIssuer
-    name: default-ca
+    name: "{{ trust_manager_cluster_issuer }}"
   register: __r_cluster_issuer
-  retries: 30
-  delay: "{{ k8s_delay }}"
+  retries: 60
+  delay: 15
   until:
     - __r_cluster_issuer.resources | length > 0
     - __r_cluster_issuer.resources[0].status.conditions
@@ -62,4 +62,4 @@
 
 - name: Debug CA issuer status
   ansible.builtin.debug:
-    msg: "ClusterIssuer default-ca is ready"
+    msg: "ClusterIssuer {{ trust_manager_cluster_issuer }} is ready"
