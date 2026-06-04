@@ -107,19 +107,18 @@
 
 - name: Validate plugin requirements (files)
   ansible.builtin.assert:
-    that: r_required_files.results[ansible_loop.index0].stat.exists
+    that: item.stat.exists
     fail_msg: >-
-      Plugin '{{ plugin.name }}' requires file '{{ item.path }}' but it was not found at
-      {{ plugin_dir }}/{{ item.path }}.
-      {{ item.description | default('') }}
-  loop: "{{ plugin.requires.files | default([]) }}"
+      Plugin '{{ plugin.name }}' requires file '{{ item.item.path }}' but it was not found at
+      {{ plugin_dir }}/{{ item.item.path }}.
+      {{ item.item.description | default('') }}
+  loop: "{{ r_required_files.results }}"
   loop_control:
-    label: "{{ item.path }}"
-    extended: true
+    label: "{{ item.item.path }}"
   when:
     - plugin.requires is defined
     - plugin.requires.files is defined
-    - item.when | default(true) | bool
+    - not item.skipped | default(false)
   tags: always
 
 - name: Run pre-validate
