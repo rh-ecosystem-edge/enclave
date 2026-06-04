@@ -166,7 +166,7 @@
                     memory: 512Mi
                 volumeMounts:
                   - name: data
-                    mountPath: /var/lib/pgsql/data
+                    mountPath: /var/lib/pgsql
                   - name: tmp
                     mountPath: /tmp
                   - name: run-postgresql
@@ -233,13 +233,13 @@
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: k8s.keycloak.org/v2alpha1
+      apiVersion: k8s.keycloak.org/v2beta1
       kind: Keycloak
       metadata:
         name: "{{ rhbk_name }}"
         namespace: "{{ rhbk_ns }}"
       spec:
-        instances: "{{ rhbk_instances | int }}"
+        instances: "{{ rhbk_instances }}"
         hostname:
           hostname: "{{ rhbk_hostname }}"
         http:
@@ -265,13 +265,13 @@
   kubernetes.core.k8s:
     state: present
     definition:
-      apiVersion: k8s.keycloak.org/v2alpha1
+      apiVersion: k8s.keycloak.org/v2beta1
       kind: Keycloak
       metadata:
         name: "{{ rhbk_name }}"
         namespace: "{{ rhbk_ns }}"
       spec:
-        instances: "{{ rhbk_instances | int }}"
+        instances: "{{ rhbk_instances }}"
         hostname:
           hostname: "{{ rhbk_hostname }}"
         http:
@@ -284,7 +284,7 @@
 
 - name: Wait for Keycloak CR ready
   kubernetes.core.k8s_info:
-    api_version: k8s.keycloak.org/v2alpha1
+    api_version: k8s.keycloak.org/v2beta1
     kind: Keycloak
     name: "{{ rhbk_name }}"
     namespace: "{{ rhbk_ns }}"
