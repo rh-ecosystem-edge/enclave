@@ -119,9 +119,7 @@ All work in this repository is tracked in the **OSAC** Jira board with the **Enc
 
 ## Jira Task Management
 
-For detailed Jira task management workflows with this project, see the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md).
-
-When creating issues, use component `Enclave` and project `OSAC`.
+**REQUIRED**: Before performing ANY Jira operations, you MUST read and follow the patterns documented in the [jira-task-management skill](https://github.com/osac-project/osac-workspace/blob/main/skills/jira-task-management/SKILL.md). Use WebFetch to retrieve it if you haven't consulted it yet.
 
 ## Git commits
 
