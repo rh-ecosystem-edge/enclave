@@ -17,13 +17,18 @@ before deployment:
 
 ## Populating Sub-charts
 
-### Option A: From osac-installer
+### Option A: Sync script (recommended)
 
-1. Clone `osac-project/osac-installer`
-2. Run `helm dependency build` in the osac-installer chart directory
-3. Copy the resulting `charts/` contents into this directory
+```bash
+scripts/setup/sync_osac_chart.sh           # sync from main
+scripts/setup/sync_osac_chart.sh --ref v1.0 # sync from a specific tag
+```
 
-### Option B: From individual repos
+The script clones `osac-project/osac-installer` with submodules, copies each
+sub-chart into the correct path, and runs `helm dependency build`. A `.synced-ref`
+file records the commit for traceability.
+
+### Option B: Manual from individual repos
 
 1. Clone each component repository listed above
 2. Copy each component's `charts/` directory into the corresponding path under
