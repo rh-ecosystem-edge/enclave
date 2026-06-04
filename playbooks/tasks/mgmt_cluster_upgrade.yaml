@@ -62,9 +62,9 @@
   ansible.builtin.set_fact:
     cluster_operators_status_conditions: >
       {{
-        cluster_operators.resources | 
-        selectattr('status.conditions', 'defined') | 
-        map(attribute='status.conditions') | 
+        cluster_operators.resources |
+        selectattr('status.conditions', 'defined') |
+        map(attribute='status.conditions') |
         flatten
       }}
 
@@ -73,9 +73,9 @@
   ansible.builtin.set_fact:
     upgrade_condition_co_healthy: >
       {{
-        cluster_operators_status_conditions | 
-        selectattr('type', 'equalto', 'Degraded') | 
-        selectattr('status', 'equalto', 'True') | 
+        cluster_operators_status_conditions |
+        selectattr('type', 'equalto', 'Degraded') |
+        selectattr('status', 'equalto', 'True') |
         list | length == 0
       }}
 
@@ -84,9 +84,9 @@
   ansible.builtin.set_fact:
     upgrade_condition_co_upgradeable: >
       {{
-        cluster_operators_status_conditions | 
-        selectattr('type', 'equalto', 'Upgradeable') | 
-        selectattr('status', 'equalto', 'False') | 
+        cluster_operators_status_conditions |
+        selectattr('type', 'equalto', 'Upgradeable') |
+        selectattr('status', 'equalto', 'False') |
         list | length == 0
       }}
 

@@ -92,8 +92,8 @@ definitions:
         items:
           type: object
           required:
-              - name
-              - macAddress
+            - name
+            - macAddress
           properties:
             name:
               type: string

@@ -17,4 +17,3 @@ properties:
 required:
   - k8s_retries
   - k8s_delay
-

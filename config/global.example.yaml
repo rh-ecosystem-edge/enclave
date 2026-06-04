@@ -151,4 +151,3 @@ agent_hosts:
 # For complex network setups you can use mapInterfaces and networkConfig
 # instead of the macAddress and ipAddress parameters
 # See docs/CONFIGURATION_REFERENCE.md for reference
-

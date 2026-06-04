@@ -40,4 +40,3 @@ agent_hosts:
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
-

@@ -8,12 +8,12 @@
 
 - name: Check metal3-ironic-username
   ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
-  register: r_username_secret           
-  failed_when: false                        
-  changed_when: false     
-  no_log: true        
-                                                    
-- name: Get metal3-ironic-password                                                                                                                                                                                 
+  register: r_username_secret
+  failed_when: false
+  changed_when: false
+  no_log: true
+
+- name: Get metal3-ironic-password
   ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
   register: r_password_secret
   failed_when: false

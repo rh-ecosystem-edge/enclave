@@ -58,7 +58,7 @@ definitions:
       matchLabels:
         type: object
         description: >-
-          A map of {key,value} pairs. A single {key,value} in the matchLabels map 
+          A map of {key,value} pairs. A single {key,value} in the matchLabels map
           is equivalent to an element of matchExpressions with operator 'In'.
         additionalProperties:
           type: string
@@ -254,17 +254,17 @@ properties:
     items:
       $ref: "#/definitions/registry"
   additionalImages:
-      type: array
-      description: The additional images configuration of the image set.
-      items:
-        type: string
-        description: The tag or digest of the image to mirror.
+    type: array
+    description: The additional images configuration of the image set.
+    items:
+      type: string
+      description: The tag or digest of the image to mirror.
   blockedImages:
-      type: array
-      description: The blocked images configuration of the image set.
-      items:
-        type: string
-        description: The full tag, digest, or pattern of images to block from mirroring.
+    type: array
+    description: The blocked images configuration of the image set.
+    items:
+      type: string
+      description: The full tag, digest, or pattern of images to block from mirroring.
   requires:
     type: object
     description: Declarative requirements validated at plugin load time.
