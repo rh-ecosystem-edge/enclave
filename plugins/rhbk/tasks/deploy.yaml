@@ -111,6 +111,35 @@
   until: __r_db_svc is success
   when: rhbk_deploy_database
 
+- name: Restrict PostgreSQL ingress to Keycloak pods only
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-keycloak-to-db
+        namespace: "{{ rhbk_ns }}"
+      spec:
+        podSelector:
+          matchLabels:
+            app: "{{ rhbk_db_name }}"
+        ingress:
+          - from:
+              - podSelector:
+                  matchLabels:
+                    app: "{{ rhbk_name }}"
+            ports:
+              - protocol: TCP
+                port: 5432
+        policyTypes:
+          - Ingress
+  register: __r_db_netpol
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_db_netpol is success
+  when: rhbk_deploy_database
+
 - name: Deploy PostgreSQL StatefulSet
   kubernetes.core.k8s:
     state: present
