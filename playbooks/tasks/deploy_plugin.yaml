@@ -122,6 +122,24 @@
     - item.when | default(true) | bool
   tags: always
 
+- name: Validate cluster-scoped resources do not specify namespace
+  ansible.builtin.fail:
+    msg: >-
+      Plugin '{{ plugin.name }}' resource {{ item.kind }}/{{ item.name }} is cluster-scoped
+      but specifies namespace '{{ item.namespace }}'.
+      Remove the namespace field for cluster-scoped resources like CustomResourceDefinition,
+      Namespace, Node, ClusterRole, ClusterRoleBinding, StorageClass, PersistentVolume.
+  loop: "{{ plugin.requires.resources | default([]) }}"
+  loop_control:
+    label: "{{ item.kind }}/{{ item.name }}"
+  when:
+    - plugin.requires is defined
+    - plugin.requires.resources is defined
+    - item.namespace is defined
+    - item.when | default(true) | bool
+    - item.kind in ['CustomResourceDefinition', 'Namespace', 'Node', 'ClusterRole', 'ClusterRoleBinding', 'StorageClass', 'PersistentVolume', 'IngressClass', 'PriorityClass', 'RuntimeClass', 'VolumeSnapshotClass', 'CSIDriver', 'CSINode']
+  tags: pre-validate
+
 - name: Check required Kubernetes resources exist
   kubernetes.core.k8s_info:
     api_version: "{{ resource.apiVersion }}"
@@ -133,9 +151,7 @@
     loop_var: resource
     label: "{{ resource.kind }}/{{ resource.name }}"
   register: r_required_resources
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until: r_required_resources is success and r_required_resources.resources | length > 0
+  failed_when: false
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
@@ -157,7 +173,7 @@
   when:
     - plugin.requires is defined
     - plugin.requires.resources is defined
-    - item.resource.when | default(true) | bool
+    - not item.skipped | default(false)
     - item.resources | length == 0
   tags: pre-validate
 

@@ -184,10 +184,10 @@ Delete `plugins/trust-manager/tasks/pre-validate.yaml` entirely. The manual vali
 ### 4. Update plugin validation
 
 Resource requirement validation happens at two levels:
-- **Schema validation** (CI-time): JSON Schema validates field types and required fields (apiVersion, kind, name)
-- **Runtime validation** (deployment-time): Ansible evaluates Jinja2 `when` conditions and validates resource existence
+- **Schema validation** (CI-time): JSON Schema validates field types and required fields (apiVersion, kind, name). The `when` field is validated as a string type only.
+- **Runtime validation** (deployment-time): Ansible evaluates Jinja2 `when` conditions (checking syntax and logic) and validates resource existence via `kubernetes.core.k8s_info`.
 
-No additional validation code needed in `scripts/verification/validate_plugins.sh` - JSON Schema handles structure, and Ansible handles Jinja2 syntax at runtime.
+No additional validation code needed in `scripts/verification/validate_plugins.sh` - JSON Schema handles structure validation, and Ansible handles Jinja2 template syntax and execution at runtime.
 
 ## Examples
 
