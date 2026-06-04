@@ -267,7 +267,7 @@ fi
 
 # Step 6b: Copy AAP license file (when aap plugin is enabled)
 if [[ ",${ENABLED_PLUGINS:-}," == *",aap,"* ]]; then
-    AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-${DEV_SCRIPTS_PATH}/aap-license.zip}"
+    AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-/opt/aap-license.zip}"
     if [ -f "$AAP_LICENSE_SOURCE" ]; then
         info "Step 6b: Copying AAP license file..."
         AAP_LICENSE_LZ_PATH="${LZ_ENCLAVE_DIR}/config/aap-license.zip"

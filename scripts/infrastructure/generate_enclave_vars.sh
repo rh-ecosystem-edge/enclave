@@ -309,7 +309,7 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
 
     # Append AAP license file path when aap plugin is enabled
     if [[ ",${ENABLED_PLUGINS}," == *",aap,"* ]]; then
-        AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-${DEV_SCRIPTS_PATH}/aap-license.zip}"
+        AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-/opt/aap-license.zip}"
         if [ -f "$AAP_LICENSE_SOURCE" ]; then
             AAP_LICENSE_LZ_PATH="{{ workingDir }}/enclave/config/aap-license.zip"
             echo "aapLicenseFile: \"${AAP_LICENSE_LZ_PATH}\"" >> "$GLOBAL_VARS_OUTPUT"
