@@ -1,0 +1,32 @@
+---
+vaultDefaults:
+  # Vault server configuration
+  server:
+    enabled: true
+    ha:
+      enabled: true
+      replicas: 3
+    dataStorage:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+    auditStorage:
+      enabled: true
+      size: 10Gi
+      storageClass: ""
+
+  # Vault Secrets Operator configuration
+  operator:
+    namespace: vault
+    watchNamespaces: []
+
+  # Default Vault connection settings
+  connection:
+    address: "http://vault.vault.svc.cluster.local:8200"
+    skipTLSVerify: false
+    caCertSecretRef: ""
+
+  # Auto-unseal configuration (optional)
+  unseal:
+    enabled: false
+    type: transit

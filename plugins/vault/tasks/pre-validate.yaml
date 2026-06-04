@@ -1,0 +1,36 @@
+---
+- name: "Validate Vault configuration"
+  ansible.builtin.assert:
+    that:
+      - vaultDefaults is defined
+      - vaultDefaults.server is defined
+    fail_msg: "Vault configuration is missing or incomplete"
+    success_msg: "Vault configuration validated successfully"
+
+- name: "Check if storage class exists when specified"
+  when:
+    - vaultDefaults.server.dataStorage.storageClass is defined
+    - vaultDefaults.server.dataStorage.storageClass | length > 0
+  block:
+    - name: "Get storage class info"
+      kubernetes.core.k8s_info:
+        api_version: storage.k8s.io/v1
+        kind: StorageClass
+        name: "{{ vaultDefaults.server.dataStorage.storageClass }}"
+      register: r_storage_class
+
+    - name: "Validate storage class exists"
+      ansible.builtin.assert:
+        that:
+          - r_storage_class.resources | length > 0
+        fail_msg: "Storage class {{ vaultDefaults.server.dataStorage.storageClass }} does not exist"
+        success_msg: "Storage class {{ vaultDefaults.server.dataStorage.storageClass }} found"
+
+- name: "Validate HA configuration"
+  when: vaultDefaults.server.ha.enabled | default(true)
+  ansible.builtin.assert:
+    that:
+      - vaultDefaults.server.ha.replicas | default(3) | int >= 3
+      - vaultDefaults.server.ha.replicas | default(3) | int is odd
+    fail_msg: "Vault HA requires at least 3 replicas and the number must be odd for Raft consensus"
+    success_msg: "Vault HA configuration is valid"
