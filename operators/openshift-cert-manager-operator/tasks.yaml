@@ -38,11 +38,11 @@
               overrideReplicas: "{{ cert_manager_webhook_replicas }}"
               overrideResources:
                 limits:
-                  cpu: 500m
+                  cpu: 20m
                   memory: 128Mi
                 requests:
-                  cpu: 250m
-                  memory: 100Mi
+                  cpu: 20m
+                  memory: 128Mi
 
     - name: Read back CertManager CR
       kubernetes.core.k8s_info:
