@@ -28,21 +28,26 @@ CodeRabbit enforces security best practices across injection prevention, cryptog
 ## Code Quality Standards
 
 ### Python (`src/`)
+
 - Strict mypy: all functions must have type annotations
 - ruff: 88-char line limit, comprehensive linting and import sorting
 - All tests must pass: `make python-unit-test python-linter-test python-types-test`
 
 ### Ansible (`playbooks/`)
+
 - Tasks must be idempotent and re-runnable
 - Use descriptive `name:` fields on all tasks
 - Explicit `become: yes` for privilege escalation
 
 ### Shell (`scripts/`)
+
 - `set -euo pipefail` at the top of every script
 - Source shared utilities from `scripts/lib/`
 
 ### Infrastructure validation
+
 All PRs must pass:
+
 ```bash
 make -f Makefile.ci validate
 ```
