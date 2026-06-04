@@ -5,9 +5,9 @@ order: 101
 
 operators:
   - name: rhbk-operator
-    version: 26.4.12-opr.1
+    version: 26.6.2-opr.1
     channel: stable-v26
-    init_version: 26.4.12-opr.1
+    init_version: 26.6.2-opr.1
     namespace: keycloak
     csvNames:
       - rhbk-operator
