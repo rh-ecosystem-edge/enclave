@@ -129,6 +129,12 @@ scp $SSH_OPTS "${WORKING_DIR}/config/global.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/c
 scp $SSH_OPTS "${WORKING_DIR}/config/certificates.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/certificates.yaml"
 scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/cloud_infra.yaml"
 
+# Copy plugin config files if they exist
+if [ -d "${WORKING_DIR}/config/plugins" ]; then
+    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config/plugins"
+    scp $SSH_OPTS "${WORKING_DIR}"/config/plugins/*.yaml "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/plugins/" 2>/dev/null || true
+fi
+
 success "Configuration generated and copied to Landing Zone"
 
 # Step 5.5: Configure DNS resolution for cluster endpoints via libvirt dnsmasq

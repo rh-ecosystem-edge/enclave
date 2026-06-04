@@ -307,12 +307,16 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     } >> "$GLOBAL_VARS_OUTPUT"
     info "Enabled plugins: $ENABLED_PLUGINS"
 
-    # Append AAP license file path when aap plugin is enabled
+    # Write AAP license file path to plugin config when aap plugin is enabled
     if [[ ",${ENABLED_PLUGINS}," == *",aap,"* ]]; then
         AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-/opt/aap-license.zip}"
         if [ -f "$AAP_LICENSE_SOURCE" ]; then
             AAP_LICENSE_LZ_PATH="{{ workingDir }}/enclave/config/aap-license.zip"
-            echo "aapLicenseFile: \"${AAP_LICENSE_LZ_PATH}\"" >> "$GLOBAL_VARS_OUTPUT"
+            mkdir -p "${WORKING_DIR}/config/plugins"
+            cat > "${WORKING_DIR}/config/plugins/aap.yaml" <<AAPEOF
+---
+aapLicenseFile: "${AAP_LICENSE_LZ_PATH}"
+AAPEOF
             info "AAP license file configured: ${AAP_LICENSE_LZ_PATH}"
         else
             warning "AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
