@@ -1100,7 +1100,7 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
-        run: ./scripts/deployment/generate_ironic_cert.sh
+        run: make -f Makefile.ci generate-ironic-cert
 
       - name: Sync OSAC chart
         id: sync_osac_chart
@@ -1501,7 +1501,7 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
-        run: ./scripts/deployment/generate_ironic_cert.sh
+        run: make -f Makefile.ci generate-ironic-cert
 
       - name: Sync OSAC chart
         id: sync_osac_chart
