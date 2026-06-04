@@ -33,7 +33,7 @@ properties:
     "$ref": "#/definitions/nonEmptyString"
     description: PostgreSQL container image for the database.
   rhbk_db_size:
-    "$ref": "#/definitions/nonEmptyString"
+    "$ref": "#/definitions/k8sQuantity"
     description: PVC size for the PostgreSQL data volume.
   rhbk_db_username:
     "$ref": "#/definitions/nonEmptyString"

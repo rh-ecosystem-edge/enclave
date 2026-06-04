@@ -11,5 +11,5 @@ properties:
     type: boolean
     description: Deploy a PostgreSQL StatefulSet alongside Keycloak.
   rhbk_db_size:
-    "$ref": "#/definitions/nonEmptyString"
+    "$ref": "#/definitions/k8sQuantity"
     description: PVC size for the PostgreSQL data volume.
