@@ -152,6 +152,7 @@
                     value: keycloak
                 securityContext:
                   runAsNonRoot: true
+                  readOnlyRootFilesystem: true
                   allowPrivilegeEscalation: false
                   capabilities:
                     drop:
@@ -166,6 +167,10 @@
                 volumeMounts:
                   - name: data
                     mountPath: /var/lib/pgsql/data
+                  - name: tmp
+                    mountPath: /tmp
+                  - name: run-postgresql
+                    mountPath: /var/run/postgresql
                 readinessProbe:
                   exec:
                     command:
@@ -179,6 +184,11 @@
                       - --live
                   initialDelaySeconds: 30
                   periodSeconds: 10
+            volumes:
+              - name: tmp
+                emptyDir: {}
+              - name: run-postgresql
+                emptyDir: {}
         volumeClaimTemplates:
           - metadata:
               name: data
@@ -229,7 +239,7 @@
         name: "{{ rhbk_name }}"
         namespace: "{{ rhbk_ns }}"
       spec:
-        instances: "{{ rhbk_instances }}"
+        instances: "{{ rhbk_instances | int }}"
         hostname:
           hostname: "{{ rhbk_hostname }}"
         http:
@@ -261,7 +271,7 @@
         name: "{{ rhbk_name }}"
         namespace: "{{ rhbk_ns }}"
       spec:
-        instances: "{{ rhbk_instances }}"
+        instances: "{{ rhbk_instances | int }}"
         hostname:
           hostname: "{{ rhbk_hostname }}"
         http:
