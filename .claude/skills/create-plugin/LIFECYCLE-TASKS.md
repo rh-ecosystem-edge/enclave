@@ -1,8 +1,8 @@
 # Lifecycle Tasks
 
-Hooks are Ansible task lists under `plugins/<name>/tasks/`. Execution order:
+Lifecycle tasks are Ansible task lists under `plugins/<name>/tasks/`. Execution order:
 
-```
+```text
 1. tasks/early-validate.yaml      NO cluster access, local validation only
 2. tasks/pre-validate.yaml        Cluster access, check prerequisites
 3. tasks/post-operators.yaml      After operators installed, before Helm
@@ -201,7 +201,7 @@ For multi-document templates (multiple YAML documents separated by `---`):
   kubernetes.core.k8s:
     state: present
     definition: "{{ item }}"
-  loop: "{{ lookup('template', plugin_dir ~ '/templates/<resource>.yaml.j2') | from_yaml_all | list }}"
+  loop: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/<resource>.yaml.j2') | from_yaml_all | list }}"
   register: __r_manifests
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"

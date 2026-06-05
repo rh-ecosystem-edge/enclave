@@ -20,7 +20,7 @@ Create, modify, and validate Enclave plugins. Plugins are self-contained compone
 
 Gather the following from the user:
 
-1. **Plugin name** -- lowercase, alphanumeric with hyphens/dots/underscores (pattern: `^[A-Za-z0-9][A-Za-z0-9._-]*$`). This becomes both the directory name and the `name` field in `plugin.yaml`.
+1. **Plugin name** -- lowercase alphanumeric with hyphens, dots, or underscores. Must match the directory name exactly and the `name` field in `plugin.yaml`.
 2. **Plugin type** -- `foundation` (deploys before core operators, used for storage/networking) or `addon` (deploys after core operators).
 3. **Order** -- integer controlling deploy sequence among same-type plugins. Foundation plugins typically use lower numbers (e.g., 10). Check existing plugins in `plugins/*/plugin.yaml` for current order values to avoid collisions.
 4. **What the plugin deploys** -- OLM operators, Helm charts, custom resources, or a combination.
@@ -234,12 +234,14 @@ Config schema rules:
 **Create config test fixtures:**
 
 `test-fixtures/schemas/config/valid/base.yaml`:
+
 ```yaml
 ---
 <name>_instances: 2
 ```
 
 `test-fixtures/schemas/config/invalid/unknown-property.yaml`:
+
 ```yaml
 ---
 <name>_instances: 2
