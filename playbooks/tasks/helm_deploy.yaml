@@ -46,6 +46,21 @@
     fail_msg: "Helm chart not found: {{ _helm_chart_ref }}"
   when: helm_chart.repo is not defined
 
+- name: "Helm | Read Chart.yaml for {{ helm_chart.release }}"
+  ansible.builtin.slurp:
+    src: "{{ _helm_chart_ref }}/Chart.yaml"
+  register: _r_deploy_chart_yaml
+  when: helm_chart.repo is not defined
+
+- name: "Helm | Build dependencies for {{ helm_chart.release }}"
+  ansible.builtin.command:
+    cmd: >-
+      {{ workingDir }}/bin/helm dependency build {{ _helm_chart_ref }}
+  when:
+    - helm_chart.repo is not defined
+    - (_r_deploy_chart_yaml.content | b64decode | from_yaml).dependencies is defined
+  changed_when: true
+
 # --- Values ---
 
 - name: "Helm | Render values template"
