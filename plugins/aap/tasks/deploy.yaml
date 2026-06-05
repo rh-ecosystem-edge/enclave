@@ -3,13 +3,57 @@
 # namespace), so configure_operator.yaml approves the install plan but does
 # not wait for the CSV to finish installing. We must wait here before
 # looking for the operator deployment.
-- name: Wait for AAP operator CSV to be installed
+#
+# On re-runs where the subscription already exists, configure_operator.yaml
+# skips all operator steps (install plan wait/approval). We handle both
+# fresh installs and re-runs by querying the subscription for currentCSV.
+
+- name: Check for unapproved AAP install plans
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: InstallPlan
+    namespace: "{{ aap_ns }}"
+  register: __r_aap_installplans
+
+- name: Approve any pending AAP install plans
+  when:
+    - __r_aap_installplans.resources | length > 0
+    - item.spec.approved is defined
+    - not item.spec.approved
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: InstallPlan
+      metadata:
+        name: "{{ item.metadata.name }}"
+        namespace: "{{ aap_ns }}"
+      spec:
+        approved: true
+  loop: "{{ __r_aap_installplans.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+
+- name: Wait for AAP subscription to report currentCSV
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: ansible-automation-platform-operator
+    namespace: "{{ aap_ns }}"
+  register: __r_aap_sub
+  retries: 30
+  delay: 10
+  until:
+    - __r_aap_sub.resources | length > 0
+    - __r_aap_sub.resources[0].status.currentCSV is defined
+    - __r_aap_sub.resources[0].status.currentCSV | length > 0
+
+- name: Wait for AAP operator CSV to reach Succeeded phase
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion
+    name: "{{ __r_aap_sub.resources[0].status.currentCSV }}"
     namespace: "{{ aap_ns }}"
-    label_selectors:
-      - "operators.coreos.com/ansible-automation-platform-operator.{{ aap_ns }}"
   register: __r_aap_csv
   retries: 30
   delay: 10
