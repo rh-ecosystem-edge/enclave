@@ -63,3 +63,24 @@
 - name: Debug CA issuer status
   ansible.builtin.debug:
     msg: "ClusterIssuer {{ trust_manager_cluster_issuer }} is ready"
+
+- name: Wait for CA Bundle to be synced
+  kubernetes.core.k8s_info:
+    api_version: trust.cert-manager.io/v1alpha1
+    kind: Bundle
+    name: "{{ trust_manager_ca_bundle_name }}"
+  register: __r_ca_bundle
+  retries: 30
+  delay: 10
+  until:
+    - __r_ca_bundle.resources | length > 0
+    - __r_ca_bundle.resources[0].status.conditions
+      | default([])
+      | selectattr('type', 'equalto', 'Synced')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length > 0
+
+- name: Debug CA Bundle status
+  ansible.builtin.debug:
+    msg: "CA Bundle {{ trust_manager_ca_bundle_name }} is synced"

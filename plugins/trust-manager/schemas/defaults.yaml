@@ -6,6 +6,13 @@ required:
   - trust_manager_cluster_issuer
   - trust_manager_ca_issuer_duration
   - trust_manager_ca_issuer_renew_before
+  - trust_manager_ca_bundle_name
+  - trust_manager_ca_bundle_key
+  - trust_manager_ca_bundle_label
+definitions:
+  nonEmptyString:
+    type: string
+    minLength: 1
 properties:
   trust_manager_cluster_issuer:
     "$ref": "#/definitions/nonEmptyString"
@@ -16,3 +23,12 @@ properties:
   trust_manager_ca_issuer_renew_before:
     type: string
     description: How long before expiry the CA certificate is renewed (e.g. 8760h for 1 year).
+  trust_manager_ca_bundle_name:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Name of the ConfigMap distributed by the trust-manager Bundle CR.
+  trust_manager_ca_bundle_key:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Key within the ConfigMap containing the PEM-encoded CA certificate.
+  trust_manager_ca_bundle_label:
+    "$ref": "#/definitions/nonEmptyString"
+    description: Label key used in the Bundle namespaceSelector. Namespaces with this label set to "true" receive the CA bundle.
