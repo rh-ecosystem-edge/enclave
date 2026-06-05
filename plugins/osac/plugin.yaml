@@ -3,20 +3,10 @@ name: osac
 type: addon
 order: 200
 
-operators:
-  - name: ansible-automation-platform-operator
-    version: "2.5.0-0.1777407881"
-    channel: stable-2.5-cluster-scoped
-    init_version: "2.5.0-0.1777407881"
-    namespace: ansible-aap
-    global: true
-    csvNames:
-      - aap-operator
-  - name: openshift-cert-manager-operator
-    version: "1.15.0"
-    channel: stable-v1
-    init_version: "1.15.0"
-    namespace: cert-manager-operator
+# Operators are installed by prerequisite plugins:
+#   - AAP operator: installed by the 'aap' plugin (order 103)
+#   - cert-manager: installed by core (defaults/operators.yaml)
+installOperators: false
 
 helm:
   - release: osac
