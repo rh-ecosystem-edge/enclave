@@ -38,7 +38,7 @@ jobs:
     with:
       run-connected: true
       run-disconnected: false
-      enabled-plugins: 'lvms,trust-manager,rhbk,authorino,cnv,aap,osac'
+      enabled-plugins: 'lvms,trust-manager,rhbk,authorino,cnv,aap'
       heavy-workload: true
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
