@@ -1,4 +1,22 @@
 ---
+# The AAP operator uses Manual install approval (non-openshift-operators
+# namespace), so configure_operator.yaml approves the install plan but does
+# not wait for the CSV to finish installing. We must wait here before
+# looking for the operator deployment.
+- name: Wait for AAP operator CSV to be installed
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ aap_ns }}"
+    label_selectors:
+      - "operators.coreos.com/ansible-automation-platform-operator.{{ aap_ns }}"
+  register: __r_aap_csv
+  retries: 30
+  delay: 10
+  until:
+    - __r_aap_csv.resources | length > 0
+    - __r_aap_csv.resources[0].status.phase | default('') == "Succeeded"
+
 - name: Wait for AAP operator deployment (Available=True)
   kubernetes.core.k8s_info:
     api_version: apps/v1
