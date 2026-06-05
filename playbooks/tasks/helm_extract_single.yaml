@@ -41,11 +41,12 @@
   failed_when: false
   changed_when: false
 
-- name: "HelmExtract | Fail on template error: {{ _extract_chart.release }}"
-  ansible.builtin.fail:
+- name: "HelmExtract | Warn on template error: {{ _extract_chart.release }}"
+  ansible.builtin.debug:
     msg: >-
       helm template failed for chart '{{ _extract_chart.release }}' at {{ _extract_chart_path }}.
-      If the chart has sub-chart dependencies, run 'helm dependency build' first.
+      Image extraction skipped — chart may use required values not available at this stage.
+      Add images manually to additionalImages in plugin.yaml for disconnected mirroring.
       Error: {{ _r_helm_template.stderr | default('unknown') }}
   when: _r_helm_template.rc != 0
 
@@ -57,8 +58,10 @@
          | map('regex_replace', '^\s*image:\s*["'']?([^"''\s]+)["'']?\s*$', '\1')
          | reject('match', '^\s*$')
          | unique | sort | list }}
+  when: _r_helm_template.rc == 0
 
 - name: "HelmExtract | Accumulate images from {{ _extract_chart.release }}"
   ansible.builtin.set_fact:
     _helm_all_extracted_images: >-
       {{ (_helm_all_extracted_images | default([])) + _chart_images }}
+  when: _r_helm_template.rc == 0
