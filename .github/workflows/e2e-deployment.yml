@@ -1010,7 +1010,7 @@ jobs:
       ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: lvms
-      ENABLED_PLUGINS: lvms,osac
+      ENABLED_PLUGINS: lvms,trust-manager,rhbk,authorino,osac
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -1174,6 +1174,27 @@ jobs:
           make -f Makefile.ci deploy-cluster-discovery
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Deploy - trust-manager Plugin
+        id: deploy_trust_manager
+        run: |
+          echo "## Deploy: trust-manager Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
+          echo "trust-manager deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy - rhbk Plugin
+        id: deploy_rhbk
+        run: |
+          echo "## Deploy: rhbk Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=rhbk
+          echo "rhbk deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy - Authorino Plugin
+        id: deploy_authorino
+        run: |
+          echo "## Deploy: Authorino Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=authorino
+          echo "Authorino deployed" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy - OSAC Plugin
         id: deploy_osac_plugin
         run: |
@@ -1318,7 +1339,7 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Mode**: OSAC Connected" >> $GITHUB_STEP_SUMMARY
           echo "- **Storage Plugin**: lvms" >> $GITHUB_STEP_SUMMARY
-          echo "- **Enabled Plugins**: lvms,osac" >> $GITHUB_STEP_SUMMARY
+          echo "- **Enabled Plugins**: lvms,trust-manager,rhbk,authorino,osac" >> $GITHUB_STEP_SUMMARY
           echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
@@ -1344,6 +1365,9 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
+            ["deploy_trust_manager"]="Deploy: trust-manager Plugin"
+            ["deploy_rhbk"]="Deploy: rhbk Plugin"
+            ["deploy_authorino"]="Deploy: Authorino Plugin"
             ["deploy_osac_plugin"]="Deploy: OSAC Plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
@@ -1360,6 +1384,9 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
+            deploy_trust_manager
+            deploy_rhbk
+            deploy_authorino
             deploy_osac_plugin
             verify_cluster
           )
@@ -1411,7 +1438,7 @@ jobs:
       ENCLAVE_DEPLOYMENT_MODE: disconnected
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: lvms
-      ENABLED_PLUGINS: lvms,osac
+      ENABLED_PLUGINS: lvms,trust-manager,rhbk,authorino,osac
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -1582,6 +1609,27 @@ jobs:
           make -f Makefile.ci deploy-plugin PLUGIN=example
           echo "Deploy Addon Plugin complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Deploy - trust-manager Plugin
+        id: deploy_trust_manager
+        run: |
+          echo "## Deploy: trust-manager Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
+          echo "trust-manager deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy - rhbk Plugin
+        id: deploy_rhbk
+        run: |
+          echo "## Deploy: rhbk Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=rhbk
+          echo "rhbk deployed" >> $GITHUB_STEP_SUMMARY
+
+      - name: Deploy - Authorino Plugin
+        id: deploy_authorino
+        run: |
+          echo "## Deploy: Authorino Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=authorino
+          echo "Authorino deployed" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy - OSAC Plugin
         id: deploy_osac_plugin
         run: |
@@ -1735,7 +1783,7 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "- **Mode**: OSAC Disconnected (Air-gapped)" >> $GITHUB_STEP_SUMMARY
           echo "- **Storage Plugin**: lvms" >> $GITHUB_STEP_SUMMARY
-          echo "- **Enabled Plugins**: lvms,osac" >> $GITHUB_STEP_SUMMARY
+          echo "- **Enabled Plugins**: lvms,trust-manager,rhbk,authorino,osac" >> $GITHUB_STEP_SUMMARY
           echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
@@ -1762,6 +1810,9 @@ jobs:
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
             ["deploy_addon_plugin"]="Deploy - Addon Plugin (example)"
+            ["deploy_trust_manager"]="Deploy: trust-manager Plugin"
+            ["deploy_rhbk"]="Deploy: rhbk Plugin"
+            ["deploy_authorino"]="Deploy: Authorino Plugin"
             ["deploy_osac_plugin"]="Deploy: OSAC Plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
@@ -1779,6 +1830,9 @@ jobs:
             bootstrap_day2
             bootstrap_discovery
             deploy_addon_plugin
+            deploy_trust_manager
+            deploy_rhbk
+            deploy_authorino
             deploy_osac_plugin
             verify_cluster
           )
