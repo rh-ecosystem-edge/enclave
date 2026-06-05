@@ -5,11 +5,13 @@ order: 200
 
 operators:
   - name: ansible-automation-platform-operator
-    version: "2.5.0"
+    version: "2.5.0-0.1777407881"
     channel: stable-2.5-cluster-scoped
-    init_version: "2.5.0"
+    init_version: "2.5.0-0.1777407881"
     namespace: ansible-aap
     global: true
+    csvNames:
+      - aap-operator
   - name: openshift-cert-manager-operator
     version: "1.15.0"
     channel: stable-v1
