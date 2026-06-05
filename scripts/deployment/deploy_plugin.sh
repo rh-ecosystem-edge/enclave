@@ -148,6 +148,7 @@ if [ -n "${AAP_LICENSE_FILE:-}" ]; then
     info "Copying AAP license to Landing Zone: $LZ_AAP_LICENSE"
     scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
     EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}aap_license_file: ${LZ_AAP_LICENSE}
+aapLicenseFile: ${LZ_AAP_LICENSE}
 "
     info "AAP license file: $AAP_LICENSE_FILE -> $LZ_AAP_LICENSE"
 fi
