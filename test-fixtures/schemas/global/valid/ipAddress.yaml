@@ -1,8 +1,7 @@
 ---
 # Fixture: Validate non NMState network configuration (no networkConfig)
-# Expects host to use ipAddress and macAddress for network configuration
+# Expects host to use ipAddress
 #   - Has ipAddress field
-#   - Has macAddress field
 #   - Does not have NMState config in networkConfig
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in

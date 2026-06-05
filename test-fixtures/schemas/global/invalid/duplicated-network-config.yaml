@@ -1,8 +1,8 @@
 ---
 # Invalid fixture: Only one of the network configuration methods should be present for a host
-# Expected failure: Both pairs of [ macAddress, ipAddress ] and [ mapInterfaces, networkConfig ]
-#                   are present for a host at the same time
-#
+# Expected failure: Only one network configuration method is allowed per host:
+#                   either ipAddress OR [ mapInterfaces, networkConfig ], not both
+
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt

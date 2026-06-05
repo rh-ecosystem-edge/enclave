@@ -149,5 +149,5 @@ agent_hosts:
   # Add a total of 3 agent hosts, no more, no less
 
 # For complex network setups you can use mapInterfaces and networkConfig
-# instead of the macAddress and ipAddress parameters
+# instead of ipAddress parameter
 # See docs/CONFIGURATION_REFERENCE.md for reference

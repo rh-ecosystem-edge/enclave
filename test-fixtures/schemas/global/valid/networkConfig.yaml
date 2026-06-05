@@ -1,8 +1,7 @@
 ---
 # Fixture: Validate that nmstate style configuration validation works
-# Expects that ipAddress and macAddress are not present on a host in agent_hosts, while networkConfig and mapInterfaces are:
+# Expects that ipAddress is not present on a host in agent_hosts, while networkConfig and mapInterfaces are:
 #   - Does not have ipAddress field
-#   - Does not have macAddress field
 #   - Has NMState config in networkConfig
 #   - Has mapInterfaces
 workingDir: /home/enclave
@@ -26,6 +25,7 @@ agent_hosts:
   - name: mgmt-ctl01
     redfish: 192.168.2.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    macAddress: 0c:c4:7a:62:fe:ec
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
     mapInterfaces:

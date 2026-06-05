@@ -22,6 +22,7 @@ agent_hosts:
   - name: mgmt-ctl01
     redfish: 192.168.2.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+    macAddress: 0c:c4:7a:62:fe:ec
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
     mapInterfaces:

@@ -1,5 +1,5 @@
 ---
-# Invalid fixture: If configuring the network with ipAddress and macAddress (no NMState), no mapInterfaces should be present
+# Invalid fixture: If configuring the network with ipAddress (no NMState), no mapInterfaces should be present
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt

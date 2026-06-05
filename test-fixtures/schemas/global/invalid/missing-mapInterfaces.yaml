@@ -20,6 +20,7 @@ pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
   - name: mgmt-ctl01
+    macAddress: 0c:c4:7a:62:fe:ec
     redfish: 192.168.2.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
