@@ -24,7 +24,7 @@
 - name: "HelmExtract | Run helm template: {{ _extract_chart.release }}"
   ansible.builtin.command:
     cmd: >-
-      {{ workingDir }}/bin/helm template _extract {{ _extract_chart_path }}
+      {{ workingDir }}/bin/helm template extract {{ _extract_chart_path }}
   register: _r_helm_template
   failed_when: false
   changed_when: false
