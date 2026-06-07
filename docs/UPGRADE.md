@@ -45,11 +45,11 @@ Each Enclave tarball release includes:
 6. **Sync content** - Run sync process to mirror new versions (disconnected mode)
 7. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
     ```sh
-    $ enclave-reconcile mgmt-cluster-version --use-defaults
+    enclave reconcile mgmt-cluster-version --use-defaults
     ```
 8. **Upgrade operators** - Update operators to the versions in the tarball:
     ```sh
-    $ enclave-reconcile operator-versions --use-defaults
+    enclave reconcile operator-versions --use-defaults
     ```
 
 ---
