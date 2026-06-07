@@ -91,7 +91,3 @@ step_done
 echo "ACM ClusterImageSets .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags acm-cis
 step_done
-
-echo "OpenShift Pipelines .." | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags openshift-pipelines
-step_done
