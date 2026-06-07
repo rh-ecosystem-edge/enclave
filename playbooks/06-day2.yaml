@@ -94,13 +94,3 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: quay-disconnected
-
-        - name: Management cluster upgrade
-          ansible.builtin.include_tasks:
-            file: tasks/mgmt_cluster_upgrade.yaml
-            apply:
-              tags: mgmt-cluster-upgrade
-              environment:
-                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-          tags:
-            - mgmt-cluster-upgrade
