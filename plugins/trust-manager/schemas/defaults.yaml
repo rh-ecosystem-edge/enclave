@@ -9,10 +9,6 @@ required:
   - trust_manager_ca_bundle_name
   - trust_manager_ca_bundle_key
   - trust_manager_ca_bundle_label
-definitions:
-  nonEmptyString:
-    type: string
-    minLength: 1
 properties:
   trust_manager_cluster_issuer:
     "$ref": "#/definitions/nonEmptyString"
