@@ -71,6 +71,11 @@ done
 
 step_done
 
+echo "Configuring environment .. "  | tee -a ${log}
+    sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
+    bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
+step_done
+
 echo "Validating Config .. " | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml -e fresh=false --tags validate-config
     bash ./validations.sh 2>&1 | tee -a ${log}
