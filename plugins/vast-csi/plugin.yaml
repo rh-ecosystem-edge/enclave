@@ -19,6 +19,8 @@ requires:
       description: "VAST Quay storage configuration"
     - path: "tasks/create_tenant_manager.yaml"
       description: "VAST tenant manager creation tasks"
+    - path: "../../config/plugins/vast-csi.yaml"
+      description: "VAST CSI user configuration"
 
 clusterSelector:
   matchLabels:
