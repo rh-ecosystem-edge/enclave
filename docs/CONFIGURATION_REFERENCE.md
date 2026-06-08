@@ -322,6 +322,23 @@ defaultNtpServers:
 - Only needed when cluster nodes cannot reach the default public NTP pool
 - Useful in air-gapped or firewalled environments
 
+#### `quayPinnedImageSetEnabled`
+
+**Description**: Controls whether the post-mirror master `PinnedImageSet` is generated and applied after Quay image mirroring.
+
+**Type**: Boolean (optional)
+
+**Default**: `true`
+
+**Example**:
+```yaml
+quayPinnedImageSetEnabled: false
+```
+
+**Notes**:
+- Set to `false` when you want to skip post-mirror prefetch pinning.
+- This setting is ignored when `mirror_dry_run` is enabled.
+
 ### Hardware Configuration
 
 #### `agent_hosts`
@@ -1349,6 +1366,7 @@ lzBmcIP: 100.64.1.10
 # masterMaxPods: 250 # Default: 500
 # diskEncryption: true  # Default: false (set to true to enable TPM v2 encryption)
 # ocMirrorLogLevel: debug  # Default: info
+# quayPinnedImageSetEnabled: false  # Default: true (set false to skip post-mirror pinning)
 # defaultNtpServers:  # No additional servers by default
 #  - YOUR_NTP_SERVER_1
 #  - YOUR_NTP_SERVER_2
