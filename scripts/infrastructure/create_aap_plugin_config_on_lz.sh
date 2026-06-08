@@ -45,11 +45,17 @@ setup_ssh_config "$CLUSTER_IP"
 AAP_LICENSE_FILE="${AAP_LICENSE_FILE:-/etc/enclave-ci/aap-license.zip}"
 AAP_PLUGIN_CONFIG="${LZ_ENCLAVE_DIR}/config/plugins/aap.yaml"
 
+REMOTE_AAP_LICENSE_DIR="${LZ_ENCLAVE_DIR}/tmp"
+REMOTE_AAP_LICENSE_FILE="${REMOTE_AAP_LICENSE_DIR}/$(basename ${AAP_LICENSE_FILE})"
+
+ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${REMOTE_AAP_LICENSE_DIR}"
+scp $SSH_OPTS "${AAP_LICENSE_FILE}" "${LZ_SSH}:${REMOTE_AAP_LICENSE_FILE}"
+
 info "Writing AAP plugin config to Landing Zone: ${AAP_PLUGIN_CONFIG}"
 
 PLUGIN_CONFIG_DIR="$(dirname "${AAP_PLUGIN_CONFIG}")"
 AAP_CONFIG_CONTENT="---
-aapLicenseFile: ${AAP_LICENSE_FILE}
+aapLicenseFile: ${REMOTE_AAP_LICENSE_FILE}
 "
 
 # shellcheck disable=SC2086,SC2029  # SSH_OPTS needs word splitting; paths expand client-side intentionally
@@ -57,4 +63,4 @@ ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${PLUGIN_CONFIG_DIR}"
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 ssh $SSH_OPTS "$LZ_SSH" "cat > ${AAP_PLUGIN_CONFIG}" <<< "${AAP_CONFIG_CONTENT}"
 
-success "AAP plugin config written: aapLicenseFile: ${AAP_LICENSE_FILE}"
+success "AAP plugin config written: aapLicenseFile: ${REMOTE_AAP_LICENSE_FILE}"
