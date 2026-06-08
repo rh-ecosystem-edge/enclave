@@ -37,3 +37,21 @@ metadata:
 spec:
   ca:
     secretName: {{ trust_manager_cluster_issuer }}-secret
+
+---
+# Bundle distributes the CA certificate as a ConfigMap to labeled namespaces
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: {{ trust_manager_ca_bundle_name }}
+spec:
+  sources:
+    - secret:
+        name: {{ trust_manager_cluster_issuer }}-secret
+        key: ca.crt
+  target:
+    configMap:
+      key: {{ trust_manager_ca_bundle_key }}
+    namespaceSelector:
+      matchLabels:
+        {{ trust_manager_ca_bundle_label }}: "true"
