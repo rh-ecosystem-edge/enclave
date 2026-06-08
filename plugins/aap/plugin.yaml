@@ -11,3 +11,8 @@ operators:
     namespace: ansible-aap
     csvNames:
       - aap-operator
+
+requires:
+  files:
+    - path: "../../config/plugins/aap.yaml"
+      description: "AAP user configuration"
