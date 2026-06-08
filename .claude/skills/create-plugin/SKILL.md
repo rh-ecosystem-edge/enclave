@@ -228,8 +228,19 @@ properties:
 Config schema rules:
 - Same structure as defaults schema (`additionalProperties: false`, draft-07)
 - Only include user-facing variables, NOT internal ones (e.g., `<name>_ns` and `<name>_resource_name` are NOT in config schema)
-- No `required` section unless the variable is a mandatory user input with no default (e.g., license file path)
+- No `required` section unless the variable is a mandatory user input with no default (e.g., a license file path or external cluster connection details)
 - Properties here are a subset of what's in `schemas/defaults.yaml`
+
+**Required config file pattern:** when the config file is mandatory (has `required` properties with no default), add a `requires.files` entry in `plugin.yaml` so deployment fails early with a clear message instead of a cryptic undefined variable error:
+
+```yaml
+requires:
+  files:
+    - path: "../../config/plugins/<name>.yaml"
+      description: "<Name> user configuration"
+```
+
+The schema validates the file's content at CI time; the `requires.files` entry validates the file's existence at deploy time.
 
 **Create config test fixtures:**
 
@@ -379,7 +390,9 @@ make -f Makefile.ci validate            # All checks at once
 
 ## Plugin Independence Rules
 
-See `docs/PLUGIN_ARCHITECTURE.md` for full plugin independence rules. Key points: no cross-plugin variable references, shared values must be defined independently in each plugin with the same default, and `requires.vars` is for external variables only (not plugin defaults).
+See `docs/PLUGIN_ARCHITECTURE.md` for full plugin independence rules. Key points: no cross-plugin variable references, shared values must be defined independently in each plugin with the same default.
+
+**Prefer `schemas/config.yaml` over `requires.vars`** for plugin configuration variables. If a plugin needs user-supplied values, declare them in `schemas/config.yaml` and have users supply them via `config/plugins/<name>.yaml`. Reserve `requires.vars` for variables that genuinely cannot come from a plugin config file (e.g., vars injected by external orchestration).
 
 ## Reference Implementations
 
