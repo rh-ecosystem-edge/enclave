@@ -78,29 +78,25 @@ See `docs/PLUGIN_ARCHITECTURE.md` for the full plugin.yaml field reference.
 
 ### Step 2: Create defaults
 
-**Preferred approach: `plugins/<name>/defaults.yaml` file.** Use inline `defaults:` in plugin.yaml only for very simple cases. Never use both.
+Always use `plugins/<name>/defaults.yaml`. Never use inline `defaults:` in plugin.yaml — it is deprecated.
 
-Create `plugins/<name>/defaults.yaml` with ALL variables (both internal and user-facing), each with a sensible default value:
+Create `plugins/<name>/defaults.yaml` with all variables that have default values (both internal and user-facing). User-facing configuration variables that are optional or do not have a default value (e.g., external cluster connection details, license file paths) need to be validated in `schemas/config.yaml` (as `required` properties) and documented in `config/plugins/<name>.example.yaml`, but not added to `defaults.yaml`.
 
 ```yaml
 ---
 # Internal variables (not exposed to users)
-<name>_ns: <namespace>
-<name>_resource_name: <name>
+myPluginNamespace: my-plugin
+myPluginResourceName: my-plugin
 
 # User-facing variables (also exposed in config/plugins/<name>.example.yaml)
-<name>_instances: 1
-<name>_deploy_feature: true
-<name>_storage_size: 5Gi
+myPluginInstances: 1
+myPluginDeployFeature: true
+myPluginStorageSize: 5Gi
 ```
 
-**CRITICAL RULE:** All top-level variable names MUST be prefixed with the plugin name. Accepted prefix styles:
-- snake_case: `my_plugin_setting`
-- camelCase: `myPluginSetting` or `myPluginDefaults`
-- For single-word names: `lvmsDefaults`, `lvmsConfig`
+**CRITICAL RULE:** All top-level variable names MUST be prefixed with the plugin name using camelCase (e.g., `myPluginNamespace`, `myPluginStorageSize`, `lvmsDefaults`).
 
 Check existing plugins in `plugins/*/defaults.yaml` for real naming examples.
-
 
 ### Step 3: Create defaults schema
 
@@ -112,26 +108,26 @@ Create `plugins/<name>/schemas/defaults.yaml` -- validates ALL variables in defa
 type: object
 additionalProperties: false
 required:
-  - <name>_ns
-  - <name>_resource_name
-  - <name>_instances
-  - <name>_deploy_feature
-  - <name>_storage_size
+  - myPluginNamespace
+  - myPluginResourceName
+  - myPluginInstances
+  - myPluginDeployFeature
+  - myPluginStorageSize
 properties:
-  <name>_ns:
+  myPluginNamespace:
     "$ref": "#/definitions/nonEmptyString"
     description: Namespace for the deployment.
-  <name>_resource_name:
+  myPluginResourceName:
     "$ref": "#/definitions/nonEmptyString"
     description: Name of the primary resource.
-  <name>_instances:
+  myPluginInstances:
     type: integer
     minimum: 1
     description: Number of replicas.
-  <name>_deploy_feature:
+  myPluginDeployFeature:
     type: boolean
     description: Enable or disable the feature.
-  <name>_storage_size:
+  myPluginStorageSize:
     "$ref": "#/definitions/k8sQuantity"
     description: Storage volume size.
 ```
@@ -153,11 +149,11 @@ Create `plugins/<name>/test-fixtures/schemas/defaults/valid/base.yaml` -- must b
 
 ```yaml
 ---
-<name>_ns: <namespace>
-<name>_resource_name: <name>
-<name>_instances: 1
-<name>_deploy_feature: true
-<name>_storage_size: 5Gi
+myPluginNamespace: my-plugin
+myPluginResourceName: my-plugin
+myPluginInstances: 1
+myPluginDeployFeature: true
+myPluginStorageSize: 5Gi
 ```
 
 **Required: invalid fixture (unknown property)**
@@ -166,7 +162,7 @@ Create `plugins/<name>/test-fixtures/schemas/defaults/invalid/unknown-property.y
 
 ```yaml
 ---
-<name>_ns: <namespace>
+myPluginNamespace: my-plugin
 unknownField: this-should-fail
 ```
 
@@ -176,7 +172,7 @@ Create `plugins/<name>/test-fixtures/schemas/defaults/invalid/missing-required.y
 
 ```yaml
 ---
-<name>_instances: 1
+myPluginInstances: 1
 ```
 
 ### Step 5: Create user-facing configuration
@@ -194,13 +190,13 @@ User-facing variables are a subset of defaults that users can override via `conf
 ##############################################################################
 
 # Number of replicas.
-# <name>_instances: 1
+# myPluginInstances: 1
 
 # Enable or disable the feature.
-# <name>_deploy_feature: true
+# myPluginDeployFeature: true
 
 # Storage volume size.
-# <name>_storage_size: 5Gi
+# myPluginStorageSize: 5Gi
 ```
 
 Comment out all optional fields (showing defaults). Leave mandatory fields uncommented with a placeholder.
@@ -213,23 +209,23 @@ Comment out all optional fields (showing defaults). Leave mandatory fields uncom
 type: object
 additionalProperties: false
 properties:
-  <name>_instances:
+  myPluginInstances:
     type: integer
     minimum: 1
     description: Number of replicas.
-  <name>_deploy_feature:
+  myPluginDeployFeature:
     type: boolean
     description: Enable or disable the feature.
-  <name>_storage_size:
+  myPluginStorageSize:
     "$ref": "#/definitions/k8sQuantity"
     description: Storage volume size.
 ```
 
 Config schema rules:
 - Same structure as defaults schema (`additionalProperties: false`, draft-07)
-- Only include user-facing variables, NOT internal ones (e.g., `<name>_ns` and `<name>_resource_name` are NOT in config schema)
+- Include only variables the plugin author wants to expose to users
 - No `required` section unless the variable is a mandatory user input with no default (e.g., a license file path or external cluster connection details)
-- Properties here are a subset of what's in `schemas/defaults.yaml`
+- Properties may overlap with `schemas/defaults.yaml` (user overrides) or be unique to config (mandatory user inputs with no default)
 
 **Required config file pattern:** when the config file is mandatory (has `required` properties with no default), add a `requires.files` entry in `plugin.yaml` so deployment fails early with a clear message instead of a cryptic undefined variable error:
 
@@ -248,14 +244,14 @@ The schema validates the file's content at CI time; the `requires.files` entry v
 
 ```yaml
 ---
-<name>_instances: 2
+myPluginInstances: 2
 ```
 
 `test-fixtures/schemas/config/invalid/unknown-property.yaml`:
 
 ```yaml
 ---
-<name>_instances: 2
+myPluginInstances: 2
 unknownField: this-should-fail
 ```
 
@@ -273,7 +269,27 @@ make -f Makefile.ci validate-ansible
 
 ## Workflow 2: Add Lifecycle Tasks
 
-Lifecycle tasks are Ansible task lists under `plugins/<name>/tasks/`. See [LIFECYCLE-TASKS.md](LIFECYCLE-TASKS.md) for execution order, task file conventions, retry strategy, and templates for each task type (pre-validate, deploy, post-operators, post-validate, templates).
+Lifecycle tasks are Ansible task lists under `plugins/<name>/tasks/`. See `docs/PLUGIN_ARCHITECTURE.md` (section "Lifecycle Files") for the full execution order and detailed behavior of each step.
+
+### Task file conventions
+
+Every task file MUST:
+- Be a valid YAML list of task mappings (no playbook header, no `hosts:` key)
+- Start with `---`
+- Have descriptive `name:` on every task
+
+**Retry strategy -- two patterns:**
+- `retries: "{{ k8s_retries }}"` / `delay: "{{ k8s_delay }}"` -- for checks where the resource should already exist (CRD registered, deployment available). Guards against transient API failures, not long waits.
+- Hardcoded higher values (e.g., `retries: 60` / `delay: 15`) -- for waiting on state changes that take real time (CR becoming Ready, operator starting pods). Values depend on the specific resource and expected cluster pressure.
+
+### Real plugin examples
+
+Browse `plugins/*/tasks/` for real examples. Key references:
+
+- **pre-validate**: `plugins/trust-manager/tasks/pre-validate.yaml` -- checks that cert-manager CRD and deployment exist before trust-manager deploys
+- **deploy**: `plugins/trust-manager/tasks/deploy.yaml` -- waits for operator CRD/deployment, applies manifests, waits for CR readiness
+- **post-operators**: `plugins/vast-csi/tasks/post-operators.yaml` -- creates CRs after OLM operator install, before deploy.yaml runs (not limited to Helm-deployed plugins)
+- **post-validate**: `plugins/vast-csi/tasks/post-validate.yaml` -- verifies CSI drivers and StorageClasses exist after deployment
 
 ## Workflow 3: Add Operators to a Plugin
 
@@ -380,7 +396,7 @@ make -f Makefile.ci validate            # All checks at once
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `plugin.yaml name does not match directory name` | `name` field differs from directory | Set `name` to exactly match directory name |
-| `Has both defaults.yaml and a defaults: field` | Both present | Remove one. Prefer `defaults.yaml` for complex defaults |
+| `Has both defaults.yaml and a defaults: field` | Both present | Remove the `defaults:` field from plugin.yaml. Use `defaults.yaml`. |
 | `properties [X] must start with one of [prefixes]` | Schema property not prefixed | Prefix all top-level schema properties with the plugin name |
 | `additionalProperties not set to false` | Missing in schema | Add `additionalProperties: false` at top level |
 | `Unexpected file or directory: X` | File not in allowed set | Only allowed: plugin.yaml, defaults.yaml, tasks/, files/, charts/, templates/, schemas/, test-fixtures/ |
