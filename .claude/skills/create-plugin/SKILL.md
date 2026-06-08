@@ -177,7 +177,7 @@ myPluginInstances: 1
 
 ### Step 5: Create user-facing configuration
 
-User-facing variables are a subset of defaults that users can override via `config/plugins/<name>.yaml`. Every user-facing variable MUST have a default value in `defaults.yaml` (unless it's a mandatory user input like a license file path).
+User-facing configuration variables must be defined at `config/plugins/<name>.yaml`. Variables with default values must also appear in `defaults.yaml`. Mandatory user inputs with no default (e.g., license file paths, external cluster connection details) only appear in the config schema.
 
 **Create `config/plugins/<name>.example.yaml`** -- a template users copy to `config/plugins/<name>.yaml`:
 
