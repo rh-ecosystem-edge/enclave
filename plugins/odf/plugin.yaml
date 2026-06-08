@@ -32,6 +32,8 @@ requires:
       description: "ODF deployment tasks"
     - path: "tasks/quay.yaml"
       description: "ODF Quay storage configuration"
+    - path: "../../config/plugins/odf.yaml"
+      description: "ODF user configuration"
 
 registries:
   - location: "registry.redhat.io/odf4"
