@@ -141,8 +141,8 @@
   retries: 30
   delay: 10
   until:
-  - r_subscription.resources[0].status.installplan is defined
-  - r_subscription.resources[0].status.installplan | length > 0
+    - r_subscription.resources[0].status.installplan is defined
+    - r_subscription.resources[0].status.installplan | length > 0
 
 - name: "Approve Install Plan ({{ operator.name }})"
   when:
@@ -177,8 +177,8 @@
   retries: 30
   delay: 10
   until:
-  - r_subscription.resources[0].status.currentCSV is defined
-  - r_subscription.resources[0].status.currentCSV | length > 0
+    - r_subscription.resources[0].status.currentCSV is defined
+    - r_subscription.resources[0].status.currentCSV | length > 0
 
 - name: "Wait until CSV is installed"
   when:
@@ -193,9 +193,9 @@
   retries: 30
   delay: 30
   until:
-  - r_csv.resources[0].status.phase is defined
-  - r_csv.resources[0].status.phase | length > 0
-  - r_csv.resources[0].status.phase == "Succeeded"
+    - r_csv.resources[0].status.phase is defined
+    - r_csv.resources[0].status.phase | length > 0
+    - r_csv.resources[0].status.phase == "Succeeded"
 
 
 - name: Include specific tasks for the operator

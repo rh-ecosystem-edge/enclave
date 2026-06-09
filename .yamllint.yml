@@ -9,11 +9,6 @@ rules:
     max: 200
     level: warning
 
-  # Indentation - allow both styles
-  indentation:
-    spaces: consistent
-    indent-sequences: whatever
-
   # Comments - allow flexibility
   comments:
     min-spaces-from-content: 1
@@ -61,3 +56,4 @@ ignore: |
   .venv/
   **/*.j2
   **/*.jinja2
+  src/tests/fixtures/*/*.yaml
