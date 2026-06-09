@@ -238,10 +238,6 @@ step_operators() {
 }
 
 step_day2() {
-    echo "Clair disconnected .." | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml $EXTRA_VARS --tags clair-disconnected
-    step_done
-
     echo "Catalog source ACM policy .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml $EXTRA_VARS --tags acm-policy-catalogsources
     step_done

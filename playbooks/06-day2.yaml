@@ -8,7 +8,6 @@
 #
 # Usage:
 #   ansible-playbook playbooks/06-day2.yaml [-e disconnected=false]
-#   ansible-playbook playbooks/06-day2.yaml --tags clair-disconnected
 #   ansible-playbook playbooks/06-day2.yaml --tags acm-policy-catalogsources
 
 - name: Phase 6 - Day-2 operations
@@ -49,16 +48,6 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: acm-cis
-
-        - name: Configure Clair in disconnected environments
-          when: disconnected | default(true)
-          ansible.builtin.include_tasks:
-            file: ../operators/quay-operator/clair_disconnected.yaml
-            apply:
-              tags: clair-disconnected
-              environment:
-                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-          tags: clair-disconnected
 
         - name: Mirrored catalogsource configuration ACM policy
           when: disconnected | default(true)

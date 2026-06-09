@@ -89,10 +89,6 @@ echo "Quay disconnected .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags quay-disconnected
 step_done
 
-echo "Clair disconnected .." | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags clair-disconnected
-step_done
-
 echo "ACM ClusterImageSets .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags acm-cis
 step_done

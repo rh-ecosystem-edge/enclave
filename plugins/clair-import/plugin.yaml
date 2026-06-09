@@ -1,0 +1,4 @@
+---
+name: clair-import
+type: addon
+order: 100
