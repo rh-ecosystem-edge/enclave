@@ -2,8 +2,9 @@
 # Migrate foundation plugin subscription from core catalog source to plugin-specific catalog source
 #
 # Background: Previous Enclave versions mirrored foundation plugin operators as part
-# of the core catalog source. The plugin framework now creates dedicated catalog
-# sources per plugin (e.g., mirror-redhat-operators-odf for ODF).
+# of the core catalog source (e.g., cs-mirror-redhat-operators-v4-20). The plugin
+# framework now creates dedicated catalog sources per plugin (e.g.,
+# cs-mirror-redhat-operators-odf-v4-20 for ODF).
 #
 # This migration patches the operator subscription to use the plugin-specific catalog source.
 #
@@ -35,7 +36,7 @@
     namespace: "{{ operator_namespace }}"
     definition:
       spec:
-        source: "{{ catalog_mirror }}-{{ plugin_name }}"
+        source: "cs-{{ catalog_mirror }}-{{ plugin_name }}-v4-20"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_plugin_patch
@@ -45,17 +46,17 @@
   when:
     - r_plugin_subscription.resources | length > 0
     - r_plugin_subscription.resources[0].spec.source is defined
-    - r_plugin_subscription.resources[0].spec.source != catalog_mirror + "-" + plugin_name
-    - r_plugin_subscription.resources[0].spec.source == catalog_mirror
+    - r_plugin_subscription.resources[0].spec.source != "cs-" + catalog_mirror + "-" + plugin_name + "-v4-20"
+    - r_plugin_subscription.resources[0].spec.source == "cs-" + catalog_mirror + "-v4-20"
 
 - name: Display {{ plugin_name | upper }} migration status
   ansible.builtin.debug:
     msg: >-
       {% if r_plugin_subscription.resources | length == 0 %}
       {{ plugin_name | upper }} subscription not found — no migration needed
-      {% elif r_plugin_subscription.resources[0].spec.source == catalog_mirror + "-" + plugin_name %}
+      {% elif r_plugin_subscription.resources[0].spec.source == "cs-" + catalog_mirror + "-" + plugin_name + "-v4-20" %}
       {{ plugin_name | upper }} subscription already using plugin-specific catalog source — no migration needed
       {% else %}
       {{ plugin_name | upper }} subscription migrated from {{ r_plugin_subscription.resources[0].spec.source }}
-      to {{ catalog_mirror }}-{{ plugin_name }}
+      to cs-{{ catalog_mirror }}-{{ plugin_name }}-v4-20
       {% endif %}
