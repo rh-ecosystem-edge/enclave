@@ -3,7 +3,7 @@
 #
 # Background: Previous Enclave versions mirrored foundation plugin operators as part
 # of the core catalog source. The plugin framework now creates dedicated catalog
-# sources per plugin (e.g., redhat-operator-index-odf for ODF).
+# sources per plugin (e.g., mirror-redhat-operators-odf for ODF).
 #
 # This migration patches the operator subscription to use the plugin-specific catalog source.
 #
@@ -11,6 +11,7 @@
 #   plugin_name: Name of the plugin (e.g., "odf", "lvms")
 #   operator_name: Name of the operator subscription (e.g., "odf-operator", "lvms-operator")
 #   operator_namespace: Namespace where the operator is installed (e.g., "openshift-storage")
+#   catalog_mirror: Catalog mirror prefix (e.g., "mirror-redhat-operators" or "mirror-certified-operators")
 
 - name: Check if {{ plugin_name | upper }} subscription exists
   kubernetes.core.k8s_info:
@@ -31,7 +32,7 @@
     namespace: "{{ operator_namespace }}"
     definition:
       spec:
-        source: "redhat-operator-index-{{ plugin_name }}"
+        source: "{{ catalog_mirror }}-{{ plugin_name }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_plugin_patch
@@ -40,16 +41,16 @@
   until: r_plugin_patch is success
   when:
     - r_plugin_subscription.resources | length > 0
-    - r_plugin_subscription.resources[0].spec.source != "redhat-operator-index-{{ plugin_name }}"
+    - r_plugin_subscription.resources[0].spec.source != catalog_mirror + "-" + plugin_name
 
 - name: Display {{ plugin_name | upper }} migration status
   ansible.builtin.debug:
     msg: >-
       {% if r_plugin_subscription.resources | length == 0 %}
       {{ plugin_name | upper }} subscription not found — no migration needed
-      {% elif r_plugin_subscription.resources[0].spec.source == "redhat-operator-index-" + plugin_name %}
+      {% elif r_plugin_subscription.resources[0].spec.source == catalog_mirror + "-" + plugin_name %}
       {{ plugin_name | upper }} subscription already using plugin-specific catalog source — no migration needed
       {% else %}
       {{ plugin_name | upper }} subscription migrated from {{ r_plugin_subscription.resources[0].spec.source }}
-      to redhat-operator-index-{{ plugin_name }}
+      to {{ catalog_mirror }}-{{ plugin_name }}
       {% endif %}

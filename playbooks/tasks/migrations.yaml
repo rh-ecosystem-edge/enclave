@@ -14,6 +14,7 @@
     plugin_name: odf
     operator_name: odf-operator
     operator_namespace: openshift-storage
+    catalog_mirror: "{{ mirror_rh_operator_catalog }}"
   when: "'odf' in enabled_plugins"
 
 - name: Migrate LVMS subscription source
@@ -23,4 +24,5 @@
     plugin_name: lvms
     operator_name: lvms-operator
     operator_namespace: openshift-storage
+    catalog_mirror: "{{ mirror_rh_operator_catalog }}"
   when: "'lvms' in enabled_plugins"
