@@ -46,7 +46,7 @@
     - r_plugin_subscription.resources | length > 0
     - r_plugin_subscription.resources[0].spec.source is defined
     - r_plugin_subscription.resources[0].spec.source != catalog_mirror + "-" + plugin_name
-    - r_plugin_subscription.resources[0].spec.source is match("^(redhat-operators|cs-.*|" + catalog_mirror + ")$")
+    - r_plugin_subscription.resources[0].spec.source == catalog_mirror
 
 - name: Display {{ plugin_name | upper }} migration status
   ansible.builtin.debug:
