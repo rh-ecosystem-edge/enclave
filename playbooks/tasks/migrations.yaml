@@ -15,7 +15,7 @@
     operator_name: odf-operator
     operator_namespace: openshift-storage
     catalog_mirror: "{{ mirror_rh_operator_catalog }}"
-  when: "'odf' in enabled_plugins"
+  when: "'odf' in (enabled_plugins | default([]))"
 
 - name: Migrate LVMS subscription source
   ansible.builtin.include_tasks:
@@ -25,4 +25,4 @@
     operator_name: lvms-operator
     operator_namespace: openshift-storage
     catalog_mirror: "{{ mirror_rh_operator_catalog }}"
-  when: "'lvms' in enabled_plugins"
+  when: "'lvms' in (enabled_plugins | default([]))"
