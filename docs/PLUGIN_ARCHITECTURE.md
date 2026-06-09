@@ -70,9 +70,9 @@ registries:
 | `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deployed separately. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
-| `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
-| `installOperators` | Set to `false` to skip operator installation (mirror-only plugins). Defaults to `true`. |
-| `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). |
+| `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. When combined with `clusterSelector` and `installOperators: false`, operators are deployed to spoke clusters via ACM OperatorPolicy for version control. |
+| `installOperators` | Set to `false` to deploy operators to fleet via ACM policies instead of installing on hub. Requires `clusterSelector`. Defaults to `true`. |
+| `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). When defined with `installOperators: false`, creates ACM policies using OperatorPolicy for version-controlled fleet deployment. |
 | `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). |
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |

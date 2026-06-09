@@ -1,0 +1,37 @@
+apiVersion: policy.open-cluster-management.io/v1beta1
+kind: OperatorPolicy
+metadata:
+  name: {{ operator.name }}
+spec:
+  # Enforce the operator installation
+  remediationAction: enforce
+  severity: medium
+  complianceType: musthave
+
+  # Automatic upgrades, but only to versions in the allowed list
+  upgradeApproval: Automatic
+
+  # Subscription configuration
+  subscription:
+    name: {{ operator.name }}
+{% if operator.init_version is defined %}
+    # Install initial version
+    startingCSV: {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.init_version | replace('+', '-') }}
+{% endif %}
+    channel: {{ operator.channel }}
+    source: {{ operator.source | default(default_operator_source) if (disconnected | default(true) | bool) else 'redhat-operators' }}
+    sourceNamespace: openshift-marketplace
+{% if operator.namespace is defined and operator.namespace != 'openshift-operators' %}
+    namespace: {{ operator.namespace }}
+{% endif %}
+
+  # Version control: only allow specified versions
+  versions:
+{% if operator.init_version is defined %}
+    - {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.init_version | replace('+', '-') }}
+{% endif %}
+    - {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.version | replace('+', '-') }}
+
+  # Alert when new upgrades are available outside the allowed list
+  complianceConfig:
+    upgradesAvailable: NonCompliant

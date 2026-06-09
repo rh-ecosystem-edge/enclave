@@ -17,47 +17,47 @@ spec:
   disabled: false
   remediationAction: enforce
   policy-templates:
-  - objectDefinition:
-      apiVersion: policy.open-cluster-management.io/v1
-      kind: ConfigurationPolicy
-      metadata:
-        name: {{ plugin.name }}-operators
-      spec:
-        evaluationInterval:
-          compliant: 2h
-          noncompliant: 45s
-        object-templates:
 {% for operator in plugin.operators | default([]) %}
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: v1
-            kind: Namespace
-            metadata:
-                name: {{ operator.namespace }}
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1
-            kind: OperatorGroup
-            metadata:
-              name: {{ operator.name }}
-              namespace: {{ operator.namespace }}
-            spec:
-              targetNamespaces:
-              - {{ operator.namespace }}
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: {{ operator.name }}
-              namespace: {{ operator.namespace }}
-            spec:
-              channel: {{ operator.channel }}
-              installPlanApproval: Automatic
-              name: {{ operator.name }}
-              source: {{ operator.source | default(catalog_mirror) }}
-              sourceNamespace: openshift-marketplace
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: {{ operator.name }}
+      spec:
+        # Enforce the operator installation with version control
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+
+        # Automatic upgrades, but only to versions in the allowed list
+        upgradeApproval: Automatic
+
+        # Subscription configuration
+        subscription:
+          name: {{ operator.name }}
+{% if operator.init_version is defined %}
+          # Install initial version
+          startingCSV: {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.init_version | replace('+', '-') }}
+{% endif %}
+          channel: {{ operator.channel }}
+          source: {{ operator.source | default(catalog_mirror) }}
+          sourceNamespace: openshift-marketplace
+
+        # Version control: only allow specified versions
+        versions:
+{% if operator.init_version is defined %}
+          - {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.init_version | replace('+', '-') }}
+{% endif %}
+          - {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.version | replace('+', '-') }}
+
+        # Alert when new upgrades are available outside the allowed list
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+
+        # OperatorGroup configuration for namespaced operators
+        operatorGroup:
+          name: {{ operator.name }}
+          namespace: {{ operator.namespace }}
+          targetNamespaces:
+            - {{ operator.namespace }}
 {% endfor %}
