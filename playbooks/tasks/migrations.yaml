@@ -49,14 +49,15 @@
 
 - name: Migrate foundation plugin operator subscriptions
   ansible.builtin.include_tasks:
-    file: migrations/foundation_plugin_catalog_source.yaml
+    file: migrations/operator_catalog_source.yaml
   vars:
     plugin: "{{ plugin_operator.0 }}"
     operator: "{{ plugin_operator.1 }}"
-    plugin_name: "{{ plugin.name }}"
+    catalog_mirror: "{{ mirror_certified_rh_operator_catalog if (plugin.catalog | default('redhat')) == 'certified' else mirror_rh_operator_catalog }}"
     operator_name: "{{ operator.name }}"
     operator_namespace: "{{ operator.namespace }}"
-    catalog_mirror: "{{ mirror_certified_rh_operator_catalog if (plugin.catalog | default('redhat')) == 'certified' else mirror_rh_operator_catalog }}"
+    legacy_source: "cs-{{ catalog_mirror }}-v4-20"
+    new_source: "cs-{{ catalog_mirror }}-{{ plugin.name }}-v4-20"
   loop: "{{ _foundation_plugins | default([]) | subelements('operators', skip_missing=True) }}"
   loop_control:
     loop_var: plugin_operator

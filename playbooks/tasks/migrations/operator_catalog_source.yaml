@@ -1,0 +1,56 @@
+---
+# Migrate operator subscription catalog source
+#
+# This is a generic task that patches an operator subscription's catalog source.
+# All context-specific logic (discovery, filtering, catalog determination) is
+# handled by the calling playbook.
+#
+# Required variables:
+#   operator_name: Name of the operator subscription (e.g., "odf-operator", "lvms-operator")
+#   operator_namespace: Namespace where the operator is installed (e.g., "openshift-storage")
+#   legacy_source: Expected legacy catalog source (e.g., "cs-mirror-redhat-operators-v4-20")
+#   new_source: New catalog source to migrate to (e.g., "cs-mirror-redhat-operators-odf-v4-20")
+
+- name: Check if {{ operator_name }} subscription exists
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator_name }}"
+    namespace: "{{ operator_namespace }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_operator_subscription
+
+- name: Patch {{ operator_name }} subscription catalog source
+  kubernetes.core.k8s:
+    state: patched
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator_name }}"
+    namespace: "{{ operator_namespace }}"
+    definition:
+      spec:
+        source: "{{ new_source }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_operator_patch
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_operator_patch is success
+  when:
+    - r_operator_subscription.resources | length > 0
+    - r_operator_subscription.resources[0].spec.source is defined
+    - r_operator_subscription.resources[0].spec.source != new_source
+    - r_operator_subscription.resources[0].spec.source == legacy_source
+
+- name: Display {{ operator_name }} migration status
+  ansible.builtin.debug:
+    msg: >-
+      {% if r_operator_subscription.resources | length == 0 %}
+      {{ operator_name }} subscription not found — no migration needed
+      {% elif r_operator_subscription.resources[0].spec.source == new_source %}
+      {{ operator_name }} subscription already using new catalog source — no migration needed
+      {% else %}
+      {{ operator_name }} subscription migrated from {{ r_operator_subscription.resources[0].spec.source }}
+      to {{ new_source }}
+      {% endif %}
