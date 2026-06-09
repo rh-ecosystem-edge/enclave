@@ -64,24 +64,24 @@
         disabled: false
         remediationAction: enforce
         policy-templates:
-        - objectDefinition:
-            apiVersion: policy.open-cluster-management.io/v1
-            kind: ConfigurationPolicy
-            metadata:
-              name: update-service
-            spec:
-              evaluationInterval:
-                compliant: 2h
-                noncompliant: 45s
-              object-templates:
-              - complianceType: musthave
-                objectDefinition:
-                  apiVersion: config.openshift.io/v1
-                  kind: ClusterVersion
-                  metadata:
-                    name: version
-                  spec:
-                    upstream: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
+          - objectDefinition:
+              apiVersion: policy.open-cluster-management.io/v1
+              kind: ConfigurationPolicy
+              metadata:
+                name: update-service
+              spec:
+                evaluationInterval:
+                  compliant: 2h
+                  noncompliant: 45s
+                object-templates:
+                  - complianceType: musthave
+                    objectDefinition:
+                      apiVersion: config.openshift.io/v1
+                      kind: ClusterVersion
+                      metadata:
+                        name: version
+                      spec:
+                        upstream: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
   register: r_acm_policy_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -102,12 +102,12 @@
       spec:
         clusterSelector:
           matchExpressions:
-          - key: cluster.open-cluster-management.io/clusterset
-            operator: In
-            values:
-            - "account"
-            - "default"
-            - "platform"
+            - key: cluster.open-cluster-management.io/clusterset
+              operator: In
+              values:
+                - "account"
+                - "default"
+                - "platform"
   register: r_acm_placementrule_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"

@@ -23,12 +23,12 @@
   retries: 120
   delay: 30
   until:
-  - rhacm_multiclusterhub is defined
-  - rhacm_multiclusterhub.resources is defined
-  - rhacm_multiclusterhub.resources | length > 0
-  - rhacm_multiclusterhub.resources[0].status is defined
-  - rhacm_multiclusterhub.resources[0].status.phase is defined
-  - rhacm_multiclusterhub.resources[0].status.phase == "Running"
+    - rhacm_multiclusterhub is defined
+    - rhacm_multiclusterhub.resources is defined
+    - rhacm_multiclusterhub.resources | length > 0
+    - rhacm_multiclusterhub.resources[0].status is defined
+    - rhacm_multiclusterhub.resources[0].status.phase is defined
+    - rhacm_multiclusterhub.resources[0].status.phase == "Running"
 
 - name: Create Namespace for policies
   kubernetes.core.k8s:

@@ -129,15 +129,15 @@ definitions:
         not:
           anyOf:
             - required:
-              - networkConfig
+                - networkConfig
             - required:
-              - mapInterfaces
+                - mapInterfaces
       - required:
           - networkConfig
           - mapInterfaces
         not:
           anyOf:
             - required:
-              - ipAddress
+                - ipAddress
             - required:
-              - macAddress
+                - macAddress
