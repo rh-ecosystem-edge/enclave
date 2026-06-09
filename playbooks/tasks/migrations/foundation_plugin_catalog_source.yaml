@@ -7,6 +7,9 @@
 #
 # This migration patches the operator subscription to use the plugin-specific catalog source.
 #
+# Note: This migration only applies to disconnected deployments where catalog sources
+# are mirrored locally. Connected deployments use upstream Red Hat catalogs directly.
+#
 # Required variables:
 #   plugin_name: Name of the plugin (e.g., "odf", "lvms")
 #   operator_name: Name of the operator subscription (e.g., "odf-operator", "lvms-operator")
