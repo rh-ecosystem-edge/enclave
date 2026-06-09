@@ -3,6 +3,10 @@ name: aap
 type: addon
 order: 103
 
+clusters:
+  - name: enclave-managed-aap
+    version: 4.20.21
+
 operators:
   - name: ansible-automation-platform-operator
     version: 2.5.0-0.1777407881
