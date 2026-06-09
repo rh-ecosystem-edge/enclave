@@ -1,0 +1,5 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+example_message: "Hello from example plugin"
+unknownField: this-should-fail

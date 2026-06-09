@@ -247,7 +247,10 @@ properties:
       $ref: "#/definitions/helm_chart"
   defaults:
     type: object
-    description: Default variables loaded into Ansible scope before plugin tasks run.
+    description: |
+      Default variables loaded into Ansible scope before plugin tasks run.
+      This property has been DEPRECATED in favor of plugin defaults.yaml, and will
+      be removed from enclave in a future release.
   registries:
     type: array
     description: Registry mirror entries for MCE custom-registries patching.

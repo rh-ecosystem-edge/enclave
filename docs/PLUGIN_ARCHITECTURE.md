@@ -11,7 +11,7 @@ A plugin is a directory under `plugins/` with a single descriptor and optional t
 ```
 plugins/lvms/
   plugin.yaml              <- the descriptor (required)
-  defaults.yaml            <- plugin defaults (optional; alternative to defaults: in plugin.yaml)
+  defaults.yaml            <- plugin defaults (optional)
   schemas/
     defaults.yaml          <- JSON Schema validating defaults.yaml (optional)
     config.yaml            <- JSON Schema validating config/plugins/lvms.yaml (optional)
@@ -73,7 +73,7 @@ registries:
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
 | `installOperators` | Set to `false` to skip operator installation (mirror-only plugins). Defaults to `true`. |
 | `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). |
-| `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). |
+| `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). DO NOT USE, this property has been deprecated.|
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
@@ -147,7 +147,7 @@ registries:
 
 ### `defaults.yaml`
 
-Plugin defaults live in `defaults.yaml` (alternative to the `defaults:` field in `plugin.yaml` — cannot use both):
+Plugin defaults live in `defaults.yaml`:
 
 ```yaml
 lvmsConfigDefaults:
@@ -190,7 +190,7 @@ These variables get loaded into Ansible scope before tasks run. The naming conve
       spec: "{{ _spec | from_yaml }}"
 ```
 
-After the operator is installed, this creates the LVMCluster CR using variables from `defaults`.
+After the operator is installed, this creates the LVMCluster CR using variables from `defaults.yaml`.
 
 ### `tasks/quay.yaml`
 
@@ -378,7 +378,7 @@ requires:
 
 1. Create `plugins/your-plugin/plugin.yaml` with `name` (must match the directory name) and `type`
 1. Add `operators` list if you need OLM operators
-1. Add `defaults.yaml` with your configurable parameters (or a `defaults:` field in `plugin.yaml` — not both). Prefix all top-level variable names with the plugin name (e.g. `yourPluginDefaults`, not just `defaults`).
+1. Add `defaults.yaml` with your configurable parameters. Prefix all top-level variable names with the plugin name (e.g. `yourPluginDefaults`, not just `defaults`).
 1. If your plugin needs user-provided deployment configuration, document the expected properties and provide `plugins/your-plugin/schemas/config.yaml`. Users put their values in `config/plugins/your-plugin.yaml`.
 1. Optionally add `plugins/your-plugin/schemas/defaults.yaml` to validate your defaults, with test fixtures under `plugins/your-plugin/test-fixtures/schemas/`.
 1. Add `registries` if disconnected mirroring is needed
