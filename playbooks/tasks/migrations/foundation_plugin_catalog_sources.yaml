@@ -19,7 +19,6 @@
     recurse: true
     depth: 2
   register: r_mig_find
-  when: disconnected | default(true) | bool
 
 - name: Read plugin descriptors
   ansible.builtin.slurp:
@@ -28,7 +27,6 @@
   register: r_mig_slurp
   loop_control:
     loop_var: plugin_path
-  when: disconnected | default(true) | bool
 
 - name: Filter foundation plugins
   ansible.builtin.set_fact:
@@ -40,7 +38,6 @@
          | selectattr('type', 'equalto', 'foundation')
          | selectattr('name', 'in', enabled_plugins | default([]))
          | list }}
-  when: disconnected | default(true) | bool
 
 - name: Migrate foundation plugin operator subscriptions
   ansible.builtin.include_tasks:
@@ -57,6 +54,4 @@
   loop_control:
     loop_var: plugin_operator
     label: "{{ plugin_operator.0.name }}/{{ plugin_operator.1.name }}"
-  when:
-    - disconnected | default(true) | bool
-    - operator.source is not defined
+  when: operator.source is not defined

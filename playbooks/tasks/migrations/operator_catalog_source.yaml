@@ -50,7 +50,11 @@
       {{ operator_name }} subscription not found — no migration needed
       {% elif r_operator_subscription.resources[0].spec.source == new_source %}
       {{ operator_name }} subscription already using new catalog source — no migration needed
-      {% else %}
+      {% elif r_operator_patch is defined and r_operator_patch.changed %}
       {{ operator_name }} subscription migrated from {{ r_operator_subscription.resources[0].spec.source }}
       to {{ new_source }}
+      {% elif r_operator_subscription.resources[0].spec.source is defined and r_operator_subscription.resources[0].spec.source != legacy_source %}
+      {{ operator_name }} subscription has custom catalog source ({{ r_operator_subscription.resources[0].spec.source }}) — migration skipped
+      {% else %}
+      {{ operator_name }} subscription migration not performed — current source: {{ r_operator_subscription.resources[0].spec.source }}
       {% endif %}

@@ -10,3 +10,4 @@
 - name: Foundation plugin catalog source migration
   ansible.builtin.include_tasks:
     file: migrations/foundation_plugin_catalog_sources.yaml
+  when: disconnected | default(true) | bool
