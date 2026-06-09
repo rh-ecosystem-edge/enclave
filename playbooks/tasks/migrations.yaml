@@ -7,26 +7,60 @@
 # Individual migrations are organized under playbooks/tasks/migrations/ and are
 # conditionally included based on enabled_plugins and other runtime conditions.
 
-- name: Migrate ODF subscription source
-  ansible.builtin.include_tasks:
-    file: migrations/foundation_plugin_catalog_source.yaml
-  vars:
-    plugin_name: odf
-    operator_name: odf-operator
-    operator_namespace: openshift-storage
-    catalog_mirror: "{{ mirror_rh_operator_catalog }}"
-  when:
-    - disconnected | default(true) | bool
-    - "'odf' in (enabled_plugins | default([]))"
+# ==============================================================================
+# Foundation Plugin Catalog Source Migration
+#
+# Migrates foundation plugin operator subscriptions from legacy core catalog
+# sources to plugin-specific catalog sources.
+#
+# Only applies to disconnected deployments and operators without explicit
+# operator.source definitions in their plugin descriptors.
+# ==============================================================================
 
-- name: Migrate LVMS subscription source
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_mig_find
+  when: disconnected | default(true) | bool
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_mig_find.files | default([]) | map(attribute='path') | list }}"
+  register: r_mig_slurp
+  loop_control:
+    loop_var: plugin_path
+  when: disconnected | default(true) | bool
+
+- name: Filter foundation plugins
+  ansible.builtin.set_fact:
+    _foundation_plugins: >-
+      {{ r_mig_slurp.results | default([])
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('name', 'in', enabled_plugins | default([]))
+         | list }}
+  when: disconnected | default(true) | bool
+
+- name: Migrate foundation plugin operator subscriptions
   ansible.builtin.include_tasks:
     file: migrations/foundation_plugin_catalog_source.yaml
   vars:
-    plugin_name: lvms
-    operator_name: lvms-operator
-    operator_namespace: openshift-storage
-    catalog_mirror: "{{ mirror_rh_operator_catalog }}"
+    plugin: "{{ plugin_operator.0 }}"
+    operator: "{{ plugin_operator.1 }}"
+    plugin_name: "{{ plugin.name }}"
+    operator_name: "{{ operator.name }}"
+    operator_namespace: "{{ operator.namespace }}"
+    catalog_mirror: "{{ mirror_certified_rh_operator_catalog if (plugin.catalog | default('redhat')) == 'certified' else mirror_rh_operator_catalog }}"
+  loop: "{{ _foundation_plugins | default([]) | subelements('operators', skip_missing=True) }}"
+  loop_control:
+    loop_var: plugin_operator
+    label: "{{ plugin_operator.0.name }}/{{ plugin_operator.1.name }}"
   when:
     - disconnected | default(true) | bool
-    - "'lvms' in (enabled_plugins | default([]))"
+    - operator.source is not defined
