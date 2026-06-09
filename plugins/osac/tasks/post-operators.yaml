@@ -83,6 +83,18 @@
 - name: Set AAP URL fact
   ansible.builtin.set_fact:
     osac_aap_url: "https://{{ r_aap_route.resources[0].spec.host }}"
+    _aap_route_host: "{{ r_aap_route.resources[0].spec.host }}"
+
+# Ensure the AAP route hostname resolves on the Landing Zone.
+# Libvirt dnsmasq only has entries for a fixed set of app hostnames,
+# so dynamically created routes (like AAP) won't resolve by default.
+- name: Add AAP route hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ingressVIP }} {{ _aap_route_host }}"
+    regexp: "{{ _aap_route_host | regex_escape() }}"
+    state: present
+  become: true
 
 # --- AAP Credentials ---
 
