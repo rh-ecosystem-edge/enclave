@@ -1,0 +1,23 @@
+---
+# Red Hat Sovereign Enclave - Upgrade Playbook
+#
+# This playbook handles upgrades from previous Enclave versions to ensure
+# compatibility with the current version.
+#
+# Usage:
+#   ansible-playbook playbooks/upgrade.yaml -e workingDir=/home/cloud-user
+
+- name: Upgrade Enclave deployment
+  hosts: localhost
+  gather_facts: false
+  vars:
+    k8s_retries: 30
+    k8s_delay: 10
+  tasks:
+    - name: Load configuration
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+
+    - name: Run migrations
+      ansible.builtin.include_tasks:
+        file: tasks/migrations.yaml

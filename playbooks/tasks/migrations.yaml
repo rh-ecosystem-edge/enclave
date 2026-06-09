@@ -1,0 +1,26 @@
+---
+# Red Hat Sovereign Enclave - Migrations
+#
+# This file contains all migration tasks for upgrading from previous Enclave versions.
+# Called from upgrade.yaml via include_tasks.
+#
+# Individual migrations are organized under playbooks/tasks/migrations/ and are
+# conditionally included based on enabled_plugins and other runtime conditions.
+
+- name: Migrate ODF subscription source
+  ansible.builtin.include_tasks:
+    file: migrations/foundation_plugin_catalog_source.yaml
+  vars:
+    plugin_name: odf
+    operator_name: odf-operator
+    operator_namespace: openshift-storage
+  when: "'odf' in enabled_plugins"
+
+- name: Migrate LVMS subscription source
+  ansible.builtin.include_tasks:
+    file: migrations/foundation_plugin_catalog_source.yaml
+  vars:
+    plugin_name: lvms
+    operator_name: lvms-operator
+    operator_namespace: openshift-storage
+  when: "'lvms' in enabled_plugins"
