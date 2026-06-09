@@ -82,13 +82,12 @@ setup_ceph.sh runs on LZ (via SSH from CI runner)
   ↓ writes files to ~/ceph-config/
   ├── odf_external_config.json
   └── quay_backend_rgw_config.yaml
-  ↓
-deploy_phase.sh reads files from LZ via SSH (scripts/lib/odf.sh)
-  ↓ injects into EXTRA_VARS_CONTENT
-  ↓
-phase_vars.yaml on LZ
-  ↓
-Ansible loads: -e @phase_vars.yaml
+
+setup_ceph_on_lz.sh (Step 5)
+  ├── appends quayBackendRGWConfiguration → config/global.yaml
+  └── writes odfExternalConfig           → config/plugins/odf.yaml
+
+Ansible loads config/global.yaml + config/plugins/odf.yaml (auto-loaded by load-vars.yaml)
   ↓
 plugins/odf/tasks/deploy.yaml reads odfExternalConfig variable
   ↓
@@ -97,8 +96,6 @@ Creates StorageCluster CR with externalStorage.enable: true
 ```
 
 No GitHub secrets needed. Config is generated and consumed within the same CI run.
-
-The `ODF_EXTERNAL_CONFIG` and `QUAY_BACKEND_RGW_CONFIG` environment variables are still supported for backward compatibility -- env vars take precedence over LZ config files.
 
 ## CI Workflow Integration
 
@@ -196,13 +193,12 @@ sudo rm -f /etc/systemd/system/ceph-loopback.service
 | File | Purpose |
 |------|---------|
 | `scripts/infrastructure/setup_ceph.sh` | Ceph cluster setup (runs on LZ or standalone) |
-| `scripts/infrastructure/setup_ceph_on_lz.sh` | SSH wrapper to run setup_ceph.sh on Landing Zone |
+| `scripts/infrastructure/setup_ceph_on_lz.sh` | SSH wrapper; writes `config/plugins/odf.yaml` and appends RGW config to `config/global.yaml` |
 | `scripts/infrastructure/ceph-attach-loops.sh` | Boot-time loop device re-attachment helper |
 | `scripts/infrastructure/verify_ceph.sh` | Manual Ceph health verification |
-| `scripts/lib/odf.sh` | Shared ODF config loading (env vars or LZ files) |
-| `scripts/deployment/deploy_phase.sh` | Injects `odfExternalConfig` into Ansible extra vars |
-| `scripts/deployment/deploy_plugin.sh` | Same ODF injection for plugin deployments |
-| `scripts/deployment/deploy_cluster.sh` | Same ODF injection for full cluster deployments |
+| `scripts/deployment/deploy_phase.sh` | Runs an Ansible playbook phase on the Landing Zone |
+| `scripts/deployment/deploy_plugin.sh` | Deploys a single plugin on the Landing Zone |
+| `scripts/deployment/deploy_cluster.sh` | Runs the full cluster deployment on the Landing Zone |
 | `scripts/infrastructure/generate_enclave_vars.sh` | Overrides `storage_plugin` and `quayBackend` when ODF |
 | `.github/workflows/e2e-deployment.yml` | Adds setup-ceph step (conditional on ODF) |
 | `.github/workflows/slash-command.yml` | Adds `/test e2e-*-odf` commands |

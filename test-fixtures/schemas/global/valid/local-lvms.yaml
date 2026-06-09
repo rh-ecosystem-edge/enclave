@@ -1,7 +1,6 @@
 ---
 # Fixture: LocalStorage backend + lvms block storage
 # Validates that quayBackendRGWConfiguration is NOT required for LocalStorage
-# and that odfExternalConfig is NOT required for lvms.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt

@@ -1,0 +1,4 @@
+---
+odfExternalConfig: >-
+  [{"name": "external-cluster-user-command", "kind": "ConfigMap",
+  "data": {"userKey": "AQBf0000000000000000000000==", "userID": "ocs-client"}}]

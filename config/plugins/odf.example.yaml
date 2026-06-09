@@ -1,0 +1,11 @@
+---
+##############################################################################
+# ODF PLUGIN CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'config/plugins/odf.yaml' and set values.
+# Required when storage_plugin is odf. Run ceph-external-cluster-details-exporter.py
+# on the external Ceph cluster to obtain the JSON value.
+##############################################################################
+
+# odfExternalConfig: >-
+#   [{"name": "external-cluster-user-command", "kind": "ConfigMap",
+#   "data": {"userKey": "YOUR_CEPH_USER_KEY==", "userID": "ocs-client"}}]

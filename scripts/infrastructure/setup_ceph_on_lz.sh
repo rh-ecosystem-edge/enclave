@@ -5,8 +5,8 @@
 # The LZ is on the same libvirt network as the OpenShift nodes, so
 # Ceph is directly reachable without firewall or routing workarounds.
 #
-# After setup, config files are written to ~/ceph-config/ on the LZ
-# and consumed by deploy scripts via scripts/lib/odf.sh.
+# After setup, config files are written to ~/ceph-config/ on the LZ and merged
+# into config/global.yaml (RGW config) and config/plugins/odf.yaml (ODF config).
 #
 # Usage: ./setup_ceph_on_lz.sh
 # Environment:
@@ -113,24 +113,30 @@ fi
 
 success "Config files verified on Landing Zone"
 
-# Step 5: Merge Ceph configs into global.yaml so bootstrap steps can use them
-# bootstrap.sh reads global.yaml directly and does not source odf.sh
+# Step 5: Write Ceph configs into their respective Enclave config files
+# RGW config appended to config/global.yaml; ODF plugin config written to config/plugins/odf.yaml
 info ""
-info "Step 5: Updating global.yaml with Ceph/ODF configuration..."
+info "Step 5: Writing Ceph/ODF configuration to config files..."
 GLOBAL_VARS="${LZ_ENCLAVE_DIR}/config/global.yaml"
+ODF_VARS="${LZ_ENCLAVE_DIR}/config/plugins/odf.yaml"
 
-# Append both configs on the LZ side to avoid shell quoting issues with JSON
-# RGW config for Quay S3 validation, ODF config for operator deployment
 # shellcheck disable=SC2086
-ssh $SSH_OPTS "$LZ_SSH" bash -s -- "${GLOBAL_VARS}" "${CEPH_CONFIG_DIR}" <<'REMOTE_SCRIPT'
+ssh $SSH_OPTS "$LZ_SSH" bash -s -- "${GLOBAL_VARS}" "${CEPH_CONFIG_DIR}" "${ODF_VARS}" <<'REMOTE_SCRIPT'
+set -euo pipefail
 GLOBAL_VARS="$1"
 CEPH_CONFIG_DIR="$2"
+ODF_VARS="$3"
 RGW_CONFIG=$(cat "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml")
 ODF_CONFIG=$(cat "${CEPH_CONFIG_DIR}/odf_external_config.json")
+[[ -n "${RGW_CONFIG}" ]] || { echo "ERROR: quay_backend_rgw_config.yaml is empty" >&2; exit 1; }
+[[ -n "${ODF_CONFIG}" ]] || { echo "ERROR: odf_external_config.json is empty" >&2; exit 1; }
 printf '\nquayBackendRGWConfiguration: %s\n' "${RGW_CONFIG}" >> "${GLOBAL_VARS}"
-printf "odfExternalConfig: '%s'\n" "${ODF_CONFIG}" >> "${GLOBAL_VARS}"
+mkdir -p "$(dirname "${ODF_VARS}")"
+printf -- '---\nodfExternalConfig: '"'"'%s'"'"'\n' "${ODF_CONFIG}" > "${ODF_VARS}"
+chmod 600 "${ODF_VARS}"
 REMOTE_SCRIPT
-success "global.yaml updated with quayBackendRGWConfiguration and odfExternalConfig"
+success "global.yaml updated with quayBackendRGWConfiguration"
+success "config/plugins/odf.yaml written with odfExternalConfig"
 
 info ""
 info "========================================="

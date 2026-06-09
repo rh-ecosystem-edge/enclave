@@ -75,9 +75,6 @@ properties:
     description: >-
       Whether to apply a master PinnedImageSet after Quay mirror sync.
       Set to false to skip post-mirror image prefetch pinning.
-  odfExternalConfig:
-    type: string
-    description: ODF external cluster configuration JSON string
   pullSecret:
     type: object
     description: Pull Secret
@@ -167,12 +164,3 @@ allOf:
     then:
       required:
         - quayBackendRGWConfiguration
-  - if:
-      properties:
-        storage_plugin:
-          const: odf
-      required:
-        - storage_plugin
-    then:
-      required:
-        - odfExternalConfig
