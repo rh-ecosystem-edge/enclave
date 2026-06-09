@@ -1,0 +1,20 @@
+---
+- name: Gather facts on a specific container
+  containers.podman.podman_container_info:
+    name: quay-app
+  register: r_container_quay_app
+
+- name: Verify mirror-registry is installed
+  ansible.builtin.assert:
+    that:
+      - r_container_quay_app.containers | default([]) | length > 0
+    fail_msg: "mirror-registry is not installed. Run with --tags mirror-registry first."
+    success_msg: "mirror-registry is installed - proceeding with upgrade"
+
+- name: Upgrade existing mirror-registry
+  no_log: true
+  ansible.builtin.command: |
+    {{ workingDir }}/bin/mirror-registry upgrade --quayHostname "{{ quayHostname }}" --quayRoot {{ workingDir }}/data
+  register: r_mirror_registry_upgrade
+  changed_when: "'Upgrade complete' in r_mirror_registry_upgrade.stdout or 'upgraded' in r_mirror_registry_upgrade.stdout.lower()"
+  failed_when: r_mirror_registry_upgrade.rc != 0

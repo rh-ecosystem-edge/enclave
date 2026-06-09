@@ -14,6 +14,9 @@
 # Usage:
 #   ansible-playbook playbooks/02-mirror.yaml
 #
+#   # Upgrade mirror-registry
+#   ansible-playbook playbooks/02-mirror.yaml --tags mirror-upgrade
+#
 #   # Mirror images to datacenter cache
 #   ansible-playbook playbooks/02-mirror.yaml --tags mirror-cache
 
@@ -50,7 +53,9 @@
               - disconnected | default(true) | bool
             fail_msg: "Phase 2 (Mirror) should only run in disconnected mode. Set disconnected=true in config/global.yaml"
             success_msg: "Running in disconnected mode - proceeding with mirroring"
-          tags: mirror-registry
+          tags:
+            - mirror-registry
+            - mirror-upgrade
 
         - name: Collect plugin operators for imageset
           ansible.builtin.include_tasks:
@@ -74,3 +79,12 @@
             apply:
               tags: mirror-registry
           tags: mirror-registry
+
+        - name: Include tasks for mirror-registry upgrade
+          ansible.builtin.include_tasks:
+            file: tasks/mirror_registry_upgrade.yaml
+            apply:
+              tags: mirror-upgrade
+          tags:
+            - mirror-upgrade
+            - never
