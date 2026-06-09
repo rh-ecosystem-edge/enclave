@@ -19,6 +19,6 @@ properties:
           type: boolean
           description: Default OpenShift version
       required:
-      - version
+        - version
 required:
-- openshift_versions
+  - openshift_versions
