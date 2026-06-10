@@ -44,6 +44,9 @@ definitions:
       seed:
         type: boolean
         description: Seed operators are deployed before anything else.
+      connected_auto:
+        type: boolean
+        description: Use automatic install plan approval when not disconnected.
     dependencies:
       csvMirror:
       - csvNames
