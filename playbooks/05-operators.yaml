@@ -8,6 +8,7 @@
 #   Storage plugins (LVMS/ODF) run here, BEFORE core operators,
 #   so that Quay can rely on the storage backend being present.
 # - Install general operators from defaults/operators.yaml
+# - ACM policies for mirrored catalogsources (disconnected only)
 # - Auto-discover and deploy addon plugins (type: addon)
 #   Addon plugins (nvidia-gpu, openshift-ai, etc.) run AFTER core
 #   operators and Quay mirroring are complete.
@@ -76,6 +77,22 @@
               tags: operators
           vars:
             target_operators: "{{ operators | rejectattr('seed', 'sameas', true) | list }}"
+          tags: operators
+
+        - name: Mirrored catalogsource configuration ACM policy
+          when: disconnected | default(true)
+          vars:
+            short_version_dot: "{{ openshift_version.version.split('.')[:2] | join('.') }}"
+            short_version_dash: "{{ openshift_version.version.split('.')[:2] | join('-') }}"
+          ansible.builtin.include_tasks:
+            file: tasks/catalogsource.yaml
+            apply:
+              tags: operators
+              environment:
+                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          loop: "{{ openshift_versions }}"
+          loop_control:
+            loop_var: openshift_version
           tags: operators
 
         - name: Finish quay mirroring task while disconnected
