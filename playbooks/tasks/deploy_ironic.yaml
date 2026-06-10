@@ -12,13 +12,10 @@
   ansible.builtin.set_fact:
     metal3_ironic_image: "{{ r_ironic_image.stdout }}"
 
-- name: Generate htpasswd hash for Ironic credentials
-  ansible.builtin.command:
-    argv:
-      - /usr/bin/htpasswd
-      - -nbB
-      - "{{ metal3_ironic_username }}"
-      - "{{ metal3_ironic_password }}"
+- name: Generate htpasswd hash for Ironic credentials  # noqa: command-instead-of-shell
+  # shell module required: quote filter produces shell-quoted strings that need shell parsing
+  ansible.builtin.shell:
+    cmd: /usr/bin/htpasswd -nbB {{ metal3_ironic_username | quote }} {{ metal3_ironic_password | quote }}
   register: r_htpasswd
   changed_when: false
   no_log: true
