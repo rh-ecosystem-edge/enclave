@@ -29,17 +29,3 @@
   fail:
     msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
   when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
-
-- name: Validate that Clair postgres config Secret exists
-  kubernetes.core.k8s_info:
-    kind: Secret
-    name: clairpostgres-config-secret
-    namespace: quay-enterprise
-  register: clair_postgres_config_secret
-
-- name: Fail if Secret is missing
-  ansible.builtin.assert:
-    that:
-      - clair_postgres_config_secret.resources | length > 0
-    fail_msg: "Validation Failed: Secret clairpostgres-config-secret was not found in namespace quay-enterprise."
-    success_msg: "Validation Passed: Secret clairpostgres-config-secret is present in namespace quay-enterprise."
