@@ -114,15 +114,35 @@
     _aap_admin_password: "{{ r_aap_admin_secret.resources[0].data.password | b64decode }}"
 
 # --- AAP Token ---
+# AAP 2.5 uses a unified gateway that requires OAuth2 Bearer tokens.
+# Basic auth is not supported through the gateway route. We first obtain
+# an OAuth2 access token via password grant, then use it to create a
+# personal access token for long-lived OSAC API access.
+
+- name: Get AAP OAuth2 access token
+  ansible.builtin.uri:
+    url: "{{ osac_aap_url }}/api/o/token/"
+    method: POST
+    validate_certs: "{{ osacDefaults.aapApiValidateCerts }}"
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      username: "{{ osacDefaults.aapApiUser }}"
+      password: "{{ _aap_admin_password }}"
+    status_code: 200
+  register: r_aap_oauth
+  until: r_aap_oauth.status == 200
+  retries: 10
+  delay: 15
+  no_log: true
 
 - name: Create AAP personal access token
   ansible.builtin.uri:
     url: "{{ osac_aap_url }}/api/v2/tokens/"
     method: POST
-    user: "{{ osacDefaults.aapApiUser }}"
-    password: "{{ _aap_admin_password }}"
-    force_basic_auth: true
     validate_certs: "{{ osacDefaults.aapApiValidateCerts }}"
+    headers:
+      Authorization: "Bearer {{ r_aap_oauth.json.access_token }}"
     body_format: json
     body:
       description: "{{ osacDefaults.aapTokenDescription }}"
