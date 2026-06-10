@@ -1,7 +1,7 @@
 import json
 import logging
 
-from utils import (
+from enclave.utils import (
     log_subprocess_output,
     run_oc_command,
     semver_key,

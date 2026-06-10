@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from tools.node_image_digests import (
+from enclave.tools.node_image_digests import (
     DEFAULT_PINNED_IMAGE_EXCLUDE_CONTAINS,
     OC_DEBUG_CRICTL_TIMEOUT_SECONDS,
     collect_node_image_digests,
@@ -125,7 +125,7 @@ def test_extract_digest_refs_dict_wrapper() -> None:
 
 def test_run_oc_debug_crictl_images_timeout(mocker: MockerFixture) -> None:
     mocker.patch(
-        "tools.node_image_digests.subprocess.run",
+        "enclave.tools.node_image_digests.subprocess.run",
         side_effect=subprocess.TimeoutExpired(
             cmd="oc", timeout=OC_DEBUG_CRICTL_TIMEOUT_SECONDS
         ),
@@ -136,7 +136,7 @@ def test_run_oc_debug_crictl_images_timeout(mocker: MockerFixture) -> None:
 
 def test_collect_node_image_digests_calls_oc(mocker: MockerFixture) -> None:
     mock_run = mocker.patch(
-        "tools.node_image_digests.run_oc_debug_crictl_images",
+        "enclave.tools.node_image_digests.run_oc_debug_crictl_images",
         return_value=json.dumps([{"repoDigests": [_REF]}]),
     )
     result = collect_node_image_digests("node-0", oc="/bin/oc")
@@ -148,7 +148,7 @@ def test_reconcile_emits_refs(
     mocker: MockerFixture, capsys: pytest.CaptureFixture
 ) -> None:
     mocker.patch(
-        "tools.node_image_digests.collect_node_image_digests",
+        "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[_REF], raw_output="raw"),
     )
     main("node-0", oc="oc", exclude_contains_raw="[]")
@@ -159,7 +159,7 @@ def test_reconcile_emits_raw_on_empty_refs(
     mocker: MockerFixture, capsys: pytest.CaptureFixture
 ) -> None:
     mocker.patch(
-        "tools.node_image_digests.collect_node_image_digests",
+        "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[], raw_output="crictl failed"),
     )
     main("node-0")
@@ -174,7 +174,7 @@ def test_reconcile_writes_raw_output_file_on_empty_refs(
     tmp_path: Path,
 ) -> None:
     mocker.patch(
-        "tools.node_image_digests.collect_node_image_digests",
+        "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[], raw_output="crictl failed"),
     )
     raw_output_file = tmp_path / "collect" / "node-0.log"

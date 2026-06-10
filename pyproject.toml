@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.scripts]
-enclave = "cli:cli"
+enclave = "enclave.cli:cli"
 
 [dependency-groups]
 dev = [
@@ -48,7 +48,7 @@ build-backend = "hatchling.build"
 only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""

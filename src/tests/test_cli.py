@@ -2,7 +2,7 @@ import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from reconcile.cli import cli, defaults_path
+from enclave.reconcile.cli import cli, defaults_path
 
 
 def test_cli_help() -> None:
@@ -45,7 +45,7 @@ def test_invalid_log_level() -> None:
 
 
 def test_operator_versions_csv_name_defaults_to_name(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     dry_run = True
     result = CliRunner().invoke(
         cli,
@@ -67,7 +67,7 @@ def test_operator_versions_csv_name_defaults_to_name(mocker: MockerFixture) -> N
 
 
 def test_operator_versions_multiple_csv_names(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     dry_run = True
     result = CliRunner().invoke(
         cli,
@@ -96,7 +96,7 @@ def test_operator_versions_multiple_csv_names(mocker: MockerFixture) -> None:
 
 
 def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.operator_versions_reconcile")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     defaults_file = defaults_path("operators.yaml")
     with defaults_file.open(encoding="utf-8") as fh:
         operators = yaml.safe_load(fh)["operators"]
@@ -146,7 +146,7 @@ def test_operator_versions_missing_required_without_defaults() -> None:
 
 
 def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.cluster_upgrade_reconcile")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"]
@@ -156,7 +156,7 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
 
 
 def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("reconcile.cli.cluster_upgrade_reconcile")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"]
