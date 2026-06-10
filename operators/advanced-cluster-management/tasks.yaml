@@ -13,22 +13,32 @@
   register: r_mhc
   until: r_mhc is succeeded
 
-- name: Wait until RHACM MultiClusterHub is ready
-  kubernetes.core.k8s_info:
-    api_version: operator.open-cluster-management.io/v1
-    kind: MultiClusterHub
-    name: multiclusterhub
-    namespace: open-cluster-management
-  register: rhacm_multiclusterhub
+- name: Set MCE operator namespace for upgrade approval during MCH wait
+  ansible.builtin.set_fact:
+    mce_namespace: "{{ (operators | selectattr('name', 'equalto', 'multicluster-engine') | first).namespace }}"
+
+- name: Wait until RHACM MultiClusterHub is ready (approving pending upgrades)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    # Approve any unapproved InstallPlans for MCE and ACM
+    for ns in "{{ mce_namespace }}" "{{ operator.namespace }}"; do
+      for plan in $(oc get installplan -n "$ns" \
+        -o jsonpath='{.items[?(@.spec.approved==false)].metadata.name}'); do
+        echo "Approving InstallPlan $plan in $ns"
+        oc patch installplan "$plan" -n "$ns" \
+          --type merge -p '{"spec":{"approved":true}}' 2>&1 || true
+      done
+    done
+    # Output MCH phase for the until condition
+    oc get multiclusterhub multiclusterhub -n open-cluster-management \
+      -o jsonpath='{.status.phase}'
+  register: mch_phase_result
   retries: 120
   delay: 30
   until:
-  - rhacm_multiclusterhub is defined
-  - rhacm_multiclusterhub.resources is defined
-  - rhacm_multiclusterhub.resources | length > 0
-  - rhacm_multiclusterhub.resources[0].status is defined
-  - rhacm_multiclusterhub.resources[0].status.phase is defined
-  - rhacm_multiclusterhub.resources[0].status.phase == "Running"
+    - mch_phase_result.rc == 0
+    - mch_phase_result.stdout == "Running"
+  changed_when: false
 
 - name: Create Namespace for policies
   kubernetes.core.k8s:
