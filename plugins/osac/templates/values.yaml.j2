@@ -39,6 +39,17 @@ service:
               param: client-id
             - key: client-secret
               param: client-secret
+  idp:
+    provider: keycloak
+    url: "https://keycloak.keycloak.svc.cluster.local"
+    credentials:
+      - secret:
+          name: fulfillment-controller-credentials
+          items:
+            - key: client-id
+              param: client-id
+            - key: client-secret
+              param: client-secret
   database:
     connection:
       - secret:
