@@ -118,36 +118,23 @@
 # endpoint (/api/o/token/) through the route. Create the token directly
 # via awx-manage inside the controller pod, bypassing the gateway.
 
-- name: Find AAP controller web pod
-  kubernetes.core.k8s_info:
-    api_version: v1
-    kind: Pod
-    namespace: "{{ osacDefaults.aapNamespace }}"
-    label_selectors:
-      - "app.kubernetes.io/name={{ osacDefaults.aapName }}-controller-web"
-    field_selectors:
-      - status.phase=Running
-  register: r_aap_web_pods
-  retries: 10
-  delay: 15
-  until: r_aap_web_pods.resources | length > 0
-
 - name: Create AAP personal access token via awx-manage
-  kubernetes.core.k8s_exec:
-    namespace: "{{ osacDefaults.aapNamespace }}"
-    pod: "{{ r_aap_web_pods.resources[0].metadata.name }}"
-    command: >-
-      awx-manage create_oauth2_token
+  ansible.builtin.command:
+    cmd: >-
+      oc exec -n {{ osacDefaults.aapNamespace }}
+      deployment/{{ osacDefaults.aapName }}-controller-web
+      -- awx-manage create_oauth2_token
       --user {{ osacDefaults.aapApiUser }}
   register: r_aap_token_exec
   retries: 10
   delay: 15
   until: r_aap_token_exec.rc == 0
+  changed_when: r_aap_token_exec.rc == 0
   no_log: true
 
 - name: Set AAP token fact
   ansible.builtin.set_fact:
-    osac_aap_token: "{{ r_aap_token_exec.stdout | trim }}"
+    osac_aap_token: "{{ r_aap_token_exec.stdout_lines | last | trim }}"
 
 # --- License and Kubeconfig Secrets ---
 
