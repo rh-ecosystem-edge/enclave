@@ -75,10 +75,14 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
+- name: "Determine if operator should use automatic approval (not in disconnected)"
+  ansible.builtin.set_fact:
+    _use_automatic_approval: "{{ operator.connected_auto | default(false) and not (disconnected | default(true) | bool) }}"
+
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - operator.namespace == "openshift-operators" or _use_automatic_approval
   kubernetes.core.k8s:
     state: present
     definition:
@@ -102,6 +106,7 @@
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
+    - not _use_automatic_approval
   kubernetes.core.k8s:
     state: present
     definition:
