@@ -1,0 +1,3 @@
+---
+clairImportClairctlUrl: "https://github.com/quay/clair/releases/download/v4.8.0/clairctl-linux-amd64"
+clairImportClairctlChecksum: "sha256:eec1311f5e68165b49c8b4d024c83fc46285bdca2f37e756becf21d534551434"
