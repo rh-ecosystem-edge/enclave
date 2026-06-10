@@ -118,13 +118,24 @@
 # endpoint (/api/o/token/) through the route. Create the token directly
 # via awx-manage inside the controller pod, bypassing the gateway.
 
+- name: Find AAP controller web pod
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Pod
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    label_selectors:
+      - "app.kubernetes.io/name={{ osacDefaults.aapName }}-controller-web"
+    field_selectors:
+      - status.phase=Running
+  register: r_aap_web_pods
+  retries: 10
+  delay: 15
+  until: r_aap_web_pods.resources | length > 0
+
 - name: Create AAP personal access token via awx-manage
   kubernetes.core.k8s_exec:
     namespace: "{{ osacDefaults.aapNamespace }}"
-    pod: "{{ lookup('kubernetes.core.k8s', api_version='v1', kind='Pod',
-             namespace=osacDefaults.aapNamespace,
-             label_selector='app.kubernetes.io/component=automationcontroller,app.kubernetes.io/name=aap-web')
-             | map(attribute='metadata.name') | first }}"
+    pod: "{{ r_aap_web_pods.resources[0].metadata.name }}"
     command: >-
       awx-manage create_oauth2_token
       --user {{ osacDefaults.aapApiUser }}
