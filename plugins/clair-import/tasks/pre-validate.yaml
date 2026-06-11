@@ -1,0 +1,11 @@
+- name: Verify clairctl binary is present
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/bin/clairctl"
+  register: r_clairctl
+
+- name: Fail if clairctl is missing or not executable
+  ansible.builtin.assert:
+    that:
+      - r_clairctl.stat.isreg
+      - r_clairctl.stat.executable
+    fail_msg: "clairctl must be a regular, executable file at {{ workingDir }}/bin/clairctl"
