@@ -9,13 +9,17 @@
 #   - AAP license secret created
 #
 # Responsibilities:
-#   1. Create OSAC namespace and RBAC resources
-#   2. Wait for AAP controller to become ready
-#   3. Extract AAP admin credentials
-#   4. Create AAP Personal Access Token via awx-manage
-#   5. Upload kubeconfig secret for AAP
-#   6. Create config-as-code secrets for bootstrap
-#   7. Set osac_aap_url and osac_aap_token facts for Helm values template
+#   1. Create OSAC namespace with CA bundle label and wait for sync
+#   2. Create RBAC resources for OSAC ServiceAccount
+#   3. Create Keycloak realm and client for OSAC fulfillment service
+#   4. Create fulfillment-controller-credentials secret (Keycloak client creds)
+#   5. Deploy PostgreSQL for fulfillment service and create fulfillment-db secret
+#   6. Wait for AAP controller to become ready
+#   7. Extract AAP admin credentials
+#   8. Create AAP Personal Access Token via awx-manage
+#   9. Upload kubeconfig secret for AAP
+#  10. Create config-as-code secrets for bootstrap
+#  11. Set osac_aap_url and osac_aap_token facts for Helm values template
 #
 # Facts exported:
 #   osac_aap_url   — AAP controller route URL (used in templates/values.yaml.j2)
@@ -23,7 +27,7 @@
 
 # --- Namespace and RBAC ---
 
-- name: Ensure OSAC namespace exists
+- name: Ensure OSAC namespace exists with CA bundle label
   kubernetes.core.k8s:
     state: present
     definition:
@@ -31,6 +35,19 @@
       kind: Namespace
       metadata:
         name: "{{ osacDefaults.osacNamespace }}"
+        labels:
+          enclave/ca-bundle: "true"
+
+- name: Wait for ca-bundle ConfigMap (synced by trust-manager)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ca-bundle
+    namespace: "{{ osacDefaults.osacNamespace }}"
+  register: r_ca_bundle
+  retries: 30
+  delay: 10
+  until: r_ca_bundle.resources | length > 0
 
 - name: Create OSAC ServiceAccount in AAP namespace
   kubernetes.core.k8s:
@@ -46,6 +63,368 @@
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap-osac-rolebinding.yaml.j2') | from_yaml }}"
+
+# --- Keycloak Realm and Client ---
+# The rhbk plugin (order 101) deploys Keycloak in the keycloak namespace.
+# By the time OSAC runs (order 200), Keycloak is fully ready.
+# Create an 'osac' realm with an 'osac-controller' confidential client
+# via the Keycloak Admin REST API.
+
+- name: Get Keycloak route hostname
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ osacDefaults.keycloakNamespace }}"
+    name: "{{ osacDefaults.keycloakName }}-ingress"
+  register: r_keycloak_route
+  retries: 30
+  delay: 10
+  until: r_keycloak_route.resources | length > 0
+
+- name: Set Keycloak route host fact
+  ansible.builtin.set_fact:
+    _keycloak_route_host: "{{ r_keycloak_route.resources[0].spec.host }}"
+    _keycloak_base_url: "https://{{ r_keycloak_route.resources[0].spec.host }}"
+
+# Ensure the Keycloak route hostname resolves on the Landing Zone.
+# Libvirt dnsmasq only has entries for a fixed set of app hostnames,
+# so dynamically created routes (like Keycloak) won't resolve by default.
+- name: Add Keycloak route hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ingressVIP }} {{ _keycloak_route_host }}"
+    regexp: "{{ _keycloak_route_host | regex_escape() }}"
+    state: present
+  become: true
+
+- name: Get Keycloak admin credentials
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ osacDefaults.keycloakNamespace }}"
+    name: "{{ osacDefaults.keycloakName }}-initial-admin"
+  register: r_keycloak_admin_secret
+  retries: 30
+  delay: 10
+  until: r_keycloak_admin_secret.resources | length > 0
+  no_log: true
+
+- name: Extract Keycloak admin credentials
+  ansible.builtin.set_fact:
+    _keycloak_admin_user: "{{ r_keycloak_admin_secret.resources[0].data.username | b64decode }}"
+    _keycloak_admin_password: "{{ r_keycloak_admin_secret.resources[0].data.password | b64decode }}"
+  no_log: true
+
+- name: Get Keycloak admin access token
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ _keycloak_admin_user }}"
+      password: "{{ _keycloak_admin_password }}"
+    validate_certs: false
+    status_code: 200
+  register: r_keycloak_token
+  retries: 10
+  delay: 15
+  until: r_keycloak_token.status == 200
+  no_log: true
+
+- name: Set Keycloak admin token fact
+  ansible.builtin.set_fact:
+    _keycloak_admin_token: "{{ r_keycloak_token.json.access_token }}"
+  no_log: true
+
+- name: Check if osac realm exists
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms/{{ osacDefaults.keycloakRealmName }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+    validate_certs: false
+    status_code: [200, 404]
+  register: r_osac_realm
+
+- name: Create osac realm
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      realm: "{{ osacDefaults.keycloakRealmName }}"
+      enabled: true
+    validate_certs: false
+    status_code: 201
+  when: r_osac_realm.status == 404
+
+- name: Check if osac-controller client exists
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms/{{ osacDefaults.keycloakRealmName }}/clients?clientId={{ osacDefaults.keycloakClientId }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+    validate_certs: false
+    status_code: 200
+  register: r_osac_client
+
+- name: Create osac-controller client
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms/{{ osacDefaults.keycloakRealmName }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: "{{ osacDefaults.keycloakClientId }}"
+      enabled: true
+      protocol: openid-connect
+      publicClient: false
+      serviceAccountsEnabled: true
+      standardFlowEnabled: false
+    validate_certs: false
+    status_code: 201
+  when: r_osac_client.json | length == 0
+
+# Re-fetch the client to get its UUID (needed for secret retrieval)
+- name: Fetch osac-controller client details
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms/{{ osacDefaults.keycloakRealmName }}/clients?clientId={{ osacDefaults.keycloakClientId }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+    validate_certs: false
+    status_code: 200
+  register: r_osac_client_details
+
+- name: Set client UUID fact
+  ansible.builtin.set_fact:
+    _keycloak_client_uuid: "{{ r_osac_client_details.json[0].id }}"
+
+- name: Get osac-controller client secret
+  ansible.builtin.uri:
+    url: "{{ _keycloak_base_url }}/admin/realms/{{ osacDefaults.keycloakRealmName }}/clients/{{ _keycloak_client_uuid }}/client-secret"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _keycloak_admin_token }}"
+    validate_certs: false
+    status_code: 200
+  register: r_osac_client_secret
+  no_log: true
+
+- name: Create fulfillment-controller-credentials secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: fulfillment-controller-credentials
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      stringData:
+        client-id: "{{ osacDefaults.keycloakClientId }}"
+        client-secret: "{{ r_osac_client_secret.json.value }}"
+  no_log: true
+
+# --- PostgreSQL for Fulfillment Service ---
+# Follows the same pattern as the rhbk plugin's PostgreSQL deployment.
+
+- name: Read existing fulfillment database credentials
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ osacDefaults.fulfillmentDbName }}-credentials"
+    namespace: "{{ osacDefaults.osacNamespace }}"
+  register: r_existing_fulfillment_db_secret
+  no_log: true
+
+- name: Set fulfillment database password from existing secret or generate new one
+  ansible.builtin.set_fact:
+    _fulfillment_db_password: >-
+      {{
+        (r_existing_fulfillment_db_secret.resources[0].data.password | b64decode)
+        if (r_existing_fulfillment_db_secret.resources | default([]) | length > 0)
+        else lookup('password', '/dev/null length=24 chars=ascii_letters,digits')
+      }}
+  no_log: true
+
+- name: Create fulfillment database credentials secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osacDefaults.fulfillmentDbName }}-credentials"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      stringData:
+        username: "{{ osacDefaults.fulfillmentDbUsername }}"
+        password: "{{ _fulfillment_db_password }}"
+  no_log: true
+  when: r_existing_fulfillment_db_secret.resources | default([]) | length == 0
+
+- name: Deploy fulfillment PostgreSQL Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ osacDefaults.fulfillmentDbName }}"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        selector:
+          app: "{{ osacDefaults.fulfillmentDbName }}"
+        ports:
+          - name: postgres
+            port: 5432
+            targetPort: 5432
+
+- name: Restrict fulfillment PostgreSQL ingress to OSAC pods only
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-fulfillment-to-db
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        podSelector:
+          matchLabels:
+            app: "{{ osacDefaults.fulfillmentDbName }}"
+        ingress:
+          - from:
+              - namespaceSelector: {}
+                podSelector: {}
+            ports:
+              - protocol: TCP
+                port: 5432
+        policyTypes:
+          - Ingress
+
+- name: Deploy fulfillment PostgreSQL StatefulSet
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: "{{ osacDefaults.fulfillmentDbName }}"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        serviceName: "{{ osacDefaults.fulfillmentDbName }}"
+        replicas: 1
+        selector:
+          matchLabels:
+            app: "{{ osacDefaults.fulfillmentDbName }}"
+        template:
+          metadata:
+            labels:
+              app: "{{ osacDefaults.fulfillmentDbName }}"
+          spec:
+            automountServiceAccountToken: false
+            containers:
+              - name: postgresql
+                image: "{{ osacDefaults.fulfillmentDbImage }}"
+                ports:
+                  - containerPort: 5432
+                env:
+                  - name: POSTGRESQL_USER
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ osacDefaults.fulfillmentDbName }}-credentials"
+                        key: username
+                  - name: POSTGRESQL_PASSWORD
+                    valueFrom:
+                      secretKeyRef:
+                        name: "{{ osacDefaults.fulfillmentDbName }}-credentials"
+                        key: password
+                  - name: POSTGRESQL_DATABASE
+                    value: "{{ osacDefaults.fulfillmentDbDatabase }}"
+                securityContext:
+                  runAsNonRoot: true
+                  readOnlyRootFilesystem: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                      - ALL
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                volumeMounts:
+                  - name: data
+                    mountPath: /var/lib/pgsql
+                  - name: tmp
+                    mountPath: /tmp
+                  - name: run-postgresql
+                    mountPath: /var/run/postgresql
+                readinessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                      - --live
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+            volumes:
+              - name: tmp
+                emptyDir: {}
+              - name: run-postgresql
+                emptyDir: {}
+        volumeClaimTemplates:
+          - metadata:
+              name: data
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: "{{ osacDefaults.fulfillmentDbSize }}"
+
+- name: Wait for fulfillment PostgreSQL ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: "{{ osacDefaults.fulfillmentDbName }}"
+    namespace: "{{ osacDefaults.osacNamespace }}"
+  register: r_fulfillment_db_ready
+  retries: 30
+  delay: 10
+  until:
+    - r_fulfillment_db_ready.resources | length > 0
+    - r_fulfillment_db_ready.resources[0].status.readyReplicas | default(0) | int > 0
+
+- name: Create fulfillment-db connection secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: fulfillment-db
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      stringData:
+        url: "postgres://{{ osacDefaults.fulfillmentDbUsername }}:{{ _fulfillment_db_password }}@{{ osacDefaults.fulfillmentDbName }}:5432/{{ osacDefaults.fulfillmentDbDatabase }}?sslmode=disable"
+  no_log: true
 
 # --- Wait for AAP Controller ---
 # The 'aap' plugin (order 103) deploys the AAP instance but OSAC needs

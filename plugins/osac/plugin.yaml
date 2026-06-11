@@ -59,6 +59,15 @@ defaults:
     aapApiUser: "admin"
     aapApiValidateCerts: false
     osacNamespace: "osac"
+    keycloakNamespace: "keycloak"
+    keycloakName: "keycloak"
+    keycloakRealmName: "osac"
+    keycloakClientId: "osac-controller"
+    fulfillmentDbName: "fulfillment-database"
+    fulfillmentDbImage: "quay.io/sclorg/postgresql-15-c9s:latest"
+    fulfillmentDbSize: "5Gi"
+    fulfillmentDbUsername: "service"
+    fulfillmentDbDatabase: "service"
     images:
       operator: "ghcr.io/osac-project/osac-operator"
       operatorTag: "latest"
