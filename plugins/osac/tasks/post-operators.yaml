@@ -70,23 +70,19 @@
 # Create an 'osac' realm with an 'osac-controller' confidential client
 # via the Keycloak Admin REST API.
 
-- name: Get Keycloak route hostname
+- name: Detect cluster ingress domain for Keycloak hostname
   kubernetes.core.k8s_info:
-    api_version: route.openshift.io/v1
-    kind: Route
-    namespace: "{{ osacDefaults.keycloakNamespace }}"
-    name: "{{ osacDefaults.keycloakName }}-ingress"
-  register: r_keycloak_route
-  retries: 30
-  delay: 10
-  until: r_keycloak_route.resources | length > 0
+    api_version: config.openshift.io/v1
+    kind: Ingress
+    name: cluster
+  register: r_ingress_config
 
-- name: Set Keycloak route host fact
+- name: Set Keycloak hostname from cluster ingress domain
   ansible.builtin.set_fact:
-    _keycloak_route_host: "{{ r_keycloak_route.resources[0].spec.host }}"
-    _keycloak_base_url: "https://{{ r_keycloak_route.resources[0].spec.host }}"
+    _keycloak_route_host: "{{ osacDefaults.keycloakName }}.{{ r_ingress_config.resources[0].spec.domain }}"
+    _keycloak_base_url: "https://{{ osacDefaults.keycloakName }}.{{ r_ingress_config.resources[0].spec.domain }}"
 
-# Ensure the Keycloak route hostname resolves on the Landing Zone.
+# Ensure the Keycloak hostname resolves on the Landing Zone.
 # Libvirt dnsmasq only has entries for a fixed set of app hostnames,
 # so dynamically created routes (like Keycloak) won't resolve by default.
 - name: Add Keycloak route hostname to /etc/hosts
