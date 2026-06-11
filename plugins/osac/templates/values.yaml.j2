@@ -9,7 +9,7 @@ operator:
   aap:
     url: "{{ osac_aap_url }}"
     token: "{{ osac_aap_token }}"
-    insecureSkipVerify: {{ osacDefaults.aapApiValidateCerts | ternary('false','true') }}
+    insecureSkipVerify: "{{ osacDefaults.aapApiValidateCerts | ternary('false','true') }}"
   fulfillment:
     serverAddress: "fulfillment-api:8000"
     tokenFile: "/var/run/secrets/kubernetes.io/serviceaccount/token"
