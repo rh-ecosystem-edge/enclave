@@ -4,18 +4,18 @@ from typing import cast
 import click
 import yaml
 
-from reconcile.cluster_upgrade import (
+from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
     reconcile as cluster_upgrade_reconcile,
 )
-from reconcile.operator_versions import reconcile as operator_versions_reconcile
-from utils import LOG_LEVELS, configure_logging
+from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
+from enclave.utils import LOG_LEVELS, configure_logging
 
 
 def defaults_path(filename: str) -> Path:
-    # Non-editable install: cli.py → site-packages/reconcile/ → site-packages/ → defaults/
-    # Editable src layout:  cli.py → src/reconcile/ → src/ → (not found) → repo root → defaults/
-    pkg_root = Path(__file__).resolve().parent.parent
+    # Non-editable install: cli.py → site-packages/enclave/reconcile/ → site-packages/enclave/ → site-packages/ → defaults/
+    # Editable src layout:  cli.py → src/enclave/reconcile/ → src/enclave/ → src/ → (not found) → repo root → defaults/
+    pkg_root = Path(__file__).resolve().parent.parent.parent
     path = pkg_root / "defaults" / filename
     if not path.exists():
         path = pkg_root.parent / "defaults" / filename

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from reconcile.cluster_upgrade import (
+from enclave.reconcile.cluster_upgrade import (
     ClusterOperatorsNotReadyError,
     InvalidVersionError,
     UpdateGraphUnavailableError,
@@ -78,7 +78,7 @@ def test_get_current_version_success(
 ) -> None:
     """Quoted output from oc is stripped and returned as a plain version string."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="'4.20.16'"),
     )
     assert get_current_version() == "4.20.16"
@@ -89,7 +89,7 @@ def test_get_current_version_oc_failure(
 ) -> None:
     """A non-zero exit code from oc raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="", returncode=1),
     )
     with pytest.raises(RuntimeError):
@@ -101,7 +101,7 @@ def test_get_current_version_oc_failure_logs_output(
 ) -> None:
     """stderr is captured and logged before raising RuntimeError on failure."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(
             stdout="some output", stderr="connection refused", returncode=1
         ),
@@ -122,7 +122,7 @@ def test_get_available_versions_from_fixture(
 ) -> None:
     """Real cluster data returns the expected sorted list of available versions."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout=fxt.get_json("clusterversion.yaml")),
     )
     assert get_available_versions() == AVAILABLE_VERSIONS
@@ -134,7 +134,7 @@ def test_get_available_versions_null_returns_none(
     """A null availableUpdates field (update graph unavailable) returns None."""
     payload = '{"status": {"availableUpdates": null}}'
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout=payload),
     )
     assert get_available_versions() is None
@@ -145,7 +145,7 @@ def test_get_available_versions_oc_failure(
 ) -> None:
     """A non-zero exit code from oc raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="", returncode=1),
     )
     with pytest.raises(RuntimeError):
@@ -157,7 +157,7 @@ def test_get_available_versions_oc_failure_logs_output(
 ) -> None:
     """stderr is captured and logged before raising RuntimeError on failure."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(
             stdout="some output", stderr="connection refused", returncode=1
         ),
@@ -171,7 +171,7 @@ def test_get_available_versions_invalid_json(
 ) -> None:
     """Malformed JSON stdout raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="not-json"),
     )
     with pytest.raises(RuntimeError):
@@ -183,7 +183,8 @@ def test_get_available_versions_invalid_json_empty_stdout(
 ) -> None:
     """Empty stdout (no JSON at all) raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command", return_value=oc_result(stdout="")
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout=""),
     )
     with pytest.raises(RuntimeError):
         get_available_versions()
@@ -199,7 +200,7 @@ def test_get_cluster_operators_from_fixture(
 ) -> None:
     """Real cluster data returns the expected list of 34 operator dicts."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout=fxt.get_json("clusteroperators.yaml")),
     )
     operators = get_cluster_operators()
@@ -212,7 +213,7 @@ def test_get_cluster_operators_oc_failure(
 ) -> None:
     """A non-zero exit code from oc raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="", returncode=1),
     )
     with pytest.raises(RuntimeError):
@@ -224,7 +225,7 @@ def test_get_cluster_operators_oc_failure_logs_output(
 ) -> None:
     """stderr is captured and logged before raising RuntimeError on failure."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(
             stdout="some output", stderr="connection refused", returncode=1
         ),
@@ -238,7 +239,7 @@ def test_get_cluster_operators_invalid_json(
 ) -> None:
     """Malformed JSON stdout raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="not-json"),
     )
     with pytest.raises(RuntimeError):
@@ -250,7 +251,8 @@ def test_get_cluster_operators_invalid_json_empty_stdout(
 ) -> None:
     """Empty stdout (no JSON at all) raises RuntimeError."""
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command", return_value=oc_result(stdout="")
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout=""),
     )
     with pytest.raises(RuntimeError):
         get_cluster_operators()
@@ -276,7 +278,7 @@ def _healthy_conditions() -> list[dict]:
 def test_check_operators_ready_all_healthy(mocker: MockerFixture) -> None:
     """All healthy conditions returns (True, [])."""
     mocker.patch(
-        "reconcile.cluster_upgrade.get_cluster_operators",
+        "enclave.reconcile.cluster_upgrade.get_cluster_operators",
         return_value=[_make_operator("auth", _healthy_conditions())],
     )
     ready, issues = check_cluster_operators_ready()
@@ -288,7 +290,7 @@ def test_check_operators_ready_degraded(mocker: MockerFixture) -> None:
     """Degraded=True returns (False, issues) with 'Degraded' in the issue message."""
     conditions = [{"type": "Degraded", "status": "True"}]
     mocker.patch(
-        "reconcile.cluster_upgrade.get_cluster_operators",
+        "enclave.reconcile.cluster_upgrade.get_cluster_operators",
         return_value=[_make_operator("auth", conditions)],
     )
     ready, issues = check_cluster_operators_ready()
@@ -300,7 +302,7 @@ def test_check_operators_ready_not_available(mocker: MockerFixture) -> None:
     """Available=False returns (False, issues) with 'not Available' in the issue message."""
     conditions = [{"type": "Available", "status": "False"}]
     mocker.patch(
-        "reconcile.cluster_upgrade.get_cluster_operators",
+        "enclave.reconcile.cluster_upgrade.get_cluster_operators",
         return_value=[_make_operator("auth", conditions)],
     )
     ready, issues = check_cluster_operators_ready()
@@ -312,7 +314,7 @@ def test_check_operators_ready_not_upgradeable(mocker: MockerFixture) -> None:
     """Upgradeable=False returns (False, issues) with 'not Upgradeable' in the issue message."""
     conditions = [{"type": "Upgradeable", "status": "False"}]
     mocker.patch(
-        "reconcile.cluster_upgrade.get_cluster_operators",
+        "enclave.reconcile.cluster_upgrade.get_cluster_operators",
         return_value=[_make_operator("auth", conditions)],
     )
     ready, issues = check_cluster_operators_ready()
@@ -327,7 +329,7 @@ def test_check_operators_ready_multiple_issues(mocker: MockerFixture) -> None:
         {"type": "Available", "status": "False"},
     ]
     mocker.patch(
-        "reconcile.cluster_upgrade.get_cluster_operators",
+        "enclave.reconcile.cluster_upgrade.get_cluster_operators",
         return_value=[_make_operator("auth", conditions)],
     )
     ready, issues = check_cluster_operators_ready()
@@ -343,16 +345,19 @@ def test_check_operators_ready_multiple_issues(mocker: MockerFixture) -> None:
 def _patch_reconcile_deps(
     mocker: MockerFixture, *, current: str, available: list[str] | None
 ) -> MagicMock:
-    mocker.patch("reconcile.cluster_upgrade.get_current_version", return_value=current)
     mocker.patch(
-        "reconcile.cluster_upgrade.get_available_versions", return_value=available
+        "enclave.reconcile.cluster_upgrade.get_current_version", return_value=current
     )
     mocker.patch(
-        "reconcile.cluster_upgrade.check_cluster_operators_ready",
+        "enclave.reconcile.cluster_upgrade.get_available_versions",
+        return_value=available,
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.check_cluster_operators_ready",
         return_value=(True, []),
     )
-    mock_upgrade = mocker.patch("reconcile.cluster_upgrade.upgrade_cluster")
-    mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_upgrade = mocker.patch("enclave.reconcile.cluster_upgrade.upgrade_cluster")
+    mocker.patch("enclave.reconcile.cluster_upgrade.wait_for_resource_status")
     return mock_upgrade
 
 
@@ -368,7 +373,9 @@ def test_reconcile_already_at_version_waits(mocker: MockerFixture) -> None:
     mock_upgrade = _patch_reconcile_deps(
         mocker, current="4.20.16", available=["4.20.17"]
     )
-    mock_wait = mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.cluster_upgrade.wait_for_resource_status"
+    )
     reconcile("4.20.16", dry_run=False)
     mock_wait.assert_called_once()
     mock_upgrade.assert_not_called()
@@ -391,13 +398,14 @@ def test_reconcile_version_not_available(mocker: MockerFixture) -> None:
 def test_reconcile_operators_not_ready(mocker: MockerFixture) -> None:
     """Unready cluster operators raise ClusterOperatorsNotReadyError before attempting an upgrade."""
     mocker.patch(
-        "reconcile.cluster_upgrade.get_current_version", return_value="4.20.16"
+        "enclave.reconcile.cluster_upgrade.get_current_version", return_value="4.20.16"
     )
     mocker.patch(
-        "reconcile.cluster_upgrade.get_available_versions", return_value=["4.20.17"]
+        "enclave.reconcile.cluster_upgrade.get_available_versions",
+        return_value=["4.20.17"],
     )
     mocker.patch(
-        "reconcile.cluster_upgrade.check_cluster_operators_ready",
+        "enclave.reconcile.cluster_upgrade.check_cluster_operators_ready",
         return_value=(False, ["auth is Degraded"]),
     )
     with pytest.raises(ClusterOperatorsNotReadyError):
@@ -429,7 +437,9 @@ def test_reconcile_performs_upgrade(mocker: MockerFixture) -> None:
 
 def _patch_time(mocker: MockerFixture, times: list[float]) -> MagicMock:
     """Stub time.time() in reconcile.cluster_upgrade with a predetermined sequence of values."""
-    return mocker.patch("reconcile.cluster_upgrade.time.time", side_effect=times)
+    return mocker.patch(
+        "enclave.reconcile.cluster_upgrade.time.time", side_effect=times
+    )
 
 
 def test_upgrade_cluster_success(
@@ -438,10 +448,12 @@ def test_upgrade_cluster_success(
     """A successful oc patch triggers two wait calls: first for desired.version, then history[0].state."""
     _patch_time(mocker, [0, 1, 2])
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="patched"),
     )
-    mock_wait = mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.cluster_upgrade.wait_for_resource_status"
+    )
     upgrade_cluster("4.20.21")
     assert mock_wait.call_count == 2
     first_call = mock_wait.call_args_list[0]
@@ -458,9 +470,12 @@ def test_upgrade_cluster_patch_fails(
     """A non-zero oc patch exit code raises RuntimeError without calling wait."""
     _patch_time(mocker, [0])
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command", return_value=oc_result(returncode=1)
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(returncode=1),
     )
-    mock_wait = mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.cluster_upgrade.wait_for_resource_status"
+    )
     with pytest.raises(RuntimeError):
         upgrade_cluster("4.20.21")
     mock_wait.assert_not_called()
@@ -472,12 +487,12 @@ def test_upgrade_cluster_patch_fails_logs_output(
     """stderr is captured and logged before raising RuntimeError on patch failure."""
     _patch_time(mocker, [0, 1, 2])  # deadline + one time.time() per ERROR log record
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(
             stdout="some output", stderr="connection refused", returncode=1
         ),
     )
-    mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mocker.patch("enclave.reconcile.cluster_upgrade.wait_for_resource_status")
     with pytest.raises(RuntimeError):
         upgrade_cluster("4.20.21")
 
@@ -489,10 +504,12 @@ def test_upgrade_cluster_timeout_before_first_wait(
     # deadline = 0 + 60; second time.time() returns 61 → remaining_minutes ≤ 0
     _patch_time(mocker, [0, 61])
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="patched"),
     )
-    mock_wait = mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.cluster_upgrade.wait_for_resource_status"
+    )
     with pytest.raises(TimeoutError):
         upgrade_cluster("4.20.21", timeout_minutes=1)
     mock_wait.assert_not_called()
@@ -505,10 +522,12 @@ def test_upgrade_cluster_timeout_before_second_wait(
     # deadline = 0 + 60; third time.time() returns 61 → second remaining_minutes ≤ 0
     _patch_time(mocker, [0, 1, 61])
     mocker.patch(
-        "reconcile.cluster_upgrade.run_oc_command",
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="patched"),
     )
-    mock_wait = mocker.patch("reconcile.cluster_upgrade.wait_for_resource_status")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.cluster_upgrade.wait_for_resource_status"
+    )
     with pytest.raises(TimeoutError):
         upgrade_cluster("4.20.21", timeout_minutes=1)
     mock_wait.assert_called_once()

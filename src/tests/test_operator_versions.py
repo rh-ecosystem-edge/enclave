@@ -3,7 +3,7 @@ import json
 import pytest
 from pytest_mock import MockerFixture
 
-from reconcile.operator_versions import approve_install_plans, reconcile
+from enclave.reconcile.operator_versions import approve_install_plans, reconcile
 from tests.fixtures import Fixtures, OcResultFactory
 
 fxt = Fixtures("operator_versions")
@@ -28,7 +28,7 @@ def test_approve_get_targets_correct_namespace(
 ) -> None:
     """The oc get installplan command is scoped to the requested namespace."""
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout='{"items": []}'),
     )
     dry_run = False
@@ -46,7 +46,7 @@ def test_approve_skips_non_requiring_approval(
     """Plans in phases other than RequiresApproval are logged and skipped."""
     plan = _plan("ip-abc", "Complete", ["quay-operator.v3.15.3"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout=json.dumps({"items": [plan]})),
     )
     dry_run = False
@@ -60,7 +60,7 @@ def test_approve_skips_unmanaged_csv(
     """Plans whose CSV operator name is not in the approved map are skipped."""
     plan = _plan("ip-abc", "RequiresApproval", ["some-other-operator.v1.0.0"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout=json.dumps({"items": [plan]})),
     )
     dry_run = False
@@ -74,7 +74,7 @@ def test_approve_skips_newer_version(
     """Plans whose CSV version exceeds the desired version are not approved."""
     plan = _plan("ip-abc", "RequiresApproval", ["quay-operator.v3.15.4"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout=json.dumps({"items": [plan]})),
     )
     dry_run = False
@@ -88,7 +88,7 @@ def test_approve_approves_matching_version(
     """A plan at exactly the desired version triggers an oc patch to approve it."""
     plan = _plan("ip-abc", "RequiresApproval", ["quay-operator.v3.15.3"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=[
             oc_result(stdout=json.dumps({"items": [plan]})),
             oc_result(stdout="patched"),
@@ -108,7 +108,7 @@ def test_approve_dry_run_skips_patch(
     """In dry-run mode the oc patch is never issued, only the oc get."""
     plan = _plan("ip-abc", "RequiresApproval", ["quay-operator.v3.15.3"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout=json.dumps({"items": [plan]})),
     )
     dry_run = True
@@ -124,7 +124,7 @@ def test_approve_older_version_is_approved(
     """A plan below the desired version is still approved (catch-up install)."""
     plan = _plan("ip-abc", "RequiresApproval", ["quay-operator.v3.15.2"])
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=[
             oc_result(stdout=json.dumps({"items": [plan]})),
             oc_result(stdout="patched"),
@@ -140,7 +140,7 @@ def test_approve_get_failure_raises(
 ) -> None:
     """A non-zero exit code from oc get installplan raises RuntimeError."""
     mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout="", returncode=1, stderr="connection refused"),
     )
     dry_run = False
@@ -154,7 +154,7 @@ def test_approve_patch_failure_raises(
     """A non-zero exit code from oc patch installplan raises RuntimeError."""
     plan = _plan("ip-abc", "RequiresApproval", ["quay-operator.v3.15.3"])
     mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=[
             oc_result(stdout=json.dumps({"items": [plan]})),
             oc_result(stdout="", returncode=1, stderr="forbidden"),
@@ -175,7 +175,7 @@ def test_approve_fixture_skips_newer_than_desired(
 ) -> None:
     """Real cluster data: install-72xtr (Complete) and install-9h5cl (v3.15.4) are both skipped when desired is 3.15.3."""
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         return_value=oc_result(stdout=fxt.get_json("install_plans.yaml")),
     )
     dry_run = False
@@ -188,7 +188,7 @@ def test_approve_fixture_approves_when_at_desired(
 ) -> None:
     """Real cluster data: install-9h5cl (v3.15.4, RequiresApproval) is approved when desired is 3.15.4."""
     mock_run = mocker.patch(
-        "reconcile.operator_versions.run_oc_command",
+        "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=[
             oc_result(stdout=fxt.get_json("install_plans.yaml")),
             oc_result(stdout="patched"),
@@ -208,8 +208,12 @@ def test_approve_fixture_approves_when_at_desired(
 
 def test_reconcile_calls_approve_and_wait(mocker: MockerFixture) -> None:
     """reconcile calls approve_install_plans then waits for each CSV to reach Succeeded."""
-    mock_approve = mocker.patch("reconcile.operator_versions.approve_install_plans")
-    mock_wait = mocker.patch("reconcile.operator_versions.wait_for_resource_status")
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mock_wait = mocker.patch(
+        "enclave.reconcile.operator_versions.wait_for_resource_status"
+    )
     dry_run = False
     reconcile("3.15.3", "quay-enterprise", ["quay-operator"], dry_run=dry_run)
     mock_approve.assert_called_once_with(
@@ -230,16 +234,20 @@ def test_reconcile_calls_approve_and_wait(mocker: MockerFixture) -> None:
 
 def test_reconcile_dry_run_skips_wait(mocker: MockerFixture) -> None:
     """In dry-run mode reconcile calls approve but never waits for CSV status."""
-    mocker.patch("reconcile.operator_versions.approve_install_plans")
-    mock_wait = mocker.patch("reconcile.operator_versions.wait_for_resource_status")
+    mocker.patch("enclave.reconcile.operator_versions.approve_install_plans")
+    mock_wait = mocker.patch(
+        "enclave.reconcile.operator_versions.wait_for_resource_status"
+    )
     reconcile("3.15.3", "quay-enterprise", ["quay-operator"], dry_run=True)
     mock_wait.assert_not_called()
 
 
 def test_reconcile_replaces_plus_in_version(mocker: MockerFixture) -> None:
     """'+' in the version string is normalised to '-' before building CSV names."""
-    mock_approve = mocker.patch("reconcile.operator_versions.approve_install_plans")
-    mocker.patch("reconcile.operator_versions.wait_for_resource_status")
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
     dry_run = False
     reconcile(
         "4.20.0+202602261925", "metallb-system", ["metallb-operator"], dry_run=dry_run
@@ -253,8 +261,12 @@ def test_reconcile_replaces_plus_in_version(mocker: MockerFixture) -> None:
 
 def test_reconcile_multiple_csv_names(mocker: MockerFixture) -> None:
     """When multiple CSV names are given, approve is called once and wait is called per CSV."""
-    mock_approve = mocker.patch("reconcile.operator_versions.approve_install_plans")
-    mock_wait = mocker.patch("reconcile.operator_versions.wait_for_resource_status")
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mock_wait = mocker.patch(
+        "enclave.reconcile.operator_versions.wait_for_resource_status"
+    )
     dry_run = False
     reconcile(
         "5.0.3",

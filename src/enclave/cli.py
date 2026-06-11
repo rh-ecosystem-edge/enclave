@@ -1,8 +1,8 @@
 import click
 
-from reconcile.cli import cli as reconcile_cli
-from tools.cli import cli as tools_cli
-from utils import LOG_LEVELS, configure_logging
+from enclave.reconcile.cli import cli as reconcile_cli
+from enclave.tools.cli import cli as tools_cli
+from enclave.utils import LOG_LEVELS, configure_logging
 
 
 @click.group()

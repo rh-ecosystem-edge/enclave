@@ -3,7 +3,7 @@ from pathlib import Path
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from tools.cli import cli
+from enclave.tools.cli import cli
 
 
 def test_tools_cli_help() -> None:
@@ -19,7 +19,7 @@ def test_resolve_quay_registry_ca_help() -> None:
 
 
 def test_resolve_quay_registry_ca_forwards_args(mocker: MockerFixture) -> None:
-    mock_reconcile = mocker.patch("tools.cli.quay_registry_ca_main")
+    mock_reconcile = mocker.patch("enclave.tools.cli.quay_registry_ca_main")
     result = CliRunner().invoke(
         cli,
         [
@@ -36,7 +36,7 @@ def test_resolve_quay_registry_ca_forwards_args(mocker: MockerFixture) -> None:
 
 def test_resolve_quay_registry_ca_runtime_error(mocker: MockerFixture) -> None:
     mocker.patch(
-        "tools.cli.quay_registry_ca_main",
+        "enclave.tools.cli.quay_registry_ca_main",
         side_effect=RuntimeError(
             "unable to resolve registry CA for registry.example.com"
         ),
@@ -60,7 +60,7 @@ def test_collect_node_image_digests_help() -> None:
 def test_collect_node_image_digests_forwards_args(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
-    mock_main = mocker.patch("tools.cli.collect_node_image_digests_main")
+    mock_main = mocker.patch("enclave.tools.cli.collect_node_image_digests_main")
     raw_output_file = tmp_path / "node-0.log"
     result = CliRunner().invoke(
         cli,

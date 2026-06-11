@@ -1,7 +1,7 @@
 import click
 
-from tools.node_image_digests import main as collect_node_image_digests_main
-from tools.quay_registry_ca import main as quay_registry_ca_main
+from enclave.tools.node_image_digests import main as collect_node_image_digests_main
+from enclave.tools.quay_registry_ca import main as quay_registry_ca_main
 
 
 @click.group()
