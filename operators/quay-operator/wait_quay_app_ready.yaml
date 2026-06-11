@@ -1,0 +1,50 @@
+---
+# Wait for quay-app Deployment to be fully ready and stable.
+# This task ensures all quay-app replicas are updated, ready, and available
+# before proceeding with operations that depend on Quay being responsive.
+#
+# Context: After heavy mirroring operations, Quay may need time to stabilize.
+# This wait prevents race conditions where subsequent oc-mirror operations
+# fail with 503 or authentication errors.
+#
+# Called from:
+# - quay_disconnected_finish.yaml (ensures Quay is stable before addon plugin mirroring)
+
+- name: Wait for quay-app Deployment to be ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: registry-quay-app
+    namespace: quay-enterprise
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_app_deployment
+  retries: 60
+  delay: 10
+  until:
+    - r_quay_app_deployment.resources is defined
+    - r_quay_app_deployment.resources | length > 0
+    - r_quay_app_deployment.resources[0].status is defined
+    - r_quay_app_deployment.resources[0].status.observedGeneration is defined
+    - r_quay_app_deployment.resources[0].status.observedGeneration == r_quay_app_deployment.resources[0].metadata.generation
+    - r_quay_app_deployment.resources[0].status.updatedReplicas | default(0) == r_quay_app_deployment.resources[0].status.replicas | default(0)
+    - r_quay_app_deployment.resources[0].status.readyReplicas | default(0) == r_quay_app_deployment.resources[0].status.replicas | default(0)
+    - r_quay_app_deployment.resources[0].status.availableReplicas | default(0) == r_quay_app_deployment.resources[0].status.replicas | default(0)
+    - r_quay_app_deployment.resources[0].status.unavailableReplicas | default(0) == 0
+
+- name: Verify Quay API health endpoint responds
+  ansible.builtin.uri:
+    url: "https://registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/health/instance"
+    method: GET
+    validate_certs: false
+    return_content: yes
+    status_code:
+      - 200
+  register: r_quay_health
+  retries: 12
+  delay: 5
+  until: r_quay_health.status == 200
+
+- name: Display Quay readiness status
+  ansible.builtin.debug:
+    msg: "Quay Enterprise is ready - {{ r_quay_app_deployment.resources[0].status.readyReplicas }}/{{ r_quay_app_deployment.resources[0].status.replicas }} replicas ready, API responding"

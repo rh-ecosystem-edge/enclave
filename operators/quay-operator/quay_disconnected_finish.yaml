@@ -27,3 +27,6 @@
       | bool
     )
     and not (mirror_dry_run | default(false) | bool)
+
+- name: Wait for Quay to stabilize before addon plugin mirroring
+  ansible.builtin.include_tasks: wait_quay_app_ready.yaml
