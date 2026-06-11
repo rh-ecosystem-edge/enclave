@@ -25,7 +25,7 @@
 
 - name: Generate random ironic password if secret doesn't exist
   ansible.builtin.set_fact:
-    metal3_ironic_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits,punctuation length=32') }}"
+    metal3_ironic_password: "{{ lookup('password', '/dev/null chars=ascii_letters,digits length=48') }}"
   when: r_password_secret_check.rc != 0
   no_log: true
 
