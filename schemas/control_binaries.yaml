@@ -20,8 +20,8 @@ properties:
             description: SHA256 checksum for the binary.
             pattern: "^sha256:[0-9a-f]{64}$"
         required:
-        - url
-        - checksum
+          - url
+          - checksum
         additionalProperties: false
       helm:
         type: object
@@ -34,8 +34,8 @@ properties:
             description: SHA256 checksum for the binary.
             pattern: "^sha256:[0-9a-f]{64}$"
         required:
-        - url
-        - checksum
+          - url
+          - checksum
         additionalProperties: false
       mirror_registry:
         type: object
@@ -48,8 +48,8 @@ properties:
             description: SHA256 checksum for the binary.
             pattern: "^sha256:[0-9a-f]{64}$"
         required:
-        - url
-        - checksum
+          - url
+          - checksum
         additionalProperties: false
       oc_mirror:
         type: object
@@ -62,8 +62,8 @@ properties:
             description: SHA256 checksum for the binary.
             pattern: "^sha256:[0-9a-f]{64}$"
         required:
-        - url
-        - checksum
+          - url
+          - checksum
         additionalProperties: false
       clairctl:
         type: object
@@ -76,9 +76,9 @@ properties:
             description: SHA256 checksum for the binary.
             pattern: "^sha256:[0-9a-f]{64}$"
         required:
-        - url
-        - checksum
+          - url
+          - checksum
         additionalProperties: false
     additionalProperties: false
 required:
-- control_binaries
+  - control_binaries

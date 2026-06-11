@@ -44,7 +44,7 @@ definitions:
         description: Configure operator to watch the entire cluster.
     dependencies:
       csvMirror:
-      - csvNames
+        - csvNames
     required:
       - name
       - version

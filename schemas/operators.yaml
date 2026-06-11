@@ -46,12 +46,12 @@ definitions:
         description: Seed operators are deployed before anything else.
     dependencies:
       csvMirror:
-      - csvNames
+        - csvNames
     required:
-    - name
-    - version
-    - channel
-    - namespace
+      - name
+      - version
+      - channel
+      - namespace
 
 additionalProperties: false
 properties:

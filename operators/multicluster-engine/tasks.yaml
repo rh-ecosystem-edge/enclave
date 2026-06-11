@@ -325,13 +325,13 @@
           name: custom-registries
         databaseStorage:
           accessModes:
-          - ReadWriteOnce
+            - ReadWriteOnce
           resources:
             requests:
               storage: 40Gi
         filesystemStorage:
           accessModes:
-          - ReadWriteOnce
+            - ReadWriteOnce
           resources:
             requests:
               storage: 40Gi
