@@ -11,12 +11,12 @@ installOperators: false
 helm:
   - release: osac
     namespace: osac
-    chart: charts/osac
+    chart: "oci://ghcr.io/osac-project/charts/osac"
+    version: "0.0.1"
     valuesTemplate: templates/values.yaml.j2
     createNamespace: true
     timeout: "45m"
     wait: false
-    extractImages: true
 
 additionalImages:
   # OSAC core (ghcr.io)
@@ -52,7 +52,7 @@ registries:
 
 defaults:
   osacDefaults:
-    aapName: "osac-aap"
+    aapName: "aap"
     aapNamespace: "ansible-aap"
     aapTokenDescription: "OSAC Operator Token"
     aapTokenOverwrite: false
@@ -71,6 +71,3 @@ requires:
   vars:
     - name: aap_license_file
       description: "Path to AAP license file (zip) on the Landing Zone"
-  files:
-    - path: "charts/osac/Chart.yaml"
-      description: "OSAC umbrella Helm chart must be bundled"

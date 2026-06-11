@@ -108,7 +108,6 @@ jobs:
             helm:
               - 'playbooks/tasks/helm_*.yaml'
               - 'plugins/osac/**'
-              - 'scripts/setup/sync_osac_chart.sh'
 
       - name: Make decision
         id: decision
@@ -1102,15 +1101,6 @@ jobs:
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
         run: make -f Makefile.ci generate-ironic-cert
 
-      - name: Sync OSAC chart
-        id: sync_osac_chart
-        run: |
-          echo "## Sync OSAC Chart" >> $GITHUB_STEP_SUMMARY
-          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-          ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave && scripts/setup/sync_osac_chart.sh"
-          echo "OSAC chart synced" >> $GITHUB_STEP_SUMMARY
-
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate
         run: |
@@ -1199,6 +1189,10 @@ jobs:
         id: deploy_aap
         run: |
           echo "## Deploy: AAP Plugin" >> $GITHUB_STEP_SUMMARY
+          # Create required AAP plugin config on Landing Zone
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+          ssh $SSH_OPTS cloud-user@$LZ_IP "mkdir -p ~/enclave/config/plugins && echo '---' > ~/enclave/config/plugins/aap.yaml"
           make -f Makefile.ci deploy-plugin PLUGIN=aap
           echo "AAP deployed" >> $GITHUB_STEP_SUMMARY
 
@@ -1362,7 +1356,6 @@ jobs:
         run: |
           declare -A step_names=(
             ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
-            ["sync_osac_chart"]="Sync OSAC chart"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
             ["bootstrap_download_content"]="Bootstrap: Download content"
             ["bootstrap_build_cache"]="Bootstrap: Build local cache"
@@ -1382,7 +1375,6 @@ jobs:
 
           step_order=(
             generate_ironic_cert
-            sync_osac_chart
             bootstrap_validate
             bootstrap_download_content
             bootstrap_build_cache
@@ -1539,15 +1531,6 @@ jobs:
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
         run: make -f Makefile.ci generate-ironic-cert
 
-      - name: Sync OSAC chart
-        id: sync_osac_chart
-        run: |
-          echo "## Sync OSAC Chart" >> $GITHUB_STEP_SUMMARY
-          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-          ssh $SSH_OPTS cloud-user@$LZ_IP "cd /home/cloud-user/enclave && scripts/setup/sync_osac_chart.sh"
-          echo "OSAC chart synced" >> $GITHUB_STEP_SUMMARY
-
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate
         run: |
@@ -1643,6 +1626,10 @@ jobs:
         id: deploy_aap
         run: |
           echo "## Deploy: AAP Plugin" >> $GITHUB_STEP_SUMMARY
+          # Create required AAP plugin config on Landing Zone
+          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+          ssh $SSH_OPTS cloud-user@$LZ_IP "mkdir -p ~/enclave/config/plugins && echo '---' > ~/enclave/config/plugins/aap.yaml"
           make -f Makefile.ci deploy-plugin PLUGIN=aap
           echo "AAP deployed" >> $GITHUB_STEP_SUMMARY
 
@@ -1815,7 +1802,6 @@ jobs:
         run: |
           declare -A step_names=(
             ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
-            ["sync_osac_chart"]="Sync OSAC chart"
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
             ["bootstrap_download_content"]="Bootstrap: Download content"
             ["bootstrap_build_cache"]="Bootstrap: Build local cache"
@@ -1836,7 +1822,6 @@ jobs:
 
           step_order=(
             generate_ironic_cert
-            sync_osac_chart
             bootstrap_validate
             bootstrap_download_content
             bootstrap_build_cache

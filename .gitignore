@@ -16,9 +16,6 @@ __pycache__/
 .ruff_cache/
 .coverage
 
-# Synced OSAC sub-charts (fetched by scripts/setup/sync_osac_chart.sh)
-plugins/osac/charts/osac/charts/
-
 # IDE folders
 .vscode/
 .idea/

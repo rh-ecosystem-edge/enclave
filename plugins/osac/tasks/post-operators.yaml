@@ -1,31 +1,27 @@
 ---
 # Post-operators hook for OSAC plugin.
-# Runs after AAP and cert-manager operators are installed, before Helm chart deploy.
+# Runs after the 'aap' plugin has deployed the AAP operator and instance,
+# before the OSAC Helm chart is installed.
+#
+# Prerequisites (handled by 'aap' plugin, order 103):
+#   - AAP operator installed and ready
+#   - AnsibleAutomationPlatform CR created and reconciled
+#   - AAP license secret created
 #
 # Responsibilities:
-#   1. Create AAP namespace and RBAC resources
-#   2. Deploy AnsibleAutomationPlatform CR
-#   3. Wait for AAP controller to become ready
-#   4. Extract AAP admin credentials
-#   5. Create AAP Personal Access Token via API
-#   6. Upload license and kubeconfig secrets
-#   7. Create config-as-code secrets for bootstrap
-#   8. Set osac_aap_url and osac_aap_token facts for Helm values template
+#   1. Create OSAC namespace and RBAC resources
+#   2. Wait for AAP controller to become ready
+#   3. Extract AAP admin credentials
+#   4. Create AAP Personal Access Token via awx-manage
+#   5. Upload kubeconfig secret for AAP
+#   6. Create config-as-code secrets for bootstrap
+#   7. Set osac_aap_url and osac_aap_token facts for Helm values template
 #
 # Facts exported:
 #   osac_aap_url   — AAP controller route URL (used in templates/values.yaml.j2)
 #   osac_aap_token — AAP personal access token (used in templates/values.yaml.j2)
 
 # --- Namespace and RBAC ---
-
-- name: Ensure AAP namespace exists
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Namespace
-      metadata:
-        name: "{{ osacDefaults.aapNamespace }}"
 
 - name: Ensure OSAC namespace exists
   kubernetes.core.k8s:
@@ -51,22 +47,9 @@
     state: present
     definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap-osac-rolebinding.yaml.j2') | from_yaml }}"
 
-# --- AAP Instance ---
-
-- name: Wait for AnsibleAutomationPlatform CRD to be registered
-  kubernetes.core.k8s_info:
-    api_version: apiextensions.k8s.io/v1
-    kind: CustomResourceDefinition
-    name: ansibleautomationplatforms.aap.ansible.com
-  register: r_aap_crd
-  until: r_aap_crd.resources | length > 0
-  retries: 30
-  delay: 10
-
-- name: Create AnsibleAutomationPlatform CR
-  kubernetes.core.k8s:
-    state: present
-    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap.yaml.j2') | from_yaml }}"
+# --- Wait for AAP Controller ---
+# The 'aap' plugin (order 103) deploys the AAP instance but OSAC needs
+# the controller route and admin credentials to be available.
 
 - name: Wait for AAP controller route
   kubernetes.core.k8s_info:
@@ -136,20 +119,7 @@
   ansible.builtin.set_fact:
     osac_aap_token: "{{ r_aap_token_exec.stdout_lines | last | trim }}"
 
-# --- License and Kubeconfig Secrets ---
-
-- name: Create AAP license secret
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Secret
-      metadata:
-        name: "{{ osacDefaults.aapName }}-license"
-        namespace: "{{ osacDefaults.aapNamespace }}"
-      type: Opaque
-      data:
-        license.zip: "{{ lookup('ansible.builtin.file', aap_license_file) | b64encode }}"
+# --- Kubeconfig Secret ---
 
 - name: Create kubeconfig secret for AAP
   kubernetes.core.k8s:

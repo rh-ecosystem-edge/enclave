@@ -168,13 +168,15 @@ definitions:
       chart:
         type: string
         description: >-
-          Chart name (when repo is set) or path relative to the plugin
-          directory (local chart). Default for local: charts/<release>.
+          Chart reference. Can be an OCI URL (oci://registry/chart), a chart
+          name (when repo is set), or a path relative to the plugin directory
+          (local chart). Default for local: charts/<release>.
       repo:
         type: string
         description: >-
           Helm repository URL. When set, the chart is fetched from this
           remote repo instead of the local plugin directory.
+          Not needed for OCI charts (use oci:// prefix in chart instead).
       version:
         type: string
         description: Chart version constraint (e.g. '1.2.3' or '^1.0').
@@ -204,7 +206,8 @@ definitions:
         description: >-
           Extract container image references from the chart's default values
           via helm template and merge into additionalImages for mirroring.
-          Only works for local charts (repo must not be set). Default: false.
+          Only works for local charts (repo and oci:// must not be used).
+          Default: false.
     required:
       - release
       - namespace
