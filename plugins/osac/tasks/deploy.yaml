@@ -1,0 +1,21 @@
+---
+# Post-Helm deployment tasks for OSAC plugin.
+# Runs after the OSAC Helm chart is installed.
+#
+# Responsibilities:
+#   1. Create OSAC operator config secret (AAP URL/token)
+#   2. Create OSAC RoleBinding in osac namespace
+
+- name: Create OSAC config secret
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/osac-config.yaml.j2') | from_yaml }}"
+
+- name: Create OSAC RoleBinding
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/osac-rolebinding.yaml.j2') | from_yaml }}"
+
+- name: Log OSAC deploy completion
+  ansible.builtin.debug:
+    msg: "OSAC post-Helm configuration applied (config secret and RBAC)"

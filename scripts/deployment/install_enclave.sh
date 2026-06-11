@@ -129,6 +129,12 @@ scp $SSH_OPTS "${WORKING_DIR}/config/global.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/c
 scp $SSH_OPTS "${WORKING_DIR}/config/certificates.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/certificates.yaml"
 scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/cloud_infra.yaml"
 
+# Copy plugin config files if they exist
+if [ -d "${WORKING_DIR}/config/plugins" ]; then
+    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config/plugins"
+    scp $SSH_OPTS "${WORKING_DIR}"/config/plugins/*.yaml "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/plugins/" 2>/dev/null || true
+fi
+
 success "Configuration generated and copied to Landing Zone"
 
 # Step 5.5: Configure DNS resolution for cluster endpoints via libvirt dnsmasq
@@ -263,6 +269,19 @@ else
     info "    2. Save it to one of the locations above"
     info "    3. Re-run 'make install-enclave'"
     exit 1
+fi
+
+# Step 6b: Copy AAP license file (when aap plugin is enabled)
+if [[ ",${ENABLED_PLUGINS:-}," == *",aap,"* ]]; then
+    AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-/opt/aap-license.zip}"
+    if [ -f "$AAP_LICENSE_SOURCE" ]; then
+        info "Step 6b: Copying AAP license file..."
+        AAP_LICENSE_LZ_PATH="${LZ_ENCLAVE_DIR}/config/aap-license.zip"
+        scp $SSH_OPTS "$AAP_LICENSE_SOURCE" "${LZ_SSH}:${AAP_LICENSE_LZ_PATH}"
+        success "AAP license copied to ${AAP_LICENSE_LZ_PATH}"
+    else
+        warning "Step 6b: AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
+    fi
 fi
 
 # Step 7: Generate SSH key if needed

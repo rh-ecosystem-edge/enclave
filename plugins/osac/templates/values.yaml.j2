@@ -1,0 +1,71 @@
+# Rendered by Enclave from Ansible variables.
+# Values populated after AAP infrastructure setup in post-operators.yaml.
+
+# Operator
+operator:
+  image:
+    repository: "{{ osacDefaults.images.operator }}"
+    tag: "{{ osacDefaults.images.operatorTag }}"
+  aap:
+    url: "{{ osac_aap_url }}"
+    token: "{{ osac_aap_token }}"
+    insecureSkipVerify: {{ osacDefaults.aapApiValidateCerts | ternary('false','true') }}
+  fulfillment:
+    serverAddress: "fulfillment-api:8000"
+    tokenFile: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+  configSecret:
+    name: "osac-config"
+    optional: true
+
+# Fulfillment service
+service:
+  variant: openshift
+  images:
+    service: "{{ osacDefaults.images.fulfillmentService }}"
+    envoy: "{{ osacDefaults.images.envoy }}"
+  certs:
+    issuerRef:
+      kind: ClusterIssuer
+      name: default-ca
+    caBundle:
+      configMap: ca-bundle
+  auth:
+    issuerUrl: "https://keycloak.keycloak.svc.cluster.local/realms/osac"
+    controllerCredentials:
+      - secret:
+          name: fulfillment-controller-credentials
+          items:
+            - key: client-id
+              param: client-id
+            - key: client-secret
+              param: client-secret
+  database:
+    connection:
+      - secret:
+          name: fulfillment-db
+          items:
+            - key: url
+              param: url
+
+# AAP — Enclave manages the instance in post-operators.yaml
+aap:
+  aap:
+    instance:
+      enabled: false
+      name: "{{ osacDefaults.aapName }}"
+  bootstrap:
+    enabled: true
+    image: "{{ osacDefaults.images.aapBootstrap }}"
+    cliImage: "{{ osacDefaults.images.cli }}"
+    backoffLimit: 15
+  configAsCode:
+    manifestSecret: "config-as-code-manifest-ig"
+    secret: "config-as-code-ig"
+
+# Disable chart's built-in validation (Enclave handles in pre-validate.yaml)
+validation:
+  enabled: false
+
+# DB migration not yet available
+dbMigrate:
+  enabled: false

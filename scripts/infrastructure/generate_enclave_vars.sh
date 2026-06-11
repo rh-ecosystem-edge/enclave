@@ -294,6 +294,36 @@ cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 discovery_hosts: []
 EOF
 
+# Append enabled plugins list to global vars (comma-separated env var to YAML list)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    {
+        echo ""
+        echo "# Plugins to deploy (from ENABLED_PLUGINS env var)"
+        echo "enabled_plugins:"
+        IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+        for _plugin in "${_plugins[@]}"; do
+            echo "  - ${_plugin// /}"
+        done
+    } >> "$GLOBAL_VARS_OUTPUT"
+    info "Enabled plugins: $ENABLED_PLUGINS"
+
+    # Write AAP license file path to plugin config when aap plugin is enabled
+    if [[ ",${ENABLED_PLUGINS}," == *",aap,"* ]]; then
+        AAP_LICENSE_SOURCE="${AAP_LICENSE_FILE:-/opt/aap-license.zip}"
+        if [ -f "$AAP_LICENSE_SOURCE" ]; then
+            AAP_LICENSE_LZ_PATH="{{ workingDir }}/enclave/config/aap-license.zip"
+            mkdir -p "${WORKING_DIR}/config/plugins"
+            cat > "${WORKING_DIR}/config/plugins/aap.yaml" <<AAPEOF
+---
+aapLicenseFile: "${AAP_LICENSE_LZ_PATH}"
+AAPEOF
+            info "AAP license file configured: ${AAP_LICENSE_LZ_PATH}"
+        else
+            warning "AAP plugin enabled but license file not found at ${AAP_LICENSE_SOURCE}"
+        fi
+    fi
+fi
+
 # Override storage plugin and quay backend when STORAGE_PLUGIN=odf
 if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
     sed -i 's/^storage_plugin: lvms$/storage_plugin: odf/' "$GLOBAL_VARS_OUTPUT"

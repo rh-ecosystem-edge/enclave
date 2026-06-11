@@ -1,0 +1,178 @@
+---
+# Post-operators hook for OSAC plugin.
+# Runs after AAP and cert-manager operators are installed, before Helm chart deploy.
+#
+# Responsibilities:
+#   1. Create AAP namespace and RBAC resources
+#   2. Deploy AnsibleAutomationPlatform CR
+#   3. Wait for AAP controller to become ready
+#   4. Extract AAP admin credentials
+#   5. Create AAP Personal Access Token via API
+#   6. Upload license and kubeconfig secrets
+#   7. Create config-as-code secrets for bootstrap
+#   8. Set osac_aap_url and osac_aap_token facts for Helm values template
+#
+# Facts exported:
+#   osac_aap_url   — AAP controller route URL (used in templates/values.yaml.j2)
+#   osac_aap_token — AAP personal access token (used in templates/values.yaml.j2)
+
+# --- Namespace and RBAC ---
+
+- name: Ensure AAP namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osacDefaults.aapNamespace }}"
+
+- name: Ensure OSAC namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osacDefaults.osacNamespace }}"
+
+- name: Create OSAC ServiceAccount in AAP namespace
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap-osac-sa.yaml.j2') | from_yaml }}"
+
+- name: Create OSAC ClusterRole
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap-osac-clusterrole.yaml.j2') | from_yaml }}"
+
+- name: Create OSAC ClusterRoleBinding
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap-osac-rolebinding.yaml.j2') | from_yaml }}"
+
+# --- AAP Instance ---
+
+- name: Create AnsibleAutomationPlatform CR
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/aap.yaml.j2') | from_yaml }}"
+
+- name: Wait for AAP controller route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    label_selectors:
+      - "app.kubernetes.io/component=automationcontroller"
+  register: r_aap_route
+  until: r_aap_route.resources | length > 0
+  retries: 60
+  delay: 30
+
+- name: Set AAP URL fact
+  ansible.builtin.set_fact:
+    osac_aap_url: "https://{{ r_aap_route.resources[0].spec.host }}"
+
+# --- AAP Credentials ---
+
+- name: Wait for AAP admin secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    name: "{{ osacDefaults.aapName }}-admin-password"
+  register: r_aap_admin_secret
+  until: r_aap_admin_secret.resources | length > 0
+  retries: 30
+  delay: 10
+
+- name: Extract AAP admin password
+  ansible.builtin.set_fact:
+    _aap_admin_password: "{{ r_aap_admin_secret.resources[0].data.password | b64decode }}"
+
+# --- AAP Token ---
+
+- name: Create AAP personal access token
+  ansible.builtin.uri:
+    url: "{{ osac_aap_url }}/api/v2/tokens/"
+    method: POST
+    user: "{{ osacDefaults.aapApiUser }}"
+    password: "{{ _aap_admin_password }}"
+    force_basic_auth: true
+    validate_certs: "{{ osacDefaults.aapApiValidateCerts }}"
+    body_format: json
+    body:
+      description: "{{ osacDefaults.aapTokenDescription }}"
+    status_code: 201
+  register: r_aap_token
+  until: r_aap_token.status == 201
+  retries: 10
+  delay: 15
+
+- name: Set AAP token fact
+  ansible.builtin.set_fact:
+    osac_aap_token: "{{ r_aap_token.json.token }}"
+
+# --- License and Kubeconfig Secrets ---
+
+- name: Create AAP license secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osacDefaults.aapName }}-license"
+        namespace: "{{ osacDefaults.aapNamespace }}"
+      type: Opaque
+      data:
+        license.zip: "{{ lookup('ansible.builtin.file', aap_license_file) | b64encode }}"
+
+- name: Create kubeconfig secret for AAP
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osacDefaults.aapName }}-kubeconfig"
+        namespace: "{{ osacDefaults.aapNamespace }}"
+      type: Opaque
+      data:
+        kubeconfig: "{{ lookup('ansible.builtin.file', workingDir ~ '/ocp-cluster/auth/kubeconfig') | b64encode }}"
+
+# --- Config-as-Code Secrets for Bootstrap ---
+
+- name: Create config-as-code-ig secret for bootstrap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: config-as-code-ig
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      stringData:
+        controller_hostname: "{{ osac_aap_url }}"
+        controller_username: "{{ osacDefaults.aapApiUser }}"
+        controller_password: "{{ _aap_admin_password }}"
+        controller_validate_certs: "{{ osacDefaults.aapApiValidateCerts | string | lower }}"
+
+- name: Create config-as-code-manifest-ig secret for bootstrap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: config-as-code-manifest-ig
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      data:
+        manifest.zip: "{{ lookup('ansible.builtin.file', aap_license_file) | b64encode }}"
+
+- name: Log OSAC post-operators completion
+  ansible.builtin.debug:
+    msg: "OSAC post-operators complete. AAP URL={{ osac_aap_url }}, token set."

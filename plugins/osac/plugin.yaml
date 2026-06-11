@@ -1,0 +1,84 @@
+---
+name: osac
+type: addon
+order: 200
+
+operators:
+  - name: ansible-automation-platform-operator
+    version: "2.5.0"
+    channel: stable-2.5-cluster-scoped
+    init_version: "2.5.0"
+    namespace: ansible-aap
+    global: true
+  - name: openshift-cert-manager-operator
+    version: "1.15.0"
+    channel: stable-v1
+    init_version: "1.15.0"
+    namespace: cert-manager-operator
+
+helm:
+  - release: osac
+    namespace: osac
+    chart: charts/osac
+    valuesTemplate: templates/values.yaml.j2
+    createNamespace: true
+    timeout: "45m"
+    wait: false
+    extractImages: true
+
+additionalImages:
+  # OSAC core (ghcr.io)
+  - ghcr.io/osac-project/osac-operator:latest
+  - ghcr.io/osac-project/fulfillment-service:latest
+  - ghcr.io/osac-project/osac-aap:latest
+  # Fulfillment service sidecar
+  - docker.io/envoyproxy/envoy:v1.33.0
+  # AAP bootstrap CLI
+  - quay.io/openshift/origin-cli:4.20.0
+  # Keycloak (identity provider)
+  - quay.io/keycloak/keycloak:26.3
+  # PostgreSQL (database)
+  - quay.io/sclorg/postgresql-15-c9s:latest
+  # Prometheus (monitoring)
+  - quay.io/prometheus/prometheus:v3.8.1
+  # Validation hook (kubectl)
+  - docker.io/bitnami/kubectl:latest
+
+registries:
+  - location: "ghcr.io/osac-project"
+    mirror: "osac-project"
+  - location: "docker.io/envoyproxy"
+    mirror: "envoyproxy"
+  - location: "docker.io/bitnami"
+    mirror: "bitnami"
+  - location: "quay.io/keycloak"
+    mirror: "keycloak"
+  - location: "quay.io/sclorg"
+    mirror: "sclorg"
+  - location: "quay.io/prometheus"
+    mirror: "prometheus"
+
+defaults:
+  osacDefaults:
+    aapName: "osac-aap"
+    aapNamespace: "ansible-aap"
+    aapTokenDescription: "OSAC Operator Token"
+    aapTokenOverwrite: false
+    aapApiUser: "admin"
+    aapApiValidateCerts: false
+    osacNamespace: "osac"
+    images:
+      operator: "ghcr.io/osac-project/osac-operator"
+      operatorTag: "latest"
+      fulfillmentService: "ghcr.io/osac-project/fulfillment-service:latest"
+      envoy: "docker.io/envoyproxy/envoy:v1.33.0"
+      aapBootstrap: "ghcr.io/osac-project/osac-aap:latest"
+      cli: "quay.io/openshift/origin-cli:4.20.0"
+
+requires:
+  vars:
+    - name: aap_license_file
+      description: "Path to AAP license file (zip) on the Landing Zone"
+  files:
+    - path: "charts/osac/Chart.yaml"
+      description: "OSAC umbrella Helm chart must be bundled"
