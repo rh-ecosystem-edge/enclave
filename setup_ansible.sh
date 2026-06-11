@@ -13,7 +13,9 @@ curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o "$UV_INSTALLER"
 UV_UNMANAGED_INSTALL="$UV_PREFIX/bin" sh "$UV_INSTALLER"
 rm -f "$UV_INSTALLER"
 
-"$UV_PREFIX/bin/uv" tool install . --with-executables-from ansible-core
+"$UV_PREFIX/bin/uv" tool install . \
+    --with-executables-from ansible-core \
+    --reinstall-package enclave
 
 # Download Ansible Collections to check the checksum
 # Check if the 'collections' directory exists and has files in it
