@@ -1,5 +1,5 @@
 ---
 # Fixture: unknown top-level property
 # Expected failure: additionalProperties is false
-aap_name: aap
+aap_ns: ansible-aap
 unknownField: this-should-fail
