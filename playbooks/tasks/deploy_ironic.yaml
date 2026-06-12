@@ -31,7 +31,7 @@
     name: metal3-ironic-htpasswd
     data: "{{ metal3_ironic_htpasswd }}"
     state: present
-    force: false
+    force: true
   no_log: true
 
 - name: Check if SSL certificates are configured
