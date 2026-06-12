@@ -229,6 +229,9 @@ export MIRROR_IMAGES="false"
 # Libvirt firmware (UEFI)
 export LIBVIRT_FIRMWARE="uefi"
 
+# Skip dev-scripts release image lookup (enclave uses its own install flow)
+export OPENSHIFT_RELEASE_IMAGE="unused"
+
 # =============================================================================
 # Environment Info
 # =============================================================================
