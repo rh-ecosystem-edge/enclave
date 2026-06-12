@@ -636,7 +636,7 @@
         namespace: "{{ osacDefaults.osacNamespace }}"
       type: Opaque
       data:
-        manifest.zip: "{{ lookup('ansible.builtin.file', aap_license_file) | b64encode }}"
+        license.zip: "{{ lookup('ansible.builtin.file', aap_license_file) | b64encode }}"
 
 - name: Log OSAC post-operators completion
   ansible.builtin.debug:
