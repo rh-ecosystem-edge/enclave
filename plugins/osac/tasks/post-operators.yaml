@@ -22,8 +22,9 @@
 #  11. Set osac_aap_url and osac_aap_token facts for Helm values template
 #
 # Facts exported:
-#   osac_aap_url   — AAP controller route URL (used in templates/values.yaml.j2)
-#   osac_aap_token — AAP personal access token (used in templates/values.yaml.j2)
+#   osac_keycloak_url — Keycloak external route URL (used in templates/values.yaml.j2)
+#   osac_aap_url      — AAP controller route URL (used in templates/values.yaml.j2)
+#   osac_aap_token    — AAP personal access token (used in templates/values.yaml.j2)
 
 # --- Namespace and RBAC ---
 
@@ -81,6 +82,7 @@
   ansible.builtin.set_fact:
     _keycloak_route_host: "{{ osacDefaults.keycloakName }}.{{ r_ingress_config.resources[0].spec.domain }}"
     _keycloak_base_url: "https://{{ osacDefaults.keycloakName }}.{{ r_ingress_config.resources[0].spec.domain }}"
+    osac_keycloak_url: "https://{{ osacDefaults.keycloakName }}.{{ r_ingress_config.resources[0].spec.domain }}"
 
 # Ensure the Keycloak hostname resolves on the Landing Zone.
 # Libvirt dnsmasq only has entries for a fixed set of app hostnames,

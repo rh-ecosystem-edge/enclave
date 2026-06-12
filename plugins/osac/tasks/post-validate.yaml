@@ -55,20 +55,20 @@
     that: "'deployed' in r_osac_helm_status.stdout"
     fail_msg: "OSAC Helm release is not in 'deployed' state"
 
-- name: Check OSAC operator deployment
+- name: List OSAC deployments
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     namespace: "{{ osacDefaults.osacNamespace }}"
-    label_selectors:
-      - "app.kubernetes.io/name=osac-operator"
-  register: r_osac_operator
+  register: r_osac_deployments
 
 - name: Assert OSAC operator is deployed
   ansible.builtin.assert:
     that:
-      - r_osac_operator.resources | length > 0
-    fail_msg: "OSAC operator deployment not found in {{ osacDefaults.osacNamespace }}"
+      - r_osac_deployments.resources | map(attribute='metadata.name') | select('search', 'osac-operator') | list | length > 0
+    fail_msg: >-
+      No deployment containing 'osac-operator' found in {{ osacDefaults.osacNamespace }}.
+      Existing deployments: {{ r_osac_deployments.resources | map(attribute='metadata.name') | list }}
 
 - name: Log OSAC validation success
   ansible.builtin.debug:
