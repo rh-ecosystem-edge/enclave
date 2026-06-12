@@ -471,6 +471,89 @@
   ansible.builtin.set_fact:
     _aap_admin_password: "{{ r_aap_admin_secret.resources[0].data.password | b64decode }}"
 
+# Copy AAP admin password to OSAC namespace (bootstrap job reads it directly)
+- name: Copy AAP admin-password secret to OSAC namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osacDefaults.aapName }}-admin-password"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      data:
+        password: "{{ r_aap_admin_secret.resources[0].data.password }}"
+
+- name: Wait for AAP EDA admin secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    namespace: "{{ osacDefaults.aapNamespace }}"
+    name: "{{ osacDefaults.aapName }}-eda-admin-password"
+  register: r_aap_eda_admin_secret
+  until: r_aap_eda_admin_secret.resources | length > 0
+  retries: 30
+  delay: 10
+
+# Copy EDA admin password to OSAC namespace (bootstrap job reads it directly)
+- name: Copy AAP EDA admin-password secret to OSAC namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ osacDefaults.aapName }}-eda-admin-password"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      type: Opaque
+      data:
+        password: "{{ r_aap_eda_admin_secret.resources[0].data.password }}"
+
+# --- AAP ExternalName Services ---
+# The bootstrap job runs in the osac namespace and connects to AAP services
+# using short hostnames (aap, aap-eda-api, aap-controller-service).
+# Create ExternalName services so these resolve to the ansible-aap namespace.
+
+- name: Create ExternalName service for AAP gateway
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ osacDefaults.aapName }}"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        type: ExternalName
+        externalName: "{{ osacDefaults.aapName }}.{{ osacDefaults.aapNamespace }}.svc.cluster.local"
+
+- name: Create ExternalName service for AAP EDA API
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ osacDefaults.aapName }}-eda-api"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        type: ExternalName
+        externalName: "{{ osacDefaults.aapName }}-eda-api.{{ osacDefaults.aapNamespace }}.svc.cluster.local"
+
+- name: Create ExternalName service for AAP controller
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ osacDefaults.aapName }}-controller-service"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        type: ExternalName
+        externalName: "{{ osacDefaults.aapName }}-controller-service.{{ osacDefaults.aapNamespace }}.svc.cluster.local"
+
 # --- AAP Token ---
 # AAP 2.5 gateway does not support Basic auth or expose the OAuth2 token
 # endpoint (/api/o/token/) through the route. Create the token directly
