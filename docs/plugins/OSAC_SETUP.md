@@ -130,6 +130,8 @@ Available defaults:
 | `osacDefaults.aapNamespace` | `ansible-aap` | AAP namespace (must match the `aap` plugin) |
 | `osacDefaults.aapApiUser` | `admin` | AAP admin username |
 | `osacDefaults.aapApiValidateCerts` | `false` | Validate AAP TLS certificates |
+| `osacDefaults.aapProjectGitUri` | `https://github.com/osac-project/osac-aap` | Git repo for AAP config-as-code project |
+| `osacDefaults.aapProjectGitBranch` | `main` | Git branch for AAP config-as-code project |
 
 ## Step 4 — Deploy
 

@@ -528,6 +528,22 @@
         type: ExternalName
         externalName: "{{ osacDefaults.aapName }}.{{ osacDefaults.aapNamespace }}.svc.cluster.local"
 
+# The osac-aap bootstrap job constructs the controller hostname as
+# <helm-release>-<instance-name> (e.g. "osac-aap"). Create an alias
+# so this resolves to the AAP gateway in the ansible-aap namespace.
+- name: Create ExternalName service for AAP gateway (chart-prefixed name)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "osac-{{ osacDefaults.aapName }}"
+        namespace: "{{ osacDefaults.osacNamespace }}"
+      spec:
+        type: ExternalName
+        externalName: "{{ osacDefaults.aapName }}.{{ osacDefaults.aapNamespace }}.svc.cluster.local"
+
 - name: Create ExternalName service for AAP EDA API
   kubernetes.core.k8s:
     state: present
@@ -605,10 +621,9 @@
         namespace: "{{ osacDefaults.osacNamespace }}"
       type: Opaque
       stringData:
-        controller_hostname: "{{ osac_aap_url }}"
-        controller_username: "{{ osacDefaults.aapApiUser }}"
-        controller_password: "{{ _aap_admin_password }}"
-        controller_validate_certs: "{{ osacDefaults.aapApiValidateCerts | string | lower }}"
+        AAP_EE_IMAGE: "{{ osacDefaults.images.aapBootstrap }}"
+        AAP_PROJECT_GIT_URI: "{{ osacDefaults.aapProjectGitUri }}"
+        AAP_PROJECT_GIT_BRANCH: "{{ osacDefaults.aapProjectGitBranch }}"
 
 - name: Create config-as-code-manifest-ig secret for bootstrap
   kubernetes.core.k8s:

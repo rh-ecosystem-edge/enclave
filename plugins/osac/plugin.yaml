@@ -68,6 +68,8 @@ defaults:
     fulfillmentDbSize: "5Gi"
     fulfillmentDbUsername: "service"
     fulfillmentDbDatabase: "service"
+    aapProjectGitUri: "https://github.com/osac-project/osac-aap"
+    aapProjectGitBranch: "main"
     images:
       operator: "ghcr.io/osac-project/osac-operator"
       operatorTag: "latest"
