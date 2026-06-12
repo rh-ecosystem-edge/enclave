@@ -9,5 +9,6 @@ operators:
     channel: stable-2.5-cluster-scoped
     init_version: 2.5.0-0.1777407881
     namespace: ansible-aap
+    global: true
     csvNames:
       - aap-operator

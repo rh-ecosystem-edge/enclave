@@ -1,0 +1,163 @@
+---
+# Post-deployment validation for OSAC plugin.
+# Verifies all components are healthy after deployment.
+
+# 1. PostgreSQL running (when not BYO database)
+- name: Check PostgreSQL deployment is running
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ osac_db_name }}"
+    namespace: osac
+  register: __r_postgres
+  when: not osacBYODatabase | bool
+
+- name: Assert PostgreSQL is running
+  ansible.builtin.assert:
+    that:
+      - __r_postgres.resources | length > 0
+      - __r_postgres.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "PostgreSQL deployment is not running in osac namespace"
+  when: not osacBYODatabase | bool
+
+# 2. fulfillment-grpc-server deployment
+- name: Check fulfillment-grpc-server deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: fulfillment-grpc-server
+    namespace: osac
+  register: __r_grpc_server
+
+- name: Assert fulfillment-grpc-server is running
+  ansible.builtin.assert:
+    that:
+      - __r_grpc_server.resources | length > 0
+      - __r_grpc_server.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "fulfillment-grpc-server deployment is not running in osac namespace"
+
+# 3. fulfillment-rest-gateway deployment
+- name: Check fulfillment-rest-gateway deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: fulfillment-rest-gateway
+    namespace: osac
+  register: __r_rest_gateway
+
+- name: Assert fulfillment-rest-gateway is running
+  ansible.builtin.assert:
+    that:
+      - __r_rest_gateway.resources | length > 0
+      - __r_rest_gateway.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "fulfillment-rest-gateway deployment is not running in osac namespace"
+
+# 4. fulfillment-controller deployment
+- name: Check fulfillment-controller deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: fulfillment-controller
+    namespace: osac
+  register: __r_controller
+
+- name: Assert fulfillment-controller is running
+  ansible.builtin.assert:
+    that:
+      - __r_controller.resources | length > 0
+      - __r_controller.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "fulfillment-controller deployment is not running in osac namespace"
+
+# 5. fulfillment-ingress-proxy deployment
+- name: Check fulfillment-ingress-proxy deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: fulfillment-ingress-proxy
+    namespace: osac
+  register: __r_ingress_proxy
+
+- name: Assert fulfillment-ingress-proxy is running
+  ansible.builtin.assert:
+    that:
+      - __r_ingress_proxy.resources | length > 0
+      - __r_ingress_proxy.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "fulfillment-ingress-proxy deployment is not running in osac namespace"
+
+# 6. osac-operator deployment
+- name: Check osac-operator deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: osac-operator
+    namespace: osac
+  register: __r_osac_operator
+
+- name: Assert osac-operator is running
+  ansible.builtin.assert:
+    that:
+      - __r_osac_operator.resources | length > 0
+      - __r_osac_operator.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "osac-operator deployment is not running in osac namespace"
+
+# 7. AAP instance ready
+- name: Check AAP instance is ready
+  kubernetes.core.k8s_info:
+    api_version: aap.ansible.com/v1alpha1
+    kind: AnsibleAutomationPlatform
+    name: "{{ osac_aap_name }}"
+    namespace: osac
+  register: __r_aap_instance
+
+- name: Assert AAP instance is ready
+  ansible.builtin.assert:
+    that:
+      - __r_aap_instance.resources | length > 0
+      - __r_aap_instance.resources[0].status.conditions | default([])
+        | selectattr('type', 'equalto', 'Successful')
+        | selectattr('status', 'equalto', 'True')
+        | list | length > 0
+    fail_msg: "AAP instance {{ osac_aap_name }} is not ready in osac namespace"
+
+# 8. Authorino instance ready
+- name: Check Authorino instance in osac namespace
+  kubernetes.core.k8s_info:
+    api_version: operator.authorino.kuadrant.io/v1beta1
+    kind: Authorino
+    namespace: osac
+  register: __r_authorino
+
+- name: Assert Authorino instance is ready
+  ansible.builtin.assert:
+    that:
+      - __r_authorino.resources | length > 0
+      - __r_authorino.resources[0].status.conditions | default([])
+        | selectattr('type', 'equalto', 'Ready')
+        | selectattr('status', 'in', ['True', 'true'])
+        | list | length > 0
+    fail_msg: "Authorino instance not found or not ready in osac namespace"
+
+# 9. AAP bootstrap job completed
+- name: Check AAP bootstrap job completed
+  kubernetes.core.k8s_info:
+    api_version: batch/v1
+    kind: Job
+    namespace: osac
+    label_selectors:
+      - "app=osac-aap-bootstrap"
+  register: __r_bootstrap_job
+
+- name: Assert AAP bootstrap job completed
+  ansible.builtin.assert:
+    that:
+      - __r_bootstrap_job.resources | length > 0
+      - __r_bootstrap_job.resources[0].status.succeeded | default(0) | int >= 1
+      - __r_bootstrap_job.resources[0].status.failed | default(0) | int == 0
+    fail_msg: "AAP bootstrap job has not completed successfully in osac namespace"
+
+- name: Log OSAC validation success
+  ansible.builtin.debug:
+    msg: >-
+      OSAC post-validate passed: all fulfillment deployments running,
+      OSAC operator running, AAP instance ready, Authorino ready,
+      bootstrap job completed{{ ', PostgreSQL running' if not osacBYODatabase | bool else '' }}.

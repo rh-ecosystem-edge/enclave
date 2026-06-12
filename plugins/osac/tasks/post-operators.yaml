@@ -1,0 +1,773 @@
+---
+# Post-operators hook for OSAC plugin.
+# Runs after the AAP operator is installed (CRDs available),
+# before the OSAC Helm chart is deployed.
+#
+# Responsibilities:
+#   1.  Create osac namespace with ca-bundle label
+#   2.  Wait for ca-bundle ConfigMap sync (trust-manager)
+#   3.  Detect Keycloak hostname from cluster ingress config
+#   4.  Add Keycloak route to /etc/hosts (connected mode only)
+#   5.  Get Keycloak admin credentials
+#   6.  Obtain Keycloak admin access token via REST API
+#   7.  Create osac realm (idempotent)
+#   8.  Create osac-controller client (idempotent)
+#   9.  Fetch client UUID + secret, create fulfillment-controller-credentials
+#   10. Deploy PostgreSQL (when not BYO): certs, init secret, config, Deployment, Service, NetworkPolicy
+#   11. Create postgres-client-cert-service Certificate CR (when not BYO)
+#   12. Wait for certificate issuance
+#   13. Create fulfillment-db secret (when not BYO, or BYO with osacDatabaseUrl)
+#   14. Create config-as-code-ig secret
+#   15. Create config-as-code-manifest-ig secret (AAP license)
+
+# =====================================================================
+# 1. Create osac namespace with ca-bundle label
+# =====================================================================
+
+- name: Create osac namespace with ca-bundle label
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: osac
+        labels:
+          enclave/ca-bundle: "true"
+  register: __r_ns
+  retries: 5
+  delay: 5
+  until: __r_ns is success
+
+# =====================================================================
+# 2. Wait for ca-bundle ConfigMap sync
+# =====================================================================
+
+- name: Wait for ca-bundle ConfigMap in osac namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ca-bundle
+    namespace: osac
+  register: __r_ca_bundle
+  retries: 30
+  delay: 10
+  until: __r_ca_bundle.resources | length > 0
+
+# =====================================================================
+# 3. Detect Keycloak hostname from cluster ingress config
+# =====================================================================
+
+- name: Detect cluster ingress domain
+  kubernetes.core.k8s_info:
+    api_version: config.openshift.io/v1
+    kind: Ingress
+    name: cluster
+  register: __r_ingress_config
+
+- name: Set Keycloak hostname
+  ansible.builtin.set_fact:
+    _osac_keycloak_hostname: "{{ osac_keycloak_name }}.{{ __r_ingress_config.resources[0].spec.domain }}"
+
+# =====================================================================
+# 4. Add Keycloak route hostname to /etc/hosts (connected mode only)
+# =====================================================================
+# In connected/libvirt deployments, dnsmasq only resolves a fixed set
+# of app hostnames. Dynamically created routes won't resolve by default,
+# so we add them to /etc/hosts on the Landing Zone.
+
+- name: Add Keycloak route hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ingressVIP }} {{ _osac_keycloak_hostname }}"
+    regexp: "{{ _osac_keycloak_hostname | regex_escape() }}"
+    state: present
+  become: true
+  when: enclave_deployment_mode | default('') == 'connected'
+
+# =====================================================================
+# 5. Get Keycloak admin credentials
+# =====================================================================
+
+- name: Get Keycloak admin credentials secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ osac_keycloak_name }}-initial-admin"
+    namespace: "{{ osac_keycloak_ns }}"
+  register: __r_keycloak_admin_secret
+  retries: 10
+  delay: 10
+  until: __r_keycloak_admin_secret.resources | length > 0
+  no_log: true
+
+- name: Extract Keycloak admin credentials
+  ansible.builtin.set_fact:
+    _osac_kc_admin_user: "{{ __r_keycloak_admin_secret.resources[0].data.username | b64decode }}"
+    _osac_kc_admin_pass: "{{ __r_keycloak_admin_secret.resources[0].data.password | b64decode }}"
+  no_log: true
+
+# =====================================================================
+# 6. Obtain Keycloak admin access token
+# =====================================================================
+
+- name: Get Keycloak admin access token
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/realms/master/protocol/openid-connect/token"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      grant_type: password
+      client_id: admin-cli
+      username: "{{ _osac_kc_admin_user }}"
+      password: "{{ _osac_kc_admin_pass }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_kc_token
+  retries: 10
+  delay: 15
+  until: __r_kc_token.status == 200
+  no_log: true
+
+- name: Set Keycloak access token fact
+  ansible.builtin.set_fact:
+    _osac_kc_token: "{{ __r_kc_token.json.access_token }}"
+  no_log: true
+
+# =====================================================================
+# 7. Create osac realm (idempotent)
+# =====================================================================
+
+- name: Check if osac realm exists
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: [200, 404]
+  register: __r_realm_check
+  no_log: true
+
+- name: Create osac realm
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      realm: "{{ osac_keycloak_realm }}"
+      enabled: true
+      organizationsEnabled: true
+    validate_certs: false
+    status_code: [201]
+  when: __r_realm_check.status == 404
+  no_log: true
+
+# =====================================================================
+# 8. Create osac-controller client (idempotent)
+# =====================================================================
+
+- name: Check if osac-controller client exists
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_client_check
+  no_log: true
+
+- name: Create osac-controller client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: "{{ osac_keycloak_client_id }}"
+      enabled: true
+      publicClient: false
+      serviceAccountsEnabled: true
+      clientAuthenticatorType: client-secret
+      protocol: openid-connect
+    validate_certs: false
+    status_code: [201]
+  when: __r_client_check.json | length == 0
+  no_log: true
+
+# =====================================================================
+# 8a. Configure client protocol mapper and service account roles
+# =====================================================================
+
+- name: Fetch osac-controller client UUID for configuration
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_client_for_config
+  no_log: true
+
+- name: Set client UUID for configuration
+  ansible.builtin.set_fact:
+    _osac_client_uuid_config: "{{ __r_client_for_config.json[0].id }}"
+  no_log: true
+
+# The OPA policy in the AuthConfig references input.auth.identity.username,
+# but Keycloak JWTs use preferred_username. Add a protocol mapper that
+# copies the username user attribute into a "username" token claim.
+- name: Check if username protocol mapper exists
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_mappers
+  no_log: true
+
+- name: Add username protocol mapper to client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: username
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-attribute-mapper
+      config:
+        user.attribute: username
+        claim.name: username
+        jsonType.label: String
+        id.token.claim: "true"
+        access.token.claim: "true"
+        userinfo.token.claim: "true"
+        multivalued: "false"
+        aggregate.attrs: "false"
+    validate_certs: false
+    status_code: [201]
+  when: __r_mappers.json | selectattr('name', 'equalto', 'username') | list | length == 0
+  no_log: true
+
+# Assign realm-admin client role from the realm-management client to the
+# service account so the controller can manage Keycloak organizations.
+- name: Fetch service account user for osac-controller
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/service-account-user"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_sa_user
+  no_log: true
+
+- name: Fetch realm-management client UUID
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId=realm-management"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_realm_mgmt
+  no_log: true
+
+- name: Fetch realm-admin role from realm-management client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ __r_realm_mgmt.json[0].id }}/roles/realm-admin"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_realm_admin_role
+  no_log: true
+
+- name: Check current realm-management role mappings for service account
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_sa_user.json.id }}/role-mappings/clients/{{ __r_realm_mgmt.json[0].id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_sa_client_roles
+  no_log: true
+
+- name: Assign realm-admin role to service account
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_sa_user.json.id }}/role-mappings/clients/{{ __r_realm_mgmt.json[0].id }}"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      - "{{ __r_realm_admin_role.json }}"
+    validate_certs: false
+    status_code: [204]
+  when: __r_sa_client_roles.json | selectattr('name', 'equalto', 'realm-admin') | list | length == 0
+  no_log: true
+
+# =====================================================================
+# 9. Fetch client UUID + secret, create fulfillment-controller-credentials
+# =====================================================================
+
+- name: Fetch osac-controller client details
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_client_details
+  no_log: true
+
+- name: Set client UUID fact
+  ansible.builtin.set_fact:
+    _osac_client_uuid: "{{ __r_client_details.json[0].id }}"
+  no_log: true
+
+# Use the secret from the client representation if available.
+# For newly created clients Keycloak may not populate the secret field
+# until it is explicitly generated via POST.
+- name: Set client secret from client representation
+  ansible.builtin.set_fact:
+    _osac_client_secret: "{{ __r_client_details.json[0].secret }}"
+  when: __r_client_details.json[0].secret | default('') | length > 0
+  no_log: true
+
+- name: Fetch client secret if not in representation
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid }}/client-secret"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_fetched_secret
+  when: _osac_client_secret is not defined
+  no_log: true
+
+- name: Set client secret from fetched value
+  ansible.builtin.set_fact:
+    _osac_client_secret: "{{ __r_fetched_secret.json.value }}"
+  when:
+    - _osac_client_secret is not defined
+    - __r_fetched_secret.json.value | default('') | length > 0
+  no_log: true
+
+- name: Generate client secret as last resort
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid }}/client-secret"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_generated_secret
+  when: _osac_client_secret is not defined
+  no_log: true
+
+- name: Set client secret from generated value
+  ansible.builtin.set_fact:
+    _osac_client_secret: "{{ __r_generated_secret.json.value }}"
+  when: _osac_client_secret is not defined
+  no_log: true
+
+- name: Create fulfillment-controller-credentials secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: fulfillment-controller-credentials
+        namespace: osac
+      type: Opaque
+      stringData:
+        client-id: "{{ osac_keycloak_client_id }}"
+        client-secret: "{{ _osac_client_secret }}"
+  no_log: true
+
+# =====================================================================
+# 10. Deploy PostgreSQL (when not BYO database)
+# =====================================================================
+
+# --- Server certificate ---
+
+- name: Create postgres-server-cert Certificate
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: postgres-server-cert
+        namespace: osac
+      spec:
+        secretName: postgres-server-cert
+        issuerRef:
+          kind: ClusterIssuer
+          name: default-ca
+        commonName: "{{ osac_db_name }}"
+        dnsNames:
+          - "{{ osac_db_name }}"
+          - "{{ osac_db_name }}.osac"
+          - "{{ osac_db_name }}.osac.svc"
+          - "{{ osac_db_name }}.osac.svc.cluster.local"
+        usages:
+          - server auth
+        privateKey:
+          rotationPolicy: Always
+  when: not osacBYODatabase | bool
+
+# --- PostgreSQL server config ---
+
+- name: Create postgres-config ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: postgres-config
+        namespace: osac
+      data:
+        server.conf: |
+          listen_addresses = '*'
+          ssl = on
+          ssl_cert_file = '/etc/postgres-certs/tls.crt'
+          ssl_key_file = '/etc/postgres-certs/tls.key'
+          ssl_ca_file = '/etc/postgres-certs/ca.crt'
+          hba_file = '/etc/postgres-config/access.conf'
+        access.conf: |
+          # TYPE  DATABASE  USER        ADDRESS      METHOD
+          local   all       all                      trust
+          host    all       all         127.0.0.1/32 trust
+          host    all       all         ::1/128      trust
+          hostssl all       all         all          cert clientcert=verify-full
+  when: not osacBYODatabase | bool
+
+# --- PostgreSQL Service ---
+
+- name: Deploy PostgreSQL Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ osac_db_name }}"
+        namespace: osac
+      spec:
+        selector:
+          app: "{{ osac_db_name }}"
+        ports:
+          - name: postgres
+            port: 5432
+            targetPort: 5432
+  when: not osacBYODatabase | bool
+
+# --- PostgreSQL NetworkPolicy ---
+
+- name: Restrict PostgreSQL ingress to osac namespace pods
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-osac-to-db
+        namespace: osac
+      spec:
+        podSelector:
+          matchLabels:
+            app: "{{ osac_db_name }}"
+        ingress:
+          - from:
+              - podSelector: {}
+            ports:
+              - protocol: TCP
+                port: 5432
+        policyTypes:
+          - Ingress
+  when: not osacBYODatabase | bool
+
+# --- PostgreSQL PVC ---
+
+- name: Create PostgreSQL PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: "{{ osac_db_name }}-data"
+        namespace: osac
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "{{ osac_db_size }}"
+  when: not osacBYODatabase | bool
+
+# --- PostgreSQL Deployment ---
+
+- name: Deploy PostgreSQL Deployment
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: "{{ osac_db_name }}"
+        namespace: osac
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: "{{ osac_db_name }}"
+        template:
+          metadata:
+            labels:
+              app: "{{ osac_db_name }}"
+          spec:
+            automountServiceAccountToken: false
+            containers:
+              - name: postgresql
+                image: "{{ osac_db_image }}"
+                ports:
+                  - containerPort: 5432
+                args:
+                  - run-postgresql
+                  - -c
+                  - config_file=/etc/postgres-config/server.conf
+                env:
+                  - name: POSTGRESQL_USER
+                    value: "{{ osac_db_user }}"
+                  - name: POSTGRESQL_PASSWORD
+                    value: "{{ osac_db_user }}"
+                  - name: POSTGRESQL_DATABASE
+                    value: "{{ osac_db_database }}"
+                securityContext:
+                  runAsNonRoot: true
+                  readOnlyRootFilesystem: true
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                      - ALL
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                volumeMounts:
+                  - name: data
+                    mountPath: /var/lib/pgsql
+                  - name: tmp
+                    mountPath: /tmp
+                  - name: run-postgresql
+                    mountPath: /var/run/postgresql
+                  - name: server-certs
+                    mountPath: /etc/postgres-certs
+                    readOnly: true
+                  - name: config
+                    mountPath: /etc/postgres-config
+                    readOnly: true
+                readinessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                livenessProbe:
+                  exec:
+                    command:
+                      - /usr/libexec/check-container
+                      - --live
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+            volumes:
+              - name: data
+                persistentVolumeClaim:
+                  claimName: "{{ osac_db_name }}-data"
+              - name: tmp
+                emptyDir: {}
+              - name: run-postgresql
+                emptyDir: {}
+              - name: server-certs
+                secret:
+                  secretName: postgres-server-cert
+                  defaultMode: 288
+              - name: config
+                configMap:
+                  name: postgres-config
+  when: not osacBYODatabase | bool
+
+# --- Wait for PostgreSQL ready ---
+
+- name: Wait for PostgreSQL ready
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: "{{ osac_db_name }}"
+    namespace: osac
+  register: __r_db_ready
+  retries: 30
+  delay: 10
+  until:
+    - __r_db_ready.resources | length > 0
+    - __r_db_ready.resources[0].status.availableReplicas | default(0) | int > 0
+  when: not osacBYODatabase | bool
+
+# =====================================================================
+# 11. Create postgres-client-cert-service Certificate CR (when not BYO)
+# =====================================================================
+
+- name: Create postgres-client-cert-service Certificate
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: postgres-client-cert-service
+        namespace: osac
+      spec:
+        secretName: postgres-client-cert-service
+        issuerRef:
+          kind: ClusterIssuer
+          name: default-ca
+        commonName: "{{ osac_db_user }}"
+        usages:
+          - client auth
+        privateKey:
+          rotationPolicy: Always
+  when: not osacBYODatabase | bool
+
+# =====================================================================
+# 12. Wait for certificate issuance
+# =====================================================================
+
+- name: Wait for postgres-client-cert-service certificate ready
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: Certificate
+    name: postgres-client-cert-service
+    namespace: osac
+  register: __r_client_cert
+  retries: 30
+  delay: 5
+  until:
+    - __r_client_cert.resources | length > 0
+    - __r_client_cert.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+  when: not osacBYODatabase | bool
+
+# =====================================================================
+# 13. Create fulfillment-db secret
+# =====================================================================
+
+- name: Build fulfillment database connection URL
+  ansible.builtin.set_fact:
+    _osac_db_url: >-
+      postgres://{{ osac_db_user }}@{{ osac_db_name }}:5432/{{ osac_db_database
+      }}?sslmode=verify-full&sslrootcert=/etc/fulfillment-grpc-server/db/sslrootcert&sslcert=/etc/fulfillment-grpc-server/db/sslcert&sslkey=/etc/fulfillment-grpc-server/db/sslkey
+  when: not osacBYODatabase | bool
+
+- name: Create fulfillment-db secret (built-in PostgreSQL with mTLS)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: fulfillment-db
+        namespace: osac
+      type: Opaque
+      stringData:
+        url: "{{ _osac_db_url }}"
+  when: not osacBYODatabase | bool
+  no_log: true
+
+- name: Create fulfillment-db secret (BYO database with provided URL)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: fulfillment-db
+        namespace: osac
+      type: Opaque
+      stringData:
+        url: "{{ osacDatabaseUrl }}"
+  when:
+    - osacBYODatabase | bool
+    - osacDatabaseUrl is defined
+    - osacDatabaseUrl | length > 0
+  no_log: true
+
+# =====================================================================
+# 14. Create config-as-code-ig secret
+# =====================================================================
+
+- name: Create config-as-code-ig secret for bootstrap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: config-as-code-ig
+        namespace: osac
+      type: Opaque
+      stringData:
+        AAP_EE_IMAGE: "{{ osac_images.aap_bootstrap }}"
+        AAP_PROJECT_GIT_URI: "{{ osac_aap_project_git_uri }}"
+        AAP_PROJECT_GIT_BRANCH: "{{ osac_aap_project_git_branch }}"
+
+# =====================================================================
+# 15. Create config-as-code-manifest-ig secret (AAP license)
+# =====================================================================
+
+- name: Create config-as-code-manifest-ig secret
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: config-as-code-manifest-ig
+        namespace: osac
+      type: Opaque
+      data:
+        license.zip: "{{ lookup('ansible.builtin.file', osacAapLicenseFile) | b64encode }}"
+  no_log: true
+
+- name: Log OSAC post-operators completion
+  ansible.builtin.debug:
+    msg: >-
+      OSAC post-operators complete. Namespace osac created, Keycloak
+      realm/client configured, PostgreSQL {{ 'skipped (BYO)' if osacBYODatabase | bool else 'deployed' }},
+      secrets created.

@@ -1,0 +1,49 @@
+---
+name: osac
+type: addon
+order: 200
+
+# The AAP operator is installed by the 'aap' plugin (order 103).
+# This plugin only deploys the OSAC Helm chart, which creates its own
+# AAP instance in the osac namespace (aap.aap.instance.enabled: true).
+installOperators: false
+
+helm:
+  - release: osac
+    namespace: osac
+    chart: "oci://ghcr.io/osac-project/charts/osac"
+    version: "0.0.1"
+    valuesTemplate: templates/values.yaml.j2
+    createNamespace: true
+    timeout: "45m"
+    wait: false    # AAP takes 30+ minutes; deploy.yaml handles post-install waits
+
+additionalImages:
+  - ghcr.io/osac-project/osac-operator:latest
+  - ghcr.io/osac-project/fulfillment-service:latest
+  - ghcr.io/osac-project/osac-aap:latest
+  - docker.io/envoyproxy/envoy:v1.33.0
+  - quay.io/openshift/origin-cli:4.20.0
+  - quay.io/keycloak/keycloak:26.3
+  - quay.io/sclorg/postgresql-15-c9s:latest
+  - quay.io/prometheus/prometheus:v3.8.1
+  - docker.io/bitnami/kubectl:latest
+
+registries:
+  - location: "ghcr.io/osac-project"
+    mirror: "osac-project"
+  - location: "docker.io/envoyproxy"
+    mirror: "envoyproxy"
+  - location: "docker.io/bitnami"
+    mirror: "bitnami"
+  - location: "quay.io/keycloak"
+    mirror: "keycloak"
+  - location: "quay.io/sclorg"
+    mirror: "sclorg"
+  - location: "quay.io/prometheus"
+    mirror: "prometheus"
+
+requires:
+  files:
+    - path: "../../config/plugins/osac.yaml"
+      description: "OSAC plugin configuration (profile, AAP license path, BYO DB settings)"

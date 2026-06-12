@@ -1,0 +1,115 @@
+---
+# Pre-deployment validation for OSAC plugin.
+# Verifies cluster prerequisites before mirroring/operators run.
+
+# 1. cert-manager ClusterIssuer default-ca exists
+- name: Check ClusterIssuer default-ca exists
+  kubernetes.core.k8s_info:
+    api_version: cert-manager.io/v1
+    kind: ClusterIssuer
+    name: default-ca
+  register: __r_ca_issuer
+  failed_when: false
+
+- name: Assert ClusterIssuer default-ca is ready
+  ansible.builtin.fail:
+    msg: >-
+      ClusterIssuer default-ca not found or not ready.
+      Deploy the trust-manager plugin (order 100) before OSAC.
+  when: >
+    __r_ca_issuer.failed | default(false) or
+    __r_ca_issuer.resources | default([]) | length == 0 or
+    (__r_ca_issuer.resources[0].status.conditions | default([])
+    | selectattr('type', 'equalto', 'Ready')
+    | selectattr('status', 'equalto', 'True')
+    | list | length == 0)
+
+# 2. Keycloak CR is ready
+- name: Check Keycloak CR is ready
+  kubernetes.core.k8s_info:
+    api_version: k8s.keycloak.org/v2beta1
+    kind: Keycloak
+    name: "{{ osac_keycloak_name }}"
+    namespace: "{{ osac_keycloak_ns }}"
+  register: __r_keycloak
+  retries: 5
+  delay: 10
+  until:
+    - __r_keycloak.resources | default([]) | length > 0
+    - __r_keycloak.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Ready')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+
+# 3. AnsibleAutomationPlatform CRD is registered
+- name: Check AnsibleAutomationPlatform CRD exists
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: ansibleautomationplatforms.aap.ansible.com
+  register: __r_aap_crd
+
+- name: Assert AnsibleAutomationPlatform CRD is registered
+  ansible.builtin.fail:
+    msg: >-
+      AnsibleAutomationPlatform CRD not found. Deploy the aap plugin
+      (order 103) before OSAC: make deploy-plugin PLUGIN=aap
+  when: __r_aap_crd.resources | default([]) | length == 0
+
+# 4. AAP license file exists
+- name: Check AAP license file exists
+  ansible.builtin.stat:
+    path: "{{ osacAapLicenseFile }}"
+  register: __r_aap_license
+
+- name: Assert AAP license file is present
+  ansible.builtin.assert:
+    that:
+      - __r_aap_license.stat.exists
+      - __r_aap_license.stat.isreg
+      - __r_aap_license.stat.readable
+    fail_msg: >-
+      AAP license file not found or not a readable regular file at
+      '{{ osacAapLicenseFile }}'. Set osacAapLicenseFile in
+      config/plugins/osac.yaml to the path of the AAP license
+      manifest.zip on the Landing Zone.
+
+# 5. BYO database: verify fulfillment-db secret exists
+- name: Check fulfillment-db secret exists (BYO database)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: fulfillment-db
+    namespace: osac
+  register: __r_byo_db_secret
+  when: osacBYODatabase | bool
+
+- name: Assert fulfillment-db secret exists (BYO database)
+  ansible.builtin.assert:
+    that: __r_byo_db_secret.resources | length > 0
+    fail_msg: >-
+      BYO database is enabled (osacBYODatabase=true) but the fulfillment-db
+      secret was not found in the osac namespace. Either set osacDatabaseUrl
+      in config/plugins/osac.yaml or pre-create the secret manually.
+  when:
+    - osacBYODatabase | bool
+    - osacDatabaseUrl is not defined or osacDatabaseUrl | length == 0
+
+# 6. VMaaS/development profile: HyperConverged CRD exists (CNV installed)
+- name: Check HyperConverged CRD exists (VMaaS prerequisite)
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: hyperconvergeds.hco.kubevirt.io
+  register: __r_hco_crd
+  when: osacProfile in ['vmaas', 'development']
+
+- name: Assert HyperConverged CRD exists (VMaaS prerequisite)
+  ansible.builtin.fail:
+    msg: >-
+      HyperConverged CRD not found. The {{ osacProfile }} profile requires
+      OpenShift Virtualization (CNV). Deploy the cnv plugin (order 104)
+      before OSAC: make deploy-plugin PLUGIN=cnv
+  when:
+    - osacProfile in ['vmaas', 'development']
+    - __r_hco_crd.resources | default([]) | length == 0

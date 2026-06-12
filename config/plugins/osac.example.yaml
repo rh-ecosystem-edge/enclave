@@ -1,0 +1,17 @@
+---
+##############################################################################
+# OSAC PLUGIN CONFIGURATION TEMPLATE
+# Instructions: Copy this file to 'config/plugins/osac.yaml' and set values.
+# Required when the osac plugin is enabled.
+##############################################################################
+
+# Required: path to AAP license manifest.zip file on the Landing Zone.
+# Obtain from: https://access.redhat.com/management/subscription_allocations
+# osacAapLicenseFile: "/path/to/aap-license.zip"
+
+# Optional: deployment profile (default: development)
+# osacProfile: development   # Options: development, vmaas, caas
+
+# Optional: bring your own database
+# osacBYODatabase: true
+# osacDatabaseUrl: "postgres://user@host:5432/dbname?sslmode=require"

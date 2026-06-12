@@ -1,0 +1,175 @@
+---
+# Post-Helm deployment tasks for OSAC plugin.
+# Runs after the OSAC Helm chart is installed.
+#
+# Responsibilities:
+#   1. Check Helm release status (fail early if chart install failed)
+#   2. Wait for AAP gateway deployment to be available
+#   3. Add AAP route hostname to /etc/hosts (connected mode)
+#   4. Create AAP personal access token via awx-manage
+#   5. Patch OSAC operator deployment with OSAC_AAP_URL env var
+#   6. Wait for OSAC operator rollout
+
+# =====================================================================
+# 1. Check Helm release status
+# =====================================================================
+
+- name: Check OSAC Helm release status
+  ansible.builtin.command:
+    cmd: "{{ workingDir }}/bin/helm status osac --namespace osac"
+  register: __r_helm_status
+  retries: 10
+  delay: 60
+  until: __r_helm_status.rc == 0
+  changed_when: false
+
+- name: Assert OSAC Helm release is deployed
+  ansible.builtin.assert:
+    that: "'deployed' in __r_helm_status.stdout"
+    fail_msg: >-
+      OSAC Helm release is not in 'deployed' state.
+      Check the Helm install log and post-operators secrets.
+
+# =====================================================================
+# 2. Wait for AAP gateway deployment
+# =====================================================================
+
+- name: Wait for AAP gateway deployment available
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: osac
+    label_selectors:
+      - "app.kubernetes.io/managed-by=automationgateway"
+  register: __r_aap_gateway
+  retries: 90
+  delay: 30
+  until:
+    - __r_aap_gateway.resources | length > 0
+    - __r_aap_gateway.resources[0].status.availableReplicas | default(0) | int > 0
+
+# =====================================================================
+# 3. Add AAP route hostname to /etc/hosts (connected mode)
+# =====================================================================
+
+- name: Get AAP route
+  kubernetes.core.k8s_info:
+    api_version: route.openshift.io/v1
+    kind: Route
+    namespace: osac
+    label_selectors:
+      - "app.kubernetes.io/managed-by=automationgateway"
+  register: __r_aap_route
+
+- name: Assert exactly one AAP route found
+  ansible.builtin.assert:
+    that: __r_aap_route.resources | length == 1
+    fail_msg: >-
+      Expected exactly one AAP gateway route in osac namespace
+      (managed-by=automationgateway), found {{ __r_aap_route.resources | length }}.
+
+- name: Set AAP URL fact
+  ansible.builtin.set_fact:
+    _osac_aap_url: "https://{{ __r_aap_route.resources[0].spec.host }}"
+    _osac_aap_route_host: "{{ __r_aap_route.resources[0].spec.host }}"
+
+# In connected/libvirt deployments, dnsmasq only resolves a fixed set
+# of app hostnames. Dynamically created routes won't resolve by default.
+- name: Add AAP route hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    line: "{{ ingressVIP }} {{ _osac_aap_route_host }}"
+    regexp: "{{ _osac_aap_route_host | regex_escape() }}"
+    state: present
+  become: true
+  when: enclave_deployment_mode | default('') == 'connected'
+
+# =====================================================================
+# 4. Create AAP personal access token via awx-manage
+# =====================================================================
+# AAP 2.5 gateway does not support Basic auth or expose the OAuth2 token
+# endpoint (/api/o/token/) through the route. Create the token directly
+# via awx-manage inside the controller pod, bypassing the gateway.
+
+- name: Create AAP personal access token via awx-manage
+  ansible.builtin.command:
+    cmd: >-
+      oc exec -n osac
+      deployment/{{ osac_aap_name }}-controller-web
+      -- awx-manage create_oauth2_token
+      --user {{ osac_aap_api_user }}
+  register: __r_aap_token_exec
+  retries: 10
+  delay: 15
+  until: __r_aap_token_exec.rc == 0
+  changed_when: __r_aap_token_exec.rc == 0
+  no_log: true
+
+- name: Set AAP token fact
+  ansible.builtin.set_fact:
+    _osac_aap_token: "{{ __r_aap_token_exec.stdout_lines | last | trim }}"
+  no_log: true
+
+# =====================================================================
+# 5. Store AAP credentials and patch OSAC operator deployment
+# =====================================================================
+
+- name: Create osac-aap-secret with token
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: osac-aap-secret
+        namespace: osac
+      type: Opaque
+      stringData:
+        token: "{{ _osac_aap_token }}"
+  no_log: true
+
+- name: Patch OSAC operator deployment with AAP URL
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: osac-operator
+        namespace: osac
+      spec:
+        template:
+          spec:
+            containers:
+              - name: osac-operator
+                env:
+                  - name: OSAC_AAP_URL
+                    value: "{{ _osac_aap_url }}"
+                  - name: OSAC_AAP_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: osac-aap-secret
+                        key: token
+
+# =====================================================================
+# 6. Wait for OSAC operator rollout
+# =====================================================================
+
+- name: Wait for OSAC operator rollout
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: osac-operator
+    namespace: osac
+  register: __r_operator_rollout
+  retries: 30
+  delay: 10
+  until:
+    - __r_operator_rollout.resources | length > 0
+    - __r_operator_rollout.resources[0].status.availableReplicas | default(0) | int > 0
+    - __r_operator_rollout.resources[0].status.updatedReplicas | default(0) | int ==
+      __r_operator_rollout.resources[0].spec.replicas | default(1) | int
+
+- name: Log OSAC deploy completion
+  ansible.builtin.debug:
+    msg: "OSAC deploy complete. AAP URL={{ _osac_aap_url }}, operator patched and rolled out."
