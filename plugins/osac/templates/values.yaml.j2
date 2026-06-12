@@ -30,7 +30,7 @@ service:
     caBundle:
       configMap: ca-bundle
   auth:
-    issuerUrl: "https://keycloak.keycloak.svc.cluster.local/realms/osac"
+    issuerUrl: "https://{{ osacDefaults.keycloakName }}-service.{{ osacDefaults.keycloakNamespace }}.svc.cluster.local/realms/{{ osacDefaults.keycloakRealmName }}"
     controllerCredentials:
       - secret:
           name: fulfillment-controller-credentials
@@ -41,7 +41,7 @@ service:
               param: client-secret
   idp:
     provider: keycloak
-    url: "https://keycloak.keycloak.svc.cluster.local"
+    url: "https://{{ osacDefaults.keycloakName }}-service.{{ osacDefaults.keycloakNamespace }}.svc.cluster.local"
     credentials:
       - secret:
           name: fulfillment-controller-credentials
