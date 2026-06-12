@@ -66,10 +66,3 @@
   ansible.builtin.file:
     path: "{{ workingDir }}/bin/oc-mirror"
     mode: "0755"
-
-- name: Download clairctl
-  ansible.builtin.get_url:
-    url: "{{ control_binaries.clairctl.url }}"
-    dest: "{{ workingDir }}/bin/clairctl"
-    checksum: "{{ control_binaries.clairctl.checksum }}"
-    mode: "0750"

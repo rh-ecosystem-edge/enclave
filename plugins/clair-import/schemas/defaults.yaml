@@ -1,0 +1,15 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  clairImportClairctlUrl:
+    "$ref": "#/definitions/httpUrl"
+    description: URL to download the clairctl binary.
+  clairImportClairctlChecksum:
+    type: string
+    pattern: "^sha256:[0-9a-f]{64}$"
+    description: SHA256 checksum for the clairctl binary.
+required:
+  - clairImportClairctlUrl
+  - clairImportClairctlChecksum
