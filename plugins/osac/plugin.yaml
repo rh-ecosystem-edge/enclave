@@ -62,6 +62,7 @@ defaults:
     keycloakNamespace: "keycloak"
     keycloakName: "keycloak"
     keycloakRealmName: "osac"
+    keycloakServicePort: 8443
     keycloakClientId: "osac-controller"
     fulfillmentDbName: "fulfillment-database"
     fulfillmentDbImage: "quay.io/sclorg/postgresql-15-c9s:latest"
