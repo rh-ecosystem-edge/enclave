@@ -18,20 +18,19 @@
       - r_aap_deployments.resources | map(attribute='status.readyReplicas') | select('defined') | list | length > 0
     fail_msg: "AAP controller deployment not found or not ready in {{ osacDefaults.aapNamespace }}"
 
-- name: Check AAP EDA controller deployments
+- name: Check AAP EDA API deployment
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     namespace: "{{ osacDefaults.aapNamespace }}"
-    label_selectors:
-      - "app.kubernetes.io/component=eda"
+    name: "{{ osacDefaults.aapName }}-eda-api"
   register: r_eda_deployments
 
-- name: Assert AAP EDA controller is running
+- name: Assert AAP EDA is running
   ansible.builtin.assert:
     that:
       - r_eda_deployments.resources | length > 0
-    fail_msg: "AAP EDA controller deployment not found in {{ osacDefaults.aapNamespace }}"
+    fail_msg: "AAP EDA API deployment '{{ osacDefaults.aapName }}-eda-api' not found in {{ osacDefaults.aapNamespace }}"
 
 - name: Check OSAC namespace exists
   kubernetes.core.k8s_info:
@@ -73,4 +72,4 @@
 
 - name: Log OSAC validation success
   ansible.builtin.debug:
-    msg: "OSAC post-validate passed: AAP controller running, EDA running, OSAC namespace exists, Helm release deployed, OSAC operator deployed"
+    msg: "OSAC post-validate passed: AAP controller running, EDA API running, OSAC namespace exists, Helm release deployed, OSAC operator deployed"

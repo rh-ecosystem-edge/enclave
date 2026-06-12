@@ -82,6 +82,7 @@
           name: "{{ rhbk_cluster_issuer }}"
         dnsNames:
           - "{{ rhbk_hostname }}"
+          - "{{ rhbk_name }}-service.{{ rhbk_ns }}.svc.cluster.local"
         privateKey:
           rotationPolicy: Always
   register: __r_rhbk_cert
