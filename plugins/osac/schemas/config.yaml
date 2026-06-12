@@ -1,0 +1,21 @@
+---
+type: object
+properties:
+  osacAapLicenseFile:
+    type: string
+    description: "Path to AAP license manifest.zip file on the Landing Zone"
+  osacProfile:
+    type: string
+    enum: [development, vmaas, caas]
+    description: "Deployment profile: development (all controllers), vmaas (VM only), caas (cluster only)"
+  osacBYODatabase:
+    type: boolean
+    description: "Set to true to use an external database instead of the built-in dev postgres"
+  osacDatabaseUrl:
+    type: string
+    description: >-
+      Connection URL for external database. When provided with osacBYODatabase=true,
+      post-operators.yaml creates the fulfillment-db secret from this value.
+      If omitted, the user must pre-create the fulfillment-db secret manually.
+required:
+  - osacAapLicenseFile

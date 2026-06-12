@@ -1,0 +1,42 @@
+---
+# OSAC plugin defaults
+# Note: config/plugins/osac.yaml uses camelCase (osacProfile, osacBYODatabase)
+# which is loaded into Ansible scope as-is. The defaults below use the same
+# camelCase convention to match. Ansible variables from defaults.yaml and
+# config/plugins/osac.yaml are merged into the same scope.
+osacProfile: development    # development | vmaas | caas
+
+# AAP settings (chart manages the instance, these configure it)
+osac_aap_name: osac-aap
+osac_aap_operator_ns: ansible-aap
+osac_aap_api_user: admin      # Used as --user arg to awx-manage create_oauth2_token
+osac_aap_validate_certs: false
+
+# Keycloak integration
+osac_keycloak_ns: keycloak
+osac_keycloak_name: keycloak                  # Keycloak CR name (used for route hostname, admin API)
+osac_keycloak_svc_name: keycloak-service      # RHBK operator creates <cr-name>-service
+osac_keycloak_realm: osac
+osac_keycloak_client_id: osac-controller
+osac_keycloak_service_port: 8443
+
+# Fulfillment database (built-in dev postgres)
+osacBYODatabase: false
+osac_db_name: postgres
+osac_db_image: "quay.io/sclorg/postgresql-15-c9s:latest"
+osac_db_size: 5Gi
+osac_db_user: service
+osac_db_database: service
+
+# AAP bootstrap
+osac_aap_project_git_uri: "https://github.com/osac-project/osac-aap"
+osac_aap_project_git_branch: main
+
+# Container images
+osac_images:
+  operator: "ghcr.io/osac-project/osac-operator"
+  operator_tag: "latest"
+  fulfillment_service: "ghcr.io/osac-project/fulfillment-service:latest"
+  envoy: "docker.io/envoyproxy/envoy:v1.33.0"
+  aap_bootstrap: "ghcr.io/osac-project/osac-aap:latest"
+  cli: "quay.io/openshift/origin-cli:4.20.0"
