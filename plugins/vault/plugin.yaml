@@ -1,0 +1,16 @@
+---
+name: vault
+type: addon
+order: 100
+
+catalog: certified
+operators:
+  - name: vault-secrets-operator
+    version: 1.4.0
+    init_version: 1.4.0
+    channel: stable
+    namespace: vault
+
+registries:
+  - location: "registry.connect.redhat.com/hashicorp"
+    mirror: "hashicorp"

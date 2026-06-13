@@ -1,0 +1,247 @@
+---
+- name: "Create vault namespace"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: vault
+        labels:
+          app: vault
+  register: r_vault_namespace
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_namespace is success
+
+- name: "Create Vault server StatefulSet"
+  when: vaultDefaults.server.enabled | default(true)
+  vars:
+    _spec: |
+      replicas: {{ vaultDefaults.server.ha.replicas | default(3) }}
+      serviceName: vault-internal
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: vault
+            app.kubernetes.io/instance: vault
+        spec:
+          serviceAccountName: vault
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 100
+            fsGroup: 1000
+          containers:
+          - name: vault
+            image: {{ vaultDefaults.server.image | default('registry.connect.redhat.com/hashicorp/vault:latest') }}
+            imagePullPolicy: IfNotPresent
+            command:
+            - "/bin/sh"
+            - "-ec"
+            args:
+            - |
+              vault server -config=/vault/config/vault.hcl
+            env:
+            - name: VAULT_ADDR
+              value: "http://127.0.0.1:8200"
+            - name: SKIP_CHOWN
+              value: "true"
+            - name: SKIP_SETCAP
+              value: "true"
+            ports:
+            - containerPort: 8200
+              name: http
+            - containerPort: 8201
+              name: https-internal
+            - containerPort: 8202
+              name: http-rep
+            volumeMounts:
+            - name: data
+              mountPath: /vault/data
+            - name: config
+              mountPath: /vault/config
+            readinessProbe:
+              httpGet:
+                path: /v1/sys/health?standbyok=true
+                port: 8200
+                scheme: HTTP
+              initialDelaySeconds: 5
+              periodSeconds: 5
+            livenessProbe:
+              httpGet:
+                path: /v1/sys/health?standbyok=true
+                port: 8200
+                scheme: HTTP
+              initialDelaySeconds: 60
+              periodSeconds: 5
+          volumes:
+          - name: config
+            configMap:
+              name: vault-config
+      volumeClaimTemplates:
+      - metadata:
+          name: data
+        spec:
+          accessModes:
+          - ReadWriteOnce
+          {% if vaultDefaults.server.dataStorage.storageClass %}
+          storageClassName: {{ vaultDefaults.server.dataStorage.storageClass }}
+          {% endif %}
+          resources:
+            requests:
+              storage: {{ vaultDefaults.server.dataStorage.size | default('10Gi') }}
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: vault
+        namespace: vault
+        labels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+      spec: "{{ _spec | from_yaml }}"
+  register: r_vault_statefulset
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_statefulset is success
+
+- name: "Create Vault ConfigMap"
+  when: vaultDefaults.server.enabled | default(true)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: vault-config
+        namespace: vault
+      data:
+        vault.hcl: |
+          ui = true
+
+          listener "tcp" {
+            tls_disable = 1
+            address = "[::]:8200"
+            cluster_address = "[::]:8201"
+          }
+
+          storage "raft" {
+            path = "/vault/data"
+          }
+
+          service_registration "kubernetes" {}
+
+          {% if vaultDefaults.server.ha.enabled | default(true) %}
+          api_addr = "http://$(POD_IP):8200"
+          cluster_addr = "https://$(POD_IP):8201"
+          {% endif %}
+  register: r_vault_configmap
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_configmap is success
+
+- name: "Create Vault Service Account"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: vault
+        namespace: vault
+        labels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+  register: r_vault_sa
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_sa is success
+
+- name: "Create Vault ClusterRoleBinding"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: vault-server-binding
+        labels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+      roleRef:
+        apiGroup: rbac.authorization.k8s.io
+        kind: ClusterRole
+        name: system:auth-delegator
+      subjects:
+      - kind: ServiceAccount
+        name: vault
+        namespace: vault
+  register: r_vault_crb
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_crb is success
+
+- name: "Create Vault Service (internal)"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: vault-internal
+        namespace: vault
+        labels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+      spec:
+        clusterIP: None
+        publishNotReadyAddresses: true
+        ports:
+        - name: http
+          port: 8200
+          targetPort: 8200
+        - name: https-internal
+          port: 8201
+          targetPort: 8201
+        selector:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+  register: r_vault_svc_internal
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_svc_internal is success
+
+- name: "Create Vault Service (external)"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: vault
+        namespace: vault
+        labels:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+      spec:
+        type: ClusterIP
+        ports:
+        - name: http
+          port: 8200
+          targetPort: 8200
+        - name: https-internal
+          port: 8201
+          targetPort: 8201
+        selector:
+          app.kubernetes.io/name: vault
+          app.kubernetes.io/instance: vault
+  register: r_vault_svc
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vault_svc is success
