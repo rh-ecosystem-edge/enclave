@@ -1,0 +1,102 @@
+# Rendered by Enclave from Ansible variables.
+# Chart-managed AAP architecture: the OSAC Helm chart deploys its own
+# AAP instance. deploy.yaml handles post-install AAP token creation
+# and operator patching.
+
+operator:
+  image:
+    pullPolicy: Always
+    repository: "{{ osac_images.operator }}"
+    tag: "{{ osac_images.operator_tag }}"
+  aap:
+    insecureSkipVerify: "true"
+    statusPollInterval: 30s
+    templatePrefix: osac
+    url: ""               # Set post-install by deploy.yaml
+  controllers:
+{% if osacProfile in ['development', 'caas'] %}
+    clusterOrder: true
+{% else %}
+    clusterOrder: false
+{% endif %}
+{% if osacProfile in ['development', 'vmaas'] %}
+    computeInstance: true
+{% else %}
+    computeInstance: false
+{% endif %}
+    networking: true
+    tenant: true
+  fulfillment:
+    serverAddress: fulfillment-api:8000
+    tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+  provisioning:
+    provider: aap
+
+service:
+  variant: openshift
+  images:
+    service: "{{ osac_images.fulfillment_service }}"
+    envoy: "{{ osac_images.envoy }}"
+  certs:
+    caBundle:
+      configMap: ca-bundle
+    issuerRef:
+      kind: ClusterIssuer
+      name: default-ca
+  auth:
+    issuerUrl: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
+    controllerCredentials:
+      - secret:
+          name: fulfillment-controller-credentials
+          items:
+            - key: client-id
+              param: client-id
+            - key: client-secret
+              param: client-secret
+  idp:
+    provider: keycloak
+    url: "https://{{ _osac_keycloak_hostname }}"
+    credentials:
+      - secret:
+          name: fulfillment-controller-credentials
+          items:
+            - key: client-id
+              param: client-id
+            - key: client-secret
+              param: client-secret
+  database:
+    connection:
+      - secret:
+          name: fulfillment-db
+          items:
+            - key: url
+              param: url
+{% if not osacBYODatabase %}
+      - secret:
+          name: postgres-client-cert-service
+          items:
+            - key: tls.crt
+              param: sslcert
+            - key: tls.key
+              param: sslkey
+            - key: ca.crt
+              param: sslrootcert
+{% endif %}
+
+# Chart manages the AAP instance
+aap:
+  aap:
+    instance:
+      enabled: true
+      name: "{{ osac_aap_name }}"
+  bootstrap:
+    backoffLimit: 15
+    cliImage: "{{ osac_images.cli }}"
+    enabled: true
+    image: "{{ osac_images.aap_bootstrap }}"
+
+dbMigrate:
+  enabled: false
+
+validation:
+  enabled: true

@@ -168,7 +168,8 @@ definitions:
       chart:
         type: string
         description: >-
-          Chart name (when repo is set) or path relative to the plugin
+          Chart name (when repo is set), OCI reference starting with oci://
+          (e.g. oci://ghcr.io/org/chart), or path relative to the plugin
           directory (local chart). Default for local: charts/<release>.
       repo:
         type: string
@@ -204,7 +205,8 @@ definitions:
         description: >-
           Extract container image references from the chart's default values
           via helm template and merge into additionalImages for mirroring.
-          Only works for local charts (repo must not be set). Default: false.
+          Only works for local charts (repo and oci:// must not be set).
+          Default: false.
     required:
       - release
       - namespace

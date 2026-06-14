@@ -78,6 +78,21 @@
     - not r_plugin_defaults_yaml.stat.exists
   tags: always
 
+# Load user config for this plugin (config/plugins/<name>.yaml) if it exists.
+# The load-vars.yaml only loads config files for plugins in enabled_plugins,
+# but day-2 plugins deployed via deploy-plugin.yaml may not be in that list.
+- name: Stat plugin user config file
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../config/plugins/{{ plugin_name }}.yaml"
+  register: r_plugin_user_config
+  tags: always
+
+- name: Load plugin user config
+  ansible.builtin.include_vars:
+    file: "{{ r_plugin_user_config.stat.path }}"
+  when: r_plugin_user_config.stat.exists
+  tags: always
+
 - name: Validate plugin requirements (vars)
   ansible.builtin.assert:
     that: "item.name in vars"

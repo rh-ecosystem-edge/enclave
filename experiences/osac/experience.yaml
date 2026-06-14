@@ -2,5 +2,9 @@
 name: osac
 description: Open Sovereign AI Cloud experience
 plugins:
-  - name: vast-csi
-  - name: authorino
+  - name: trust-manager    # order 100 -- cert-manager ClusterIssuer + CA bundle
+  - name: rhbk             # order 101 -- Keycloak identity provider
+  - name: authorino        # order 102 -- gRPC authorization operator
+  - name: aap              # order 103 -- AAP operator (CRDs for OSAC chart)
+  # cnv (order 104) is optional -- deploy separately for VMaaS deployments
+  - name: osac             # order 200 -- OSAC fulfillment + chart-managed AAP instance
