@@ -1,0 +1,89 @@
+---
+# Validate that no persistent Metal3 stack is running from a previous deployment
+# This prevents confusing 401 errors when old root-level Ironic containers
+# conflict with new user-level deployments
+
+- name: Check for running root-level Metal3 pod
+  become: true
+  ansible.builtin.command: podman pod ps --format {% raw %}'{{.Name}}'{% endraw %} --filter name=metal3-ironic
+  register: root_metal3_pods
+  changed_when: false
+  failed_when: false
+
+- name: Check for Metal3 systemd services
+  become: true
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+  register: metal3_services
+  loop:
+    - metal3-ironic-pod.service
+    - metal3-ironic-api.service
+    - metal3-bmo.service
+    - metal3-httpd.service
+  failed_when: false
+  changed_when: false
+
+- name: Check for Metal3 quadlet unit files
+  become: true
+  ansible.builtin.stat:
+    path: "/etc/containers/systemd/{{ item }}"
+  register: quadlet_units
+  loop:
+    - metal3-ironic.pod
+    - metal3-ironic-api.container
+    - metal3-bmo.container
+    - metal3-httpd.container
+  failed_when: false
+
+- name: Fail if persistent Metal3 is detected
+  when: >
+    (root_metal3_pods.stdout | length > 0) or
+    (metal3_services.results | selectattr('status.LoadState', 'defined') | selectattr('status.LoadState', 'equalto', 'loaded') | list | length > 0) or
+    (quadlet_units.results | selectattr('stat.exists', 'equalto', true) | list | length > 0)
+  ansible.builtin.fail:
+    msg: |
+      ==========================================
+      ERROR: Persistent Metal3 from previous deployment detected
+      ==========================================
+
+      Found leftover Metal3 components running as root from a previous deployment.
+      This will cause authentication failures (401 Unauthorized) because the old
+      Ironic instance has different credentials than the new deployment.
+
+      Detected components:
+      {% if root_metal3_pods.stdout | length > 0 %}
+        - Root-level Metal3 pods: {{ root_metal3_pods.stdout }}
+      {% endif %}
+      {% for service in metal3_services.results | selectattr('status.LoadState', 'defined') | selectattr('status.LoadState', 'equalto', 'loaded') %}
+        - Systemd service: {{ service.item }}
+      {% endfor %}
+      {% for unit in quadlet_units.results | selectattr('stat.exists', 'equalto', true) %}
+        - Quadlet unit file: {{ unit.item }}
+      {% endfor %}
+
+      REQUIRED ACTION:
+      Run the following cleanup commands before redeploying:
+
+        # Stop and disable all metal3 quadlet services
+        sudo systemctl stop metal3-bmo.service metal3-ironic-api.service metal3-httpd.service metal3-ironic-pod.service
+        sudo systemctl disable metal3-bmo.service metal3-ironic-api.service metal3-httpd.service metal3-ironic-pod.service
+
+        # Remove quadlet unit files
+        sudo rm -f /etc/containers/systemd/metal3-bmo.container
+        sudo rm -f /etc/containers/systemd/metal3-ironic-api.container
+        sudo rm -f /etc/containers/systemd/metal3-httpd.container
+        sudo rm -f /etc/containers/systemd/metal3-ironic.pod
+
+        # Reload systemd
+        sudo systemctl daemon-reload
+
+        # Remove root's pod, containers, secrets, and volumes
+        sudo podman pod rm -f metal3-ironic 2>/dev/null || true
+        sudo podman rm -f baremetal-operator 2>/dev/null || true
+        sudo podman secret rm metal3-ironic-htpasswd metal3-ironic-username metal3-ironic-password metal3-ca-bundle ironic-vmedia-cert ironic-vmedia-key metal3-kubeconfig 2>/dev/null || true
+        sudo podman volume rm metal3-ironic-conf metal3-ironic-data metal3-ironic-shared 2>/dev/null || true
+
+      Then retry the deployment.
+
+      Reference: https://github.com/gori-project/GoRI/issues/915
+      ==========================================
