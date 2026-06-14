@@ -1,0 +1,42 @@
+---
+# Restart catalog source pods to pick up new operator versions after mirroring.
+# This forces OLM to recreate the pods and detect newly mirrored operator versions.
+
+- name: Get catalog source pods in openshift-marketplace
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - "olm.catalogSource"
+  register: r_catalog_pods
+
+- name: Delete catalog source pods to trigger refresh
+  kubernetes.core.k8s:
+    state: absent
+    api_version: v1
+    kind: Pod
+    name: "{{ item.metadata.name }}"
+    namespace: openshift-marketplace
+  loop: "{{ r_catalog_pods.resources }}"
+  when: r_catalog_pods.resources | length > 0
+  register: r_delete_catalog_pods
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_delete_catalog_pods is success
+
+- name: Wait for catalog source pods to be recreated
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - "olm.catalogSource={{ item.metadata.labels['olm.catalogSource'] }}"
+    field_selectors:
+      - "status.phase=Running"
+  loop: "{{ r_catalog_pods.resources }}"
+  when: r_catalog_pods.resources | length > 0
+  register: r_catalog_pods_running
+  retries: 30
+  delay: 10
+  until:
+    - r_catalog_pods_running.resources is defined
+    - r_catalog_pods_running.resources | length > 0

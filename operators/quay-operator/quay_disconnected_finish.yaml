@@ -27,3 +27,6 @@
       | bool
     )
     and not (mirror_dry_run | default(false) | bool)
+
+- name: Restart catalog source pods to pick up new operator versions
+  ansible.builtin.include_tasks: ../../playbooks/tasks/restart_catalog_pods.yaml
