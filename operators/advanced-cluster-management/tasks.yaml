@@ -1,3 +1,16 @@
+- name: Set MCE subscription spec for disconnected
+  when: disconnected | default(true)
+  ansible.builtin.set_fact:
+    mce_subscription_spec:
+      installPlanApproval: Manual
+      source: cs-mirror-redhat-operators-v4-20
+
+- name: Set MCE subscription spec for connected
+  when: not (disconnected | default(true))
+  ansible.builtin.set_fact:
+    mce_subscription_spec:
+      installPlanApproval: Manual
+
 - name: Ensure RHACM MultiClusterHub is present
   kubernetes.core.k8s:
     state: present
@@ -7,6 +20,8 @@
       metadata:
         name: multiclusterhub
         namespace: open-cluster-management
+        annotations:
+          installer.open-cluster-management.io/mce-subscription-spec: "{{ mce_subscription_spec | to_json }}"
       spec: {}
   retries: 60
   delay: 10
