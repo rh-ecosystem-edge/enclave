@@ -1,6 +1,9 @@
 ---
 # Set up Ironic for hardware configuration
 
+- name: Validate no persistent Metal3 from previous deployment
+  ansible.builtin.include_tasks: validate_no_persistent_metal3.yaml
+
 - name: Deploy Metal3 common resources
   ansible.builtin.include_tasks: deploy_metal3_common.yaml
 
