@@ -1,12 +1,12 @@
 - name: Set MCE subscription spec for disconnected
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     mce_subscription_spec:
       installPlanApproval: Manual
       source: cs-mirror-redhat-operators-v4-20
 
 - name: Set MCE subscription spec for connected
-  when: not (disconnected | default(true))
+  when: not (disconnected | default(true) | bool)
   ansible.builtin.set_fact:
     mce_subscription_spec:
       installPlanApproval: Manual
