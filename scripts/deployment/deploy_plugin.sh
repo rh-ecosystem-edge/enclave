@@ -131,6 +131,20 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
+# Copy AAP license file to Landing Zone if AAP_LICENSE_FILE is set
+if [ -n "${AAP_LICENSE_FILE:-}" ]; then
+    if [ ! -f "$AAP_LICENSE_FILE" ]; then
+        error "AAP license file not found: $AAP_LICENSE_FILE"
+        exit 1
+    fi
+    LZ_AAP_LICENSE="${LZ_HOME}/aap-license.zip"
+    info "Copying AAP license file to Landing Zone: $LZ_AAP_LICENSE"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}osacAapLicenseFile: ${LZ_AAP_LICENSE}
+"
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
