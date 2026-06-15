@@ -41,7 +41,7 @@
 
 - name: Migrate foundation plugin operator subscriptions
   ansible.builtin.include_tasks:
-    file: migrations/operator_catalog_source.yaml
+    file: operator_catalog_source.yaml
   vars:
     plugin: "{{ plugin_operator.0 }}"
     operator: "{{ plugin_operator.1 }}"
