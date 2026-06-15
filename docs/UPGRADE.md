@@ -82,6 +82,9 @@ This section documents changes, migrations, and operator version updates when up
 
 #### What's Changed
 
+**Management Cluster Version Update:**
+- **OpenShift**: 4.20.8 → 4.20.21
+
 **Operator Version Updates:**
 - **Quay**: 3.15.3 → 3.15.5
 - **Multicluster Engine (MCE)**: 2.10.1 → 2.10.3
