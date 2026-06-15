@@ -100,3 +100,83 @@ dbMigrate:
 
 validation:
   enabled: true
+
+{% if osacNetrisEnabled | default(false) | bool %}
+clusterFulfillment:
+  enabled: true
+  config:
+    NETWORK_CLASS: "netris"
+    NETWORK_STEPS_COLLECTION: "{{ osacNetrisStepsCollection | default('netris.steps') }}"
+    NETRIS_CONTROLLER_URL: "{{ osacNetrisControllerUrl }}"
+    NETRIS_USERNAME: "{{ osacNetrisUsername }}"
+    NETRIS_SITE_ID: "{{ osacNetrisSiteId }}"
+    NETRIS_TENANT_ID: "{{ osacNetrisTenantId }}"
+    NETRIS_TENANT_NAME: "{{ osacNetrisTenantName }}"
+{% if osacNetrisMgmtVpcId is defined %}
+    NETRIS_MGMT_VPC_ID: "{{ osacNetrisMgmtVpcId }}"
+{% endif %}
+{% if osacNetrisMgmtVpcName is defined %}
+    NETRIS_MGMT_VPC_NAME: "{{ osacNetrisMgmtVpcName }}"
+{% endif %}
+{% if osacNetrisResourceClassMap is defined %}
+    NETRIS_RESOURCE_CLASS_MAP: '{{ osacNetrisResourceClassMap }}'
+{% endif %}
+{% if osacNetrisSshBastionHost is defined %}
+    SERVER_SSH_BASTION_HOST: "{{ osacNetrisSshBastionHost }}"
+{% endif %}
+{% if osacNetrisSshBastionUser is defined %}
+    SERVER_SSH_BASTION_USER: "{{ osacNetrisSshBastionUser }}"
+{% endif %}
+{% if osacNetrisSshUser is defined %}
+    SERVER_SSH_USER: "{{ osacNetrisSshUser }}"
+{% endif %}
+{% if osacNetrisMgmtRouteDestination is defined %}
+    SERVER_MGMT_ROUTE_DESTINATION: "{{ osacNetrisMgmtRouteDestination }}"
+{% endif %}
+{% if osacNetrisMgmtRouteGateway is defined %}
+    SERVER_MGMT_ROUTE_GATEWAY: "{{ osacNetrisMgmtRouteGateway }}"
+{% endif %}
+{% if osacNetrisExternalAccessBaseDomain is defined %}
+    EXTERNAL_ACCESS_BASE_DOMAIN: "{{ osacNetrisExternalAccessBaseDomain }}"
+{% endif %}
+{% if osacNetrisExternalAccessSupportedBaseDomains is defined %}
+    EXTERNAL_ACCESS_SUPPORTED_BASE_DOMAINS: "{{ osacNetrisExternalAccessSupportedBaseDomains }}"
+{% endif %}
+{% if osacNetrisExternalAccessApiInternalNetwork is defined %}
+    EXTERNAL_ACCESS_API_INTERNAL_NETWORK: "{{ osacNetrisExternalAccessApiInternalNetwork }}"
+{% endif %}
+{% if osacNetrisHostedClusterBaseDomain is defined %}
+    HOSTED_CLUSTER_BASE_DOMAIN: "{{ osacNetrisHostedClusterBaseDomain }}"
+{% endif %}
+{% if osacNetrisHostedClusterControllerAvailabilityPolicy is defined %}
+    HOSTED_CLUSTER_CONTROLLER_AVAILABILITY_POLICY: "{{ osacNetrisHostedClusterControllerAvailabilityPolicy }}"
+{% endif %}
+{% if osacNetrisHostedClusterInfrastructureAvailabilityPolicy is defined %}
+    HOSTED_CLUSTER_INFRASTRUCTURE_AVAILABILITY_POLICY: "{{ osacNetrisHostedClusterInfrastructureAvailabilityPolicy }}"
+{% endif %}
+  secret:
+    NETRIS_PASSWORD: "{{ osacNetrisPassword }}"
+{% if osacNetrisAwsAccessKeyId is defined %}
+    AWS_ACCESS_KEY_ID: "{{ osacNetrisAwsAccessKeyId }}"
+{% endif %}
+{% if osacNetrisAwsSecretAccessKey is defined %}
+    AWS_SECRET_ACCESS_KEY: "{{ osacNetrisAwsSecretAccessKey }}"
+{% endif %}
+{% if osacNetrisSshKey is defined %}
+    SERVER_SSH_KEY: "{{ osacNetrisSshKey }}"
+{% endif %}
+{% if osacNetrisSshBastionKey is defined %}
+    SERVER_SSH_BASTION_KEY: "{{ osacNetrisSshBastionKey }}"
+{% endif %}
+
+networkFulfillment:
+  enabled: true
+  config:
+    NETRIS_CONTROLLER_URL: "{{ osacNetrisControllerUrl }}"
+    NETRIS_USERNAME: "{{ osacNetrisUsername }}"
+    NETRIS_SITE_ID: "{{ osacNetrisSiteId }}"
+    NETRIS_TENANT_ID: "{{ osacNetrisTenantId }}"
+    NETRIS_TENANT_NAME: "{{ osacNetrisTenantName }}"
+  secret:
+    NETRIS_PASSWORD: "{{ osacNetrisPassword }}"
+{% endif %}
