@@ -32,6 +32,8 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_acm_policy_operators is success
+  when:
+    - plugin.installOperatorsFleet | default(true) | bool
 
 - name: Create ACM PlacementRule for Plugin
   environment:

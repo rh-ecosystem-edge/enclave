@@ -11,6 +11,8 @@ subjects:
 - apiGroup: policy.open-cluster-management.io
   kind: Policy
   name: {{ plugin.name }}-catalogsource
+{% if plugin.installOperatorsFleet | default(true) | bool %}
 - apiGroup: policy.open-cluster-management.io
   kind: Policy
   name: {{ plugin.name }}-operators
+{% endif %}

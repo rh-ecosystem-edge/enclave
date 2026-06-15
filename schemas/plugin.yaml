@@ -238,6 +238,13 @@ properties:
   installOperators:
     type: boolean
     decsription: Install operators.
+  installOperatorsFleet:
+    type: boolean
+    description: >-
+      Install operators on fleet managed clusters via ACM policies.
+      Only applicable when clusterSelector is defined.
+      Set to false to deploy only the catalog source to fleet (not operator subscriptions).
+      Defaults to true.
   clusterSelector:
     $ref: "#/definitions/selector"
   helm:
@@ -283,6 +290,9 @@ properties:
         description: Files that must exist within the plugin directory.
         items:
           $ref: "#/definitions/requirement_file"
+dependencies:
+  installOperatorsFleet:
+    - clusterSelector
 required:
   - name
   - type
