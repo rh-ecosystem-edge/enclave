@@ -408,11 +408,20 @@ success "=========================================="
 info ""
 info "Verifying cleanup..."
 
-# Check for leftover VMs
-LEFTOVER_VMS=$(sudo virsh list --all 2>/dev/null | grep -E "${CLUSTER_NAME}" || true)
+# Check for leftover VMs — force-destroy if found (safety net for failed dev-scripts cleanup)
+LEFTOVER_VMS=$(sudo virsh list --all --name 2>/dev/null | grep -E "^${CLUSTER_NAME}" || true)
 if [ -n "$LEFTOVER_VMS" ]; then
-    warning "Found leftover VMs for cluster ${CLUSTER_NAME}:"
-    echo "$LEFTOVER_VMS"
+    warning "Found leftover VMs after cleanup — force-destroying..."
+    "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" bash -c "
+        while IFS= read -r vm; do
+            [ -z \"\$vm\" ] && continue
+            echo \"  Destroying: \$vm\"
+            sudo virsh destroy \"\$vm\" 2>/dev/null || true
+            sudo virsh undefine \"\$vm\" --nvram --remove-all-storage 2>/dev/null \\
+                || sudo virsh undefine \"\$vm\" --remove-all-storage 2>/dev/null \\
+                || echo \"  Failed to undefine \$vm\"
+        done <<< \"${LEFTOVER_VMS}\"
+    "
 else
     success "No leftover VMs found"
 fi
