@@ -8,7 +8,7 @@
   ansible.builtin.set_fact:
     mce_subscription_spec:
       installPlanApproval: Manual
-      source: cs-mirror-redhat-operators-v4-20
+      source: "{{ default_operator_source }}"
 
 - name: Set MCE subscription spec for connected
   when: not (disconnected | default(true) | bool)
