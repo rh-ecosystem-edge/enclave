@@ -16,3 +16,10 @@
   ansible.builtin.include_tasks:
     file: migrations/foundation_plugin_fleet_catalogs.yaml
   when: disconnected | default(true) | bool
+
+- name: Trust custom CA migration
+  ansible.builtin.include_tasks:
+    file: migrations/trust_custom_ca.yaml
+  when:
+    - sslCACertificate is defined
+    - sslCACertificate | length > 0
