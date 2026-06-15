@@ -82,7 +82,9 @@
     name: fulfillment-db
     namespace: osac
   register: __r_byo_db_secret
-  when: osacBYODatabase | bool
+  when:
+    - osacBYODatabase | bool
+    - osacDatabaseUrl is not defined or osacDatabaseUrl | length == 0
 
 - name: Assert fulfillment-db secret exists (BYO database)
   ansible.builtin.assert:

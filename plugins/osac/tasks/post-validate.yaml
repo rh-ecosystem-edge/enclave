@@ -84,7 +84,23 @@
       - __r_ingress_proxy.resources[0].status.availableReplicas | default(0) | int > 0
     fail_msg: "fulfillment-ingress-proxy deployment is not running in osac namespace"
 
-# 6. osac-operator deployment
+# 6. fulfillment-console-proxy deployment
+- name: Check fulfillment-console-proxy deployment
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: fulfillment-console-proxy
+    namespace: osac
+  register: __r_console_proxy
+
+- name: Assert fulfillment-console-proxy is running
+  ansible.builtin.assert:
+    that:
+      - __r_console_proxy.resources | length > 0
+      - __r_console_proxy.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "fulfillment-console-proxy deployment is not running in osac namespace"
+
+# 7. osac-operator deployment
 - name: Check osac-operator deployment
   kubernetes.core.k8s_info:
     api_version: apps/v1
@@ -100,7 +116,7 @@
       - __r_osac_operator.resources[0].status.availableReplicas | default(0) | int > 0
     fail_msg: "osac-operator deployment is not running in osac namespace"
 
-# 7. AAP instance ready
+# 8. AAP instance ready
 - name: Check AAP instance is ready
   kubernetes.core.k8s_info:
     api_version: aap.ansible.com/v1alpha1
@@ -119,7 +135,7 @@
         | list | length > 0
     fail_msg: "AAP instance {{ osac_aap_name }} is not ready in osac namespace"
 
-# 8. Authorino instance ready
+# 9. Authorino instance ready
 - name: Check Authorino instance in osac namespace
   kubernetes.core.k8s_info:
     api_version: operator.authorino.kuadrant.io/v1beta1
@@ -137,7 +153,7 @@
         | list | length > 0
     fail_msg: "Authorino instance not found or not ready in osac namespace"
 
-# 9. AAP bootstrap job completed
+# 10. AAP bootstrap job completed
 - name: Check AAP bootstrap job completed
   kubernetes.core.k8s_info:
     api_version: batch/v1
@@ -158,6 +174,6 @@
 - name: Log OSAC validation success
   ansible.builtin.debug:
     msg: >-
-      OSAC post-validate passed: all fulfillment deployments running,
+      OSAC post-validate passed: all fulfillment deployments running (including console-proxy),
       OSAC operator running, AAP instance ready, Authorino ready,
       bootstrap job completed{{ ', PostgreSQL running' if not osacBYODatabase | bool else '' }}.

@@ -102,7 +102,7 @@ make deploy-plugin PLUGIN=authorino
 # 4. AAP — installs operator only, no config required (provides CRDs for OSAC)
 make deploy-plugin PLUGIN=aap
 
-# 5. (VMaaS only) OpenShift Virtualization — required for VM workloads
+# 5. (VMaaS/development profiles) OpenShift Virtualization — required for VM workloads
 # make deploy-plugin PLUGIN=cnv
 
 # 6. Deploy the OSAC plugin
