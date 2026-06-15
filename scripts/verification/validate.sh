@@ -35,8 +35,8 @@ print_info() {
 validate_shell() {
     print_header "Validating shell scripts with shellcheck"
 
-    if find scripts/ -name "*.sh" -type f 2>/dev/null | grep -q .; then
-        if find scripts/ -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning; then
+    if find scripts/ src/ -name "*.sh" -type f 2>/dev/null | grep -q .; then
+        if find scripts/ src/ -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning; then
             print_success "Shell script validation passed"
             return 0
         else

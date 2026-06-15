@@ -98,7 +98,7 @@ if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
 fi
 
 # Build ansible-playbook command with extra vars
-EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
 plugin_name: ${PLUGIN_NAME}
 "
 
@@ -170,7 +170,7 @@ LOG_FILE="deployment_plugin_${PLUGIN_NAME}.log"
 info "Running playbook (logging to $LOG_FILE)..."
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 set +e
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 PLUGIN_EXIT_CODE=$?
 set -e
 

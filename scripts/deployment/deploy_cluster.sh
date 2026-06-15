@@ -151,7 +151,7 @@ info ""
 
 # Build ansible-playbook command with extra vars file
 # Create a temporary extra vars YAML file on the Landing Zone
-EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
 "
 
 # Set disconnected mode based on DEPLOYMENT_MODE
@@ -200,7 +200,7 @@ EOF
 
 # Run ansible-playbook with the extra vars file
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml 2>&1 | tee deployment.log'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml 2>&1 | tee deployment.log'"
 
 DEPLOYMENT_EXIT_CODE=$?
 

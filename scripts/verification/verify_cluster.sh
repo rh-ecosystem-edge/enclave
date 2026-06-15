@@ -61,11 +61,15 @@ output "✅ Landing Zone IP: $LZ_IP"
 
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 
+LZ_SESSION_DIR="/home/cloud-user/sessions/1"
+# Evaluated on the LZ: \$PATH expands to the remote PATH at runtime
+LZ_OC_ENV="export PATH=${LZ_SESSION_DIR}/bin:\$PATH KUBECONFIG=${LZ_SESSION_DIR}/ocp-cluster/auth/kubeconfig"
+
 # Check if kubeconfig exists
-if ! ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/ocp-cluster/auth/kubeconfig" 2>&1; then
+if ! ssh $SSH_OPTS cloud-user@$LZ_IP "test -f ${LZ_SESSION_DIR}/ocp-cluster/auth/kubeconfig" 2>&1; then
     output "❌ Kubeconfig not found on Landing Zone"
-    echo -e "${RED}ERROR:${NC} Kubeconfig not found at /home/cloud-user/ocp-cluster/auth/kubeconfig" >&2
-    ssh $SSH_OPTS cloud-user@$LZ_IP "ls -la /home/cloud-user/ocp-cluster/auth/ 2>&1 || echo 'ocp-cluster/auth directory not found'"
+    echo -e "${RED}ERROR:${NC} Kubeconfig not found at ${LZ_SESSION_DIR}/ocp-cluster/auth/kubeconfig" >&2
+    ssh $SSH_OPTS cloud-user@$LZ_IP "ls -la ${LZ_SESSION_DIR}/ocp-cluster/auth/ 2>&1 || echo 'ocp-cluster/auth directory not found'"
     exit 1
 fi
 output "✅ Kubeconfig found"
@@ -74,7 +78,7 @@ output "✅ Kubeconfig found"
 output ""
 output "### Cluster Nodes"
 NODES_FILE=$(mktemp)
-if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes" 2>&1 | tee "$NODES_FILE"; then
+if ! ssh $SSH_OPTS cloud-user@$LZ_IP "${LZ_OC_ENV} && oc get nodes" 2>&1 | tee "$NODES_FILE"; then
     output "❌ Failed to get cluster nodes"
     echo -e "${RED}ERROR:${NC} Failed to run 'oc get nodes'" >&2
     echo "Command output:" >&2
@@ -93,7 +97,7 @@ fi
 rm -f "$NODES_FILE"
 
 # Count ready nodes
-READY_NODES=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes --no-headers 2>/dev/null | grep -c Ready" || echo "0")
+READY_NODES=$(ssh $SSH_OPTS cloud-user@$LZ_IP "${LZ_OC_ENV} && oc get nodes --no-headers 2>/dev/null | grep -c Ready" || echo "0")
 output ""
 output "✅ Ready nodes: $READY_NODES"
 
@@ -101,7 +105,7 @@ output "✅ Ready nodes: $READY_NODES"
 output ""
 output "### Cluster Operators"
 OPERATORS_FILE=$(mktemp)
-if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co" 2>&1 | tee "$OPERATORS_FILE"; then
+if ! ssh $SSH_OPTS cloud-user@$LZ_IP "${LZ_OC_ENV} && oc get co" 2>&1 | tee "$OPERATORS_FILE"; then
     output "❌ Failed to get cluster operators"
     echo -e "${RED}ERROR:${NC} Failed to run 'oc get co'" >&2
     echo "Command output:" >&2
@@ -118,7 +122,7 @@ rm -f "$OPERATORS_FILE"
 
 # Check for degraded operators
 output ""
-DEGRADED=$(ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co -o json 2>/dev/null | jq -r '.items[] | select(.status.conditions[] | select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'" || echo "")
+DEGRADED=$(ssh $SSH_OPTS cloud-user@$LZ_IP "${LZ_OC_ENV} && oc get co -o json 2>/dev/null | jq -r '.items[] | select(.status.conditions[] | select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'" || echo "")
 
 if [ -n "$DEGRADED" ]; then
     output "⚠️ Warning: Some cluster operators are degraded:"
@@ -134,7 +138,7 @@ fi
 output ""
 output "### Cluster Version"
 CLUSTERVERSION_FILE=$(mktemp)
-if ! ssh $SSH_OPTS cloud-user@$LZ_IP "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get clusterversion" > "$CLUSTERVERSION_FILE" 2>&1; then
+if ! ssh $SSH_OPTS cloud-user@$LZ_IP "${LZ_OC_ENV} && oc get clusterversion" > "$CLUSTERVERSION_FILE" 2>&1; then
     output "⚠️ Could not get cluster version"
 else
     if [ "$USE_GITHUB" = true ]; then
