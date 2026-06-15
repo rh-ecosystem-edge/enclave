@@ -71,3 +71,27 @@ Each Enclave tarball release includes:
 ---
 
 **Note**: This is a high-level guide. Consult OpenShift and operator-specific documentation for detailed upgrade procedures and troubleshooting.
+
+---
+
+## Version-Specific Upgrade Notes
+
+### Upgrading from 0.1.0 to 0.1.1
+
+This section documents changes, migrations, and operator version updates when upgrading from Enclave 0.1.0 to 0.1.1.
+
+#### What's Changed
+
+**Operator Version Updates:**
+- **Quay**: 3.15.3 → 3.15.5
+- **Multicluster Engine (MCE)**: 2.10.1 → 2.10.3
+- **Advanced Cluster Management (ACM)**: 2.15.1 → 2.15.3
+
+**Architecture Changes:**
+- **Plugin Catalog Source Migration**: Foundation plugins (ODF, LVMS) now use dedicated catalog sources instead of the shared core catalog source
+  - Before: All operators used `cs-redhat-operator-index-v4-20` (or equivalent mirrored catalog)
+  - After: Foundation plugins have plugin-specific catalog sources (e.g., `cs-mirror-redhat-operators-odf-v4-20`)
+  - This change improves plugin isolation and allows independent catalog management per plugin
+- **Per-Plugin Configuration System**: plugins global configuration migrated to per-plugin config files under `config/plugins/`
+- **Operator Source Definitions Removed**: The explicit `source:` field has been removed from most operators in `defaults/operators.yaml` as catalog sources are now derived automatically
+- **MCE Subscription Management**: ACM is prevented from changing the MCE subscription installPlanApproval to Automatic (keeps it as Manual for upgrade control)
