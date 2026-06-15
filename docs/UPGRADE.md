@@ -46,17 +46,17 @@ Each Enclave tarball release includes:
     ```sh
     ./sync.sh
     ```
-7. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations and updates. Currently executes the `playbooks/upgrade.yaml` playbook. Future versions will also automate steps 8 and 9 (cluster and operator upgrades):
+    ```sh
+    ./upgrade.sh
+    ```
+8. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
     ```sh
     enclave reconcile mgmt-cluster-version --use-defaults
     ```
-8. **Upgrade operators** - Update operators to the versions in the tarball:
+9. **Upgrade operators** - Update operators to the versions in the tarball:
     ```sh
     enclave reconcile operator-versions --use-defaults
-    ```
-9. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations and updates. Currently executes the `playbooks/upgrade.yaml` playbook. Future versions will also automate steps 7 and 8 (cluster and operator upgrades):
-    ```sh
-    ./upgrade.sh
     ```
 
 ---
