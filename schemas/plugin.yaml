@@ -239,7 +239,7 @@ properties:
       $ref: "#/definitions/operator"
   installOperators:
     type: boolean
-    decsription: Install operators.
+    description: Install operators on management cluster.
   installOperatorsFleet:
     type: boolean
     description: >-

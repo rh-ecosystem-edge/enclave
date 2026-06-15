@@ -48,9 +48,9 @@
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   vars:
     plugin: "{{ fleet_plugin }}"
-    catalog_image: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(certified_operator_catalog, rh_operator_catalog) }}"
-    catalog_mirror: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(mirror_certified_rh_operator_catalog, mirror_rh_operator_catalog) }}-{{ fleet_plugin.name }}"
-    catalog_version: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(certified_operator_catalog_version, rh_operator_catalog_version) }}"
+    catalog_image: "{{ ((fleet_plugin.catalog | default('redhat')) == 'certified') | ternary(certified_operator_catalog, rh_operator_catalog) }}"
+    catalog_mirror: "{{ ((fleet_plugin.catalog | default('redhat')) == 'certified') | ternary(mirror_certified_rh_operator_catalog, mirror_rh_operator_catalog) }}-{{ fleet_plugin.name }}"
+    catalog_version: "{{ ((fleet_plugin.catalog | default('redhat')) == 'certified') | ternary(certified_operator_catalog_version, rh_operator_catalog_version) }}"
   loop: "{{ _foundation_fleet_plugins }}"
   loop_control:
     loop_var: fleet_plugin
