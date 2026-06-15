@@ -1,4 +1,29 @@
 ---
+- name: Wait for cert-manager operator to complete initial reconciliation
+  kubernetes.core.k8s_info:
+    api_version: operator.openshift.io/v1alpha1
+    kind: CertManager
+    name: cluster
+  register: r_certmanager_init
+  retries: 60
+  delay: 10
+  until:
+    - r_certmanager_init.resources is defined
+    - r_certmanager_init.resources | length > 0
+    - r_certmanager_init.resources[0].status.conditions is defined
+    - >-
+      r_certmanager_init.resources[0].status.conditions
+      | selectattr('type', 'equalto', 'cert-manager-controller-deploymentAvailable')
+      | selectattr('status', 'equalto', 'True') | list | length > 0
+    - >-
+      r_certmanager_init.resources[0].status.conditions
+      | selectattr('type', 'equalto', 'cert-manager-cainjector-deploymentAvailable')
+      | selectattr('status', 'equalto', 'True') | list | length > 0
+    - >-
+      r_certmanager_init.resources[0].status.conditions
+      | selectattr('type', 'equalto', 'cert-manager-webhook-deploymentAvailable')
+      | selectattr('status', 'equalto', 'True') | list | length > 0
+
 - name: Configure and validate cert-manager
   vars:
     cert_manager_cainjector_replicas: 2
