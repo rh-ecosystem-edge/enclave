@@ -87,7 +87,7 @@ filepath = sys.argv[1]
 dir_name = sys.argv[2]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
-                'installOperators', 'registries', 'additionalImages', 'blockedImages',
+                'installOperators', 'installOperatorsFleet', 'registries', 'additionalImages', 'blockedImages',
                 'requires', 'helm', 'clusterSelector']
 
 try:

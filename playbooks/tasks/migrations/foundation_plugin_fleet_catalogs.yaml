@@ -1,0 +1,58 @@
+---
+# Foundation Plugin Fleet Catalog Migration
+#
+# Creates ACM policies to deploy foundation plugin catalog sources to spoke clusters.
+#
+# Background: After the May 2026 catalog separation, foundation plugins (ODF, LVMS)
+# moved from the core catalog to plugin-specific catalogs. However, these plugin-specific
+# catalogs were not being deployed to spoke clusters, breaking operator availability.
+#
+# This migration creates ACM policies to push plugin-specific catalog sources
+# (e.g., cs-mirror-redhat-operators-odf-v4-20) to spoke clusters in disconnected environments.
+#
+# Only applies to disconnected deployments and enabled foundation plugins with clusterSelector.
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_fleet_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_fleet_find.files | default([]) | map(attribute='path') | list }}"
+  register: r_fleet_slurp
+  loop_control:
+    loop_var: plugin_path
+
+- name: Filter foundation plugins with clusterSelector
+  ansible.builtin.set_fact:
+    _foundation_fleet_plugins: >-
+      {{ r_fleet_slurp.results | default([])
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('name', 'in', enabled_plugins | default([]))
+         | selectattr('clusterSelector', 'defined')
+         | list }}
+
+- name: Create ACM policies for foundation plugin fleet catalogs
+  ansible.builtin.include_tasks:
+    file: tasks/configure_operators_fleet.yaml
+    apply:
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    plugin: "{{ fleet_plugin }}"
+    catalog_image: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(certified_operator_catalog, rh_operator_catalog) }}"
+    catalog_mirror: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(mirror_certified_rh_operator_catalog, mirror_rh_operator_catalog) }}-{{ fleet_plugin.name }}"
+    catalog_version: "{{ (fleet_plugin.catalog | default('redhat')) == 'certified' | ternary(certified_operator_catalog_version, rh_operator_catalog_version) }}"
+  loop: "{{ _foundation_fleet_plugins }}"
+  loop_control:
+    loop_var: fleet_plugin
+    label: "{{ fleet_plugin.name }}"
+  when: _foundation_fleet_plugins | length > 0

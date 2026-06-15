@@ -3,6 +3,23 @@ name: lvms
 type: foundation
 order: 10
 
+# Deploy LVMS catalog source to all managed clusters (excludes management cluster)
+# This makes LVMS operators available on spoke clusters in disconnected environments.
+# Operators are installed manually on spoke clusters as needed (not auto-deployed).
+clusterSelector:
+  matchExpressions:
+    - key: local-cluster
+      operator: NotIn
+      values:
+        - "true"
+
+# Install operators on management cluster
+installOperators: true
+
+# Only deploy catalog source to fleet (not operator subscriptions)
+# Spoke clusters get LVMS operators available, but not auto-installed
+installOperatorsFleet: false
+
 operators:
   - name: lvms-operator
     version: 4.20.0

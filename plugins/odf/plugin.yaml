@@ -3,6 +3,23 @@ name: odf
 type: foundation
 order: 10
 
+# Deploy ODF catalog source to all managed clusters (excludes management cluster)
+# This makes ODF operators available on spoke clusters in disconnected environments.
+# Operators are installed manually on spoke clusters as needed (not auto-deployed).
+clusterSelector:
+  matchExpressions:
+    - key: local-cluster
+      operator: NotIn
+      values:
+        - "true"
+
+# Install operators on management cluster
+installOperators: true
+
+# Only deploy catalog source to fleet (not operator subscriptions)
+# Spoke clusters get ODF operators available, but not auto-installed
+installOperatorsFleet: false
+
 operators:
   - name: odf-operator
     version: 4.20.7-rhodf
