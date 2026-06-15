@@ -1,0 +1,57 @@
+---
+- name: "Wait for Vault Secrets Operator to be ready"
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: vault-secrets-operator-controller-manager
+    namespace: vault
+  register: r_vso_deployment
+  retries: 30
+  delay: 10
+  until:
+    - r_vso_deployment.resources | length > 0
+    - r_vso_deployment.resources[0].status.availableReplicas is defined
+    - r_vso_deployment.resources[0].status.availableReplicas > 0
+
+- name: "Wait for Vault StatefulSet to be ready"
+  when: vaultDefaults.server.enabled | default(true)
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: StatefulSet
+    name: vault
+    namespace: vault
+  register: r_vault_sts
+  retries: 30
+  delay: 10
+  until:
+    - r_vault_sts.resources | length > 0
+    - r_vault_sts.resources[0].status.readyReplicas is defined
+    - r_vault_sts.resources[0].status.readyReplicas >= 1
+
+- name: "Verify Vault service is accessible"
+  when: vaultDefaults.server.enabled | default(true)
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: vault
+    namespace: vault
+  register: r_vault_service
+  retries: 10
+  delay: 5
+  until:
+    - r_vault_service.resources | length > 0
+    - r_vault_service.resources[0].spec.clusterIP is defined
+
+- name: "Display Vault initialization message"
+  when: vaultDefaults.server.enabled | default(true)
+  ansible.builtin.debug:
+    msg:
+      - "Vault has been deployed successfully"
+      - "IMPORTANT: Vault needs to be initialized and unsealed before use"
+      - "Run the following commands to initialize Vault:"
+      - "  oc exec -n vault vault-0 -- vault operator init"
+      - "Save the unseal keys and root token securely"
+      - "Then unseal each Vault pod:"
+      - "  oc exec -n vault vault-0 -- vault operator unseal <key1>"
+      - "  oc exec -n vault vault-0 -- vault operator unseal <key2>"
+      - "  oc exec -n vault vault-0 -- vault operator unseal <key3>"
