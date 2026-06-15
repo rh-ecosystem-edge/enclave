@@ -53,7 +53,7 @@
   kubernetes.core.k8s:
     state: present
     namespace: openshift-acm-policies
-    definition: "{{ lookup('ansible.builtin.template', 'files/plugin-fleet-configuration/30-placementbinding.yaml.j2') | from_yaml }}"
+    definition: "{{ lookup('ansible.builtin.template', '{{ playbook_dir }}/../files/plugin-fleet-configuration/30-placementbinding.yaml.j2') | from_yaml }}"
   register: r_acm_placementbinding
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
