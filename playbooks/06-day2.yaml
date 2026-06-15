@@ -30,6 +30,15 @@
             msg: "Running day-2 operations in {{ 'disconnected' if (disconnected | default(true)) else 'connected' }} mode"
           tags: always
 
+        - name: Configure MultiClusterHub MCE subscription spec
+          ansible.builtin.include_tasks:
+            file: ../operators/advanced-cluster-management/configure_mch.yaml
+            apply:
+              tags: acm-mch
+              environment:
+                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          tags: acm-mch
+
         - name: Configure Quay in disconnected environments
           when: disconnected | default(true)
           ansible.builtin.include_tasks:
