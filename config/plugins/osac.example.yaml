@@ -27,3 +27,47 @@
 #   envoy: "docker.io/envoyproxy/envoy:v1.33.0"
 #   aap_bootstrap: "ghcr.io/osac-project/osac-aap:v0.0.4"
 #   cli: "quay.io/openshift/origin-cli:4.20.0"
+
+# --- Netris Network Backend ---
+# Enable Netris integration for cluster and network fulfillment.
+# Requires a pre-deployed Netris controller (see Netris + OSAC Prerequisites Guide).
+# osacNetrisEnabled: true
+
+# Required when osacNetrisEnabled is true:
+# osacNetrisControllerUrl: "https://ctl.netris.io"
+# osacNetrisUsername: "netris"
+# osacNetrisPassword: "changeme"
+# osacNetrisSiteId: "1"
+# osacNetrisTenantId: "1"
+# osacNetrisTenantName: "Admin"
+
+# Optional Netris config:
+# osacNetrisStepsCollection: "netris.steps"
+# osacNetrisMgmtVpcId: "4"
+# osacNetrisMgmtVpcName: "RH-Infra"
+# osacNetrisResourceClassMap: '{"fc430": {"server_cluster_template_id": 89, "mgmt_interface": "ens4", "vpc_interfaces": ["ens13"]}}'
+# osacNetrisSshBastionHost: "bastion.example.com"
+# osacNetrisSshBastionUser: "ubuntu"
+# osacNetrisSshUser: "core"
+# osacNetrisMgmtRouteDestination: "10.8.0.0/30"
+# osacNetrisMgmtRouteGateway: "192.168.16.1"
+# osacNetrisExternalAccessBaseDomain: "example.com"
+# osacNetrisExternalAccessSupportedBaseDomains: "example.com"
+# osacNetrisExternalAccessApiInternalNetwork: "hypershift"
+# osacNetrisHostedClusterBaseDomain: "example.com"
+# osacNetrisHostedClusterControllerAvailabilityPolicy: "HighlyAvailable"
+# osacNetrisHostedClusterInfrastructureAvailabilityPolicy: "HighlyAvailable"
+
+# AWS Route53 credentials for DNS record management:
+# osacNetrisAwsAccessKeyId: "AKIA..."
+# osacNetrisAwsSecretAccessKey: ""
+
+# SSH keys for server management (multiline, use YAML literal block):
+# osacNetrisSshKey: |
+#   -----BEGIN OPENSSH PRIVATE KEY-----
+#   ...
+#   -----END OPENSSH PRIVATE KEY-----
+# osacNetrisSshBastionKey: |
+#   -----BEGIN OPENSSH PRIVATE KEY-----
+#   ...
+#   -----END OPENSSH PRIVATE KEY-----

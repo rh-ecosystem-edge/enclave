@@ -1,12 +1,15 @@
 ---
 # OSAC plugin defaults
-# Note: config/plugins/osac.yaml uses camelCase (osacProfilesList, osacBYODatabase)
+# Note: config/plugins/osac.yaml uses camelCase (osacProfilesList, osacBYODatabase, osacNetrisEnabled)
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
 osacProfilesList:
   - caas
   - vmaas
+
+# Netris network backend
+osacNetrisEnabled: false
 
 # AAP settings (chart manages the instance, these configure it)
 osac_aap_name: osac-aap
