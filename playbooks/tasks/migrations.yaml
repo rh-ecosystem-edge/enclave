@@ -11,3 +11,8 @@
   ansible.builtin.include_tasks:
     file: migrations/foundation_plugin_catalog_sources.yaml
   when: disconnected | default(true) | bool
+
+- name: Foundation plugin fleet catalog migration
+  ansible.builtin.include_tasks:
+    file: migrations/foundation_plugin_fleet_catalogs.yaml
+  when: disconnected | default(true) | bool
