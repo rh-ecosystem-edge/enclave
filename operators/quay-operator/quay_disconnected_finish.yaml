@@ -21,9 +21,5 @@
 - name: Generate and apply master PinnedImageSet from images on master nodes
   ansible.builtin.include_tasks: quay_pinnedimageset.yaml
   when: >-
-    (
-      quayPinnedImageSetEnabled
-      | default(quay_pinnedimageset_enabled | default(true))
-      | bool
-    )
+    (quayPinnedImageSetEnabled | default(false) | bool)
     and not (mirror_dry_run | default(false) | bool)

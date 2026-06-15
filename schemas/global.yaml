@@ -71,7 +71,7 @@ properties:
     "$ref": "#/definitions/ocMirrorLogLevel"
   quayPinnedImageSetEnabled:
     type: boolean
-    default: true
+    default: false
     description: >-
       Whether to apply a master PinnedImageSet after Quay mirror sync.
       Set to false to skip post-mirror image prefetch pinning.
