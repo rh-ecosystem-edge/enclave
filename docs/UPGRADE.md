@@ -95,3 +95,4 @@ This section documents changes, migrations, and operator version updates when up
 - **Per-Plugin Configuration System**: plugins global configuration migrated to per-plugin config files under `config/plugins/`
 - **Operator Source Definitions Removed**: The explicit `source:` field has been removed from most operators in `defaults/operators.yaml` as catalog sources are now derived automatically
 - **MCE Subscription Management**: ACM is prevented from changing the MCE subscription installPlanApproval to Automatic (keeps it as Manual for upgrade control)
+- **clair-import**: Standalone addon plugin for Clair security scanning (migrated from inline integration)
