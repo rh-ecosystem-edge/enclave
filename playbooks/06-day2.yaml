@@ -74,3 +74,13 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: quay-disconnected
+
+        - name: Restart catalog source pods to pick up new operator versions
+          when: disconnected | default(true)
+          ansible.builtin.include_tasks:
+            file: tasks/restart_catalog_pods.yaml
+            apply:
+              tags: restart-catalog-pods
+              environment:
+                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          tags: restart-catalog-pods
