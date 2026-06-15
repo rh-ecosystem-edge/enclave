@@ -322,23 +322,6 @@ defaultNtpServers:
 - Only needed when cluster nodes cannot reach the default public NTP pool
 - Useful in air-gapped or firewalled environments
 
-#### `quayPinnedImageSetEnabled`
-
-**Description**: Controls whether the post-mirror master `PinnedImageSet` is generated and applied after Quay image mirroring.
-
-**Type**: Boolean (optional)
-
-**Default**: `true`
-
-**Example**:
-```yaml
-quayPinnedImageSetEnabled: false
-```
-
-**Notes**:
-- Set to `false` when you want to skip post-mirror prefetch pinning.
-- This setting is ignored when `mirror_dry_run` is enabled.
-
 ### Hardware Configuration
 
 #### `agent_hosts`
@@ -758,6 +741,23 @@ quayBackendLocalStorageConfiguration:
 ```
 
 **Note**: If omitted, Quay uses `storage_path: /datastorage/registry` from `defaults/quay_operator.yaml`.
+
+##### `quayPinnedImageSetEnabled`
+
+**Description**: Controls whether the post-mirror master `PinnedImageSet` is generated and applied after Quay image mirroring.
+
+**Type**: Boolean (optional)
+
+**Default**: `false`
+
+**Example**:
+```yaml
+quayPinnedImageSetEnabled: true
+```
+
+**Notes**:
+- Set to `true` to enable post-mirror prefetch pinning.
+- This setting is ignored when `mirror_dry_run` is enabled.
 
 #### Pull Secrets
 
