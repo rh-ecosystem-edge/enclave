@@ -5,9 +5,9 @@
 # sources to plugin-specific catalog sources.
 #
 # Background: Previous Enclave versions mirrored foundation plugin operators
-# as part of the core catalog source (e.g., cs-mirror-redhat-operators-v4-20).
+# as part of the core catalog source (cs-redhat-operator-index-v4-20).
 # The plugin framework now creates dedicated catalog sources per plugin (e.g.,
-# cs-mirror-redhat-operators-odf-v4-20 for ODF).
+# cs-redhat-operator-index-odf-v4-20 for ODF).
 #
 # Only applies to disconnected deployments and operators without explicit
 # operator.source definitions in their plugin descriptors.

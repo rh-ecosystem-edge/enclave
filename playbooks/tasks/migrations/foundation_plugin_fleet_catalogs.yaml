@@ -8,7 +8,7 @@
 # catalogs were not being deployed to spoke clusters, breaking operator availability.
 #
 # This migration creates ACM policies to push plugin-specific catalog sources
-# (e.g., cs-mirror-redhat-operators-odf-v4-20) to spoke clusters in disconnected environments.
+# (e.g., cs-redhat-operator-index-odf-v4-20) to spoke clusters in disconnected environments.
 #
 # Only applies to disconnected deployments and enabled foundation plugins with clusterSelector.
 

@@ -104,7 +104,7 @@ def test_extract_digest_refs_applies_exclude_contains() -> None:
     assert excluded == []
 
     lvms_catalog = (
-        "mirror.enclave-test.lab:8443/redhat/mirror-redhat-operators-lvms@" + _DIGEST
+        "mirror.enclave-test.lab:8443/redhat/redhat-operator-index-lvms@" + _DIGEST
     )
     assert (
         extract_digest_refs_from_crictl_output(

@@ -25,7 +25,7 @@ _DIGEST_REF = re.compile(r"^(.+)@(sha256:[a-fA-F0-9]{64})$")
 # `podman manifest inspect`; these defaults avoid images that break or are not
 # worth pinning: openshift-pipelines/*, Cincinnati graph-data (/openshift/graph-image),
 # upstream OLM catalog indexes under /redhat/*-operator-index, disconnected mirrors of
-# those catalogs (mirror-redhat-operators, mirror-redhat-operators-<plugin>), and
+# those catalogs (redhat-operator-index, redhat-operator-index-<plugin>), and
 # /rhel9/support-tools (single-manifest refs that can cause prefetch exit 125).
 DEFAULT_PINNED_IMAGE_EXCLUDE_CONTAINS: tuple[str, ...] = (
     "openshift-pipelines/",
@@ -34,7 +34,7 @@ DEFAULT_PINNED_IMAGE_EXCLUDE_CONTAINS: tuple[str, ...] = (
     "/redhat/certified-operator-index",
     "/redhat/redhat-marketplace-index",
     "/redhat/redhat-operator-index",
-    "mirror-redhat-operators",
+    "redhat-operator-index",
     "/rhel9/support-tools",
 )
 
