@@ -16,6 +16,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 
+# Ansible Galaxy collections
+collections/
+
 # IDE folders
 .vscode/
 .idea/
