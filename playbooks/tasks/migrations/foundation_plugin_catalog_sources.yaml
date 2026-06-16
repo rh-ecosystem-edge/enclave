@@ -45,13 +45,14 @@
   vars:
     plugin: "{{ plugin_operator.0 }}"
     operator: "{{ plugin_operator.1 }}"
-    catalog_mirror: "{{ mirror_certified_rh_operator_catalog if (plugin.catalog | default('redhat')) == 'certified' else mirror_rh_operator_catalog }}"
     operator_name: "{{ operator.name }}"
     operator_namespace: "{{ operator.namespace }}"
-    legacy_source: "cs-{{ catalog_mirror }}-v4-20"
-    new_source: "cs-{{ catalog_mirror }}-{{ plugin.name }}-v4-20"
+    legacy_source: "cs-redhat-operator-index-v4-20"
+    new_source: "cs-{{ mirror_rh_operator_catalog }}-{{ plugin.name }}-v4-20"
   loop: "{{ _foundation_plugins | default([]) | subelements('operators', skip_missing=True) }}"
   loop_control:
     loop_var: plugin_operator
     label: "{{ plugin_operator.0.name }}/{{ plugin_operator.1.name }}"
-  when: operator.source is not defined
+  when:
+    - operator.source is not defined
+    - plugin.catalog | default('redhat') == 'redhat'
