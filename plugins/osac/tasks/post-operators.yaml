@@ -83,7 +83,7 @@
     regexp: "{{ _osac_keycloak_hostname | regex_escape() }}"
     state: present
   become: true
-  when: enclave_deployment_mode | default('') == 'connected'
+  when: not disconnected | default(true) | bool
 
 # =====================================================================
 # 5. Get Keycloak admin credentials
