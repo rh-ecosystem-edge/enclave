@@ -93,7 +93,7 @@ This section documents changes, migrations, and operator version updates when up
 **Architecture Changes:**
 - **Plugin Catalog Source Migration**: Foundation plugins (ODF, LVMS) now use dedicated catalog sources instead of the shared core catalog source
   - Before: All operators used `cs-redhat-operator-index-v4-20` (or equivalent mirrored catalog)
-  - After: Foundation plugins have plugin-specific catalog sources (e.g., `cs-mirror-redhat-operators-odf-v4-20`)
+  - After: Foundation plugins have plugin-specific catalog sources (e.g., `cs-redhat-operator-index-odf-v4-20`)
   - This change improves plugin isolation and allows independent catalog management per plugin
 - **Per-Plugin Configuration System**: plugins global configuration migrated to per-plugin config files under `config/plugins/`
 - **Operator Source Definitions Removed**: The explicit `source:` field has been removed from most operators in `defaults/operators.yaml` as catalog sources are now derived automatically

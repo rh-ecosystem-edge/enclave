@@ -8,8 +8,8 @@
 # Required variables:
 #   operator_name: Name of the operator subscription (e.g., "odf-operator", "lvms-operator")
 #   operator_namespace: Namespace where the operator is installed (e.g., "openshift-storage")
-#   legacy_source: Expected legacy catalog source (e.g., "cs-mirror-redhat-operators-v4-20")
-#   new_source: New catalog source to migrate to (e.g., "cs-mirror-redhat-operators-odf-v4-20")
+#   legacy_source: Expected legacy catalog source (e.g., "cs-redhat-operator-index-v4-20")
+#   new_source: New catalog source to migrate to (e.g., "cs-redhat-operator-index-odf-v4-20")
 
 - name: Check if {{ operator_name }} subscription exists
   kubernetes.core.k8s_info:
