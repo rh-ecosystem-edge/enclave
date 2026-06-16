@@ -143,6 +143,16 @@ if [ -n "${AAP_LICENSE_FILE:-}" ]; then
     scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
     EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}osacAapLicenseFile: ${LZ_AAP_LICENSE}
 "
+    # Generate OSAC plugin config on LZ if it doesn't exist (CI environments)
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/config/plugins/osac.yaml"; then
+        info "Generating config/plugins/osac.yaml on Landing Zone"
+        # shellcheck disable=SC2086,SC2087  # SSH_OPTS needs word splitting, we want client-side expansion
+        ssh $SSH_OPTS "$LZ_SSH" "mkdir -p $LZ_ENCLAVE_DIR/config/plugins && cat > $LZ_ENCLAVE_DIR/config/plugins/osac.yaml" <<OSAC_EOF
+---
+osacAapLicenseFile: "${LZ_AAP_LICENSE}"
+OSAC_EOF
+    fi
 fi
 
 # Create the extra vars file on Landing Zone
