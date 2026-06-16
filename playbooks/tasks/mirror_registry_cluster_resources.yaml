@@ -1,0 +1,47 @@
+---
+- name: Find catalog sources and signatures from workspace
+  ansible.builtin.find:
+    paths: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/"
+    patterns:
+      - "cs-*.yaml"
+      - "signature-configmap.yaml"
+    recurse: false
+  register: r_catalog_manifests
+
+- name: Set applied catalog source names
+  ansible.builtin.set_fact:
+    _applied_cs_names: "{{ r_catalog_manifests.files
+      | map(attribute='path')
+      | map('basename')
+      | reject('equalto', 'signature-configmap.yaml')
+      | map('regex_replace', '\\.ya?ml$', '')
+      | list }}"
+
+- name: Apply catalog sources and signatures to cluster
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc apply --server-side --force-conflicts -f {{ item }}
+  loop: "{{ r_catalog_manifests.files | map(attribute='path') | list }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_apply
+  changed_when: "'configured' in r_catalog_apply.stdout or 'created' in r_catalog_apply.stdout"
+
+- name: Wait for catalog sources to be ready
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_sources
+  retries: 24
+  delay: 10
+  until: >-
+    r_catalog_sources.resources | default([])
+    | selectattr('metadata.name', 'in', _applied_cs_names)
+    | selectattr('status', 'defined')
+    | selectattr('status.connectionState', 'defined')
+    | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+    | list | length == (_applied_cs_names | length)

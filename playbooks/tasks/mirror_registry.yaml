@@ -144,3 +144,10 @@
           {{ _oc_mirror_tail.stdout | default('Unable to read oc-mirror log tail.') }}
 
           Full log: {{ _oc_mirror_log }}
+
+- name: Apply cluster resources from oc-mirror workspace
+  ansible.builtin.include_tasks:
+    file: mirror_registry_cluster_resources.yaml
+  when:
+    - r_oc_mirror is success
+    - not (fresh | default(true) | bool)
