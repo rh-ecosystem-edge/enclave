@@ -55,4 +55,4 @@
   loop_control:
     loop_var: fleet_plugin
     label: "{{ fleet_plugin.name }}"
-  when: fleet_plugin.catalog | default('redhat') == 'redhat'
+  when: plugin.catalog | default('redhat') == 'redhat'
