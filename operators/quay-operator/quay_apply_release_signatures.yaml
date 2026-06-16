@@ -11,6 +11,10 @@
       - apply
       - -f
       - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml"
+  register: quay_signature_apply_result
+  changed_when: >
+    'created' in (quay_signature_apply_result.stdout | lower) or
+    'configured' in (quay_signature_apply_result.stdout | lower)
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when: quay_signature_configmap_stat.stat.exists
