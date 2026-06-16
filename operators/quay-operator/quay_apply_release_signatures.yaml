@@ -1,0 +1,16 @@
+---
+- name: Stat release signature ConfigMap from Quay oc-mirror workspace
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml"
+  register: quay_signature_configmap_stat
+
+- name: Apply release signature ConfigMap to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ workingDir }}/config/oc-mirror-workspace-quay/working-dir/cluster-resources/signature-configmap.yaml"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: quay_signature_configmap_stat.stat.exists

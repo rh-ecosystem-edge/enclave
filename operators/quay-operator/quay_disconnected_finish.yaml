@@ -18,6 +18,12 @@
 - name: Apply Quay mirrors and trust registry CA for image pulls
   ansible.builtin.include_tasks: quay_disconnected_mirrors.yaml
 
+# We only want to apply these in day-2 operations. In bootstrap, the release signatures are
+# added as part of the OCP ABI configuration, see playbooks/tasks/configure_ocp_abi.yaml
+- name: Apply release signature ConfigMap from Quay mirror
+  ansible.builtin.include_tasks: quay_apply_release_signatures.yaml
+  tags: quay-disconnected
+
 - name: Generate and apply master PinnedImageSet from images on master nodes
   ansible.builtin.include_tasks: quay_pinnedimageset.yaml
   when: >-
