@@ -11,6 +11,7 @@
       ansible.builtin.command:
         cmd: >
           {{ workingDir }}/bin/oc adm release info
+          --registry-config={{ pullSecretPath }}
           --image-for=machine-os-images
           quay.io/openshift-release-dev/ocp-release:{{ version_item.version }}-x86_64
       register: machine_os_image
