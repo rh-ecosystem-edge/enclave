@@ -40,7 +40,7 @@
     kind: Deployment
     namespace: osac
     label_selectors:
-      - "app.kubernetes.io/managed-by=automationgateway"
+      - "app.kubernetes.io/component=aap-gateway"
   register: __r_aap_gateway
   retries: 90
   delay: 30
@@ -58,7 +58,7 @@
     kind: Route
     namespace: osac
     label_selectors:
-      - "app.kubernetes.io/managed-by=automationgateway"
+      - "app.kubernetes.io/managed-by=aap-operator"
   register: __r_aap_route
 
 - name: Assert exactly one AAP route found
@@ -66,7 +66,7 @@
     that: __r_aap_route.resources | length == 1
     fail_msg: >-
       Expected exactly one AAP gateway route in osac namespace
-      (managed-by=automationgateway), found {{ __r_aap_route.resources | length }}.
+      (managed-by=aap-operator), found {{ __r_aap_route.resources | length }}.
 
 - name: Set AAP URL fact
   ansible.builtin.set_fact:

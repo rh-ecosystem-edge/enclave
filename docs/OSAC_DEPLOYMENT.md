@@ -229,7 +229,7 @@ After deployment, hub registration and tenant creation require manual steps:
 | pre-validate fails on Keycloak | `oc get keycloak -n keycloak` | Deploy rhbk plugin first |
 | pre-validate fails on AAP CRD | `oc get crd ansibleautomationplatforms.aap.ansible.com` | Deploy aap plugin first |
 | pre-validate fails on HyperConverged CRD | `oc get crd hyperconvergeds.hco.kubevirt.io` | Deploy cnv plugin first (required for vmaas/development profile) |
-| AAP gateway not becoming available | `oc get pods -n osac -l app.kubernetes.io/managed-by=automationgateway` | AAP takes 30+ minutes; check operator logs |
+| AAP gateway not becoming available | `oc get pods -n osac -l app.kubernetes.io/component=aap-gateway` | AAP takes 30+ minutes; check operator logs |
 | Helm chart install fails | `helm status osac -n osac` | Check post-operators secrets exist: `oc get secrets -n osac` |
 | PostgreSQL not starting | `oc logs deployment/postgres -n osac` | Check PVC bound (`oc get pvc -n osac`), cert-manager certs issued (`oc get certificates -n osac`) |
 | Fulfillment pods CrashLoopBackOff | `oc logs deployment/fulfillment-grpc-server -n osac` | Check `fulfillment-db` secret URL, PostgreSQL reachable, client cert valid |
