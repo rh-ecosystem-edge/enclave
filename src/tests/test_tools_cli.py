@@ -9,7 +9,7 @@ from enclave.tools.cli import cli
 def test_tools_cli_help() -> None:
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "Enclave tools CLI" in result.output
+    assert "Utility tools for enclave operations" in result.output
 
 
 def test_resolve_quay_registry_ca_help() -> None:

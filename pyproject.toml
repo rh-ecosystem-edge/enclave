@@ -124,6 +124,9 @@ preview = true
 "src/tests/fixtures.py" = [
     "ANN401",  # anymarkup.parse returns Any; no tighter type available
 ]
+"src/enclave/utils.py" = [
+    "ANN401",  # HelpGroup mirrors click.Group's *args/**kwargs interface
+]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true

@@ -2,18 +2,23 @@ import click
 
 from enclave.reconcile.cli import cli as reconcile_cli
 from enclave.tools.cli import cli as tools_cli
-from enclave.utils import LOG_LEVELS, configure_logging
+from enclave.utils import LOG_LEVELS, HelpGroup, configure_logging
 
 
-@click.group()
+@click.group(cls=HelpGroup)
 @click.option(
     "--log-level",
+    "-l",
     default="INFO",
     type=click.Choice(LOG_LEVELS, case_sensitive=False),
     help="Set the logging level.",
 )
 def cli(log_level: str) -> None:
-    """Enclave CLI."""
+    """Management CLI for Red Hat Sovereign Enclave (RHSE).
+
+    Provides subcommands for reconciling cluster state and running
+    operational tools against the management cluster.
+    """
     configure_logging(log_level)
 
 

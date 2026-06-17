@@ -8,7 +8,7 @@ from enclave.reconcile.cli import cli, defaults_path
 def test_cli_help() -> None:
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "Reconcile CLI" in result.output
+    assert "Reconcile management cluster state" in result.output
     assert "resolve-quay-registry-ca" not in result.output
     assert "collect-node-image-digests" not in result.output
 

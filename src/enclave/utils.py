@@ -3,10 +3,30 @@ import re
 import subprocess
 import sys
 import time
+from typing import Any
+
+import click
 
 logger = logging.getLogger(__name__)
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+_HELP_CONTEXT = {"help_option_names": ["-h", "--help"]}
+
+
+class HelpGroup(click.Group):
+    """click.Group that propagates -h/--help to every subcommand automatically."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("context_settings", _HELP_CONTEXT)
+        super().__init__(*args, **kwargs)
+
+    def command(self, *args: Any, **kwargs: Any) -> Any:
+        kwargs.setdefault("context_settings", _HELP_CONTEXT)
+        return super().command(*args, **kwargs)
+
+    def group(self, *args: Any, **kwargs: Any) -> Any:
+        kwargs.setdefault("context_settings", _HELP_CONTEXT)
+        return super().group(*args, **kwargs)
 
 
 def configure_logging(log_level: str) -> None:

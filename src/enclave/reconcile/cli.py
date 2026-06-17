@@ -9,7 +9,7 @@ from enclave.reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
-from enclave.utils import LOG_LEVELS, configure_logging
+from enclave.utils import LOG_LEVELS, HelpGroup, configure_logging
 
 
 def defaults_path(filename: str) -> Path:
@@ -22,36 +22,49 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
-@click.group()
+@click.group(cls=HelpGroup)
 @click.option(
     "--log-level",
+    "-l",
     default="INFO",
     type=click.Choice(LOG_LEVELS, case_sensitive=False),
     help="Set the logging level.",
 )
 def cli(log_level: str) -> None:
-    """Reconcile CLI."""
+    """Reconcile management cluster state against desired configuration.
+
+    Commands compare the current cluster state with expected values
+    and apply changes to bring them in sync.
+    """
     # Configure logging only if not already configured by the parent enclave CLI
     configure_logging(log_level)
 
 
 @cli.command()
-@click.option("--name", help="Operator package name")
-@click.option("--version", help="Operator version")
-@click.option("--namespace", help="Operator namespace")
+@click.option("--name", "-n", help="Operator package name")
+@click.option("--version", "-v", help="Operator version")
+@click.option("--namespace", "-N", help="Operator namespace")
 @click.option(
     "--csv-name",
+    "-c",
     "csv_names",
     multiple=True,
     help="CSV name(s); defaults to operator name if omitted",
 )
 @click.option(
     "--use-defaults",
+    "-u",
     is_flag=True,
     default=False,
     help="Load all operators from defaults/operators.yaml (mutually exclusive with --name, --version, --namespace, --csv-name)",
 )
-@click.option("--dry-run/--no-dry-run", default=False)
+@click.option(
+    "--dry-run",
+    "-d",
+    is_flag=True,
+    default=False,
+    help="Print what would be done without applying any changes.",
+)
 def operator_versions(
     name: str,
     version: str,
@@ -60,6 +73,7 @@ def operator_versions(
     use_defaults: bool,
     dry_run: bool,
 ) -> None:
+    """Reconcile operator CSV versions on the management cluster."""
     if use_defaults and any([name, version, namespace, csv_names]):
         raise click.UsageError(
             "--use-defaults is mutually exclusive with --name, --version, --namespace, --csv-name"
@@ -100,23 +114,32 @@ def operator_versions(
 
 @cli.command()
 @click.option(
-    "--version", "version", default=None, help="OpenShift version to upgrade to"
+    "--version", "-v", "version", default=None, help="OpenShift version to upgrade to"
 )
 @click.option(
     "--use-defaults",
+    "-u",
     is_flag=True,
     default=False,
     help="Load the default version from defaults/platforms.yaml (mutually exclusive with --version)",
 )
-@click.option("--dry-run/--no-dry-run", default=False)
+@click.option(
+    "--dry-run",
+    "-d",
+    is_flag=True,
+    default=False,
+    help="Print what would be done without applying any changes.",
+)
 @click.option(
     "--timeout-minutes",
+    "-t",
     default=180,
     type=click.IntRange(min=1),
     help="Timeout for waiting operations in minutes (default: 180 = 3 hours)",
 )
 @click.option(
     "--sleep-interval",
+    "-s",
     default=60,
     type=click.IntRange(min=1),
     help="Sleep interval between polling attempts in seconds (default: 60)",
@@ -128,6 +151,11 @@ def mgmt_cluster_version(
     timeout_minutes: int,
     sleep_interval: int,
 ) -> None:
+    """Reconcile the management cluster's OpenShift version.
+
+    Triggers an upgrade if the cluster is not already at the target
+    version, then waits for the rollout to complete.
+    """
     if use_defaults and version:
         raise click.UsageError("--use-defaults is mutually exclusive with --version")
 

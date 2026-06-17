@@ -147,8 +147,7 @@
       --name "{{ operator.name }}" \
       --version "{{ operator.version }}" \
       --namespace "{{ operator.namespace }}" \
-      {% for csv in (operator.csvNames | default([operator.name])) %}--csv-name "{{ csv }}" {% endfor %}\
-      --no-dry-run
+      {% for csv in (operator.csvNames | default([operator.name])) %}--csv-name "{{ csv }}" {% endfor %}
   register: operator_update_result
 
 - name: Print the output

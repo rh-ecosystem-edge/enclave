@@ -2,15 +2,16 @@ import click
 
 from enclave.tools.node_image_digests import main as collect_node_image_digests_main
 from enclave.tools.quay_registry_ca import main as quay_registry_ca_main
+from enclave.utils import HelpGroup
 
 
-@click.group()
+@click.group(cls=HelpGroup)
 def cli() -> None:
-    """Enclave tools CLI."""
+    """Utility tools for enclave operations."""
 
 
 @cli.command("resolve-quay-registry-ca")
-@click.option("--hostname", required=True, help="Quay registry route hostname.")
+@click.option("--hostname", "-H", required=True, help="Quay registry route hostname.")
 @click.option(
     "--oc",
     default="oc",
@@ -26,7 +27,7 @@ def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
 
 
 @cli.command("collect-node-image-digests")
-@click.option("--node", required=True, help="Node name.")
+@click.option("--node", "-n", required=True, help="Node name.")
 @click.option(
     "--oc",
     default="oc",
@@ -35,11 +36,13 @@ def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
 )
 @click.option(
     "--exclude-contains",
+    "-e",
     default=None,
     help="JSON array of substrings; matching digest refs are skipped.",
 )
 @click.option(
     "--raw-output-file",
+    "-r",
     default=None,
     help="File path for raw oc debug/crictl output when no digest refs are collected.",
 )
