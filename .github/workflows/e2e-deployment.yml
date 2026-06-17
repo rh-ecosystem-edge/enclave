@@ -1024,7 +1024,7 @@ jobs:
       ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: lvms
-      ENABLED_PLUGINS: lvms,trust-manager,rhbk,authorino,aap,osac
+      ENABLED_PLUGINS: lvms,trust-manager,rhbk,authorino,aap,cnv,osac
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -1195,6 +1195,10 @@ jobs:
       - name: Deploy aap plugin
         id: deploy_aap
         run: make -f Makefile.ci deploy-plugin PLUGIN=aap
+
+      - name: Deploy cnv plugin
+        id: deploy_cnv
+        run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
 
       - name: Deploy osac plugin
         id: deploy_osac
@@ -1380,6 +1384,7 @@ jobs:
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_authorino"]="Deploy authorino plugin"
             ["deploy_aap"]="Deploy aap plugin"
+            ["deploy_cnv"]="Deploy cnv plugin"
             ["deploy_osac"]="Deploy osac plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
@@ -1399,6 +1404,7 @@ jobs:
             deploy_rhbk
             deploy_authorino
             deploy_aap
+            deploy_cnv
             deploy_osac
             verify_cluster
           )
