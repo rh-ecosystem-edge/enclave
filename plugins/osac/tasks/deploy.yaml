@@ -128,28 +128,26 @@
         token: "{{ _osac_aap_token }}"
   no_log: true
 
-- name: Patch OSAC operator deployment with AAP URL
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: osac-operator
-        namespace: osac
-      spec:
-        template:
-          spec:
-            containers:
-              - name: osac-operator
-                env:
-                  - name: OSAC_AAP_URL
-                    value: "{{ _osac_aap_url }}"
-                  - name: OSAC_AAP_TOKEN
-                    valueFrom:
-                      secretKeyRef:
-                        name: osac-aap-secret
-                        key: token
+- name: Patch OSAC operator deployment with AAP URL and AAP token
+  kubernetes.core.k8s_json_patch:
+    api_version: apps/v1
+    kind: Deployment
+    name: osac-operator
+    namespace: osac
+    patch:
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OSAC_AAP_URL
+          value: "{{ _osac_aap_url }}"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: OSAC_AAP_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: osac-aap-secret
+              key: token
 
 # =====================================================================
 # 6. Wait for OSAC operator rollout
