@@ -171,6 +171,7 @@ def test_reconcile_emits_raw_on_empty_refs(
 def test_reconcile_writes_raw_output_file_on_empty_refs(
     mocker: MockerFixture,
     capsys: pytest.CaptureFixture,
+    caplog: pytest.LogCaptureFixture,
     tmp_path: Path,
 ) -> None:
     mocker.patch(
@@ -179,10 +180,12 @@ def test_reconcile_writes_raw_output_file_on_empty_refs(
     )
     raw_output_file = tmp_path / "collect" / "node-0.log"
 
-    main("node-0", raw_output_file=str(raw_output_file))
+    with caplog.at_level("INFO"):
+        main("node-0", raw_output_file=str(raw_output_file))
 
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "No digest refs were collected; raw output saved to" in captured.err
-    assert str(raw_output_file) in captured.err
+    assert captured.err == ""
+    assert "No digest refs were collected; raw output saved to" in caplog.text
+    assert str(raw_output_file) in caplog.text
     assert raw_output_file.read_text(encoding="utf-8") == "crictl failed"
