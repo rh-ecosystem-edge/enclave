@@ -52,10 +52,14 @@ Each Enclave tarball release includes:
     ```
 8. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
     ```sh
+    WORKING_DIR=<your global.yaml workingDir variable>
+    export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile mgmt-cluster-version --use-defaults
     ```
 9. **Upgrade operators** - Update operators to the versions in the tarball:
     ```sh
+    WORKING_DIR=<your global.yaml workingDir variable>
+    export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile operator-versions --use-defaults
     ```
 
