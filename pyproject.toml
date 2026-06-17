@@ -52,6 +52,7 @@ only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.ya
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
+"defaults" = "enclave/defaults"
 
 [tool.ruff]
 line-length = 88

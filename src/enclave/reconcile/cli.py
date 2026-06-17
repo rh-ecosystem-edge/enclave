@@ -13,12 +13,12 @@ from enclave.utils import LOG_LEVELS, configure_logging
 
 
 def defaults_path(filename: str) -> Path:
-    # Non-editable install: cli.py → site-packages/enclave/reconcile/ → site-packages/enclave/ → site-packages/ → defaults/
-    # Editable src layout:  cli.py → src/enclave/reconcile/ → src/enclave/ → src/ → (not found) → repo root → defaults/
-    pkg_root = Path(__file__).resolve().parent.parent.parent
-    path = pkg_root / "defaults" / filename
+    # Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/ → enclave/defaults/
+    # Editable:  src/enclave/reconcile/cli.py → src/enclave/ (no defaults/) → repo_root/defaults/
+    enclave_pkg = Path(__file__).resolve().parent.parent
+    path = enclave_pkg / "defaults" / filename
     if not path.exists():
-        path = pkg_root.parent / "defaults" / filename
+        path = enclave_pkg.parent.parent / "defaults" / filename
     return path
 
 
