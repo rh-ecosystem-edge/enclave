@@ -1,8 +1,12 @@
 import logging
+import os
 import re
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+import click
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,45 @@ def configure_logging(log_level: str) -> None:
             datefmt="%Y-%m-%dT%H:%M:%S",
             stream=sys.stderr,
         )
+
+
+class KubeconfigNotFoundError(RuntimeError):
+    pass
+
+
+def setup_kubeconfig() -> None:
+    """Ensure KUBECONFIG is set before running cluster commands.
+
+    If KUBECONFIG is already set, nothing happens. Otherwise tries
+    ~/.config/enclave/kubeconfig (symlinked by the deploy playbook).
+    Raises KubeconfigNotFoundError with a helpful message if neither is available.
+    """
+    if os.environ.get("KUBECONFIG"):
+        return
+
+    fallback = Path.home() / ".config" / "enclave" / "kubeconfig"
+    if fallback.exists():
+        os.environ["KUBECONFIG"] = str(fallback)
+        logger.debug("KUBECONFIG not set; using %s", fallback)
+        return
+
+    raise KubeconfigNotFoundError(
+        "KUBECONFIG is not set and ~/.config/enclave/kubeconfig does not exist.\n"
+        "Set KUBECONFIG to your kubeconfig file, for example:\n"
+        "  export KUBECONFIG=<enclave-workingDir>/ocp-cluster/auth/kubeconfig"
+    )
+
+
+class KubeconfigGroup(click.Group):
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if not ctx.resilient_parsing:  # do nor fire during shell-completion parsing
+            help_flags = set(ctx.help_option_names or ["--help", "-h"])
+            if not any(f in args for f in help_flags):
+                try:
+                    setup_kubeconfig()
+                except KubeconfigNotFoundError as exc:
+                    raise click.ClickException(str(exc)) from exc
+        return super().parse_args(ctx, args)
 
 
 def parse_jsonpath_value(raw: str) -> str:

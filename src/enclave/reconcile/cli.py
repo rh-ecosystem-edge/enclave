@@ -9,7 +9,11 @@ from enclave.reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
-from enclave.utils import LOG_LEVELS, configure_logging
+from enclave.utils import (
+    LOG_LEVELS,
+    KubeconfigGroup,
+    configure_logging,
+)
 
 
 def defaults_path(filename: str) -> Path:
@@ -22,7 +26,7 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
-@click.group()
+@click.group(cls=KubeconfigGroup)
 @click.option(
     "--log-level",
     default="INFO",

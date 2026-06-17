@@ -1,3 +1,4 @@
+import os
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock
 
@@ -5,9 +6,11 @@ import pytest
 from pytest_mock import MockerFixture
 
 from enclave.utils import (
+    KubeconfigNotFoundError,
     parse_jsonpath_value,
     run_oc_command,
     semver_key,
+    setup_kubeconfig,
     wait_for_resource_status,
 )
 from tests.fixtures import OcResultFactory
@@ -226,3 +229,49 @@ def test_wait_without_namespace_omits_n_flag(
     wait_for_resource_status("cv", "version", "history[0].state", "Completed")
     args = mock_run.call_args.args[0]
     assert "-n" not in args
+
+
+# ---------------------------------------------------------------------------
+# setup_kubeconfig
+# ---------------------------------------------------------------------------
+
+
+def test_setup_kubeconfig_noop_when_already_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Does nothing when KUBECONFIG is already set in the environment."""
+    monkeypatch.setenv("KUBECONFIG", "/existing/kubeconfig")
+    before = os.environ["KUBECONFIG"]
+    setup_kubeconfig()
+    assert os.environ["KUBECONFIG"] == before
+
+
+def test_setup_kubeconfig_uses_fallback(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    """Sets KUBECONFIG from the fallback path when it exists and KUBECONFIG is unset."""
+    monkeypatch.delenv("KUBECONFIG", raising=False)
+    mocker.patch("enclave.utils.Path.exists", return_value=True)
+    setup_kubeconfig()
+    assert "KUBECONFIG" in os.environ
+    assert os.environ["KUBECONFIG"].endswith("kubeconfig")
+
+
+def test_setup_kubeconfig_raises_when_neither_set(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    """Raises KubeconfigNotFoundError with a helpful message when nothing is available."""
+    monkeypatch.delenv("KUBECONFIG", raising=False)
+    mocker.patch("enclave.utils.Path.exists", return_value=False)
+    with pytest.raises(KubeconfigNotFoundError, match="KUBECONFIG"):
+        setup_kubeconfig()
+
+
+def test_setup_kubeconfig_empty_string_treated_as_unset(
+    monkeypatch: pytest.MonkeyPatch, mocker: MockerFixture
+) -> None:
+    """An empty KUBECONFIG string falls through to the fallback path."""
+    monkeypatch.setenv("KUBECONFIG", "")
+    mocker.patch("enclave.utils.Path.exists", return_value=False)
+    with pytest.raises(KubeconfigNotFoundError):
+        setup_kubeconfig()

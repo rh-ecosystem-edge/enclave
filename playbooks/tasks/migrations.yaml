@@ -23,3 +23,7 @@
   when:
     - sslCACertificate is defined
     - sslCACertificate | length > 0
+
+- name: Enclave kubeconfig symlink migration
+  ansible.builtin.include_tasks:
+    file: migrations/setup_enclave_kubeconfig_symlink.yaml

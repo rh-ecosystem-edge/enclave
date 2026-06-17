@@ -78,6 +78,10 @@
               tags: pre-install-validate
           tags: pre-install-validate
 
+        - name: Set up enclave kubeconfig symlink
+          ansible.builtin.include_tasks:
+            file: tasks/setup_enclave_kubeconfig_symlink.yaml
+
         - name: Wait for deployment
           ansible.builtin.include_tasks:
             file: tasks/wait_for_deployment.yaml
