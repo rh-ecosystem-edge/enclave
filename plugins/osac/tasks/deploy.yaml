@@ -128,49 +128,26 @@
         token: "{{ _osac_aap_token }}"
   no_log: true
 
-- name: Get current OSAC operator deployment
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: osac-operator
-    namespace: osac
-  register: __r_osac_operator_deployment
-
-- name: Assert osac-operator has a single container
-  ansible.builtin.assert:
-    that:
-      - __r_osac_operator_deployment.resources[0].spec.template.spec.containers | length == 1
-    fail_msg: "osac-operator deployment has multiple containers — review env patch target"
-
-- name: Set OSAC operator env var names
-  ansible.builtin.set_fact:
-    _osac_operator_env_names: >-
-      {{ __r_osac_operator_deployment.resources[0].spec.template.spec.containers[0].env
-         | default([]) | map(attribute='name') | list }}
-
 - name: Patch OSAC operator deployment with AAP URL and AAP token
-  kubernetes.core.k8s_json_patch:
-    api_version: apps/v1
+  kubernetes.core.k8s:
+    state: patched
     kind: Deployment
     name: osac-operator
     namespace: osac
-    patch:
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: OSAC_AAP_URL
-          value: "{{ _osac_aap_url }}"
-      - op: add
-        path: /spec/template/spec/containers/0/env/-
-        value:
-          name: OSAC_AAP_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: osac-aap-secret
-              key: token
-  when:
-    - "'OSAC_AAP_URL' not in _osac_operator_env_names"
-    - "'OSAC_AAP_TOKEN' not in _osac_operator_env_names"
+    definition:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                env:
+                  - name: OSAC_AAP_URL
+                    value: "{{ _osac_aap_url }}"
+                  - name: OSAC_AAP_TOKEN
+                    valueFrom:
+                      secretKeyRef:
+                        name: osac-aap-secret
+                        key: token
 
 # =====================================================================
 # 6. Wait for OSAC operator rollout
