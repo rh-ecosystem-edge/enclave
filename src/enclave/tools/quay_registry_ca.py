@@ -114,7 +114,9 @@ def _chain_trust_anchor_pem(chain: list[str]) -> str:
     """Return CA PEM bundle from a fetched TLS chain (all certs except the leaf)."""
     ca_certs = chain[1:]
     if not ca_certs:
-        msg = "TLS chain contains only a leaf certificate; cannot determine trust anchor"
+        msg = (
+            "TLS chain contains only a leaf certificate; cannot determine trust anchor"
+        )
         raise RuntimeError(msg)
     return "\n".join(ca_certs) + "\n"
 
