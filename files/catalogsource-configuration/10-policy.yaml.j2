@@ -32,13 +32,15 @@ spec:
             spec:
               disableAllDefaultSources: true
 
+        # Hardcoded catalog source name for backwards compatibility with 0.1.0
+        # See: https://github.com/rh-ecosystem-edge/enclave/blob/0.1.0/defaults/catalogs.yaml#L6
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: {{ mirror_rh_operator_catalog }}
+              name: mirror-redhat-operators
               namespace: openshift-marketplace
             spec:
               image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}:v{{ short_version_dot }}
