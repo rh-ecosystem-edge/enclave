@@ -252,8 +252,8 @@ def emit_collection_output(
             output_path = Path(raw_output_file)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(result.raw_output, encoding="utf-8")
-            sys.stderr.write(
-                f"No digest refs were collected; raw output saved to {output_path}\n"
+            logger.info(
+                "No digest refs were collected; raw output saved to %s", output_path
             )
         else:
             sys.stderr.write(result.raw_output)

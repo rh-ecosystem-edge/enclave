@@ -151,12 +151,12 @@
       --no-dry-run
   register: operator_update_result
 
-- name: Print the output
+- name: Print Install Plan approval output ({{ operator.name }})
   when:
     - r_sub_check.resources | length == 0
     - operator.namespace != "openshift-operators"
   ansible.builtin.debug:
-    var: operator_update_result.stdout_lines
+    var: operator_update_result.stderr_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
