@@ -110,14 +110,21 @@ def _openssl_verify(ca_pem: str, cert_pem: str) -> bool:
     return result.returncode == 0
 
 
+def _chain_trust_anchor_pem(chain: list[str]) -> str:
+    """Return CA PEM bundle from a fetched TLS chain (all certs except the leaf)."""
+    ca_certs = chain[1:]
+    if not ca_certs:
+        msg = "TLS chain contains only a leaf certificate; cannot determine trust anchor"
+        raise RuntimeError(msg)
+    return "\n".join(ca_certs) + "\n"
+
+
 def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc") -> str:
     """Return PEM for the CA that should trust the registry route certificate."""
     router_ca = get_router_ca_pem(oc=oc).strip()
     chain = pem_blocks(fetch_tls_chain_pem(hostname))
     if not chain:
-        if router_ca:
-            return f"{router_ca}\n"
-        msg = f"unable to resolve registry CA for {hostname}"
+        msg = f"unable to fetch TLS certificate chain for {hostname}"
         raise RuntimeError(msg)
 
     leaf = chain[0]
@@ -125,8 +132,8 @@ def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc") -> str:
         logger.debug("using router-ca to trust %s", hostname)
         return f"{router_ca}\n"
 
-    logger.debug("using TLS chain root to trust %s", hostname)
-    return f"{chain[-1]}\n"
+    logger.debug("using TLS chain CA bundle to trust %s", hostname)
+    return _chain_trust_anchor_pem(chain)
 
 
 def main(hostname: str, *, oc: str = "oc") -> None:
