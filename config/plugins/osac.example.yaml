@@ -9,8 +9,10 @@
 # Obtain from: https://access.redhat.com/management/subscription_allocations
 # osacAapLicenseFile: "/path/to/aap-license.zip"
 
-# Optional: deployment profile (default: development)
-# osacProfile: development   # Options: development, vmaas, caas
+# Optional: enabled service profiles (default: [caas])
+# osacProfilesList:
+#   - caas
+#   - vmaas
 
 # Optional: bring your own database
 # osacBYODatabase: true

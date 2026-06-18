@@ -14,12 +14,12 @@ operator:
     templatePrefix: osac
     url: ""               # Set post-install by deploy.yaml
   controllers:
-{% if osacProfile in ['development', 'caas'] %}
+{% if 'caas' in osacProfilesList or 'bmaas' in osacProfilesList %}
     clusterOrder: true
 {% else %}
     clusterOrder: false
 {% endif %}
-{% if osacProfile in ['development', 'vmaas'] %}
+{% if 'vmaas' in osacProfilesList %}
     computeInstance: true
 {% else %}
     computeInstance: false

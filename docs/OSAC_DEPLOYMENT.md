@@ -24,7 +24,6 @@ OSAC is deployed as a set of Enclave plugins that are installed sequentially. Ea
 | `rhbk` | 101 | Red Hat Build of Keycloak (identity provider) |
 | `authorino` | 102 | gRPC authorization operator |
 | `aap` | 103 | AAP operator installation (provides CRDs for the OSAC chart) |
-| `cnv` | 104 | OpenShift Virtualization (optional, for VMaaS) |
 | `osac` | 200 | OSAC fulfillment service, operator, chart-managed AAP instance, bootstrap |
 
 The `aap` plugin installs the AAP operator and waits for it to be available (no configuration required). The `osac` plugin then deploys the OSAC Helm chart, which creates its own AAP instance (`osac-aap`) in the `osac` namespace.
@@ -66,8 +65,10 @@ Edit `config/plugins/osac.yaml`:
 # Required: path to AAP license file on the Landing Zone
 osacAapLicenseFile: "/home/<user>/aap-license.zip"
 
-# Optional: deployment profile (default: development)
-# osacProfile: development   # Options: development, vmaas, caas
+# Optional: enabled service profiles (default: [caas])
+# osacProfilesList:
+#   - caas
+#   - vmaas
 
 # Optional: bring your own database
 # osacBYODatabase: true
@@ -79,7 +80,7 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `osacAapLicenseFile` | string | Yes | — | Path to AAP license manifest.zip on the Landing Zone |
-| `osacProfile` | string | No | `development` | Deployment profile: `development`, `vmaas`, or `caas` |
+| `osacProfilesList` | list | No | `[caas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
 
@@ -102,10 +103,7 @@ make deploy-plugin PLUGIN=authorino
 # 4. AAP — installs operator only, no config required (provides CRDs for OSAC)
 make deploy-plugin PLUGIN=aap
 
-# 5. (VMaaS only) OpenShift Virtualization — required for VM workloads
-# make deploy-plugin PLUGIN=cnv
-
-# 6. Deploy the OSAC plugin
+# 5. Deploy the OSAC plugin
 make deploy-plugin PLUGIN=osac
 ```
 
@@ -200,16 +198,16 @@ When BYO database is enabled:
 
 ## Profiles
 
-The `osacProfile` config value selects which OSAC operator controllers are enabled:
+The `osacProfilesList` config value controls which OSAC operator controllers are enabled. Multiple profiles can be combined:
 
 | Profile | Controllers | Extra Prerequisites |
 |---------|------------|---------------------|
-| `development` (default) | clusterOrder, computeInstance, tenant, networking | CNV + MCE |
-| `vmaas` | computeInstance, tenant, networking | CNV |
-| `caas` | clusterOrder, tenant, networking | MCE |
+| `vmaas` | computeInstance, tenant, networking | — |
+| `caas` (default) | clusterOrder, tenant, networking | MCE |
+| `bmaas` | clusterOrder, tenant, networking | MCE |
 
 - **MCE** (Multicluster Engine) is part of Enclave core infrastructure (ACM-based platform) and is always available.
-- **CNV** must be deployed separately before OSAC for `vmaas` and `development` profiles: `make deploy-plugin PLUGIN=cnv`
+- **VMaaS** requires a separate OpenShift cluster with CNV (OpenShift Virtualization) — VM workloads run on dedicated clusters, not on the management cluster.
 
 ## Post-Install Steps
 
@@ -228,7 +226,6 @@ After deployment, hub registration and tenant creation require manual steps:
 | pre-validate fails on ClusterIssuer | `oc get clusterissuer default-ca` | Deploy trust-manager plugin first |
 | pre-validate fails on Keycloak | `oc get keycloak -n keycloak` | Deploy rhbk plugin first |
 | pre-validate fails on AAP CRD | `oc get crd ansibleautomationplatforms.aap.ansible.com` | Deploy aap plugin first |
-| pre-validate fails on HyperConverged CRD | `oc get crd hyperconvergeds.hco.kubevirt.io` | Deploy cnv plugin first (required for vmaas/development profile) |
 | AAP gateway not becoming available | `oc get pods -n osac -l app.kubernetes.io/component=aap-gateway` | AAP takes 30+ minutes; check operator logs |
 | Helm chart install fails | `helm status osac -n osac` | Check post-operators secrets exist: `oc get secrets -n osac` |
 | PostgreSQL not starting | `oc logs deployment/postgres -n osac` | Check PVC bound (`oc get pvc -n osac`), cert-manager certs issued (`oc get certificates -n osac`) |
