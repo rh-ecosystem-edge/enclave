@@ -82,7 +82,7 @@
     regexp: "{{ _osac_aap_route_host | regex_escape() }}"
     state: present
   become: true
-  when: enclave_deployment_mode | default('') == 'connected'
+  when: not disconnected | default(true) | bool
 
 # =====================================================================
 # 4. Create AAP personal access token via awx-manage
