@@ -49,6 +49,7 @@
     )
 
 - name: Wait for UpdateService deployment pods to be ready
+  when: disconnected | default(true) | bool
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s_info:
