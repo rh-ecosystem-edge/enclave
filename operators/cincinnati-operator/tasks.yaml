@@ -22,7 +22,7 @@
       spec:
         graphDataImage: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/graph-image
         releases: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/release-images
-        replicas: "{{ updateservice_replicas }}"
+        replicas: "{{ updateservice_replicas | int }}"
   register: r_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
