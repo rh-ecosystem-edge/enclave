@@ -1,6 +1,0 @@
----
-name: ai-as-a-service
-description: AI as a Service experience with NVIDIA GPU support and OpenShift AI
-plugins:
-  - name: nvidia-gpu
-  - name: openshift-ai
