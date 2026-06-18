@@ -4,6 +4,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from enclave.tools.quay_registry_ca import (
+    _chain_trust_anchor_pem,
     _openssl_verify,
     fetch_tls_chain_pem,
     get_router_ca_pem,
@@ -13,6 +14,9 @@ from enclave.tools.quay_registry_ca import (
 
 _LEAF = """-----BEGIN CERTIFICATE-----
 leaf
+-----END CERTIFICATE-----"""
+_INTERMEDIATE = """-----BEGIN CERTIFICATE-----
+intermediate
 -----END CERTIFICATE-----"""
 _ROOT = """-----BEGIN CERTIFICATE-----
 root
@@ -98,7 +102,17 @@ def test_resolve_registry_ca_pem_uses_router_ca_when_it_verifies(
     assert resolve_registry_ca_pem("registry.example.com") == f"{_ROUTER_CA.strip()}\n"
 
 
-def test_resolve_registry_ca_pem_falls_back_to_chain_root(
+def test_chain_trust_anchor_pem_returns_all_non_leaf_certs() -> None:
+    chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n{_ROOT}\n")
+    assert _chain_trust_anchor_pem(chain) == f"{_INTERMEDIATE}\n{_ROOT}\n"
+
+
+def test_chain_trust_anchor_pem_leaf_only_raises() -> None:
+    with pytest.raises(RuntimeError, match="only a leaf certificate"):
+        _chain_trust_anchor_pem([_LEAF])
+
+
+def test_resolve_registry_ca_pem_falls_back_to_chain_ca_bundle(
     mocker: MockerFixture,
 ) -> None:
     mocker.patch(
@@ -106,26 +120,35 @@ def test_resolve_registry_ca_pem_falls_back_to_chain_root(
     )
     mocker.patch(
         "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
-        return_value=f"{_LEAF}\n{_ROOT}\n",
+        return_value=f"{_LEAF}\n{_INTERMEDIATE}\n{_ROOT}\n",
     )
     mocker.patch("enclave.tools.quay_registry_ca._openssl_verify", return_value=False)
-    assert resolve_registry_ca_pem("registry.example.com") == f"{_ROOT.strip()}\n"
+    assert resolve_registry_ca_pem("registry.example.com") == (
+        f"{_INTERMEDIATE}\n{_ROOT}\n"
+    )
 
 
-def test_resolve_registry_ca_pem_empty_chain_uses_router_ca_fallback(
+def test_resolve_registry_ca_pem_empty_chain_raises(
     mocker: MockerFixture,
 ) -> None:
     mocker.patch(
         "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
     )
     mocker.patch("enclave.tools.quay_registry_ca.fetch_tls_chain_pem", return_value="")
-    assert resolve_registry_ca_pem("registry.example.com") == f"{_ROUTER_CA.strip()}\n"
+    with pytest.raises(RuntimeError, match="unable to fetch TLS certificate chain"):
+        resolve_registry_ca_pem("registry.example.com")
 
 
-def test_resolve_registry_ca_pem_empty_chain_without_router_ca_raises(
+def test_resolve_registry_ca_pem_leaf_only_chain_raises(
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch("enclave.tools.quay_registry_ca.get_router_ca_pem", return_value="")
-    mocker.patch("enclave.tools.quay_registry_ca.fetch_tls_chain_pem", return_value="")
-    with pytest.raises(RuntimeError, match="unable to resolve registry CA"):
+    mocker.patch(
+        "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
+    )
+    mocker.patch(
+        "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
+        return_value=f"{_LEAF}\n",
+    )
+    mocker.patch("enclave.tools.quay_registry_ca._openssl_verify", return_value=False)
+    with pytest.raises(RuntimeError, match="only a leaf certificate"):
         resolve_registry_ca_pem("registry.example.com")

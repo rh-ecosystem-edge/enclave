@@ -1,5 +1,7 @@
 ---
-# Trust the internal Quay registry TLS cert for image pulls and UpdateService.
+# Trust the Quay registry route TLS cert for image pulls and UpdateService.
+# Routes signed by the ingress router CA use router-ca; externally signed routes
+# (for example ZeroSSL) use the intermediate/root CAs fetched from the live chain.
 # OSUS graph-builder reads updateservice-registry from the image.config additionalTrustedCA
 # ConfigMap; nodes use the registry hostname key.
 
