@@ -1,0 +1,11 @@
+---
+name: caas
+description: >-
+  Containers as a Service — self-service OpenShift cluster provisioning with
+  Hosted Control Planes on bare metal infrastructure.
+plugins:
+  - name: trust-manager
+  - name: rhbk
+  - name: authorino
+  - name: aap
+  - name: osac

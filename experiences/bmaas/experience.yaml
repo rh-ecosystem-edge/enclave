@@ -1,0 +1,11 @@
+---
+name: bmaas
+description: >-
+  Bare Metal as a Service — self-service bare metal server provisioning and
+  lifecycle management.
+plugins:
+  - name: trust-manager
+  - name: rhbk
+  - name: authorino
+  - name: aap
+  - name: osac

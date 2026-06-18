@@ -1,0 +1,12 @@
+---
+name: vmaas
+description: >-
+  VMs as a Service — self-service virtual machine provisioning on OpenShift
+  Virtualization.
+plugins:
+  - name: trust-manager
+  - name: rhbk
+  - name: authorino
+  - name: aap
+  - name: gpu-passthrough
+  - name: osac
