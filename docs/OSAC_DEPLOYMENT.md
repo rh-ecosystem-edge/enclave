@@ -65,7 +65,7 @@ Edit `config/plugins/osac.yaml`:
 # Required: path to AAP license file on the Landing Zone
 osacAapLicenseFile: "/home/<user>/aap-license.zip"
 
-# Optional: enabled service profiles (default: [caas])
+# Optional: enabled service profiles (default: [caas, vmaas])
 # osacProfilesList:
 #   - caas
 #   - vmaas

@@ -9,7 +9,7 @@
 # Obtain from: https://access.redhat.com/management/subscription_allocations
 # osacAapLicenseFile: "/path/to/aap-license.zip"
 
-# Optional: enabled service profiles (default: [caas])
+# Optional: enabled service profiles (default: [caas, vmaas])
 # osacProfilesList:
 #   - caas
 #   - vmaas
