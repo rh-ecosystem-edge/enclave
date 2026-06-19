@@ -128,20 +128,18 @@
         token: "{{ _osac_aap_token }}"
   no_log: true
 
-- name: Patch OSAC operator deployment with AAP URL
+- name: Patch OSAC operator deployment with AAP URL and AAP token
   kubernetes.core.k8s:
-    state: present
+    state: patched
+    kind: Deployment
+    name: osac-operator
+    namespace: osac
     definition:
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: osac-operator
-        namespace: osac
       spec:
         template:
           spec:
             containers:
-              - name: osac-operator
+              - name: manager
                 env:
                   - name: OSAC_AAP_URL
                     value: "{{ _osac_aap_url }}"
@@ -172,4 +170,4 @@
 
 - name: Log OSAC deploy completion
   ansible.builtin.debug:
-    msg: "OSAC deploy complete. AAP URL={{ _osac_aap_url }}, operator patched and rolled out."
+    msg: "OSAC deploy complete. Operator patched and rolled out."
