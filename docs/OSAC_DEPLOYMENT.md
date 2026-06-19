@@ -80,7 +80,7 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `osacAapLicenseFile` | string | Yes | — | Path to AAP license manifest.zip on the Landing Zone |
-| `osacProfilesList` | list | No | `[caas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
+| `osacProfilesList` | list | No | `[caas, vmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
 
@@ -202,8 +202,8 @@ The `osacProfilesList` config value controls which OSAC operator controllers are
 
 | Profile | Controllers | Extra Prerequisites |
 |---------|------------|---------------------|
-| `vmaas` | computeInstance, tenant, networking | — |
-| `caas` (default) | clusterOrder, tenant, networking | MCE |
+| `vmaas` | computeInstance, tenant, networking | Dedicated CNV-enabled workload cluster |
+| `caas` | clusterOrder, tenant, networking | MCE |
 | `bmaas` | clusterOrder, tenant, networking | MCE |
 
 - **MCE** (Multicluster Engine) is part of Enclave core infrastructure (ACM-based platform) and is always available.

@@ -6,6 +6,7 @@
 # config/plugins/osac.yaml are merged into the same scope.
 osacProfilesList:
   - caas
+  - vmaas
 
 # AAP settings (chart manages the instance, these configure it)
 osac_aap_name: osac-aap
