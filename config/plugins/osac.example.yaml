@@ -10,9 +10,11 @@
 # osacAapLicenseFile: "/path/to/aap-license.zip"
 
 # Optional: enabled service profiles (default: [caas, vmaas])
+# See docs/OSAC_DEPLOYMENT.md for valid profiles and prerequisites.
 # osacProfilesList:
 #   - caas
 #   - vmaas
+#   - ...
 
 # Optional: bring your own database
 # osacBYODatabase: true
