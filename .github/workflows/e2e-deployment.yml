@@ -49,6 +49,11 @@ on:
         required: false
         type: boolean
         default: false
+      addon-plugins:
+        description: 'Comma-separated addon plugins to install (e.g. authorino,trust-manager)'
+        required: false
+        default: ''
+        type: string
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -67,6 +72,7 @@ jobs:
       should_run: ${{ steps.decision.outputs.should_run }}
       storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
       storage_plugins_connected: ${{ steps.decision.outputs.storage_plugins_connected }}
+      addon_plugins: ${{ steps.decision.outputs.addon_plugins }}
 
     steps:
       - name: Checkout code
@@ -104,6 +110,12 @@ jobs:
               - 'scripts/infrastructure/setup_ceph*'
               - 'scripts/infrastructure/verify_ceph*'
               - 'scripts/lib/odf.sh'
+            authorino:
+              - 'plugins/authorino/**'
+            trust_manager:
+              - 'plugins/trust-manager/**'
+            aap:
+              - 'plugins/aap/**'
 
       - name: Make decision
         id: decision
@@ -148,6 +160,26 @@ jobs:
             echo "Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
+
+          # Compute addon_plugins: opt-in plugins to install alongside the storage plugin.
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            INPUT_VALUE="${{ inputs.addon-plugins }}"
+            if [[ -n "$INPUT_VALUE" ]] && ! [[ "$INPUT_VALUE" =~ ^[a-z0-9_,-]+$ ]]; then
+              echo "::error::Invalid addon-plugins input. Only lowercase letters, numbers, hyphens, underscores, and commas allowed."
+              exit 1
+            fi
+            ADDON_PLUGINS="$INPUT_VALUE"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]] || \
+               [[ "${{ github.event_name }}" == "checks_requested" ]]; then
+            ADDON_PLUGINS=""
+            [[ "${{ steps.filter.outputs.authorino }}"    == "true" ]] && ADDON_PLUGINS="${ADDON_PLUGINS:+${ADDON_PLUGINS},}authorino"
+            [[ "${{ steps.filter.outputs.trust_manager }}" == "true" ]] && ADDON_PLUGINS="${ADDON_PLUGINS:+${ADDON_PLUGINS},}trust-manager"
+            [[ "${{ steps.filter.outputs.aap }}"          == "true" ]] && ADDON_PLUGINS="${ADDON_PLUGINS:+${ADDON_PLUGINS},}aap"
+          else
+            ADDON_PLUGINS=""
+          fi
+          echo "addon_plugins=${ADDON_PLUGINS}" >> $GITHUB_OUTPUT
+          [[ -n "${ADDON_PLUGINS}" ]] && echo "Addon plugins: ${ADDON_PLUGINS}" | tee -a $GITHUB_STEP_SUMMARY || true
 
   # ---------------------------------------------------------------------------
   # Connected mode E2E deployment
@@ -246,6 +278,13 @@ jobs:
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
+      - name: Set ENABLED_PLUGINS
+        run: |
+          ADDON="${{ needs.check-e2e-needed.outputs.addon_plugins }}"
+          if [[ -n "$ADDON" ]]; then
+            echo "ENABLED_PLUGINS=${{ matrix.storage-plugin }},${ADDON}" >> "$GITHUB_ENV"
+          fi
+
       - name: Install Enclave Lab
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
@@ -266,6 +305,11 @@ jobs:
           echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci setup-ceph
           echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create AAP plugin config on Landing Zone
+        if: contains(env.ENABLED_PLUGINS, 'aap')
+        run: |
+          make -f Makefile.ci create-aap-plugin-config
 
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate
@@ -649,6 +693,13 @@ jobs:
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
+      - name: Set ENABLED_PLUGINS
+        run: |
+          ADDON="${{ needs.check-e2e-needed.outputs.addon_plugins }}"
+          if [[ -n "$ADDON" ]]; then
+            echo "ENABLED_PLUGINS=${{ matrix.storage-plugin }},${ADDON}" >> "$GITHUB_ENV"
+          fi
+
       - name: Install Enclave Lab
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
@@ -669,6 +720,11 @@ jobs:
           echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci setup-ceph
           echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create AAP plugin config on Landing Zone
+        if: contains(env.ENABLED_PLUGINS, 'aap')
+        run: |
+          make -f Makefile.ci create-aap-plugin-config
 
       - name: Bootstrap - Validate configuration
         id: bootstrap_validate
