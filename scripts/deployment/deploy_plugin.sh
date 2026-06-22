@@ -155,7 +155,6 @@ if [ -n "${AAP_LICENSE_FILE:-}" ]; then
 osacAapLicenseFile: "${LZ_AAP_LICENSE}"
 osacProfilesList:
   - caas
-  - vmaas
 OSAC_EOF
     fi
 fi
