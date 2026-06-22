@@ -141,6 +141,26 @@
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
+- name: Wait for MachineConfigPool to finish updating after LZ mirrors
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_lz
+  retries: 60
+  delay: 30
+  until: >-
+    r_mcp_lz.resources | default([])
+    | selectattr('status.conditions', 'defined')
+    | rejectattr('spec.paused', 'defined')
+    | selectattr('status.conditions', 'contains', {'type': 'Updating', 'status': 'True'})
+    | list | length == 0
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+
 - name: Wait for updated CatalogSource to be ready
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
@@ -282,3 +302,22 @@
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
+
+- name: Wait for MachineConfigPool to finish updating
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp
+  retries: 60
+  delay: 30
+  until: >-
+    r_mcp.resources | default([])
+    | selectattr('status.conditions', 'defined')
+    | rejectattr('spec.paused', 'defined')
+    | selectattr('status.conditions', 'contains', {'type': 'Updating', 'status': 'True'})
+    | list | length == 0
+  when:
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
