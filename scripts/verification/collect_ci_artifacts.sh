@@ -800,6 +800,21 @@ collect_cluster_problem_pod_logs() {
             oc describe pod -n \$ns \$name > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_describe.txt 2>&1 || true
         done
 
+        # Get CrashLoopBackOff/restarting pods (Running phase but containers failing)
+        oc get pods --all-namespaces -o json | \
+        jq -r '.items[] | select(.status.phase == \"Running\") | select((.status.containerStatuses // [])[] | (.state.waiting != null) or (.restartCount >= 3)) | \"\\(.metadata.namespace)/\\(.metadata.name)\"' | \
+        sort -u | head -20 | \
+        while read pod; do
+            ns=\${pod%/*}
+            name=\${pod#*/}
+            # Skip if already collected above
+            [ -f /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}.log ] && continue
+            echo \"Collecting logs for CrashLoopBackOff pod \$ns/\$name\"
+            oc logs -n \$ns \$name --all-containers --prefix --tail=500 > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}.log 2>&1 || true
+            oc logs -n \$ns \$name --all-containers --prefix --tail=500 --previous > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_previous.log 2>&1 || true
+            oc describe pod -n \$ns \$name > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_describe.txt 2>&1 || true
+        done
+
         # Tar it up
         cd /tmp && tar czf problem-pods-${TIMESTAMP}.tar.gz problem-pods-${TIMESTAMP}/ 2>/dev/null
     " 2>&1 || warn "Could not collect problem pod logs"
@@ -808,6 +823,50 @@ collect_cluster_problem_pod_logs() {
     if scp $ssh_opts cloud-user@"$lz_ip":/tmp/problem-pods-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
         (cd "${OUTPUT_DIR}/cluster" && tar xzf problem-pods-${TIMESTAMP}.tar.gz && rm problem-pods-${TIMESTAMP}.tar.gz) || true
     fi
+}
+
+collect_cluster_plugin_diagnostics() {
+    local lz_ip="$1"
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
+
+    if [ -z "${ENABLED_PLUGINS:-}" ]; then
+        return
+    fi
+
+    info "Collecting plugin namespace diagnostics..."
+    mkdir -p "${OUTPUT_DIR}/cluster/plugin-diagnostics"
+
+    # Map plugins to their namespaces (deduplicated)
+    local namespaces=()
+    IFS=',' read -ra plugins <<< "$ENABLED_PLUGINS"
+    for plugin in "${plugins[@]}"; do
+        plugin="${plugin// /}"
+        case "$plugin" in
+            osac|aap|authorino) namespaces+=("osac") ;;
+            rhbk) namespaces+=("keycloak") ;;
+            trust-manager) namespaces+=("cert-manager") ;;
+        esac
+    done
+
+    # Deduplicate
+    local unique_ns
+    unique_ns=$(printf '%s\n' "${namespaces[@]}" | sort -u)
+
+    for ns in $unique_ns; do
+        info "Collecting diagnostics for namespace: $ns"
+        ssh $ssh_opts cloud-user@"$lz_ip" "
+            export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+
+            echo '=== Deployments ==='
+            oc get deployments -n $ns -o wide 2>&1
+            echo ''
+            echo '=== Pods ==='
+            oc get pods -n $ns -o wide 2>&1
+            echo ''
+            echo '=== Events ==='
+            oc get events -n $ns --sort-by='.lastTimestamp' 2>&1
+        " > "${OUTPUT_DIR}/cluster/plugin-diagnostics/${ns}.txt" 2>&1 || warn "Could not collect diagnostics for namespace $ns"
+    done
 }
 
 #####################################
@@ -933,6 +992,7 @@ collect_full() {
     collect_cluster_events "$lz_ip"
     collect_cluster_pods "$lz_ip"
     collect_cluster_problem_pod_logs "$lz_ip"
+    collect_cluster_plugin_diagnostics "$lz_ip"
 
     info "✓ Full collection complete"
 }
