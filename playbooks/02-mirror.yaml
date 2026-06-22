@@ -34,7 +34,7 @@
         apply:
           tags: mirror-cache
           environment:
-            PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+            PATH: "{{ workingDir }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
       tags:
         - mirror-cache
         - never

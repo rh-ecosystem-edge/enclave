@@ -15,7 +15,7 @@
   hosts: localhost
   gather_facts: false
   environment:
-    PATH: "{{ workingDir | default('') }}/bin:{{ lookup('env', 'PATH') }}"
+    PATH: "{{ workingDir | default('') }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
   tasks:
     - name: Validate workingDir is provided
       ansible.builtin.assert:

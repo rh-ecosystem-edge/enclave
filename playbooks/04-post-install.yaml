@@ -23,7 +23,7 @@
 
     - name: Execute tasks with workingDir in PATH
       environment:
-        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'PATH') }}"
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
       block:
         - name: Display post-install mode
           ansible.builtin.debug:
