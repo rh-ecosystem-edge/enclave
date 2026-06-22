@@ -1,8 +1,4 @@
 ---
-- name: Set UpdateService replicas
-  ansible.builtin.set_fact:
-    updateservice_replicas: 3
-
 # UpdateService requires image.config additionalTrustedCA with updateservice-registry
 # before graph-builder can scrape the mirrored release repository over TLS.
 - name: Trust Quay registry CA in image.config for UpdateService
@@ -22,7 +18,7 @@
       spec:
         graphDataImage: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/graph-image
         releases: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/openshift/release-images
-        replicas: "{{ updateservice_replicas }}"
+        replicas: 3
   register: r_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -47,25 +43,6 @@
       | selectattr('status', 'equalto', 'True')
       | list | length > 0
     )
-
-- name: Wait for UpdateService deployment pods to be ready
-  when: disconnected | default(true) | bool
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: service
-    namespace: openshift-update-service
-  register: r_update_service_deployment
-  retries: 60
-  delay: 10
-  until: >-
-    r_update_service_deployment.resources | default([]) | length > 0
-    and r_update_service_deployment.resources[0].status.replicas | default(0) == updateservice_replicas
-    and r_update_service_deployment.resources[0].status.readyReplicas | default(0) == updateservice_replicas
-    and r_update_service_deployment.resources[0].status.updatedReplicas | default(0) == updateservice_replicas
-    and r_update_service_deployment.resources[0].status.availableReplicas | default(0) == updateservice_replicas
 
 - name: Create ACM Policy for Update Service
   environment:
