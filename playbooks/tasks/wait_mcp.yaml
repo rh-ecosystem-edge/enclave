@@ -1,0 +1,65 @@
+---
+- name: Wait for MachineConfigPool to detect pending changes (if any)
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_detect
+  retries: 6
+  delay: 30
+  failed_when: false
+  until: >-
+    (
+      r_mcp_detect.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) > 0
+
+- name: Wait for MachineConfigPool to finish updating
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp
+  retries: 60
+  delay: 30
+  until: >-
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updated')
+      | rejectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Degraded')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
