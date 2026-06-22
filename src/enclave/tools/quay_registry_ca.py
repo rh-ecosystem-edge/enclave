@@ -110,132 +110,14 @@ def _openssl_verify(ca_pem: str, cert_pem: str) -> bool:
     return result.returncode == 0
 
 
-def _get_cert_issuer(cert_pem: str) -> str:
-    """Extract the issuer DN from a certificate in RFC2253 format."""
-    try:
-        result = subprocess.run(
-            ["openssl", "x509", "-noout", "-issuer", "-nameopt", "RFC2253"],
-            input=cert_pem,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_OPENSSL_VERIFY_TIMEOUT_SECONDS,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-
-    if result.returncode != 0:
-        return ""
-
-    # Output format: "issuer=CN=Root CA,O=Org,C=US"
-    match = re.match(r"issuer=(.+)", result.stdout.strip())
-    return match.group(1) if match else ""
-
-
-def _get_cert_subject(cert_pem: str) -> str:
-    """Extract the subject DN from a certificate in RFC2253 format."""
-    try:
-        result = subprocess.run(
-            ["openssl", "x509", "-noout", "-subject", "-nameopt", "RFC2253"],
-            input=cert_pem,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_OPENSSL_VERIFY_TIMEOUT_SECONDS,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-
-    if result.returncode != 0:
-        return ""
-
-    # Output format: "subject=CN=Intermediate CA,O=Org,C=US"
-    match = re.match(r"subject=(.+)", result.stdout.strip())
-    return match.group(1) if match else ""
-
-
-def _find_root_ca_in_system_store(issuer_dn: str) -> str | None:
-    """
-    Find the root CA certificate in system CA stores matching the given issuer DN.
-
-    Args:
-        issuer_dn: The issuer DN to search for (RFC2253 format)
-
-    Returns:
-        PEM content of the root CA, or None if not found
-    """
-    # Common system CA paths (RHEL/Fedora, Debian/Ubuntu)
-    ca_paths = [
-        Path("/etc/pki/tls/certs/ca-bundle.crt"),
-        Path("/etc/ssl/certs/ca-certificates.crt"),
-    ]
-
-    for bundle_path in ca_paths:
-        if not bundle_path.exists():
-            continue
-
-        try:
-            bundle_content = bundle_path.read_text(encoding="utf-8")
-            # System CA bundles contain multiple certs
-            for cert_pem in pem_blocks(bundle_content):
-                subject = _get_cert_subject(cert_pem)
-                if subject and subject == issuer_dn:
-                    logger.debug("Found root CA in %s", bundle_path)
-                    return cert_pem
-        except (OSError, UnicodeDecodeError) as exc:
-            logger.debug("Error reading %s: %s", bundle_path, exc)
-            continue
-
-    return None
-
-
 def _chain_trust_anchor_pem(chain: list[str]) -> str:
-    """
-    Return complete CA PEM bundle from a fetched TLS chain.
-
-    Includes all intermediate CAs from the chain, plus attempts to find
-    and append the root CA from the system trust store if the chain is incomplete.
-
-    Args:
-        chain: List of PEM certificates from TLS handshake [leaf, intermediate(s)...]
-
-    Returns:
-        Complete CA bundle with intermediates + root CA (if found)
-    """
+    """Return CA PEM bundle from a fetched TLS chain (all certs except the leaf)."""
     ca_certs = chain[1:]
     if not ca_certs:
         msg = (
             "TLS chain contains only a leaf certificate; cannot determine trust anchor"
         )
         raise RuntimeError(msg)
-
-    # Check if the last cert in the chain is self-signed (i.e., a root CA)
-    last_cert = ca_certs[-1]
-    issuer = _get_cert_issuer(last_cert)
-    subject = _get_cert_subject(last_cert)
-
-    if issuer and subject and issuer == subject:
-        # Chain already contains a self-signed root CA
-        logger.debug("TLS chain contains self-signed root CA")
-        return "\n".join(ca_certs) + "\n"
-
-    # Chain is incomplete - try to find the root CA from system store
-    if not issuer:
-        logger.warning("Could not determine issuer from last intermediate CA")
-        return "\n".join(ca_certs) + "\n"
-
-    logger.debug("Searching for root CA with subject: %s", issuer)
-    root_ca = _find_root_ca_in_system_store(issuer)
-
-    if root_ca:
-        logger.info("Completed certificate chain with root CA from system trust store")
-        return "\n".join([*ca_certs, root_ca]) + "\n"
-
-    logger.warning(
-        "Root CA not found in system trust store for issuer: %s. "
-        "UpdateService may fail to verify the registry certificate in disconnected mode.",
-        issuer,
-    )
     return "\n".join(ca_certs) + "\n"
 
 
