@@ -141,6 +141,8 @@ if [ -n "${AAP_LICENSE_FILE:-}" ]; then
     info "Copying AAP license file to Landing Zone: $LZ_AAP_LICENSE"
     # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
     scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    ssh $SSH_OPTS "$LZ_SSH" "chmod 600 '$LZ_AAP_LICENSE'"
     EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}osacAapLicenseFile: ${LZ_AAP_LICENSE}
 "
     # Generate OSAC plugin config on LZ if it doesn't exist (CI environments)
@@ -153,6 +155,7 @@ if [ -n "${AAP_LICENSE_FILE:-}" ]; then
 osacAapLicenseFile: "${LZ_AAP_LICENSE}"
 osacProfilesList:
   - caas
+  - vmaas
 OSAC_EOF
     fi
 fi

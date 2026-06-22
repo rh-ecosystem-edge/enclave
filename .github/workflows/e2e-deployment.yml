@@ -393,32 +393,32 @@ jobs:
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Deploy trust-manager plugin
-        if: contains(env.ENABLED_PLUGINS, 'trust-manager')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
         run: make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
 
       - name: Deploy rhbk plugin
-        if: contains(env.ENABLED_PLUGINS, 'rhbk')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',rhbk,')
         id: deploy_rhbk
         run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
 
       - name: Deploy authorino plugin
-        if: contains(env.ENABLED_PLUGINS, 'authorino')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
         id: deploy_authorino
         run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
 
       - name: Deploy aap plugin
-        if: contains(env.ENABLED_PLUGINS, 'aap')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
         id: deploy_aap
         run: make -f Makefile.ci deploy-plugin PLUGIN=aap
 
       - name: Deploy cnv plugin
-        if: contains(env.ENABLED_PLUGINS, 'cnv')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',cnv,')
         id: deploy_cnv
         run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
 
       - name: Deploy osac plugin
-        if: contains(env.ENABLED_PLUGINS, 'osac')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
         run: make -f Makefile.ci deploy-plugin PLUGIN=osac
 
@@ -839,32 +839,32 @@ jobs:
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Deploy trust-manager plugin
-        if: contains(env.ENABLED_PLUGINS, 'trust-manager')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
         run: make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
 
       - name: Deploy rhbk plugin
-        if: contains(env.ENABLED_PLUGINS, 'rhbk')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',rhbk,')
         id: deploy_rhbk
         run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
 
       - name: Deploy authorino plugin
-        if: contains(env.ENABLED_PLUGINS, 'authorino')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
         id: deploy_authorino
         run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
 
       - name: Deploy aap plugin
-        if: contains(env.ENABLED_PLUGINS, 'aap')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
         id: deploy_aap
         run: make -f Makefile.ci deploy-plugin PLUGIN=aap
 
       - name: Deploy cnv plugin
-        if: contains(env.ENABLED_PLUGINS, 'cnv')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',cnv,')
         id: deploy_cnv
         run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
 
       - name: Deploy osac plugin
-        if: contains(env.ENABLED_PLUGINS, 'osac')
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
         run: make -f Makefile.ci deploy-plugin PLUGIN=osac
 

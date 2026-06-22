@@ -20,6 +20,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
+      - 'plugins/lvms/**'
       - 'plugins/trust-manager/**'
       - 'plugins/rhbk/**'
       - 'plugins/authorino/**'
