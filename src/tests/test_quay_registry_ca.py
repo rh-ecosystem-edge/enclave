@@ -87,6 +87,21 @@ def test_openssl_verify_missing_openssl_raises_runtime_error(
         _openssl_verify(_ROUTER_CA, _LEAF)
 
 
+def test_openssl_verify_isolates_from_system_trust_store(
+    mocker: MockerFixture,
+) -> None:
+    mock_run = mocker.patch(
+        "enclave.tools.quay_registry_ca.subprocess.run",
+        return_value=CompletedProcess(
+            args=["openssl"], returncode=0, stdout="", stderr=""
+        ),
+    )
+    _openssl_verify(_ROUTER_CA, _LEAF)
+    cmd = mock_run.call_args[0][0]
+    assert "-no-CAfile" in cmd
+    assert "-no-CApath" in cmd
+
+
 def test_pem_blocks_splits_multiple_certificates() -> None:
     chain = f"{_LEAF}\n{_ROOT}\n"
     assert pem_blocks(chain) == [_LEAF, _ROOT]

@@ -95,7 +95,15 @@ def _openssl_verify(ca_pem: str, cert_pem: str) -> bool:
         cert_path.write_text(cert_pem, encoding="utf-8")
         try:
             result = subprocess.run(
-                ["openssl", "verify", "-CAfile", str(ca_path), str(cert_path)],
+                [
+                    "openssl",
+                    "verify",
+                    "-no-CAfile",
+                    "-no-CApath",
+                    "-CAfile",
+                    str(ca_path),
+                    str(cert_path),
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
