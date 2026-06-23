@@ -1,9 +1,4 @@
 ---
-# UpdateService requires image.config additionalTrustedCA with updateservice-registry
-# before graph-builder can scrape the mirrored release repository over TLS.
-- name: Trust Quay registry CA in image.config for UpdateService
-  ansible.builtin.include_tasks: ../../playbooks/tasks/trust_quay_registry_ca_for_image_config.yaml
-
 - name: Create OpenShift Update Service application object
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
@@ -23,6 +18,11 @@
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_update_service is success
+
+# UpdateService requires image.config additionalTrustedCA with updateservice-registry
+# before graph-builder can scrape the mirrored release repository over TLS.
+- name: Trust Quay registry CA in image.config for UpdateService
+  ansible.builtin.include_tasks: ../../playbooks/tasks/trust_quay_registry_ca_for_image_config.yaml
 
 - name: Wait for UpdateService registry CA condition
   environment:
