@@ -4,10 +4,14 @@ properties:
   osacAapLicenseFile:
     type: string
     description: "Path to AAP license manifest.zip file on the Landing Zone"
-  osacProfile:
-    type: string
-    enum: [development, vmaas, caas]
-    description: "Deployment profile: development (all controllers), vmaas (VM only), caas (cluster only)"
+  osacProfilesList:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      enum: [vmaas, caas, bmaas]
+    description: "List of enabled service profiles: vmaas, caas, bmaas"
   osacBYODatabase:
     type: boolean
     description: "Set to true to use an external database instead of the built-in dev postgres"

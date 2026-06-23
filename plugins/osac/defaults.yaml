@@ -1,10 +1,12 @@
 ---
 # OSAC plugin defaults
-# Note: config/plugins/osac.yaml uses camelCase (osacProfile, osacBYODatabase)
+# Note: config/plugins/osac.yaml uses camelCase (osacProfilesList, osacBYODatabase)
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
-osacProfile: development    # development | vmaas | caas
+osacProfilesList:
+  - caas
+  - vmaas
 
 # AAP settings (chart manages the instance, these configure it)
 osac_aap_name: osac-aap
