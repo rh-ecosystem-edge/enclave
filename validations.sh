@@ -312,7 +312,8 @@ checkCerts ingress "*.apps.$cluster_fqdn" .sslIngressCertificateKey .sslIngressC
 
 # Check Ironic HTTPS certificate (optional)
 lz_bmc_ip=$(getValue .lzBmcIP)
-lz_bmc_hostname=$(getValue .lzBmcHostname 2>/dev/null || echo "")
+lz_bmc_hostname=$(getValue .lzBmcHostname)
+[[ "$lz_bmc_hostname" == "null" ]] && lz_bmc_hostname=""
 ironic_cert_name="${lz_bmc_hostname:-$lz_bmc_ip}"
 ironic_https_cert=$(getValue .ironicHTTPSCertificate)
 if [[ -n "$ironic_https_cert" && "$ironic_https_cert" != "null" ]]; then
