@@ -17,5 +17,97 @@ properties:
       Connection URL for external database. When provided with osacBYODatabase=true,
       post-operators.yaml creates the fulfillment-db secret from this value.
       If omitted, the user must pre-create the fulfillment-db secret manually.
+  osacNetrisEnabled:
+    type: boolean
+    description: "Enable Netris network backend for cluster/network fulfillment"
+  osacNetrisControllerUrl:
+    type: string
+    description: "Netris controller API URL (e.g. https://ctl.netris.io)"
+  osacNetrisUsername:
+    type: string
+    description: "Netris API username"
+  osacNetrisPassword:
+    type: string
+    description: "Netris API password"
+  osacNetrisSiteId:
+    type: string
+    description: "Netris site ID (integer as string)"
+  osacNetrisTenantId:
+    type: string
+    description: "Netris tenant ID (integer as string)"
+  osacNetrisTenantName:
+    type: string
+    description: "Netris tenant name"
+  osacNetrisStepsCollection:
+    type: string
+    description: "Ansible steps collection for Netris (default: netris.steps)"
+  osacNetrisMgmtVpcId:
+    type: string
+    description: "Management VPC ID in Netris"
+  osacNetrisMgmtVpcName:
+    type: string
+    description: "Management VPC name in Netris"
+  osacNetrisResourceClassMap:
+    type: string
+    description: "JSON dict mapping resource classes to Netris server cluster templates"
+  osacNetrisSshBastionHost:
+    type: string
+    description: "SSH bastion hostname/IP for server management access"
+  osacNetrisSshBastionUser:
+    type: string
+    description: "SSH bastion username"
+  osacNetrisSshUser:
+    type: string
+    description: "SSH username for bare-metal servers (typically 'core')"
+  osacNetrisMgmtRouteDestination:
+    type: string
+    description: "Management route CIDR (e.g. 10.8.0.0/30)"
+  osacNetrisMgmtRouteGateway:
+    type: string
+    description: "Management route gateway IP"
+  osacNetrisExternalAccessBaseDomain:
+    type: string
+    description: "DNS domain for cluster endpoints"
+  osacNetrisExternalAccessSupportedBaseDomains:
+    type: string
+    description: "Comma-separated list of allowed base domains"
+  osacNetrisExternalAccessApiInternalNetwork:
+    type: string
+    description: "Internal network type for API access (e.g. 'hypershift')"
+  osacNetrisHostedClusterBaseDomain:
+    type: string
+    description: "Base domain for hosted clusters"
+  osacNetrisHostedClusterControllerAvailabilityPolicy:
+    type: string
+    enum: [SingleReplica, HighlyAvailable]
+    description: "Controller availability policy for hosted clusters"
+  osacNetrisHostedClusterInfrastructureAvailabilityPolicy:
+    type: string
+    enum: [SingleReplica, HighlyAvailable]
+    description: "Infrastructure availability policy for hosted clusters"
+  osacNetrisAwsAccessKeyId:
+    type: string
+    description: "AWS access key for Route53 DNS management"
+  osacNetrisAwsSecretAccessKey:
+    type: string
+    description: "AWS secret key for Route53 DNS management"
+  osacNetrisSshKey:
+    type: string
+    description: "SSH private key for bare-metal server access"
+  osacNetrisSshBastionKey:
+    type: string
+    description: "SSH private key for bastion host access"
 required:
   - osacAapLicenseFile
+if:
+  properties:
+    osacNetrisEnabled:
+      const: true
+then:
+  required:
+    - osacNetrisControllerUrl
+    - osacNetrisUsername
+    - osacNetrisPassword
+    - osacNetrisSiteId
+    - osacNetrisTenantId
+    - osacNetrisTenantName
