@@ -75,6 +75,13 @@ properties:
     description: >-
       Whether to apply a master PinnedImageSet after Quay mirror sync.
       Set to false to skip post-mirror image prefetch pinning.
+  quay_registry_ca_configmap_name:
+    type: string
+    description: >-
+      ConfigMap name for Quay registry CA certificates used by image.config and UpdateService.
+      Partner overlays that replace image.config.spec.additionalTrustedCA must include the
+      'updateservice-registry' key from this ConfigMap to prevent UpdateService reconciliation failures.
+      Default: quay-registry-ca.
   pullSecret:
     type: object
     description: Pull Secret
