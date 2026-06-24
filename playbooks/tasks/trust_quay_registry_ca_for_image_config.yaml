@@ -49,7 +49,7 @@
       apiVersion: v1
       kind: ConfigMap
       metadata:
-        name: quay-registry-ca
+        name: "{{ quay_registry_ca_configmap_name }}"
         namespace: openshift-config
       data: "{{ quay_registry_ca_configmap_data }}"
   environment:
@@ -59,7 +59,7 @@
   when:
     - image_config_trusted_ca_name.rc == 0
     - image_config_trusted_ca_name.stdout | trim | length > 0
-    - image_config_trusted_ca_name.stdout | trim != 'quay-registry-ca'
+    - image_config_trusted_ca_name.stdout | trim != quay_registry_ca_configmap_name
   kubernetes.core.k8s:
     state: patched
     kind: ConfigMap
@@ -85,7 +85,7 @@
     definition:
       spec:
         additionalTrustedCA:
-          name: quay-registry-ca
+          name: "{{ quay_registry_ca_configmap_name }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
 
