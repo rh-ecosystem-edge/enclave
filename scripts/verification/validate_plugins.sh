@@ -148,6 +148,7 @@ print(data.get('type', ''))
                 plugin_failed=1
             else
                 remote_clone_dir=$(mktemp -d)
+                # shellcheck disable=SC2064
                 trap "rm -rf '$remote_clone_dir'" EXIT
 
                 if git clone --depth 1 --single-branch --branch "$remote_ref" "$remote_url" "$remote_clone_dir" >/dev/null 2>&1; then
