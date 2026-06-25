@@ -112,7 +112,7 @@
 - name: Validate fetched plugin descriptor against schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', plugin_dir + '/plugin.yaml') | from_yaml | to_json }}"
-    criteria: "{{ lookup('ansible.builtin.file', playbook_dir + '/../schemas/plugin.yaml') | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', plugin_dir + '/../../schemas/plugin.yaml') | from_yaml | to_json }}"
     engine: ansible.utils.jsonschema
   register: r_plugin_validation
 
