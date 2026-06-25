@@ -32,7 +32,7 @@
     remote_url: "{{ plugin.remote.url }}"
     remote_ref: "{{ plugin.remote.ref }}"
     remote_path: "{{ plugin.remote.path | regex_replace('^/', '') }}"
-    remote_clone_dir: "/tmp/enclave-remote-plugin-{{ plugin_name }}-{{ ansible_date_time.epoch }}"
+    remote_clone_dir: "/tmp/enclave-remote-plugin-{{ plugin_name }}-{{ lookup('pipe', 'date +%s') }}"
 
 - name: Sanitize URL for logging
   ansible.builtin.set_fact:
