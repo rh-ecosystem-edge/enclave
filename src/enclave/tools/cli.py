@@ -10,7 +10,7 @@ def cli() -> None:
     """Enclave tools CLI."""
 
 
-@cli.command("resolve-quay-registry-ca")
+@cli.command("resolve-quay-registry-ca", no_args_is_help=True)
 @click.option("--hostname", required=True, help="Quay registry route hostname.")
 @click.option(
     "--oc",
@@ -26,7 +26,7 @@ def resolve_quay_registry_ca(hostname: str, oc: str) -> None:
         raise click.ClickException(str(exc)) from exc
 
 
-@cli.command("collect-node-image-digests")
+@cli.command("collect-node-image-digests", no_args_is_help=True)
 @click.option("--node", required=True, help="Node name.")
 @click.option(
     "--oc",

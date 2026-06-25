@@ -39,7 +39,7 @@ def cli(log_level: str) -> None:
     configure_logging(log_level)
 
 
-@cli.command()
+@cli.command(no_args_is_help=True)
 @click.option("--name", help="Operator package name")
 @click.option("--version", help="Operator version")
 @click.option("--namespace", help="Operator namespace")
@@ -102,7 +102,7 @@ def operator_versions(
         )
 
 
-@cli.command()
+@cli.command(no_args_is_help=True)
 @click.option(
     "--version", "version", default=None, help="OpenShift version to upgrade to"
 )

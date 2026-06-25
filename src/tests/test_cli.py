@@ -177,14 +177,23 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
     assert "mutually exclusive" in result.output
 
 
-def test_mgmt_cluster_version_neither_version_nor_defaults() -> None:
-    result = CliRunner().invoke(cli, ["mgmt-cluster-version"], env=_KC)
-    assert result.exit_code != 0
-    assert "Either --version or --use-defaults" in result.output
+def test_mgmt_cluster_version_no_args_shows_help() -> None:
+    result = CliRunner().invoke(cli, ["mgmt-cluster-version"])
+    assert result.exit_code == 2
+    assert "--version" in result.output
+    assert "--use-defaults" in result.output
+
+
+def test_reconcile_no_args_shows_help() -> None:
+    result = CliRunner().invoke(cli, [])
+    assert result.exit_code == 2
+    assert "Reconcile CLI" in result.output
 
 
 def test_kubeconfig_missing_fails(mocker: MockerFixture) -> None:
     mocker.patch("enclave.utils.Path.exists", return_value=False)
-    result = CliRunner().invoke(cli, ["mgmt-cluster-version"], env={"KUBECONFIG": ""})
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--version", "4.14"], env={"KUBECONFIG": ""}
+    )
     assert result.exit_code != 0
     assert "KUBECONFIG" in result.output

@@ -58,14 +58,19 @@ def setup_kubeconfig() -> None:
 
 class KubeconfigGroup(click.Group):
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
-        if not ctx.resilient_parsing:  # do nor fire during shell-completion parsing
+        remaining = super().parse_args(ctx, args)
+        # ctx.args holds the subcommand's own args (empty when no subcommand was given, or
+        # when a bare subcommand name was given with no further args). Only check kubeconfig
+        # when there are actual subcommand args — otherwise Click will show help and kubeconfig
+        # is irrelevant. Also skip during shell-completion parsing and for --help.
+        if not ctx.resilient_parsing and ctx.args:
             help_flags = set(ctx.help_option_names or ["--help", "-h"])
-            if not any(f in args for f in help_flags):
+            if not any(f in ctx.args for f in help_flags):
                 try:
                     setup_kubeconfig()
                 except KubeconfigNotFoundError as exc:
                     raise click.ClickException(str(exc)) from exc
-        return super().parse_args(ctx, args)
+        return remaining
 
 
 def parse_jsonpath_value(raw: str) -> str:
