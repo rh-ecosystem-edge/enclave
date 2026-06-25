@@ -1,0 +1,99 @@
+---
+# Fetch a remote plugin from a git repository
+#
+# This task clones the specified git repository and extracts the plugin
+# content to the local plugins directory. The remote plugin descriptor
+# (plugins/<name>/plugin.yaml with type: remote) is replaced with the
+# actual plugin content from the repository.
+#
+# Required variables:
+#   plugin: The loaded plugin descriptor with remote configuration
+#   plugin_dir: The local plugin directory path
+#   plugin_name: The plugin name
+
+- name: Validate remote plugin configuration
+  ansible.builtin.assert:
+    that:
+      - plugin.remote is defined
+      - plugin.remote.url is defined
+      - plugin.remote.ref is defined
+      - plugin.remote.path is defined
+    fail_msg: "Remote plugin '{{ plugin_name }}' is missing required remote configuration (url, ref, path)"
+
+- name: Set remote plugin facts
+  ansible.builtin.set_fact:
+    remote_url: "{{ plugin.remote.url }}"
+    remote_ref: "{{ plugin.remote.ref }}"
+    remote_path: "{{ plugin.remote.path }}"
+    remote_clone_dir: "/tmp/enclave-remote-plugin-{{ plugin_name }}-{{ ansible_date_time.epoch }}"
+
+- name: Display remote plugin fetch info
+  ansible.builtin.debug:
+    msg: "Fetching remote plugin '{{ plugin_name }}' from {{ remote_url }} (ref={{ remote_ref }}, path={{ remote_path }})"
+
+- name: Clone remote plugin repository
+  ansible.builtin.git:
+    repo: "{{ remote_url }}"
+    dest: "{{ remote_clone_dir }}"
+    version: "{{ remote_ref }}"
+    depth: 1
+    single_branch: true
+  register: r_git_clone
+
+- name: Verify remote plugin path exists in repository
+  ansible.builtin.stat:
+    path: "{{ remote_clone_dir }}{{ remote_path }}"
+  register: r_remote_plugin_path
+
+- name: Fail if remote plugin path not found
+  ansible.builtin.fail:
+    msg: "Remote plugin path '{{ remote_path }}' not found in repository {{ remote_url }} at ref {{ remote_ref }}"
+  when: not r_remote_plugin_path.stat.exists
+
+- name: Verify remote plugin descriptor exists
+  ansible.builtin.stat:
+    path: "{{ remote_clone_dir }}{{ remote_path }}/plugin.yaml"
+  register: r_remote_plugin_descriptor
+
+- name: Fail if remote plugin descriptor not found
+  ansible.builtin.fail:
+    msg: "Remote plugin descriptor not found at {{ remote_path }}/plugin.yaml in repository {{ remote_url }}"
+  when: not r_remote_plugin_descriptor.stat.exists
+
+- name: Create temporary backup of local plugin descriptor
+  ansible.builtin.copy:
+    src: "{{ plugin_dir }}/plugin.yaml"
+    dest: "{{ plugin_dir }}/plugin.yaml.remote-stub"
+    mode: '0644'
+  when: r_plugin_yaml.stat.exists
+
+- name: Remove existing plugin directory contents
+  ansible.builtin.file:
+    path: "{{ plugin_dir }}"
+    state: absent
+
+- name: Recreate plugin directory
+  ansible.builtin.file:
+    path: "{{ plugin_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Copy remote plugin content to local plugin directory
+  ansible.builtin.copy:
+    src: "{{ remote_clone_dir }}{{ remote_path }}/"
+    dest: "{{ plugin_dir }}/"
+    mode: preserve
+
+- name: Clean up remote clone directory
+  ansible.builtin.file:
+    path: "{{ remote_clone_dir }}"
+    state: absent
+
+- name: Reload plugin descriptor from fetched content
+  ansible.builtin.include_vars:
+    file: "{{ plugin_dir }}/plugin.yaml"
+    name: plugin
+
+- name: Display fetched plugin info
+  ansible.builtin.debug:
+    msg: "Successfully fetched remote plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }})"

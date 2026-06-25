@@ -40,6 +40,16 @@
     name: plugin
   tags: always
 
+- name: Fetch remote plugin content
+  ansible.builtin.include_tasks:
+    file: tasks/fetch_remote_plugin.yaml
+    apply:
+      tags: always
+  when:
+    - plugin.type | default('') == 'remote'
+    - plugin.remote is defined
+  tags: always
+
 - name: Display plugin info
   ansible.builtin.debug:
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
