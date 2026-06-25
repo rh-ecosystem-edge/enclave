@@ -218,10 +218,12 @@ definitions:
     properties:
       url:
         type: string
-        description: Git repository URL (HTTPS or SSH).
+        description: Git repository URL (HTTPS or SSH only).
+        pattern: '^(https://|ssh://|git@)'
       path:
         type: string
-        description: Path within the repository to the plugin directory.
+        description: Repository-relative path to the plugin directory (no leading slash or .. segments).
+        pattern: '^[^/].*$'
       ref:
         type: string
         description: Git ref (branch, tag, or commit hash) to fetch.
@@ -328,6 +330,13 @@ allOf:
           const: remote
     then:
       required: [remote]
+  - if:
+      properties:
+        type:
+          enum: [foundation, addon]
+    then:
+      not:
+        required: [remote]
 required:
   - name
   - type
