@@ -80,7 +80,8 @@ for plugin_dir in "$PLUGINS_DIR"/*/; do
         continue
     fi
 
-    if ! python3 -c "
+    # Validate stub plugin.yaml and capture if it's a remote type
+    plugin_type=$(python3 -c "
 import yaml, sys, os
 
 filepath = sys.argv[1]
@@ -107,16 +108,96 @@ if missing:
     sys.exit(1)
 
 if data['name'] != dir_name:
-    print(f'  plugin.yaml name \"{data[\"name\"]}\" must match directory name \"{dir_name}\"', file=sys.stderr)
+    print(f'  plugin.yaml name \\\"{data['name']}\\\" must match directory name \\\"{dir_name}\\\"', file=sys.stderr)
     sys.exit(1)
 
 unexpected = [f for f in data if f not in valid_fields]
 if unexpected:
     print(f'  plugin.yaml has unexpected fields: {unexpected}', file=sys.stderr)
     sys.exit(1)
-" "$plugin_yaml" "$plugin_name" 2>&1; then
+
+# Print the type for remote plugin handling
+print(data.get('type', ''))
+" "$plugin_yaml" "$plugin_name" 2>&1)
+
+    validation_exit=$?
+    if [ $validation_exit -ne 0 ]; then
         FAILED=1
         plugin_failed=1
+    else
+        # Extract just the type from the output (last line)
+        plugin_type=$(echo "$plugin_type" | tail -1)
+    fi
+
+    # Fetch and validate remote plugins
+    if [ "$plugin_type" = "remote" ]; then
+        echo "  Fetching remote plugin content for validation..."
+        remote_url=$(python3 -c "import yaml; data=yaml.safe_load(open('$plugin_yaml')); print(data.get('remote', {}).get('url', ''))")
+        remote_ref=$(python3 -c "import yaml; data=yaml.safe_load(open('$plugin_yaml')); print(data.get('remote', {}).get('ref', ''))")
+        remote_path=$(python3 -c "import yaml; data=yaml.safe_load(open('$plugin_yaml')); print(data.get('remote', {}).get('path', ''))")
+
+        if [ -z "$remote_url" ] || [ -z "$remote_ref" ] || [ -z "$remote_path" ]; then
+            error "  Remote plugin missing required remote configuration (url, ref, path)"
+            FAILED=1
+            plugin_failed=1
+        else
+            # Validate path is safe (no .. or leading /)
+            if [[ "$remote_path" =~ \.\. ]] || [[ "$remote_path" =~ ^/ ]]; then
+                error "  Remote path is invalid: must be relative and cannot contain '..'"
+                FAILED=1
+                plugin_failed=1
+            else
+                remote_clone_dir=$(mktemp -d)
+                trap "rm -rf '$remote_clone_dir'" EXIT
+
+                if git clone --depth 1 --single-branch --branch "$remote_ref" "$remote_url" "$remote_clone_dir" >/dev/null 2>&1; then
+                    remote_plugin_path="${remote_clone_dir}/${remote_path}"
+
+                    if [ -f "${remote_plugin_path}/plugin.yaml" ]; then
+                        # Validate the fetched plugin.yaml
+                        if ! python3 -c "
+import yaml, sys
+
+filepath = sys.argv[1]
+valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
+                'installOperators', 'installOperatorsFleet', 'registries', 'additionalImages', 'blockedImages',
+                'requires', 'helm', 'clusterSelector']
+
+try:
+    with open(filepath) as f:
+        data = yaml.safe_load(f)
+except Exception as e:
+    print(f'  Fetched plugin.yaml is not valid YAML: {e}', file=sys.stderr)
+    sys.exit(1)
+
+if not isinstance(data, dict):
+    print('  Fetched plugin.yaml must be a YAML mapping', file=sys.stderr)
+    sys.exit(1)
+
+if data.get('type') == 'remote':
+    print('  Fetched plugin.yaml cannot itself be type: remote', file=sys.stderr)
+    sys.exit(1)
+
+unexpected = [f for f in data if f not in valid_fields]
+if unexpected:
+    print(f'  Fetched plugin.yaml has unexpected fields: {unexpected}', file=sys.stderr)
+    sys.exit(1)
+" "${remote_plugin_path}/plugin.yaml" 2>&1; then
+                            FAILED=1
+                            plugin_failed=1
+                        fi
+                    else
+                        error "  Remote plugin.yaml not found at ${remote_path}/plugin.yaml"
+                        FAILED=1
+                        plugin_failed=1
+                    fi
+                else
+                    error "  Failed to clone remote repository"
+                    FAILED=1
+                    plugin_failed=1
+                fi
+            fi
+        fi
     fi
 
     # 2. Check defaults.yaml and defaults: field are mutually exclusive

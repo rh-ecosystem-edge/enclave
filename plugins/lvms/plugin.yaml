@@ -4,5 +4,5 @@ type: remote
 
 remote:
   url: https://github.com/rh-ecosystem-edge/enclave-plugins
-  path: /lvms
+  path: lvms
   ref: main
