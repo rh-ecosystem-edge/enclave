@@ -1,8 +1,0 @@
----
-name: example-remote
-type: remote
-
-remote:
-  url: https://github.com/rh-ecosystem-edge/enclave-plugin-example
-  path: /example
-  ref: main

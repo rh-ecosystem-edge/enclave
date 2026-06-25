@@ -1,6 +1,0 @@
----
-# Fixture: optionalPaths must be an array, not a string
-# Expected failure: type mismatch
-lvmsConfig:
-  deviceSelector:
-    optionalPaths: /dev/sdb
