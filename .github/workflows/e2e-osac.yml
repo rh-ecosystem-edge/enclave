@@ -30,7 +30,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 concurrency:
   group: e2e-osac-${{ github.event.pull_request.number || github.run_id }}

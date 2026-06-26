@@ -849,6 +849,9 @@ collect_cluster_plugin_diagnostics() {
     done
 
     # Deduplicate
+    if [ ${#namespaces[@]} -eq 0 ]; then
+        return
+    fi
     local unique_ns
     unique_ns=$(printf '%s\n' "${namespaces[@]}" | sort -u)
 
