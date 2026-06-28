@@ -14,7 +14,7 @@ spec:
 {% else %}
   config:
    interfaces:
-   - name: eno1
+   - name: {{ discovery_host.interfaceName | default('eno1') }}
      type: ethernet
      state: up
      mac-address:  {{ discovery_host.macAddress }}
@@ -26,13 +26,13 @@ spec:
    routes:
      config:
      - next-hop-address:  {{ defaultGateway }}
-       next-hop-interface: eno1
+       next-hop-interface: {{ discovery_host.interfaceName | default('eno1') }}
        destination: 0.0.0.0/0
    dns-resolver:
      config:
        server:
          -  {{ defaultDNS }}
   interfaces:
-   - name: eno1
+   - name: {{ discovery_host.interfaceName | default('eno1') }}
      macAddress: {{ discovery_host.macAddress }}
 {% endif %}
