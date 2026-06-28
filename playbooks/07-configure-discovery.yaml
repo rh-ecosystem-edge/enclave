@@ -89,6 +89,35 @@
       delay: "{{ k8s_delay }}"
       until: r_infraenv is success
 
+    - name: Wait for InfraEnv to be ready
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      kubernetes.core.k8s_info:
+        validate_certs: false
+        api_version: agent-install.openshift.io/v1beta1
+        kind: InfraEnv
+        name: infraenv
+        namespace: infraenv
+      register: r_infraenv_status
+      retries: 30
+      delay: 10
+      until:
+        - r_infraenv_status.resources | length > 0
+        - r_infraenv_status.resources[0].status is defined
+        - r_infraenv_status.resources[0].status.isoDownloadURL is defined
+        - r_infraenv_status.resources[0].status.isoDownloadURL | length > 0
+
+    - name: Verify Assisted Image Service is available
+      ansible.builtin.uri:
+        url: "{{ r_infraenv_status.resources[0].status.isoDownloadURL }}"
+        method: HEAD
+        validate_certs: false
+        status_code: 200
+      register: r_image_service_check
+      retries: 20
+      delay: 5
+      until: r_image_service_check.status == 200
+
     - name: Display discovery hosts status
       ansible.builtin.debug:
         msg: "{{ 'Configuring ' + (discovery_hosts | length | string) + ' discovery host(s)' if (discovery_hosts is defined and discovery_hosts | length > 0) else 'No discovery hosts configured - skipping agent discovery' }}"
@@ -113,7 +142,7 @@
             kind: Agent
             namespace: infraenv
           register: r_agents
-          retries: 40
+          retries: 80
           delay: 30
           vars:
             discovered_macs: "{{ r_agents.resources | selectattr('status.inventory', 'defined') | map(attribute='status') | map(attribute='inventory') | map(attribute='interfaces') | flatten | map(attribute='macAddress') | map('lower') | list }}"
