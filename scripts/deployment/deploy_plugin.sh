@@ -132,7 +132,7 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
 fi
 
 # Copy AAP license file to Landing Zone if AAP_LICENSE_FILE is set
-if [ -n "${AAP_LICENSE_FILE:-}" ]; then
+if [ -n "${AAP_LICENSE_FILE:-}" ] && { [ "$PLUGIN_NAME" = "aap" ] || [ "$PLUGIN_NAME" = "osac" ]; }; then
     if [ ! -f "$AAP_LICENSE_FILE" ]; then
         error "AAP license file not found: $AAP_LICENSE_FILE"
         exit 1

@@ -845,6 +845,7 @@ collect_cluster_plugin_diagnostics() {
             osac|aap|authorino) namespaces+=("osac") ;;
             rhbk) namespaces+=("keycloak") ;;
             trust-manager) namespaces+=("cert-manager") ;;
+            cnv) namespaces+=("openshift-cnv") ;;
         esac
     done
 
