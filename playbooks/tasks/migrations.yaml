@@ -23,3 +23,7 @@
   when:
     - sslCACertificate is defined
     - sslCACertificate | length > 0
+
+- name: Trust quay registry CA for image config
+  ansible.builtin.include_tasks:
+    file: trust_quay_registry_ca_for_image_config.yaml
