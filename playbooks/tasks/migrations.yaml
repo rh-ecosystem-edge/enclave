@@ -27,3 +27,7 @@
 - name: Enclave kubeconfig symlink migration
   ansible.builtin.include_tasks:
     file: migrations/setup_enclave_kubeconfig_symlink.yaml
+
+- name: Trust quay registry CA for image config
+  ansible.builtin.include_tasks:
+    file: trust_quay_registry_ca_for_image_config.yaml
