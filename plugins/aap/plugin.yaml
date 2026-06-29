@@ -5,9 +5,9 @@ order: 103
 
 operators:
   - name: ansible-automation-platform-operator
-    version: 2.5.0-0.1781744244
+    version: 2.5.0+0.1781744244
     channel: stable-2.5-cluster-scoped
-    init_version: 2.5.0-0.1781744244
+    init_version: 2.5.0+0.1781744244
     namespace: ansible-aap
     global: true
     csvNames:
