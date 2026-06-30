@@ -28,15 +28,15 @@ on:
       - 'plugins/osac/**'
       - '.github/workflows/e2e-osac.yml'
 
-permissions:
-  contents: read
-
 concurrency:
   group: e2e-osac-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   e2e-osac:
+    permissions:
+      contents: read
+      checks: write  # required by e2e-deployment.yml for check-run updates
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       run-connected: true
