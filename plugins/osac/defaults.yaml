@@ -20,6 +20,7 @@ osac_keycloak_name: keycloak                  # Keycloak CR name (used for route
 osac_keycloak_svc_name: keycloak-service      # RHBK operator creates <cr-name>-service
 osac_keycloak_realm: osac
 osac_keycloak_client_id: osac-controller
+osac_keycloak_admin_client_id: osac-admin
 osac_keycloak_service_port: 8443
 
 # Fulfillment database (built-in dev postgres)

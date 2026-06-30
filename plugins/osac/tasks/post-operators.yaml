@@ -12,6 +12,8 @@
 #   6.  Obtain Keycloak admin access token via REST API
 #   7.  Create osac realm (idempotent)
 #   8.  Create osac-controller client (idempotent)
+#   8b. Create osac-admin client (idempotent)
+#   8c. Configure osac-admin protocol mapper and service account roles
 #   9.  Fetch client UUID + secret, create fulfillment-controller-credentials
 #   10. Deploy PostgreSQL (when not BYO): certs, init secret, config, Deployment, Service, NetworkPolicy
 #   11. Create postgres-client-cert-service Certificate CR (when not BYO)
@@ -194,8 +196,12 @@
       enabled: true
       publicClient: false
       serviceAccountsEnabled: true
+      standardFlowEnabled: false
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: false
       clientAuthenticatorType: client-secret
       protocol: openid-connect
+      fullScopeAllowed: true
     validate_certs: false
     status_code: [201]
   when: __r_client_check.json | length == 0
@@ -320,6 +326,161 @@
     validate_certs: false
     status_code: [204]
   when: __r_sa_client_roles.json | selectattr('name', 'equalto', 'realm-admin') | list | length == 0
+  no_log: true
+
+# =====================================================================
+# 8b. Create osac-admin client (idempotent)
+# =====================================================================
+
+- name: Check if osac-admin client exists
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_admin_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_client_check
+  no_log: true
+
+- name: Create osac-admin client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: "{{ osac_keycloak_admin_client_id }}"
+      enabled: true
+      publicClient: false
+      serviceAccountsEnabled: true
+      standardFlowEnabled: false
+      implicitFlowEnabled: false
+      directAccessGrantsEnabled: false
+      clientAuthenticatorType: client-secret
+      protocol: openid-connect
+      fullScopeAllowed: true
+    validate_certs: false
+    status_code: [201]
+  when: __r_admin_client_check.json | length == 0
+  no_log: true
+
+# =====================================================================
+# 8c. Configure osac-admin protocol mapper and service account roles
+# =====================================================================
+
+- name: Fetch osac-admin client UUID for configuration
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_admin_client_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_client_for_config
+  no_log: true
+
+- name: Set osac-admin client UUID for configuration
+  ansible.builtin.set_fact:
+    _osac_admin_client_uuid_config: "{{ __r_admin_client_for_config.json[0].id }}"
+  no_log: true
+
+- name: Check if username protocol mapper exists on osac-admin
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_admin_client_uuid_config }}/protocol-mappers/models"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_mappers
+  no_log: true
+
+- name: Add username protocol mapper to osac-admin client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_admin_client_uuid_config }}/protocol-mappers/models"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: username
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-attribute-mapper
+      config:
+        user.attribute: username
+        claim.name: username
+        jsonType.label: String
+        id.token.claim: "true"
+        access.token.claim: "true"
+        userinfo.token.claim: "true"
+        multivalued: "false"
+        aggregate.attrs: "false"
+    validate_certs: false
+    status_code: [201]
+  when: __r_admin_mappers.json | selectattr('name', 'equalto', 'username') | list | length == 0
+  no_log: true
+
+- name: Fetch service account user for osac-admin
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_admin_client_uuid_config }}/service-account-user"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_sa_user
+  no_log: true
+
+- name: Fetch realm-management client UUID for osac-admin
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId=realm-management"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_realm_mgmt
+  no_log: true
+
+- name: Fetch realm-admin role from realm-management client for osac-admin
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ __r_admin_realm_mgmt.json[0].id }}/roles/realm-admin"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_realm_admin_role
+  no_log: true
+
+- name: Check current realm-management role mappings for osac-admin service account
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_admin_sa_user.json.id }}/role-mappings/clients/{{ __r_admin_realm_mgmt.json[0].id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: false
+    status_code: 200
+  register: __r_admin_sa_client_roles
+  no_log: true
+
+- name: Assign realm-admin role to osac-admin service account
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_admin_sa_user.json.id }}/role-mappings/clients/{{ __r_admin_realm_mgmt.json[0].id }}"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      - "{{ __r_admin_realm_admin_role.json }}"
+    validate_certs: false
+    status_code: [204]
+  when: __r_admin_sa_client_roles.json | selectattr('name', 'equalto', 'realm-admin') | list | length == 0
   no_log: true
 
 # =====================================================================
