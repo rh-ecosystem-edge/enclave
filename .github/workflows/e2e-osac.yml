@@ -37,6 +37,9 @@ concurrency:
 
 jobs:
   e2e-osac:
+    permissions:
+      contents: read
+      checks: write  # required by e2e-deployment.yml for check-run updates
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       run-connected: true
