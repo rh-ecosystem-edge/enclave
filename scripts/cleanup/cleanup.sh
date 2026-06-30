@@ -257,16 +257,6 @@ if sudo firewall-cmd --state >/dev/null 2>&1; then
     fi
 fi
 
-# Clean up cluster-specific landing-zone directory (in shared BASE_WORKING_DIR)
-BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
-if [ -n "${BASE_DIR}" ]; then
-    LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
-    if [ -d "$LZ_DIR" ]; then
-        info "Removing landing-zone directory: $LZ_DIR"
-        sudo rm -rf "$LZ_DIR" || warning "Failed to remove landing-zone directory"
-    fi
-fi
-
 # Clean up volume files for this cluster
 # Volume files are in cluster-specific pool: /opt/dev-scripts/clusters/eci-XXXXXXXX/pool/
 # Determine the pool directory based on cluster structure
@@ -367,9 +357,14 @@ for POOL_NAME in "${POOLS_TO_CLEAN[@]}"; do
             sudo virsh pool-autostart --disable "$POOL_NAME" 2>/dev/null || warning "  Failed to disable autostart for $POOL_NAME"
         fi
 
+        # Delete all volumes in the pool before destroying it
+        while IFS= read -r vol; do
+            [ -z "$vol" ] && continue
+            info "  Deleting volume: $vol"
+            sudo virsh vol-delete --pool "$POOL_NAME" "$vol" 2>/dev/null || warning "  Failed to delete volume $vol"
+        done < <(sudo virsh vol-list "$POOL_NAME" 2>/dev/null | awk 'NR>2 && NF {print $1}')
+
         # Destroy if running
-        # Note: virsh pool-info shows "running" or "not running" (different from pool-list "active"/"inactive")
-        # Pattern matches "State: <spaces> running" but not "State: <spaces> not running"
         if sudo virsh pool-info "$POOL_NAME" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
             info "  Destroying running pool: $POOL_NAME"
             sudo virsh pool-destroy "$POOL_NAME" 2>/dev/null || warning "  Failed to destroy $POOL_NAME"
@@ -380,6 +375,17 @@ for POOL_NAME in "${POOLS_TO_CLEAN[@]}"; do
         sudo virsh pool-undefine "$POOL_NAME" 2>/dev/null || warning "  Failed to undefine $POOL_NAME"
     fi
 done
+
+# Clean up cluster-specific landing-zone directory (in shared BASE_WORKING_DIR)
+# Must happen AFTER storage pools are cleaned up, as pools may reference files in this directory
+BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
+if [ -n "${BASE_DIR}" ]; then
+    LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
+    if [ -d "$LZ_DIR" ]; then
+        info "Removing landing-zone directory: $LZ_DIR"
+        sudo rm -rf "$LZ_DIR" || warning "Failed to remove landing-zone directory"
+    fi
+fi
 
 # Remove cluster-specific working directory (deferred until after pools are cleaned up)
 # This must happen AFTER storage pools are undefined, otherwise the directory removal may fail
