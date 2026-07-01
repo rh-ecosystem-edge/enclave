@@ -211,6 +211,27 @@ definitions:
       - release
       - namespace
 
+  remote:
+    type: object
+    additionalProperties: false
+    description: Remote plugin configuration for fetching plugin content from a git repository.
+    properties:
+      url:
+        type: string
+        description: Git repository URL (HTTPS or SSH only).
+        pattern: '^(https://|ssh://|git@)'
+      path:
+        type: string
+        description: Repository-relative path to the plugin directory (no leading slash or .. segments).
+        pattern: '^[^/].*$'
+      ref:
+        type: string
+        description: Git ref (branch, tag, or commit hash) to fetch.
+    required:
+      - url
+      - path
+      - ref
+
 additionalProperties: false
 properties:
   name:
@@ -222,7 +243,10 @@ properties:
     enum:
       - foundation
       - addon
-    description: Plugin type. foundation plugins deploy before core operators.
+      - remote
+    description: >-
+      Plugin type. foundation plugins deploy before core operators.
+      remote plugins are fetched from a git repository before deployment.
   order:
     type: integer
     description: Deploy order among same-type plugins. Lower values deploy first.
@@ -292,9 +316,27 @@ properties:
         description: Files that must exist within the plugin directory.
         items:
           $ref: "#/definitions/requirement_file"
+  remote:
+    $ref: "#/definitions/remote"
 dependencies:
   installOperatorsFleet:
     - clusterSelector
+  remote:
+    - type
+allOf:
+  - if:
+      properties:
+        type:
+          const: remote
+    then:
+      required: [remote]
+  - if:
+      properties:
+        type:
+          enum: [foundation, addon]
+    then:
+      not:
+        required: [remote]
 required:
   - name
   - type

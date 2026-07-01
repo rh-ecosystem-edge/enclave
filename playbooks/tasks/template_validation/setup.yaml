@@ -18,6 +18,42 @@
   loop_control:
     loop_var: config_file
 
+- name: Fetch remote plugins for validation
+  block:
+    - name: Load lvms plugin stub
+      ansible.builtin.include_vars:
+        file: "../../plugins/lvms/plugin.yaml"
+        name: lvms_stub
+
+    - name: Fetch lvms if remote
+      ansible.builtin.include_tasks:
+        file: ../fetch_remote_plugin.yaml
+      vars:
+        plugin_name: lvms
+        plugin_dir: "{{ playbook_dir }}/../../plugins/lvms"
+        plugin: "{{ lvms_stub }}"
+        r_plugin_yaml:
+          stat:
+            exists: true
+      when: lvms_stub.type | default('') == 'remote'
+
+    - name: Load odf plugin stub
+      ansible.builtin.include_vars:
+        file: "../../plugins/odf/plugin.yaml"
+        name: odf_stub
+
+    - name: Fetch odf if remote
+      ansible.builtin.include_tasks:
+        file: ../fetch_remote_plugin.yaml
+      vars:
+        plugin_name: odf
+        plugin_dir: "{{ playbook_dir }}/../../plugins/odf"
+        plugin: "{{ odf_stub }}"
+        r_plugin_yaml:
+          stat:
+            exists: true
+      when: odf_stub.type | default('') == 'remote'
+
 - name: Load lvms plugin descriptor
   ansible.builtin.set_fact:
     plugin_lvms: "{{ lookup('ansible.builtin.file', '../../plugins/lvms/plugin.yaml') | from_yaml }}"
