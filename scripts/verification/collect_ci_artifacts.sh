@@ -701,7 +701,7 @@ check_kubeconfig_exists() {
     local lz_ip="$1"
     local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
-    ssh $ssh_opts cloud-user@"$lz_ip" "test -f /home/cloud-user/ocp-cluster/auth/kubeconfig" 2>/dev/null
+    ssh $ssh_opts cloud-user@"$lz_ip" "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig" 2>/dev/null
 }
 
 collect_cluster_kubeconfig() {
@@ -710,7 +710,7 @@ collect_cluster_kubeconfig() {
 
     mkdir -p "${OUTPUT_DIR}/cluster"
     info "Collecting kubeconfig..."
-    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
+    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
 }
 
 collect_cluster_status() {
@@ -719,7 +719,7 @@ collect_cluster_status() {
 
     info "Collecting cluster status..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
-        export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
 
         echo '=== Cluster Version ==='
         oc get clusterversion -o yaml
@@ -747,7 +747,7 @@ collect_cluster_events() {
 
     info "Collecting cluster events..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
-        export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
 
         echo '=== Recent Events (last 100) ==='
         oc get events --all-namespaces --sort-by='.lastTimestamp' | tail -100
@@ -763,7 +763,7 @@ collect_cluster_pods() {
 
     info "Collecting pod information..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
-        export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
 
         echo '=== All Pods ==='
         oc get pods --all-namespaces -o wide
@@ -785,7 +785,7 @@ collect_cluster_problem_pod_logs() {
 
     info "Collecting logs from problem pods..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
-        export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
         mkdir -p /tmp/problem-pods-${TIMESTAMP}
 
         # Get pods that are not Running/Succeeded

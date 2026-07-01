@@ -316,6 +316,13 @@ jobs:
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
+      - name: Check for leftover resources on Landing Zone
+        id: check_leftovers
+        run: |
+          echo "## Pre-bootstrap Leftover Check" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-check-leftovers
+          echo "Landing Zone is clean" >> $GITHUB_STEP_SUMMARY
+
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
@@ -455,7 +462,7 @@ jobs:
               mkdir -p artifacts/must-gather
               GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
                 "cd /home/cloud-user/enclave/scripts/diagnostics && \
-                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
                  GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
               echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
 
@@ -587,6 +594,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["check_leftovers"]="Check for leftover resources on Landing Zone"
             ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
             ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
@@ -609,6 +617,7 @@ jobs:
           )
 
           step_order=(
+            check_leftovers
             generate_ironic_cert
             setup_ceph
             bootstrap_setup
@@ -762,6 +771,13 @@ jobs:
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
+      - name: Check for leftover resources on Landing Zone
+        id: check_leftovers
+        run: |
+          echo "## Pre-bootstrap Leftover Check" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-check-leftovers
+          echo "Landing Zone is clean" >> $GITHUB_STEP_SUMMARY
+
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
@@ -910,7 +926,7 @@ jobs:
               mkdir -p artifacts/must-gather
               GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
                 "cd /home/cloud-user/enclave/scripts/diagnostics && \
-                 export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+                 export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
                  GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
               echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
 
@@ -1042,6 +1058,7 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           declare -A step_names=(
+            ["check_leftovers"]="Check for leftover resources on Landing Zone"
             ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
             ["setup_ceph"]="Setup Ceph on Landing Zone"
             ["bootstrap_setup"]="Bootstrap: Setup environment"
@@ -1064,6 +1081,7 @@ jobs:
           )
 
           step_order=(
+            check_leftovers
             generate_ironic_cert
             setup_ceph
             bootstrap_setup

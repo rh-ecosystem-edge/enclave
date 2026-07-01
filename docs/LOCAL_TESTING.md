@@ -465,19 +465,19 @@ SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Kubeconfig exists
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "test -f /home/cloud-user/ocp-cluster/auth/kubeconfig && echo 'OK'"
+  "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && echo 'OK'"
 
 # Nodes
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get nodes"
+  "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && oc get nodes"
 
 # Cluster operators
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get co"
+  "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && oc get co"
 
 # Cluster version
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && oc get clusterversion"
+  "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && oc get clusterversion"
 ```
 
 ## Troubleshooting
@@ -583,13 +583,13 @@ SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Get degraded operators
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+  "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
    oc get co -o json | jq -r '.items[] | select(.status.conditions[] | \
    select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'"
 
 # Describe specific operator
 ssh $SSH_OPTS cloud-user@$LZ_IP \
-  "export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig && \
+  "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
    oc describe co <operator-name>"
 ```
 

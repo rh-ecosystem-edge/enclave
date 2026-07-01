@@ -36,11 +36,11 @@ STEP_NAME="$1"
 
 # Validate step name against allowed values
 case "$STEP_NAME" in
-    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay)
+    check-leftovers|setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay)
         ;;
     *)
         error "Unknown bootstrap step: $STEP_NAME"
-        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+        error "Valid steps: check-leftovers setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
         exit 1
         ;;
 esac

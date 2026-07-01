@@ -102,7 +102,7 @@ cat > "$GLOBAL_VARS_OUTPUT" <<EOF
 # ============================================================================
 # Base Configuration
 # ============================================================================
-workingDir: "/home/cloud-user"
+workingDir: "/home/cloud-user/sessions/1"
 schemaValidationNoLog: true
 
 # ============================================================================
