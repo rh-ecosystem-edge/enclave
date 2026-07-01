@@ -27,25 +27,25 @@ agent_hosts:
     redfishPassword: YOUR_REDFISH_PASSWORD
     networkConfig:
       interfaces:
-      - name: eth0
-        state: up
-        mtu: 9000
-        ipv4:
-          auto-dns: false
-          address:
-          - ip: 192.168.2.101
-            prefix-length: 24
-          enabled: true
+        - name: eth0
+          state: up
+          mtu: 9000
+          ipv4:
+            auto-dns: false
+            address:
+              - ip: 192.168.2.101
+                prefix-length: 24
+            enabled: true
       dns-resolver:
         config:
           server:
-          - 192.168.2.1
+            - 192.168.2.1
       routes:
         config:
-        - destination: 0.0.0.0/0
-          metric: 100
-          next-hop-address: 192.168.2.1
-          next-hop-interface: eth0
+          - destination: 0.0.0.0/0
+            metric: 100
+            next-hop-address: 192.168.2.1
+            next-hop-interface: eth0
 
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed

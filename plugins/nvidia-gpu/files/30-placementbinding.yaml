@@ -8,9 +8,9 @@ placementRef:
   kind: PlacementRule
   name: nvidia-gpu-configuration
 subjects:
-- apiGroup: policy.open-cluster-management.io
-  kind: Policy
-  name: nvidia-gpu-catalogsource
-- apiGroup: policy.open-cluster-management.io
-  kind: Policy
-  name: nvidia-gpu-configuration
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: nvidia-gpu-catalogsource
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: nvidia-gpu-configuration
