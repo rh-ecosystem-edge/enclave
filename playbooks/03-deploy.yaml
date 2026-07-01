@@ -75,6 +75,7 @@
           loop: "{{ agent_hosts }}"
           loop_control:
             loop_var: agent_host
+            label: "{{ agent_host.name }}"
           ansible.builtin.include_tasks:
             file: tasks/configure_hardware_ironic_detach_vmedia.yaml
             apply:
