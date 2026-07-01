@@ -124,7 +124,7 @@ storage_plugin: lvms
 # ConfigMap name for Quay registry CA certificates (default: quay-registry-ca)
 # Partner overlays that replace image.config.spec.additionalTrustedCA must include
 # the 'updateservice-registry' key from this ConfigMap to prevent UpdateService failures.
-# quay_registry_ca_configmap_name: quay-registry-ca
+# quayRegistryCAConfigmapName: quay-registry-ca
 
 # Additional NTP sources for cluster nodes (no additional servers by default)
 # defaultNtpServers:

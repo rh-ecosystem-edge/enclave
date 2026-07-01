@@ -29,4 +29,4 @@ pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 # Partner overlays that replace image.config.spec.additionalTrustedCA must include the
 # 'updateservice-registry' key from this ConfigMap to prevent UpdateService reconciliation failures.
 # See: https://github.com/gori-project/GoRI/issues/924
-quay_registry_ca_configmap_name: quay-registry-ca
+quayRegistryCAConfigmapName: quay-registry-ca
