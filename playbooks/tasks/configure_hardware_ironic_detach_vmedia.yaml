@@ -54,4 +54,4 @@
     status_code: [204, 404]
   register: detach_result
   failed_when:
-    - detach_result.status not in [204, 404]
+    - detach_result.status | default(0) not in [204, 404]
