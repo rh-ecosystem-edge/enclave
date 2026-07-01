@@ -1,0 +1,29 @@
+name: E2E OSAC (Scheduled)
+
+# Nightly OSAC plugin stack E2E deployment. Dispatches the e2e-osac workflow
+# so the full OSAC plugin chain runs on a daily schedule.
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+
+jobs:
+  dispatch-osac:
+    name: Dispatch OSAC E2E
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 5
+    permissions:
+      actions: write  # required by gh workflow run to dispatch e2e-osac.yml
+    steps:
+      - name: Trigger OSAC E2E
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run e2e-osac.yml \
+            --ref "${REF}" \
+            -f send-slack-notification=true \
+            -R "${REPO}"
+          echo "Dispatched OSAC E2E nightly run" | tee -a $GITHUB_STEP_SUMMARY
