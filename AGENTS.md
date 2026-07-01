@@ -70,6 +70,10 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - `set -euo pipefail` at the top of every script
 - Source shared utilities from `scripts/lib/` (logging, env checks, etc.)
 
+### Markdown (`docs/`)
+
+- Always leave a blank line before and after fenced code blocks (MD031)
+
 ### Plugins
 - Each plugin has a single `plugin.yaml` descriptor validated against `schemas/plugin.yaml`
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`

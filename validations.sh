@@ -108,6 +108,33 @@ $cert_alt_names"
 
 }
 
+checkCACert(){
+    local check_name=$1
+    local cert_jq=$2
+    local ca_pem now_ts not_before not_after not_before_ts not_after_ts
+
+    ca_pem=$(getValue "$cert_jq")
+
+    if ! echo "$ca_pem" | openssl x509 -noout 2>/dev/null; then
+        validation fail "$check_name" "sslCACertificate is not a valid PEM certificate"
+    fi
+
+    now_ts=$(date +%s)
+    not_before=$(echo "$ca_pem" | openssl x509 -noout -startdate | cut -d= -f2)
+    not_after=$(echo "$ca_pem" | openssl x509 -noout -enddate | cut -d= -f2)
+    not_before_ts=$(date -d "$not_before" +%s)
+    not_after_ts=$(date -d "$not_after" +%s)
+
+    if [[ $now_ts -lt $not_before_ts ]]; then
+        validation fail "$check_name" "CA certificate not valid yet (starts on $not_before)"
+    fi
+    if [[ $now_ts -gt $not_after_ts ]]; then
+        validation fail "$check_name" "CA certificate is expired (expired on $not_after)"
+    fi
+
+    validation pass "$check_name" "CA certificate is valid"
+}
+
 checkIP(){
     local check_subnet_net ip_net prefix
     local check_name="$1"
@@ -309,6 +336,14 @@ validation_section ssl_certificates
 # Check SSL certificate validity
 checkCerts api api.$cluster_fqdn .sslAPICertificateKey .sslAPICertificateFullChain
 checkCerts ingress "*.apps.$cluster_fqdn" .sslIngressCertificateKey .sslIngressCertificateFullChain
+
+# Check CA certificate (optional)
+ca_cert=$(getValue .sslCACertificate)
+if [[ -n "$ca_cert" && "$ca_cert" != "null" ]]; then
+    checkCACert ssl_ca_certificate .sslCACertificate
+else
+    validation pass ssl_ca_certificate_skipped "sslCACertificate not configured. Skipping validation"
+fi
 
 # Check Ironic HTTPS certificate (optional)
 lz_bmc_ip=$(getValue .lzBmcIP)

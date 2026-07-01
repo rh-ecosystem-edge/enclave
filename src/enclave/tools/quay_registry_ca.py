@@ -1,32 +1,26 @@
 """Resolve the CA PEM used to trust the Quay registry route for OSUS and image pulls."""
 
-from __future__ import annotations
-
 import base64
 import binascii
 import logging
-import re
 import subprocess
 import sys
-import tempfile
-from pathlib import Path
+
+from enclave.tools.cert_utils import is_self_signed, openssl_verify, pem_blocks
+from enclave.tools.system_ca import find_system_ca_for_chain
 
 logger = logging.getLogger(__name__)
 
 _TLS_CONNECT_TIMEOUT_SECONDS = 60
 _OC_COMMAND_TIMEOUT_SECONDS = 30
-_OPENSSL_VERIFY_TIMEOUT_SECONDS = 10
-_PEM_BLOCK = re.compile(
-    r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
-    re.DOTALL,
-)
-
-
-def pem_blocks(pem_text: str) -> list[str]:
-    return _PEM_BLOCK.findall(pem_text or "")
 
 
 def get_router_ca_pem(*, oc: str = "oc") -> str:
+    """Return the PEM-encoded router CA from the openshift-ingress-operator secret.
+
+    Returns an empty string when the secret is absent or empty.
+    Raises RuntimeError on oc timeout, missing binary, or malformed secret data.
+    """
     try:
         result = subprocess.run(
             [
@@ -60,6 +54,11 @@ def get_router_ca_pem(*, oc: str = "oc") -> str:
 
 
 def fetch_tls_chain_pem(hostname: str, *, port: int = 443) -> str:
+    """Return all PEM blocks from the TLS certificate chain presented by hostname:port.
+
+    Uses openssl s_client -showcerts. Returns an empty string when no PEM blocks are
+    found. Raises RuntimeError on connection timeout or missing openssl binary.
+    """
     try:
         result = subprocess.run(
             [
@@ -86,129 +85,13 @@ def fetch_tls_chain_pem(hostname: str, *, port: int = 443) -> str:
     return "\n".join(pem_blocks(result.stdout + result.stderr))
 
 
-def _openssl_verify(ca_pem: str, cert_pem: str) -> bool:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        work = Path(tmpdir)
-        ca_path = work / "ca.pem"
-        cert_path = work / "cert.pem"
-        ca_path.write_text(ca_pem, encoding="utf-8")
-        cert_path.write_text(cert_pem, encoding="utf-8")
-        try:
-            result = subprocess.run(
-                [
-                    "openssl",
-                    "verify",
-                    "-no-CAfile",
-                    "-no-CApath",
-                    "-CAfile",
-                    str(ca_path),
-                    str(cert_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=_OPENSSL_VERIFY_TIMEOUT_SECONDS,
-            )
-        except subprocess.TimeoutExpired as exc:
-            msg = "openssl verify timed out"
-            raise RuntimeError(msg) from exc
-        except OSError as exc:
-            msg = "openssl not found"
-            raise RuntimeError(msg) from exc
-    return result.returncode == 0
+def chain_trust_anchor_pem(chain: list[str], ca_pem: str = "") -> str:
+    """Return the CA bundle PEM that should be trusted to verify the TLS chain.
 
-
-def _get_cert_issuer(cert_pem: str) -> str:
-    """Extract the issuer DN from a certificate in RFC2253 format."""
-    try:
-        result = subprocess.run(
-            ["openssl", "x509", "-noout", "-issuer", "-nameopt", "RFC2253"],
-            input=cert_pem,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_OPENSSL_VERIFY_TIMEOUT_SECONDS,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-
-    if result.returncode != 0:
-        return ""
-
-    # Output format: "issuer=CN=Root CA,O=Org,C=US"
-    match = re.match(r"issuer=(.+)", result.stdout.strip())
-    return match.group(1) if match else ""
-
-
-def _get_cert_subject(cert_pem: str) -> str:
-    """Extract the subject DN from a certificate in RFC2253 format."""
-    try:
-        result = subprocess.run(
-            ["openssl", "x509", "-noout", "-subject", "-nameopt", "RFC2253"],
-            input=cert_pem,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=_OPENSSL_VERIFY_TIMEOUT_SECONDS,
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        return ""
-
-    if result.returncode != 0:
-        return ""
-
-    # Output format: "subject=CN=Intermediate CA,O=Org,C=US"
-    match = re.match(r"subject=(.+)", result.stdout.strip())
-    return match.group(1) if match else ""
-
-
-def _find_root_ca_in_system_store(issuer_dn: str) -> str | None:
-    """
-    Find the root CA certificate in system CA stores matching the given issuer DN.
-
-    Args:
-        issuer_dn: The issuer DN to search for (RFC2253 format)
-
-    Returns:
-        PEM content of the root CA, or None if not found
-    """
-    # Common system CA paths (RHEL/Fedora, Debian/Ubuntu)
-    ca_paths = [
-        Path("/etc/pki/tls/certs/ca-bundle.crt"),
-        Path("/etc/ssl/certs/ca-certificates.crt"),
-    ]
-
-    for bundle_path in ca_paths:
-        if not bundle_path.exists():
-            continue
-
-        try:
-            bundle_content = bundle_path.read_text(encoding="utf-8")
-            # System CA bundles contain multiple certs
-            for cert_pem in pem_blocks(bundle_content):
-                subject = _get_cert_subject(cert_pem)
-                if subject and subject == issuer_dn:
-                    logger.debug("Found root CA in %s", bundle_path)
-                    return cert_pem
-        except (OSError, UnicodeDecodeError) as exc:
-            logger.debug("Error reading %s: %s", bundle_path, exc)
-            continue
-
-    return None
-
-
-def _chain_trust_anchor_pem(chain: list[str]) -> str:
-    """
-    Return complete CA PEM bundle from a fetched TLS chain.
-
-    Includes all intermediate CAs from the chain, plus attempts to find
-    and append the root CA from the system trust store if the chain is incomplete.
-
-    Args:
-        chain: List of PEM certificates from TLS handshake [leaf, intermediate(s)...]
-
-    Returns:
-        Complete CA bundle with intermediates + root CA (if found)
+    Skips the leaf (chain[0]) and returns all remaining CA certificates. If the last
+    certificate is not self-signed and ca_pem is provided, verifies that ca_pem signs
+    it and appends ca_pem to complete the chain. Raises RuntimeError when the chain
+    contains only a leaf or when ca_pem fails to verify the last certificate.
     """
     ca_certs = chain[1:]
     if not ca_certs:
@@ -217,37 +100,30 @@ def _chain_trust_anchor_pem(chain: list[str]) -> str:
         )
         raise RuntimeError(msg)
 
-    # Check if the last cert in the chain is self-signed (i.e., a root CA)
-    last_cert = ca_certs[-1]
-    issuer = _get_cert_issuer(last_cert)
-    subject = _get_cert_subject(last_cert)
-
-    if issuer and subject and issuer == subject:
-        # Chain already contains a self-signed root CA
+    if is_self_signed(ca_certs[-1]):
         logger.debug("TLS chain contains self-signed root CA")
         return "\n".join(ca_certs) + "\n"
 
-    # Chain is incomplete - try to find the root CA from system store
-    if not issuer:
-        logger.warning("Could not determine issuer from last intermediate CA")
-        return "\n".join(ca_certs) + "\n"
+    if ca_pem:
+        if not openssl_verify(ca_pem, ca_certs[-1]):
+            msg = "provided --ca-pem does not verify the last certificate in the TLS chain"
+            raise RuntimeError(msg)
+        logger.info("Completing certificate chain with provided CA")
+        return "\n".join([*ca_certs, ca_pem.strip()]) + "\n"
 
-    logger.debug("Searching for root CA with subject: %s", issuer)
-    root_ca = _find_root_ca_in_system_store(issuer)
-
-    if root_ca:
-        logger.info("Completed certificate chain with root CA from system trust store")
-        return "\n".join([*ca_certs, root_ca]) + "\n"
+    system_ca = find_system_ca_for_chain("\n".join(ca_certs))
+    if system_ca:
+        logger.info("Completing certificate chain with CA from system trust store")
+        return "\n".join([*ca_certs, system_ca.strip()]) + "\n"
 
     logger.warning(
-        "Root CA not found in system trust store for issuer: %s. "
-        "UpdateService may fail to verify the registry certificate in disconnected mode.",
-        issuer,
+        "TLS chain is incomplete (last certificate is not self-signed) and no CA "
+        "provided. UpdateService may fail to verify the registry certificate."
     )
     return "\n".join(ca_certs) + "\n"
 
 
-def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc") -> str:
+def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc", ca_pem: str = "") -> str:
     """Return PEM for the CA that should trust the registry route certificate."""
     router_ca = get_router_ca_pem(oc=oc).strip()
     chain = pem_blocks(fetch_tls_chain_pem(hostname))
@@ -256,13 +132,14 @@ def resolve_registry_ca_pem(hostname: str, *, oc: str = "oc") -> str:
         raise RuntimeError(msg)
 
     leaf = chain[0]
-    if router_ca and _openssl_verify(router_ca, leaf):
+    if router_ca and openssl_verify(router_ca, leaf):
         logger.debug("using router-ca to trust %s", hostname)
         return f"{router_ca}\n"
 
     logger.debug("using TLS chain CA bundle to trust %s", hostname)
-    return _chain_trust_anchor_pem(chain)
+    return chain_trust_anchor_pem(chain, ca_pem=ca_pem)
 
 
-def main(hostname: str, *, oc: str = "oc") -> None:
-    sys.stdout.write(resolve_registry_ca_pem(hostname, oc=oc))
+def main(hostname: str, *, oc: str = "oc", ca_pem: str = "") -> None:
+    """Print the CA PEM that should be trusted to verify the Quay registry route."""
+    sys.stdout.write(resolve_registry_ca_pem(hostname, oc=oc, ca_pem=ca_pem))
