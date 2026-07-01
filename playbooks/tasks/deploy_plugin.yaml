@@ -228,7 +228,7 @@
   when:
     - plugin.operators | default([]) | length > 0
     - plugin.clusterSelector is defined
-    - plugin.clusterSelector
+    - plugin.clusterSelector | length > 0
   tags: operators
 
 - name: Run post-operators
