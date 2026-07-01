@@ -86,6 +86,10 @@ definitions:
       bmcSystemId:
         type: string
         description: Redfish system ID path component, defaults to '1'
+      interfaceName:
+        type: string
+        pattern: "^[a-zA-Z0-9]+$"
+        description: Network interface name (e.g., eno1, eno1np0). Defaults to 'eno1' if not specified.
       ipAddress:
         "$ref": "#/definitions/ipv4Address"
       macAddress:
