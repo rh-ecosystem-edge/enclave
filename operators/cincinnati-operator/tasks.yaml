@@ -126,12 +126,10 @@
       spec:
         clusterSelector:
           matchExpressions:
-          - key: cluster.open-cluster-management.io/clusterset
-            operator: In
+          - key: local-cluster
+            operator: NotIn
             values:
-            - "account"
-            - "default"
-            - "platform"
+            - "true"
   register: r_acm_placementrule_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
