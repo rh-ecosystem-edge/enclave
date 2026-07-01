@@ -1025,7 +1025,7 @@ sslAPICertificateFullChain: |
 **Certificate requirements**:
 - Subject Alternative Name (SAN) must include: `api.{{ clusterName }}.{{ baseDomain }}`
 - Must be valid (not expired)
-- Should include full chain (server + intermediate + root)
+- Typically contains the server certificate and any intermediate CA(s). Including the root CA is optional per TLS standards; if omitted, provide it via `sslCACertificate` if the signing CA is not present in the RHEL 10 system trust store (`/etc/pki/tls/certs/ca-bundle.crt`).
 
 ### Ingress Certificate
 
@@ -1068,6 +1068,7 @@ sslIngressCertificateFullChain: |
   - `apps.{{ clusterName }}.{{ baseDomain }}`
 - Wildcard certificate recommended
 - Must be valid (not expired)
+- Typically contains the server certificate and any intermediate CA(s). Including the root CA is optional per TLS standards; if omitted, provide it via `sslCACertificate` if the signing CA is not present in the RHEL 10 system trust store (`/etc/pki/tls/certs/ca-bundle.crt`).
 
 **Obtaining certificates**:
 - Use Let's Encrypt (certbot)
@@ -1078,16 +1079,36 @@ sslIngressCertificateFullChain: |
 
 #### `sslCACertificate`
 
-**Description**: Root CA certificate.
+**Description**: Root CA certificate — the self-signed root that signs the last certificate in the fullchain fields.
 
 **Type**: String (PEM format)
 
+**When required**:
+- **Required** when the fullchain ends with a non-self-signed certificate (e.g. a cross-signed root such as Let's Encrypt ISRG Root X2) and the signing CA is not present in the RHEL 10 system trust store (`/etc/pki/tls/certs/ca-bundle.crt`).
+- **Required** when only a leaf certificate is present in the fullchain (no intermediate). The leaf must be signed by this CA.
+- **Required** when using a custom (private) CA whose root is not in the system trust store.
+
 **Example**:
+
 ```yaml
 sslCACertificate: |
   -----BEGIN CERTIFICATE-----
-  ... (server certificate)
+  ... (root CA certificate)
   -----END CERTIFICATE-----
+```
+
+### Certificate chain validation
+
+Certificate chains are automatically validated during installation by `enclave tools check-certificate-chains` (called from `bootstrap.sh`). The tool checks each fullchain field against these rules:
+
+1. **Completeness**: if the chain ends with a non-self-signed certificate, `sslCACertificate` must be set and must sign the last certificate.
+2. **Single-cert chains**: if only a leaf certificate is provided, `sslCACertificate` must be set.
+3. **Consistency**: if the chain ends with a self-signed root and `sslCACertificate` is also set, the CA must verify that root (a root CA verifies against itself).
+
+To validate manually (if enclave cli is installed):
+
+```bash
+enclave tools check-certificate-chains --config config/certificates.yaml
 ```
 
 ### Ironic HTTPS Certificate (Optional)

@@ -1,7 +1,5 @@
 """Collect PinnedImageSet-format digest refs from crictl images JSON on a node."""
 
-from __future__ import annotations
-
 import json
 import logging
 import re

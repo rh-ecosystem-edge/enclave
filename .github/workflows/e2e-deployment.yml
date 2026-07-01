@@ -8,9 +8,6 @@ name: E2E Deployment
 #
 # Both jobs run on every PR and nightly schedule. Manual dispatch allows
 # selecting which modes to run, skipping cleanup, and sending Slack notifications.
-#
-# Also callable as a reusable workflow (workflow_call) from other workflows
-# that need to run E2E with a custom plugin chain (e.g. e2e-osac.yml).
 
 # Cancel previous runs when a PR is updated
 concurrency:
@@ -52,39 +49,6 @@ on:
         required: false
         type: boolean
         default: false
-      enabled-plugins:
-        description: 'Comma-separated list of plugins to deploy (default: storage plugin only)'
-        required: false
-        type: string
-        default: ''
-      aap-license-file:
-        description: 'Path to AAP license file on the CI runner (required for OSAC deployments)'
-        required: false
-        type: string
-        default: ''
-  workflow_call:
-    inputs:
-      run-connected:
-        type: boolean
-        default: true
-      run-disconnected:
-        type: boolean
-        default: true
-      storage-plugin:
-        type: string
-        default: 'lvms'
-      skip-cleanup:
-        type: boolean
-        default: false
-      send-slack-notification:
-        type: boolean
-        default: false
-      enabled-plugins:
-        type: string
-        default: ''
-      aap-license-file:
-        type: string
-        default: ''
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -101,8 +65,6 @@ jobs:
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
-      run_connected: ${{ steps.decision.outputs.run_connected }}
-      run_disconnected: ${{ steps.decision.outputs.run_disconnected }}
       storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
       storage_plugins_connected: ${{ steps.decision.outputs.storage_plugins_connected }}
 
@@ -149,27 +111,7 @@ jobs:
           # Determine whether to run and which storage plugins to test.
           # storage_plugins is a JSON array consumed by the job matrix.
           # ODF only runs in disconnected mode. Connected always uses lvms.
-          #
-          # run_connected / run_disconnected: honour caller inputs when present,
-          # default to running both modes. Resolved here (not at job level)
-          # because the inputs context is unreliable in workflow_call when the
-          # caller's event_name is inherited.
-          RUN_CONNECTED="${{ inputs.run-connected }}"
-          RUN_DISCONNECTED="${{ inputs.run-disconnected }}"
-          [[ -z "$RUN_CONNECTED" ]] && RUN_CONNECTED=true
-          [[ -z "$RUN_DISCONNECTED" ]] && RUN_DISCONNECTED=true
-
-          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
-            echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            if [[ "$PLUGIN" == "odf" ]]; then
-              echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            else
-              echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            fi
-            echo "Called as reusable workflow - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
             echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
@@ -207,9 +149,6 @@ jobs:
             echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
-          echo "run_connected=${RUN_CONNECTED}" >> $GITHUB_OUTPUT
-          echo "run_disconnected=${RUN_DISCONNECTED}" >> $GITHUB_OUTPUT
-
   # ---------------------------------------------------------------------------
   # Connected mode E2E deployment
   # ---------------------------------------------------------------------------
@@ -218,7 +157,7 @@ jobs:
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
-      needs.check-e2e-needed.outputs.run_connected == 'true'
+      (github.event_name != 'workflow_dispatch' || inputs.run-connected == true)
     runs-on: [self-hosted, enclave-large]
     timeout-minutes: 210
 
@@ -238,11 +177,10 @@ jobs:
       ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
-      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
+      ENABLED_PLUGINS: ${{ matrix.storage-plugin }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
-      AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
 
     steps:
       - name: Checkout code
@@ -399,36 +337,6 @@ jobs:
           make -f Makefile.ci deploy-cluster-discovery
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
-      - name: Deploy trust-manager plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
-        id: deploy_trust_manager
-        run: make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
-
-      - name: Deploy rhbk plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',rhbk,')
-        id: deploy_rhbk
-        run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
-
-      - name: Deploy authorino plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
-        id: deploy_authorino
-        run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
-
-      - name: Deploy aap plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
-        id: deploy_aap
-        run: make -f Makefile.ci deploy-plugin PLUGIN=aap
-
-      - name: Deploy cnv plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',cnv,')
-        id: deploy_cnv
-        run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
-
-      - name: Deploy osac plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
-        id: deploy_osac
-        run: make -f Makefile.ci deploy-plugin PLUGIN=osac
-
       - name: Verify cluster deployment
         if: success()
         id: verify_cluster
@@ -511,7 +419,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always() && inputs.skip-cleanup != true
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -538,7 +446,7 @@ jobs:
           fi
 
       - name: Cleanup skipped notice
-        if: always() && inputs.skip-cleanup == true
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
         run: |
           echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -607,12 +515,6 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
-            ["deploy_trust_manager"]="Deploy trust-manager plugin"
-            ["deploy_rhbk"]="Deploy rhbk plugin"
-            ["deploy_authorino"]="Deploy authorino plugin"
-            ["deploy_aap"]="Deploy aap plugin"
-            ["deploy_cnv"]="Deploy cnv plugin"
-            ["deploy_osac"]="Deploy osac plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
 
@@ -630,12 +532,6 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
-            deploy_trust_manager
-            deploy_rhbk
-            deploy_authorino
-            deploy_aap
-            deploy_cnv
-            deploy_osac
             verify_cluster
           )
 
@@ -674,7 +570,7 @@ jobs:
     needs: check-e2e-needed
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
-      needs.check-e2e-needed.outputs.run_disconnected == 'true'
+      (github.event_name != 'workflow_dispatch' || inputs.run-disconnected == true)
     runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]') || fromJSON('["self-hosted", "enclave-large"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
@@ -693,11 +589,10 @@ jobs:
       ENCLAVE_DEPLOYMENT_MODE: disconnected
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
-      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
+      ENABLED_PLUGINS: ${{ matrix.storage-plugin }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
-      AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
 
     steps:
       - name: Checkout code
@@ -854,35 +749,12 @@ jobs:
           make -f Makefile.ci deploy-cluster-discovery
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
-      - name: Deploy trust-manager plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
-        id: deploy_trust_manager
-        run: make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
-
-      - name: Deploy rhbk plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',rhbk,')
-        id: deploy_rhbk
-        run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
-
-      - name: Deploy authorino plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
-        id: deploy_authorino
-        run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
-
-      - name: Deploy aap plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
-        id: deploy_aap
-        run: make -f Makefile.ci deploy-plugin PLUGIN=aap
-
-      - name: Deploy cnv plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',cnv,')
-        id: deploy_cnv
-        run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
-
-      - name: Deploy osac plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
-        id: deploy_osac
-        run: make -f Makefile.ci deploy-plugin PLUGIN=osac
+      - name: Deploy - Addon Plugin (example)
+        id: deploy_addon_plugin
+        run: |
+          echo "## Deploy: Addon Plugin" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-plugin PLUGIN=example
+          echo "Deploy Addon Plugin complete" >> $GITHUB_STEP_SUMMARY
 
       - name: Verify cluster deployment
         if: success()
@@ -975,7 +847,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
       - name: Cleanup infrastructure
-        if: always() && inputs.skip-cleanup != true
+        if: always() && (github.event_name != 'workflow_dispatch' || inputs.skip-cleanup != true)
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1002,7 +874,7 @@ jobs:
           fi
 
       - name: Cleanup skipped notice
-        if: always() && inputs.skip-cleanup == true
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.skip-cleanup == true
         run: |
           echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -1071,12 +943,7 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
-            ["deploy_trust_manager"]="Deploy trust-manager plugin"
-            ["deploy_rhbk"]="Deploy rhbk plugin"
-            ["deploy_authorino"]="Deploy authorino plugin"
-            ["deploy_aap"]="Deploy aap plugin"
-            ["deploy_cnv"]="Deploy cnv plugin"
-            ["deploy_osac"]="Deploy osac plugin"
+            ["deploy_addon_plugin"]="Deploy - Addon Plugin (example)"
             ["verify_cluster"]="Verify cluster deployment"
           )
 
@@ -1094,12 +961,7 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
-            deploy_trust_manager
-            deploy_rhbk
-            deploy_authorino
-            deploy_aap
-            deploy_cnv
-            deploy_osac
+            deploy_addon_plugin
             verify_cluster
           )
 

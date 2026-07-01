@@ -1,18 +1,15 @@
-from pathlib import Path
+"""Tests for quay_registry_ca: TLS chain resolution and CA trust anchor selection."""
+
 from subprocess import CompletedProcess, TimeoutExpired
 
 import pytest
 from pytest_mock import MockerFixture
 
+from enclave.tools.cert_utils import pem_blocks
 from enclave.tools.quay_registry_ca import (
-    _chain_trust_anchor_pem,
-    _find_root_ca_in_system_store,
-    _get_cert_issuer,
-    _get_cert_subject,
-    _openssl_verify,
+    chain_trust_anchor_pem,
     fetch_tls_chain_pem,
     get_router_ca_pem,
-    pem_blocks,
     resolve_registry_ca_pem,
 )
 
@@ -33,6 +30,7 @@ router-ca
 def test_fetch_tls_chain_pem_timeout_raises_runtime_error(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when openssl s_client times out."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.subprocess.run",
         side_effect=TimeoutExpired(cmd=["openssl", "s_client"], timeout=60),
@@ -44,6 +42,7 @@ def test_fetch_tls_chain_pem_timeout_raises_runtime_error(
 def test_get_router_ca_pem_invalid_base64_raises_runtime_error(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when the router-ca secret contains invalid base64."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.subprocess.run",
         return_value=CompletedProcess(
@@ -57,6 +56,7 @@ def test_get_router_ca_pem_invalid_base64_raises_runtime_error(
 def test_get_router_ca_pem_missing_oc_raises_runtime_error(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when oc binary is not found."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.subprocess.run",
         side_effect=FileNotFoundError(2, "No such file or directory", "/bin/oc"),
@@ -68,6 +68,7 @@ def test_get_router_ca_pem_missing_oc_raises_runtime_error(
 def test_fetch_tls_chain_pem_missing_openssl_raises_runtime_error(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when openssl binary is not found."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.subprocess.run",
         side_effect=FileNotFoundError(2, "No such file or directory", "openssl"),
@@ -76,40 +77,10 @@ def test_fetch_tls_chain_pem_missing_openssl_raises_runtime_error(
         fetch_tls_chain_pem("registry.example.com")
 
 
-def test_openssl_verify_missing_openssl_raises_runtime_error(
-    mocker: MockerFixture,
-) -> None:
-    mocker.patch(
-        "enclave.tools.quay_registry_ca.subprocess.run",
-        side_effect=FileNotFoundError(2, "No such file or directory", "openssl"),
-    )
-    with pytest.raises(RuntimeError, match="openssl not found"):
-        _openssl_verify(_ROUTER_CA, _LEAF)
-
-
-def test_openssl_verify_isolates_from_system_trust_store(
-    mocker: MockerFixture,
-) -> None:
-    mock_run = mocker.patch(
-        "enclave.tools.quay_registry_ca.subprocess.run",
-        return_value=CompletedProcess(
-            args=["openssl"], returncode=0, stdout="", stderr=""
-        ),
-    )
-    _openssl_verify(_ROUTER_CA, _LEAF)
-    cmd = mock_run.call_args[0][0]
-    assert "-no-CAfile" in cmd
-    assert "-no-CApath" in cmd
-
-
-def test_pem_blocks_splits_multiple_certificates() -> None:
-    chain = f"{_LEAF}\n{_ROOT}\n"
-    assert pem_blocks(chain) == [_LEAF, _ROOT]
-
-
 def test_resolve_registry_ca_pem_uses_router_ca_when_it_verifies(
     mocker: MockerFixture,
 ) -> None:
+    """Use the router CA when it verifies the chain."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
     )
@@ -117,23 +88,29 @@ def test_resolve_registry_ca_pem_uses_router_ca_when_it_verifies(
         "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
         return_value=f"{_LEAF}\n{_ROOT}\n",
     )
-    mocker.patch("enclave.tools.quay_registry_ca._openssl_verify", return_value=True)
+    mocker.patch("enclave.tools.quay_registry_ca.openssl_verify", return_value=True)
     assert resolve_registry_ca_pem("registry.example.com") == f"{_ROUTER_CA.strip()}\n"
 
 
-def test_chain_trust_anchor_pem_returns_all_non_leaf_certs() -> None:
+def testchain_trust_anchor_pem_returns_all_non_leaf_certs(
+    mocker: MockerFixture,
+) -> None:
+    """Return all certs except the leaf (intermediate + root)."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=True)
     chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n{_ROOT}\n")
-    assert _chain_trust_anchor_pem(chain) == f"{_INTERMEDIATE}\n{_ROOT}\n"
+    assert chain_trust_anchor_pem(chain) == f"{_INTERMEDIATE}\n{_ROOT}\n"
 
 
-def test_chain_trust_anchor_pem_leaf_only_raises() -> None:
+def testchain_trust_anchor_pem_leaf_only_raises() -> None:
+    """Raise RuntimeError when only a leaf certificate is present."""
     with pytest.raises(RuntimeError, match="only a leaf certificate"):
-        _chain_trust_anchor_pem([_LEAF])
+        chain_trust_anchor_pem([_LEAF])
 
 
 def test_resolve_registry_ca_pem_falls_back_to_chain_ca_bundle(
     mocker: MockerFixture,
 ) -> None:
+    """Fall back to chain CA bundle when router CA does not verify."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
     )
@@ -141,7 +118,8 @@ def test_resolve_registry_ca_pem_falls_back_to_chain_ca_bundle(
         "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
         return_value=f"{_LEAF}\n{_INTERMEDIATE}\n{_ROOT}\n",
     )
-    mocker.patch("enclave.tools.quay_registry_ca._openssl_verify", return_value=False)
+    mocker.patch("enclave.tools.quay_registry_ca.openssl_verify", return_value=False)
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=True)
     assert resolve_registry_ca_pem("registry.example.com") == (
         f"{_INTERMEDIATE}\n{_ROOT}\n"
     )
@@ -150,6 +128,7 @@ def test_resolve_registry_ca_pem_falls_back_to_chain_ca_bundle(
 def test_resolve_registry_ca_pem_empty_chain_raises(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when the fetched chain is empty."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
     )
@@ -161,6 +140,7 @@ def test_resolve_registry_ca_pem_empty_chain_raises(
 def test_resolve_registry_ca_pem_leaf_only_chain_raises(
     mocker: MockerFixture,
 ) -> None:
+    """Raise RuntimeError when the chain has only a leaf certificate."""
     mocker.patch(
         "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
     )
@@ -168,135 +148,82 @@ def test_resolve_registry_ca_pem_leaf_only_chain_raises(
         "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
         return_value=f"{_LEAF}\n",
     )
-    mocker.patch("enclave.tools.quay_registry_ca._openssl_verify", return_value=False)
+    mocker.patch("enclave.tools.quay_registry_ca.openssl_verify", return_value=False)
     with pytest.raises(RuntimeError, match="only a leaf certificate"):
         resolve_registry_ca_pem("registry.example.com")
 
 
-def test_get_cert_subject_extracts_subject_dn(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "enclave.tools.quay_registry_ca.subprocess.run",
-        return_value=CompletedProcess(
-            args=["openssl"],
-            returncode=0,
-            stdout="subject=CN=Test CA,O=Test Org,C=US\n",
-            stderr="",
-        ),
-    )
-    assert _get_cert_subject(_ROOT) == "CN=Test CA,O=Test Org,C=US"
-
-
-def test_get_cert_issuer_extracts_issuer_dn(mocker: MockerFixture) -> None:
-    mocker.patch(
-        "enclave.tools.quay_registry_ca.subprocess.run",
-        return_value=CompletedProcess(
-            args=["openssl"],
-            returncode=0,
-            stdout="issuer=CN=Root CA,O=Test Org,C=US\n",
-            stderr="",
-        ),
-    )
-    assert _get_cert_issuer(_INTERMEDIATE) == "CN=Root CA,O=Test Org,C=US"
-
-
-def test_find_root_ca_in_system_store_finds_matching_cert(
-    mocker: MockerFixture, tmp_path: Path
-) -> None:
-    # Create a mock CA bundle file
-    ca_bundle = tmp_path / "ca-bundle.crt"
-    ca_bundle.write_text(f"{_ROOT}\n{_INTERMEDIATE}\n", encoding="utf-8")
-
-    # Mock Path.exists and read_text
-    mocker.patch("enclave.tools.quay_registry_ca.Path.exists", return_value=True)
-    mocker.patch(
-        "enclave.tools.quay_registry_ca.Path.read_text",
-        return_value=ca_bundle.read_text(),
-    )
-
-    # Mock _get_cert_subject to return matching DN
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_subject",
-        side_effect=["CN=Root CA,O=Test,C=US", "CN=Other,O=Test,C=US"],
-    )
-
-    result = _find_root_ca_in_system_store("CN=Root CA,O=Test,C=US")
-    assert result == _ROOT
-
-
-def test_find_root_ca_in_system_store_returns_none_when_not_found(
+def testchain_trust_anchor_pem_with_self_signed_last_cert(
     mocker: MockerFixture,
 ) -> None:
-    mocker.patch("enclave.tools.quay_registry_ca.Path.exists", return_value=True)
-    mocker.patch(
-        "enclave.tools.quay_registry_ca.Path.read_text", return_value=f"{_ROOT}\n"
-    )
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_subject",
-        return_value="CN=Different,O=Test,C=US",
-    )
-
-    result = _find_root_ca_in_system_store("CN=Not Found,O=Test,C=US")
-    assert result is None
-
-
-def test_chain_trust_anchor_pem_with_self_signed_root(mocker: MockerFixture) -> None:
-    # Mock issuer and subject to be the same (self-signed)
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_issuer",
-        return_value="CN=Root CA,O=Test,C=US",
-    )
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_subject",
-        return_value="CN=Root CA,O=Test,C=US",
-    )
-
+    """Return the self-signed root when the chain ends with one."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=True)
     chain = pem_blocks(f"{_LEAF}\n{_ROOT}\n")
-    result = _chain_trust_anchor_pem(chain)
-    assert result == f"{_ROOT}\n"
+    assert chain_trust_anchor_pem(chain) == f"{_ROOT}\n"
 
 
-def test_chain_trust_anchor_pem_completes_chain_from_system_store(
+def testchain_trust_anchor_pem_appends_ca_pem_when_chain_incomplete(
     mocker: MockerFixture,
 ) -> None:
-    # Intermediate is not self-signed
+    """Append ca_pem to the anchor when it verifies the last chain cert."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=False)
+    mocker.patch("enclave.tools.quay_registry_ca.openssl_verify", return_value=True)
+    chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n")
+    assert chain_trust_anchor_pem(chain, ca_pem=_ROOT) == f"{_INTERMEDIATE}\n{_ROOT}\n"
+
+
+def testchain_trust_anchor_pem_returns_incomplete_chain_without_ca_pem(
+    mocker: MockerFixture,
+) -> None:
+    """Return the non-leaf portion of an incomplete chain when no ca_pem or system CA."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=False)
     mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_issuer",
-        return_value="CN=Root CA,O=Test,C=US",
+        "enclave.tools.quay_registry_ca.find_system_ca_for_chain", return_value=None
     )
+    chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n")
+    assert chain_trust_anchor_pem(chain) == f"{_INTERMEDIATE}\n"
+
+
+def testchain_trust_anchor_pem_completes_chain_from_system_trust_store(
+    mocker: MockerFixture,
+) -> None:
+    """Complete the chain with a CA from the system trust store when no ca_pem is given."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=False)
     mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_subject",
-        return_value="CN=Intermediate CA,O=Test,C=US",
-    )
-    # Mock finding the root CA
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._find_root_ca_in_system_store",
+        "enclave.tools.quay_registry_ca.find_system_ca_for_chain",
         return_value=_ROOT,
     )
-
     chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n")
-    result = _chain_trust_anchor_pem(chain)
+    assert chain_trust_anchor_pem(chain) == f"{_INTERMEDIATE}\n{_ROOT}\n"
+
+
+def test_resolve_registry_ca_pem_completes_chain_with_ca_pem(
+    mocker: MockerFixture,
+) -> None:
+    """Append ca_pem to the anchor when it completes the chain."""
+    mocker.patch(
+        "enclave.tools.quay_registry_ca.get_router_ca_pem", return_value=_ROUTER_CA
+    )
+    mocker.patch(
+        "enclave.tools.quay_registry_ca.fetch_tls_chain_pem",
+        return_value=f"{_LEAF}\n{_INTERMEDIATE}\n",
+    )
+    # First call: router-ca does not verify the leaf → fall back to chain.
+    # Second call: provided ca_pem verifies the last chain cert → append it.
+    mocker.patch(
+        "enclave.tools.quay_registry_ca.openssl_verify", side_effect=[False, True]
+    )
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=False)
+    result = resolve_registry_ca_pem("registry.example.com", ca_pem=_ROOT)
     assert result == f"{_INTERMEDIATE}\n{_ROOT}\n"
 
 
-def test_chain_trust_anchor_pem_incomplete_chain_without_root_in_system(
+def testchain_trust_anchor_pem_raises_when_ca_pem_does_not_verify(
     mocker: MockerFixture,
 ) -> None:
-    # Intermediate is not self-signed
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_issuer",
-        return_value="CN=Root CA,O=Test,C=US",
-    )
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._get_cert_subject",
-        return_value="CN=Intermediate CA,O=Test,C=US",
-    )
-    # Root CA not found in system store
-    mocker.patch(
-        "enclave.tools.quay_registry_ca._find_root_ca_in_system_store",
-        return_value=None,
-    )
-
+    """Raise RuntimeError when ca_pem does not verify the last chain cert."""
+    mocker.patch("enclave.tools.quay_registry_ca.is_self_signed", return_value=False)
+    mocker.patch("enclave.tools.quay_registry_ca.openssl_verify", return_value=False)
     chain = pem_blocks(f"{_LEAF}\n{_INTERMEDIATE}\n")
-    result = _chain_trust_anchor_pem(chain)
-    # Should return intermediate only, with a warning logged
-    assert result == f"{_INTERMEDIATE}\n"
+    with pytest.raises(RuntimeError, match="does not verify the last certificate"):
+        chain_trust_anchor_pem(chain, ca_pem=_ROOT)

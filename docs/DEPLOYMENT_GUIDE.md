@@ -403,7 +403,10 @@ sslAPICertificateKey: |
 
 sslAPICertificateFullChain: |
   -----BEGIN CERTIFICATE-----
-  ... (certificate chain)
+  ... (server certificate)
+  -----END CERTIFICATE-----
+  -----BEGIN CERTIFICATE-----
+  ... (intermediate CA, if applicable)
   -----END CERTIFICATE-----
 
 # Ingress Certificate (for *.apps domain)
@@ -414,7 +417,16 @@ sslIngressCertificateKey: |
 
 sslIngressCertificateFullChain: |
   -----BEGIN CERTIFICATE-----
-  ... (certificate chain)
+  ... (server certificate)
+  -----END CERTIFICATE-----
+  -----BEGIN CERTIFICATE-----
+  ... (intermediate CA, if applicable)
+  -----END CERTIFICATE-----
+
+# Root CA certificate
+sslCACertificate: |
+  -----BEGIN CERTIFICATE-----
+  ... (root CA certificate)
   -----END CERTIFICATE-----
 ```
 
