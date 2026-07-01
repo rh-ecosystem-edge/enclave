@@ -5,10 +5,16 @@ order: 103
 
 operators:
   - name: ansible-automation-platform-operator
-    version: 2.5.0-0.1777407881
+    version: 2.5.0+0.1781744244
     channel: stable-2.5-cluster-scoped
-    init_version: 2.5.0-0.1777407881
+    init_version: 2.5.0+0.1781744244
     namespace: ansible-aap
     global: true
     csvNames:
       - aap-operator
+
+registries:
+  - location: "registry.redhat.io/ansible-automation-platform-25"
+    mirror: "ansible-automation-platform-25"
+  - location: "registry.redhat.io/ansible-automation-platform"
+    mirror: "ansible-automation-platform"
