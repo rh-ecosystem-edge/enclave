@@ -137,7 +137,7 @@
   no_log: true
   when: not (disconnected | default(true))
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay, recursive=true) }}"
+    pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay | from_json, recursive=true) }}"
 
 - name: Set pull secret for disconnected (no combine)
   no_log: true
