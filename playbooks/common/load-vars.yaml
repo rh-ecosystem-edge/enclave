@@ -87,7 +87,9 @@
   loop: "{{ r_plugin_yaml_stats_early.results | selectattr('stat.exists') | list }}"
   loop_control:
     label: "{{ item.item.path | basename }}"
-  when: vars['plugin_descriptor_' + (item.item.path | basename)].remote is defined
+  when:
+    - item.item.path | basename in enabled_plugins
+    - vars['plugin_descriptor_' + (item.item.path | basename)].remote is defined
 
 - name: Find plugin directories
   ansible.builtin.find:
