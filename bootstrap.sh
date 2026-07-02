@@ -266,8 +266,7 @@ step_operators() {
 }
 
 step_day2() {
-    echo "Catalog source ACM policy .." | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml $EXTRA_VARS --tags acm-policy-catalogsources
+    echo "Day2 operations .." | tee -a ${log}
     step_done
 }
 

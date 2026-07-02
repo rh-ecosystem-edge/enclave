@@ -4,11 +4,9 @@
 #
 # Performs:
 # - Clair configuration for disconnected Quay (disconnected only)
-# - ACM policies for mirrored catalogsources (disconnected only)
 #
 # Usage:
 #   ansible-playbook playbooks/06-day2.yaml [-e disconnected=false]
-#   ansible-playbook playbooks/06-day2.yaml --tags acm-policy-catalogsources
 
 - name: Phase 6 - Day-2 operations
   hosts: localhost
@@ -57,22 +55,6 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: acm-cis
-
-        - name: Mirrored catalogsource configuration ACM policy
-          when: disconnected | default(true)
-          vars:
-            short_version_dot: "{{ openshift_version.version.split('.')[:2] | join('.') }}"
-            short_version_dash: "{{ openshift_version.version.split('.')[:2] | join('-') }}"
-          ansible.builtin.include_tasks:
-            file: tasks/catalogsource.yaml
-            apply:
-              tags: acm-policy-catalogsources
-              environment:
-                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-          loop: "{{ openshift_versions }}"
-          loop_control:
-            loop_var: openshift_version
-          tags: acm-policy-catalogsources
 
         - name: Finish Quay configuration in disconnected environments
           when: disconnected | default(true)

@@ -133,7 +133,7 @@ validate_tags() {
         "playbooks/04-post-install.yaml:post-install-config:Post-install configurations"
         "playbooks/05-operators.yaml:operators:Configure seed operators"
         "playbooks/05-operators.yaml:operators:Configure remaining operators"
-        "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
+        "playbooks/05-operators.yaml:operators:Mirrored catalogsource configuration ACM policy"
         "playbooks/validation/validate-schema.yaml:test-fixtures:Include defaults schema validation tasks"
         "playbooks/validation/validate-schema.yaml:validate-config:Include config schema validation tasks"
         "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
