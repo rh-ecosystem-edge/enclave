@@ -40,7 +40,7 @@ spec:
             apiVersion: operators.coreos.com/v1alpha1
             kind: CatalogSource
             metadata:
-              name: mirror-redhat-operators
+              name: {{ fleet_rh_operator_catalog }}
               namespace: openshift-marketplace
             spec:
               image: registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/redhat/{{ mirror_rh_operator_catalog }}:v{{ short_version_dot }}
