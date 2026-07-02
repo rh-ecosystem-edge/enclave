@@ -53,7 +53,7 @@
       when:
         - plugin_name is defined
         - r_plugin_yaml.stat.exists
-        - plugin.type | default('') == 'remote'
+        - plugin.remote is defined
       tags: always
 
     - name: Load common variables

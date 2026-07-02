@@ -116,8 +116,9 @@ if unexpected:
     print(f'  plugin.yaml has unexpected fields: {unexpected}', file=sys.stderr)
     sys.exit(1)
 
-# Print the type for remote plugin handling
-print(data.get('type', ''))
+# Print 'remote' if plugin has remote field for remote plugin handling
+if 'remote' in data:
+    print('remote')
 " "$plugin_yaml" "$plugin_name" 2>&1)
 
     validation_exit=$?
@@ -125,12 +126,12 @@ print(data.get('type', ''))
         FAILED=1
         plugin_failed=1
     else
-        # Extract just the type from the output (last line)
-        plugin_type=$(echo "$plugin_type" | tail -1)
+        # Extract marker from output (last line)
+        has_remote=$(echo "$plugin_type" | tail -1)
     fi
 
     # Fetch and validate remote plugins
-    if [ "$plugin_type" = "remote" ]; then
+    if [ "$has_remote" = "remote" ]; then
         echo "  Fetching remote plugin content for validation..."
         remote_url=$(python3 -c "import yaml; data=yaml.safe_load(open('$plugin_yaml')); print(data.get('remote', {}).get('url', ''))")
         remote_ref=$(python3 -c "import yaml; data=yaml.safe_load(open('$plugin_yaml')); print(data.get('remote', {}).get('ref', ''))")
@@ -175,8 +176,8 @@ if not isinstance(data, dict):
     print('  Fetched plugin.yaml must be a YAML mapping', file=sys.stderr)
     sys.exit(1)
 
-if data.get('type') == 'remote':
-    print('  Fetched plugin.yaml cannot itself be type: remote', file=sys.stderr)
+if 'remote' in data:
+    print('  Fetched plugin.yaml cannot itself have a remote field (nested remotes not allowed)', file=sys.stderr)
     sys.exit(1)
 
 unexpected = [f for f in data if f not in valid_fields]

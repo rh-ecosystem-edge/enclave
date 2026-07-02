@@ -35,7 +35,7 @@
         r_plugin_yaml:
           stat:
             exists: true
-      when: lvms_stub.type | default('') == 'remote'
+      when: lvms_stub.remote is defined
 
     - name: Load odf plugin stub
       ansible.builtin.include_vars:
@@ -52,7 +52,7 @@
         r_plugin_yaml:
           stat:
             exists: true
-      when: odf_stub.type | default('') == 'remote'
+      when: odf_stub.remote is defined
 
 - name: Load lvms plugin descriptor
   ansible.builtin.set_fact:

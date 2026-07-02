@@ -1,6 +1,7 @@
 ---
 name: lvms
-type: remote
+type: foundation
+order: 10
 
 remote:
   url: https://github.com/rh-ecosystem-edge/enclave-plugins

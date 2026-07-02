@@ -243,10 +243,7 @@ properties:
     enum:
       - foundation
       - addon
-      - remote
-    description: >-
-      Plugin type. foundation plugins deploy before core operators.
-      remote plugins are fetched from a git repository before deployment.
+    description: Plugin type. foundation plugins deploy before core operators.
   order:
     type: integer
     description: Deploy order among same-type plugins. Lower values deploy first.
@@ -321,22 +318,6 @@ properties:
 dependencies:
   installOperatorsFleet:
     - clusterSelector
-  remote:
-    - type
-allOf:
-  - if:
-      properties:
-        type:
-          const: remote
-    then:
-      required: [remote]
-  - if:
-      properties:
-        type:
-          enum: [foundation, addon]
-    then:
-      not:
-        required: [remote]
 required:
   - name
   - type

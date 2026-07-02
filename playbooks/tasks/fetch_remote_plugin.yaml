@@ -2,8 +2,8 @@
 # Fetch a remote plugin from a git repository
 #
 # This task clones the specified git repository and extracts the plugin
-# content to the local plugins directory. The remote plugin descriptor
-# (plugins/<name>/plugin.yaml with type: remote) is replaced with the
+# content to the local plugins directory. Plugins with a remote field
+# (plugins/<name>/plugin.yaml with remote: {...}) are replaced with the
 # actual plugin content from the repository.
 #
 # Required variables:
