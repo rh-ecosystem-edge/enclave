@@ -143,9 +143,9 @@ export VM_EXTRADISKS_SIZE="${VM_EXTRADISKS_SIZE_VAL}"
 # =============================================================================
 
 # Landing Zone VM runs Enclave Lab and deployment tools
-export LANDINGZONE_MEMORY=${LANDINGZONE_MEMORY:-8192}    # 8 GB RAM
+export LANDINGZONE_MEMORY=${LANDINGZONE_MEMORY:-16384}   # 16 GB RAM
 export LANDINGZONE_DISK=${LANDINGZONE_DISK_VAL}
-export LANDINGZONE_VCPU=${LANDINGZONE_VCPU:-4}         # 4 vCPUs
+export LANDINGZONE_VCPU=${LANDINGZONE_VCPU:-16}          # 16 vCPUs
 
 # =============================================================================
 # Network Configuration
