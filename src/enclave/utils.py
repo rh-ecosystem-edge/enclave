@@ -58,6 +58,10 @@ def setup_kubeconfig() -> None:
 
 class KubeconfigGroup(click.Group):
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        # Read the subcommand name from the raw args list before super() consumes it.
+        # The group itself has no positional options, so the first non-flag token is
+        # always the subcommand name (help flags cause early exit inside super()).
+        subcommand_name = next((a for a in args if not a.startswith("-")), None)
         remaining = super().parse_args(ctx, args)
         # ctx.args holds the subcommand's own args (empty when no subcommand was given, or
         # when a bare subcommand name was given with no further args). Only check kubeconfig
@@ -66,10 +70,14 @@ class KubeconfigGroup(click.Group):
         if not ctx.resilient_parsing and ctx.args:
             help_flags = set(ctx.help_option_names or ["--help", "-h"])
             if not any(f in ctx.args for f in help_flags):
-                try:
-                    setup_kubeconfig()
-                except KubeconfigNotFoundError as exc:
-                    raise click.ClickException(str(exc)) from exc
+                subcommand = (
+                    self.get_command(ctx, subcommand_name) if subcommand_name else None
+                )
+                if not (subcommand and getattr(subcommand, "no_kubeconfig", False)):
+                    try:
+                        setup_kubeconfig()
+                    except KubeconfigNotFoundError as exc:
+                        raise click.ClickException(str(exc)) from exc
         return remaining
 
 

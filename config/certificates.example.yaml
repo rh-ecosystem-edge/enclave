@@ -43,6 +43,23 @@ sslIngressCertificateFullChain: |
   -----END CERTIFICATE-----
 
 # Root CA Certificate
+# The self-signed root CA that signs the last certificate in the fullchain fields.
+# This supplies only the terminal root CA; all intermediate certificates must already
+# be present in the fullchain fields. sslCACertificate does not rebuild missing
+# intermediates.
+#
+# Required when:
+#   - The fullchain ends with a non-self-signed (cross-signed) certificate, e.g.
+#     Let's Encrypt ISRG Root X2, and the root CA is not in the RHEL 10 system
+#     trust store (/etc/pki/tls/certs/ca-bundle.crt).
+#   - Only a leaf certificate is present in the fullchain (no intermediate).
+#   - A private/custom CA whose root is not in the system trust store.
+#
+# Not required when the fullchain already ends with a self-signed root CA, or
+# when the signing CA is present in the RHEL 10 system trust store.
+#
+# Validate the full configuration with:
+#   enclave tools check-certificate-chains --config config/certificates.yaml
 sslCACertificate: |
   -----BEGIN CERTIFICATE-----
   YOUR_ROOT_CA_CERTIFICATE

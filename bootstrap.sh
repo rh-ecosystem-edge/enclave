@@ -215,6 +215,8 @@ step_validate() {
     echo "Validating Config .. "  | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml $EXTRA_VARS --tags validate-config
     bash ./validations.sh 2>&1 | tee -a ${log}
+    enclave tools check-root-ca --config "${certs_vars}" 2>&1 | tee -a ${log}
+    enclave tools check-certificate-chains --config "${certs_vars}" 2>&1 | tee -a ${log}
     step_done
 }
 
