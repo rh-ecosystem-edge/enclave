@@ -75,7 +75,7 @@ ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}"
 ENCLAVE_NUM_LANDINGZONE="${ENCLAVE_NUM_LANDINGZONE:-1}"
 
 # VM extra disk size: 1200G for disconnected (mirroring), 60G for connected
-MASTER_MEMORY_VAL=32768    # 32 GB
+MASTER_MEMORY_VAL=${MASTER_MEMORY_VAL:-32768}    # 32 GB
 DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
 if [ "$DEPLOYMENT_MODE" = "connected" ]; then
     VM_EXTRADISKS_SIZE_VAL="60G"
@@ -87,8 +87,8 @@ fi
 # With ODF, storage is provided by Ceph on the LZ -- not local LVMS disks on masters --
 # so masters need smaller extra disks while the LZ needs a larger disk for Ceph OSDs.
 STORAGE_PLUGIN="${STORAGE_PLUGIN:-lvms}"
-MASTER_VCPU_VAL=12
-LANDINGZONE_DISK_VAL=60
+MASTER_VCPU_VAL=${MASTER_VCPU_VAL:-12}
+LANDINGZONE_DISK_VAL=${LANDINGZONE_DISK_VAL:-60}
 if [ "$STORAGE_PLUGIN" = "odf" ]; then
     MASTER_VCPU_VAL=16              # 16 vCPUs (up from 12)
     MASTER_MEMORY_VAL=$((MASTER_MEMORY_VAL + 16384)) # +16 GB RAM (ODF/rook/noobaa + Quay)
@@ -143,9 +143,9 @@ export VM_EXTRADISKS_SIZE="${VM_EXTRADISKS_SIZE_VAL}"
 # =============================================================================
 
 # Landing Zone VM runs Enclave Lab and deployment tools
-export LANDINGZONE_MEMORY=8192    # 8 GB RAM
+export LANDINGZONE_MEMORY=${LANDINGZONE_MEMORY:-8192}    # 8 GB RAM
 export LANDINGZONE_DISK=${LANDINGZONE_DISK_VAL}
-export LANDINGZONE_VCPU=4         # 4 vCPUs
+export LANDINGZONE_VCPU=${LANDINGZONE_VCPU:-4}         # 4 vCPUs
 
 # =============================================================================
 # Network Configuration
