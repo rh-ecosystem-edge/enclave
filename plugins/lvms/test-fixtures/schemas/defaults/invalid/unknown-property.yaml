@@ -1,0 +1,6 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+lvmsDefaults:
+  deviceClassName: vg1
+  unknownField: this-should-fail
