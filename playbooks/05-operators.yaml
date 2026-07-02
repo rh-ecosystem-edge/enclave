@@ -76,7 +76,7 @@
             apply:
               tags: operators
           vars:
-            target_operators: "{{ operators | rejectattr('seed', 'sameas', true) | list }}"
+            target_operators: "{{ operators | rejectattr('seed', 'defined') | list + operators | selectattr('seed', 'defined') | rejectattr('seed') | list }}"
           tags: operators
 
         - name: Mirrored catalogsource configuration ACM policy
