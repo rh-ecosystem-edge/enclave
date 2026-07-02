@@ -54,7 +54,7 @@
             apply:
               tags: operators
           vars:
-            target_operators: "{{ operators | selectattr('seed', 'true') | list }}"
+            target_operators: "{{ operators | selectattr('seed', 'defined') | selectattr('seed') | list }}"
           tags: operators
 
         - name: Auto-discover and deploy foundation plugins
