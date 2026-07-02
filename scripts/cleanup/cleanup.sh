@@ -364,11 +364,9 @@ for POOL_NAME in "${POOLS_TO_CLEAN[@]}"; do
             sudo virsh vol-delete --pool "$POOL_NAME" "$vol" 2>/dev/null || warning "  Failed to delete volume $vol"
         done < <(sudo virsh vol-list "$POOL_NAME" 2>/dev/null | awk 'NR>2 && NF {print $1}')
 
-        # Destroy if running
-        if sudo virsh pool-info "$POOL_NAME" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
-            info "  Destroying running pool: $POOL_NAME"
-            sudo virsh pool-destroy "$POOL_NAME" 2>/dev/null || warning "  Failed to destroy $POOL_NAME"
-        fi
+        # Always attempt to destroy (stop) the pool before undefining
+        info "  Destroying pool: $POOL_NAME"
+        sudo virsh pool-destroy "$POOL_NAME" 2>/dev/null || true
 
         # Undefine
         info "  Undefining pool: $POOL_NAME"

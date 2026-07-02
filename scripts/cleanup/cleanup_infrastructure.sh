@@ -51,28 +51,57 @@ fi
 
 info "Checking for conflicting storage pools..."
 
-# Find any pools pointing to our target path
-CONFLICTING_POOLS=$(sudo virsh pool-list --all --name | while read -r pool; do
+# Build list of paths that belong to this cluster
+CLUSTER_POOL_PATHS=("${CLUSTER_WORKING_DIR}/pool")
+if [ -n "$CLUSTER_NAME" ]; then
+    CLUSTER_POOL_PATHS+=("${CLUSTER_WORKING_DIR}/landing-zone/${CLUSTER_NAME}")
+fi
+
+# Find pools that belong to this cluster by checking both name and path.
+# Dev-scripts may create pools with suffixes (-1, -lz, _pool), but on multi-runner
+# hypervisors another cluster could have a colliding name. Verify the pool's path
+# points to this cluster's directories before including it.
+POOLS_TO_CLEAN=()
+while IFS= read -r pool; do
+    pool="${pool%"${pool##*[! ]}"}"
     if [ -n "$pool" ]; then
         POOL_PATH=$(sudo virsh pool-dumpxml "$pool" 2>/dev/null | grep -oP '(?<=<path>).*(?=</path>)' || echo "")
-        if [ "$POOL_PATH" = "${CLUSTER_WORKING_DIR}/pool" ]; then
-            echo "$pool"
+        MATCHED=false
+
+        # Check if pool path points to one of this cluster's directories
+        for cluster_path in "${CLUSTER_POOL_PATHS[@]}"; do
+            if [ "$POOL_PATH" = "$cluster_path" ]; then
+                MATCHED=true
+                break
+            fi
+        done
+
+        # Also match by name pattern, but only if path is under our working dir
+        if [ "$MATCHED" = false ] && [ -n "$CLUSTER_NAME" ]; then
+            for PATTERN in "${CLUSTER_NAME}" "${CLUSTER_NAME}-1" "${CLUSTER_NAME}-lz" "${CLUSTER_NAME}_pool"; do
+                if [ "$pool" = "$PATTERN" ] && [[ "$POOL_PATH" == "${CLUSTER_WORKING_DIR}"* ]]; then
+                    MATCHED=true
+                    break
+                fi
+            done
+        fi
+
+        if [ "$MATCHED" = true ]; then
+            POOLS_TO_CLEAN+=("$pool")
         fi
     fi
-done)
+done < <(sudo virsh pool-list --all --name)
 
-if [ -n "$CONFLICTING_POOLS" ]; then
+if [ ${#POOLS_TO_CLEAN[@]} -gt 0 ]; then
     info "Found conflicting storage pools, removing them..."
-    echo "$CONFLICTING_POOLS" | while read -r pool; do
-        if [ -n "$pool" ]; then
-            info "  Removing pool: $pool"
-            # Destroy if running
-            if sudo virsh pool-info "$pool" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
-                sudo virsh pool-destroy "$pool" 2>/dev/null || true
-            fi
-            # Undefine
-            sudo virsh pool-undefine "$pool" 2>/dev/null || true
+    for pool in "${POOLS_TO_CLEAN[@]}"; do
+        info "  Removing pool: $pool"
+        # Destroy if running
+        if sudo virsh pool-info "$pool" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
+            sudo virsh pool-destroy "$pool" 2>/dev/null || true
         fi
+        # Undefine
+        sudo virsh pool-undefine "$pool" 2>/dev/null || true
     done
     success "Conflicting pools removed"
 else
