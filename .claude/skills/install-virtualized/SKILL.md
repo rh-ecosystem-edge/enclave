@@ -107,10 +107,23 @@ Show the user:
 Ask the user (via `AskUserQuestion`):
 1. **Clean up and redeploy** — run `make -f Makefile.ci clean` to remove the
    existing deployment, then proceed with a fresh install
-2. **Abort** — stop the skill
+2. **Install day-2 addons on existing deployment** — skip to day-2 plugin or
+   experience installation (Step 12) on the running cluster. Collect the LZ IP
+   and verify cluster access before proceeding.
+3. **Abort** — stop the skill
 
 If cleanup is selected, follow the **Cleanup** section procedure before
 continuing to Step 3.
+
+If day-2 addons is selected:
+1. Capture the LZ IP: `ssh <host> "cd ~/enclave && ./scripts/utils/get_landing_zone_ip.sh"`
+2. Verify cluster access via double-hop SSH:
+   ```bash
+   ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && /home/cloud-user/sessions/1/bin/oc get clusterversion'"
+   ```
+3. If cluster is accessible, skip to Step 9 (day-2 addon/experience selection
+   only — skip env var collection since the deployment is already configured),
+   then proceed to Step 12 for installation.
 
 ## Step 3: Choose Installation Mode
 
