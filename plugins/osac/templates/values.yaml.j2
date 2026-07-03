@@ -34,6 +34,8 @@ operator:
 
 service:
   variant: openshift
+  externalHostname: "fulfillment-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
+  internalHostname: "fulfillment-internal-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
   images:
     service: "{{ osac_images.fulfillment_service }}"
     envoy: "{{ osac_images.envoy }}"
@@ -94,6 +96,9 @@ aap:
     cliImage: "{{ osac_images.cli }}"
     enabled: true
     image: "{{ osac_images.aap_bootstrap }}"
+
+bmf:
+  enabled: false
 
 dbMigrate:
   enabled: false

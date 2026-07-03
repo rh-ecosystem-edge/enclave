@@ -12,7 +12,7 @@ helm:
   - release: osac
     namespace: osac
     chart: "oci://ghcr.io/osac-project/charts/osac"
-    version: "0.0.1"
+    version: "0.0.4"
     valuesTemplate: templates/values.yaml.j2
     createNamespace: true
     timeout: "45m"
