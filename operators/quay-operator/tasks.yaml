@@ -143,7 +143,7 @@
   no_log: true
   when: disconnected | default(true)
   ansible.builtin.set_fact:
-    pullSecretNew: "{{ pullSecretQuay }}"
+    pullSecretNew: "{{ pullSecretQuay | from_json }}"
 
 - name: Patch cluster pull-secret
   no_log: true
