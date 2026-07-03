@@ -201,7 +201,7 @@ ssh <host> "chmod 600 ~/.pull-secret.json"
 
 In all cases, validate the file on the server:
 ```bash
-ssh <host> "python3 -c \"import json; d=json.load(open('/home/\$(whoami)/.pull-secret.json')); assert 'registry.redhat.io' in d.get('auths',{}); print('Pull secret valid: ' + str(len(d['auths'])) + ' registries')\" "
+ssh <host> "python3 -c \"from pathlib import Path; import json; d=json.load(Path.home().joinpath('.pull-secret.json').open()); assert 'registry.redhat.io' in d.get('auths',{}); print('Pull secret valid: ' + str(len(d['auths'])) + ' registries')\" "
 ```
 
 For all subsequent make targets, reference the pull secret as:
@@ -561,8 +561,5 @@ SKILL.md file.
 
 When you identify a skill improvement:
 1. Explain what was wrong or missing in the skill
-2. Ask the user if they want you to fix the skill
-3. If yes: edit this SKILL.md, commit on a new branch, and open a PR following the
-   project git workflow (descriptive branch name, commit with
-   `Assisted-by: Claude Code <noreply@anthropic.com>` trailer, PR body with
-   `## Summary` and `## Test plan`)
+2. Ask the user if they want you to file an issue or draft a separate patch
+3. Generate the proposed change outside the runtime skill flow
