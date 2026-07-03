@@ -288,12 +288,30 @@ Ask the user: **lvms** or **odf**?
 
 ## Step 9: Collect Environment Variables and Day-2 Options
 
-From the CI workflow `env:` block extracted earlier, identify which variables are
-secrets or host-specific and ask the user for those values.
+Set the following environment variables for the deployment. Use CI defaults
+from the workflow `env:` block for non-secret values. Only ask the user for
+host-specific or secret values that cannot be derived from the workflow.
 
-Also set:
-- `ENCLAVE_CLUSTER_NAME` (default: `enclave-test`)
-- `MASTER_MEMORY_VAL` override if adjusted in Step 7
+**Fixed variable allowlist** (do NOT scan or expose other CI env vars):
+- `ENCLAVE_CLUSTER_NAME` (default: `enclave-test`, ask user)
+- `ENCLAVE_DEPLOYMENT_MODE` (set from Step 6: `connected` or `disconnected`)
+- `STORAGE_PLUGIN` (set from Step 8: `lvms` or `odf`)
+- `ENABLED_PLUGINS` (default: same as `STORAGE_PLUGIN`, updated in Step 9 day-2 selection)
+- `MASTER_MEMORY_VAL` (override if adjusted in Step 7)
+- `MASTER_VCPU_VAL` (override if adjusted in Step 7)
+- `LANDINGZONE_MEMORY` (override if adjusted in Step 7)
+- `LANDINGZONE_VCPU` (override if adjusted in Step 7)
+- `PULL_SECRET` (from Step 5: `$(cat ~/.pull-secret.json)`)
+- `ENCLAVE_IRONIC_HTTPS` (CI default, typically `true`)
+- `OPENSHIFT_CI` (CI default: `true`)
+- `CLEANUP_AFTER` (CI default: `true`)
+- `ENCLAVE_ENABLE_GPU_PASSTHROUGH` (CI default: `false`)
+- `AAP_LICENSE_FILE` (only when OSAC plugin selected, set in day-2 config)
+- `OSAC_CHART_VERSION` (only when OSAC plugin selected, optional override)
+
+All other CI variables (`BASE_WORKING_DIR`, `LZ_OS_VARIANT`, RHSM secrets,
+cloud image URLs, Slack webhooks, etc.) are CI-runner-specific and must NOT
+be collected or exposed to the user.
 
 ### Day-2 Addon Plugins or Experiences (Optional)
 
@@ -306,31 +324,62 @@ the base deployment completes. Use `AskUserQuestion` with these options:
 
 Options 1 and 2 are mutually exclusive.
 
-**Addon plugins**: discover available addon plugins dynamically:
+**Discovery**: do NOT use Bash for-loops, shell scripts, or sub-agents for
+discovery. Use the Read tool directly to read each file — this avoids
+shell permission prompts.
+
+**Addon plugins**: list directories under `plugins/` with Bash(`ls`), then
+use the Read tool on each `plugins/<name>/plugin.yaml`. Check if
+`type: addon`. Collect the names of all addon plugins.
+
+**Experiences**: list directories under `experiences/` with Bash(`ls`), then
+use the Read tool on each `experiences/<name>/experience.yaml`. Collect
+the name, description, and plugins list.
+
+Show the full list of available addon plugins and experiences to the user,
+then present the selection via `AskUserQuestion`:
+- For addon plugins: use `multiSelect: true`. After selection, ask the user
+  to specify the installation order. Store the ordered list — plugins will be
+  installed one by one in that order after the base deployment succeeds.
+- For experiences: present each with its `name`, `description`, and `plugins`
+  list. Only one experience can be selected. The plugin installation order
+  follows the order defined in the experience YAML.
+
+### Plugin Configuration
+
+After the user selects addon plugins (or an experience), check if each
+selected plugin has a config file at `config/plugins/<plugin>.example.yaml`.
+If found, read it and identify required fields (uncommented or marked
+"Required"). Ask the user for values of required fields. Optional fields
+should be shown but can be skipped.
+
+Create the actual config file `config/plugins/<plugin>.yaml` on the LZ
+(at `~/enclave/config/plugins/<plugin>.yaml`) with the user-provided values
+before running the plugin deployment:
 ```bash
-for f in plugins/*/plugin.yaml; do
-  name=$(grep '^name:' "$f" | awk '{print $2}')
-  type=$(grep '^type:' "$f" | awk '{print $2}')
-  if [ "$type" = "addon" ]; then echo "$name"; fi
-done
+ssh <host> "ssh cloud-user@<LZ_IP> 'cat > ~/enclave/config/plugins/<plugin>.yaml << EOF
+<config content>
+EOF'"
 ```
 
-Present the list via `AskUserQuestion` with `multiSelect: true`. After
-selection, ask the user to specify the installation order. Store the ordered
-list — plugins will be installed one by one in that order after the base
-deployment succeeds.
+**Special case — OSAC plugin license file**: the OSAC plugin requires an
+AAP license manifest file (`osacAapLicenseFile` in `config/plugins/osac.yaml`).
+When the OSAC plugin is selected (directly or as part of an experience):
+1. Ask the user for the local path to the AAP license `.zip` file
+2. Upload it to the LZ:
+   ```bash
+   scp <local-license-path> <host>:~/aap-license.zip
+   ssh <host> "scp ~/aap-license.zip cloud-user@<LZ_IP>:/home/cloud-user/aap-license.zip"
+   ```
+3. Create `config/plugins/osac.yaml` on the LZ with the license path:
+   ```bash
+   ssh <host> "ssh cloud-user@<LZ_IP> 'cat > ~/enclave/config/plugins/osac.yaml << EOF
+   osacAapLicenseFile: /home/cloud-user/aap-license.zip
+   EOF'"
+   ```
 
-**Experiences**: discover available experiences dynamically:
-```bash
-for f in experiences/*/experience.yaml; do cat "$f"; echo "---"; done
-```
-
-Present each experience with its `name`, `description`, and `plugins` list.
-Only one experience can be selected. The plugin installation order follows
-the order defined in the experience YAML.
-
-Store the selection. Installation happens in Step 12 after the base deployment
-succeeds.
+Store the selection and configuration. Installation happens in Step 12
+after the base deployment succeeds.
 
 ## Step 10: Run Installation
 
