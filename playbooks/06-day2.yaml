@@ -38,7 +38,7 @@
           tags: acm-mch
 
         - name: Configure Quay in disconnected environments
-          when: disconnected | default(true)
+          when: disconnected | default(true) | bool
           ansible.builtin.include_tasks:
             file: ../operators/quay-operator/quay_disconnected_start.yaml
             apply:
@@ -57,7 +57,7 @@
           tags: acm-cis
 
         - name: Finish Quay configuration in disconnected environments
-          when: disconnected | default(true)
+          when: disconnected | default(true) | bool
           ansible.builtin.include_tasks:
             file: ../operators/quay-operator/quay_disconnected_finish.yaml
             apply:
@@ -67,7 +67,7 @@
           tags: quay-disconnected
 
         - name: Restart catalog source pods to pick up new operator versions
-          when: disconnected | default(true)
+          when: disconnected | default(true) | bool
           ansible.builtin.include_tasks:
             file: tasks/restart_catalog_pods.yaml
             apply:

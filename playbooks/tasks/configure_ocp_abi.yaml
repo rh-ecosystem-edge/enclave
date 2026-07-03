@@ -63,7 +63,7 @@
     mode: '0644'
 
 - name: Find custom manifests from mirror registry
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   ansible.builtin.find:
     paths: "{{ workingDir }}/config/oc-mirror-workspace/working-dir/cluster-resources/"
     patterns:
@@ -75,7 +75,7 @@
   register: custom_manifests
 
 - name: Copy custom manifests from mirror registry to the ABI directory
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   ansible.builtin.copy:
     src: "{{ item_path }}"
     dest: "{{ workingDir }}/ocp-cluster/openshift/{{ item_path | basename }}"

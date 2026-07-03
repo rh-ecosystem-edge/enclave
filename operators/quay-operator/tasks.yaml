@@ -135,13 +135,13 @@
 
 - name: Combine pull secrets for connected mode
   no_log: true
-  when: not (disconnected | default(true))
+  when: not (disconnected | default(true) | bool)
   ansible.builtin.set_fact:
     pullSecretNew: "{{ pullSecret | ansible.builtin.combine(pullSecretQuay | from_json, recursive=true) }}"
 
 - name: Set pull secret for disconnected (no combine)
   no_log: true
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     pullSecretNew: "{{ pullSecretQuay | from_json }}"
 
@@ -170,7 +170,7 @@
     dest: "{{ workingDir }}/config/pull-secret.quay.json"
 
 - name: Quay disconnected (oc-mirror setup and run)
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   ansible.builtin.include_tasks:
     file: quay_disconnected_start.yaml
 
