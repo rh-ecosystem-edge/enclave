@@ -27,7 +27,7 @@
 - name: Create pull-secret file with the combination
   no_log: true
   ansible.builtin.copy:
-    content: "{{ pullSecretNew }}"
+    content: "{{ pullSecretNew | to_json }}"
     dest: "{{ pullSecretPath }}"
 
 - name: Create pull-secret internal file with the combination
