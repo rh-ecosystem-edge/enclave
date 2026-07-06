@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = "==3.12.*"
 dependencies = [
-    "ansible-core ==2.16.14",
+    "ansible-core ==2.19.11",
     "cachetools ==6.2.2",
     "certifi ==2025.11.12",
     "click ==8.3.3",
@@ -30,7 +30,7 @@ enclave = "enclave.cli:cli"
 
 [dependency-groups]
 dev = [
-    "ansible-lint ==26.4.0",
+    "ansible-lint ==26.6.0",
     "anymarkup ==0.8.1",
     "mypy ==1.20.2",
     "pytest ==9.0.3",

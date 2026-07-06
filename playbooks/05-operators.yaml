@@ -54,7 +54,7 @@
             apply:
               tags: operators
           vars:
-            target_operators: "{{ operators | selectattr('seed', 'true') | list }}"
+            target_operators: "{{ operators | selectattr('seed', 'defined') | selectattr('seed') | list }}"
           tags: operators
 
         - name: Auto-discover and deploy foundation plugins
@@ -76,11 +76,11 @@
             apply:
               tags: operators
           vars:
-            target_operators: "{{ operators | rejectattr('seed', 'sameas', true) | list }}"
+            target_operators: "{{ operators | rejectattr('seed', 'defined') | list + operators | selectattr('seed', 'defined') | rejectattr('seed') | list }}"
           tags: operators
 
         - name: Mirrored catalogsource configuration ACM policy
-          when: disconnected | default(true)
+          when: disconnected | default(true) | bool
           vars:
             short_version_dot: "{{ openshift_version.version.split('.')[:2] | join('.') }}"
             short_version_dash: "{{ openshift_version.version.split('.')[:2] | join('-') }}"

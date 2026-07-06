@@ -1,5 +1,5 @@
 - name: Create Configmap for disconnected
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -283,7 +283,7 @@
   until: r_configmap_disconnected is success
 
 - name: Create assisted-service-user-config ConfigMap for disconnected
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -301,7 +301,7 @@
   until: r_configmap_assisted_service is success
 
 - name: Create AgentServiceConfig for disconnected environment
-  when: disconnected | default(true)
+  when: disconnected | default(true) | bool
   vars:
     _osimages: |
       {% for v in openshift_versions %}
