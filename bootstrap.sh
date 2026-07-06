@@ -309,8 +309,8 @@ if [ -n "${run_step}" ]; then
     "$func_name"
 else
     # Full run mode: execute all steps sequentially
-    step_check_leftovers
     step_setup
+    step_check_leftovers
     step_validate
     step_download_content
     step_build_cache
