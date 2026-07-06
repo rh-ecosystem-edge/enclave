@@ -2,6 +2,11 @@
 set -o pipefail
 set -e
 
+if [ "$(id -u)" -eq 0 ]; then
+    echo "Error: This script must not be run as root (it invokes sudo where needed)."
+    exit 1
+fi
+
 usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
