@@ -2,4 +2,5 @@
 openshift_versions:
 - version: 4.20.8
 - version: 4.20.21
+- version: 4.20.22
   default: true
