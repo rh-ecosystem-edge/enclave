@@ -1,0 +1,38 @@
+---
+# Skip hardware provisioning for agent hosts that are already Ready nodes
+# in the target cluster (idempotent reruns of Phase 3).
+
+- name: Query existing cluster nodes
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s_info:
+    kind: Node
+  register: r_existing_nodes
+  ignore_errors: true
+  retries: 1
+  delay: 0
+
+- name: Initialize list of Ready cluster node names
+  ansible.builtin.set_fact:
+    ready_node_names: []
+
+- name: Collect names of Ready cluster nodes
+  ansible.builtin.set_fact:
+    ready_node_names: "{{ ready_node_names + [item.metadata.name] }}"
+  loop: "{{ r_existing_nodes.resources | default([]) }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  when: >-
+    item.status.conditions
+    | selectattr('type', 'equalto', 'Ready')
+    | selectattr('status', 'equalto', 'True')
+    | list | length > 0
+
+- name: Determine hosts still requiring hardware provisioning
+  ansible.builtin.set_fact:
+    agent_hosts_to_provision: "{{ agent_hosts | rejectattr('name', 'in', ready_node_names) | list }}"
+
+- name: Report hosts skipped as already provisioned
+  ansible.builtin.debug:
+    msg: "Skipping hardware provisioning for already-Ready nodes: {{ agent_hosts | selectattr('name', 'in', ready_node_names) | map(attribute='name') | list }}"
+  when: (agent_hosts | length) != (agent_hosts_to_provision | length)
