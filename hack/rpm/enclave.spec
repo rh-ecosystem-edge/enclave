@@ -102,5 +102,5 @@ fi
 /opt/enclave
 
 %changelog
-* Mon Jul 07 2026 Ricardo Piccoli <rpiccoli@redhat.com> - 0.1.0-1
+* Tue Jul 07 2026 Ricardo Piccoli <rpiccoli@redhat.com> - 0.1.0-1
 - Initial RPM packaging with Mock-based build system
