@@ -1,0 +1,243 @@
+name: Cherry Pick
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  cherry-pick:
+    permissions:
+      contents: write # push the backport branch
+      pull-requests: write # create/comment backport PRs
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/cherry-pick')
+    concurrency:
+      group: cherry-pick-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    runs-on: [self-hosted, pr-validation]
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.issue.number }}
+      COMMENT_ID: ${{ github.event.comment.id }}
+    steps:
+      - name: Check permissions
+        env:
+          COMMENTER: ${{ github.event.comment.user.login }}
+        run: |
+          PERM=$(gh api "repos/${REPO}/collaborators/${COMMENTER}/permission" \
+            --jq '.permission' 2>/dev/null) || true
+          if [ -z "${PERM}" ]; then
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "@${COMMENTER} you don't have permission to trigger cherry-picks. Required: write access or above."
+            exit 1
+          fi
+          case "${PERM}" in
+            admin|maintain|write) echo "User ${COMMENTER} has ${PERM} permission" ;;
+            *)
+              gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+                --body "@${COMMENTER} you don't have permission to trigger cherry-picks. Required: write access or above."
+              exit 1
+              ;;
+          esac
+
+      - name: React with eyes
+        run: |
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='eyes'
+
+      - name: Parse target branch
+        id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          FIRST_LINE=$(echo "${COMMENT_BODY}" | head -n1 | xargs)
+
+          if [[ "${FIRST_LINE}" =~ ^/cherry-pick[[:space:]]+([^[:space:]]+) ]]; then
+            echo "target=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate command
+        if: steps.cmd.outputs.target == ''
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body 'Usage: `/cherry-pick <branch-name>`'
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='confused'
+          exit 1
+
+      - name: Get PR details
+        id: pr
+        if: steps.cmd.outputs.target != ''
+        env:
+          TARGET: ${{ steps.cmd.outputs.target }}
+        run: |
+          PR_JSON=$(gh pr view "${PR_NUMBER}" -R "${REPO}" \
+            --json title,body,url,baseRefName,mergedAt,mergeCommit)
+
+          MERGED_AT=$(echo "${PR_JSON}" | jq -r '.mergedAt')
+          BASE_REF=$(echo "${PR_JSON}" | jq -r '.baseRefName')
+
+          if [ "${MERGED_AT}" = "null" ]; then
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "This PR must be merged before it can be cherry-picked."
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+          if [ "${BASE_REF}" = "${TARGET}" ]; then
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "This PR already targets \`${TARGET}\`."
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+          {
+            echo "merge_sha=$(echo "${PR_JSON}" | jq -r '.mergeCommit.oid')"
+            echo "title=$(echo "${PR_JSON}" | jq -r '.title')"
+            echo "url=$(echo "${PR_JSON}" | jq -r '.url')"
+          } >> "$GITHUB_OUTPUT"
+
+          # Body is untrusted and multiline; base64-encode it so it can't
+          # inject extra $GITHUB_OUTPUT entries.
+          BODY_B64=$(echo "${PR_JSON}" | jq -r '.body // ""' | base64 -w 0)
+          echo "body_b64=${BODY_B64}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate target branch exists
+        if: steps.cmd.outputs.target != ''
+        env:
+          TARGET: ${{ steps.cmd.outputs.target }}
+        run: |
+          ENCODED_TARGET=$(jq -rn --arg target "${TARGET}" '$target | @uri')
+          if ! gh api "repos/${REPO}/branches/${ENCODED_TARGET}" >/dev/null 2>&1; then
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "Branch \`${TARGET}\` does not exist."
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+      - name: Checkout target branch
+        if: steps.cmd.outputs.target != ''
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ steps.cmd.outputs.target }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cherry-pick commit
+        id: pick
+        if: steps.cmd.outputs.target != ''
+        env:
+          TARGET: ${{ steps.cmd.outputs.target }}
+          MERGE_SHA: ${{ steps.pr.outputs.merge_sha }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          BRANCH="cherry-pick/${TARGET}/pr-${PR_NUMBER}"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          git fetch origin "${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+          git checkout -B "${BRANCH}"
+
+          if ! git cherry-pick -x "${MERGE_SHA}"; then
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            git cherry-pick --abort
+
+            gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+              --body "$(cat <<EOF
+          Cherry-pick to \`${TARGET}\` failed due to conflicts in:
+
+          \`\`\`
+          ${CONFLICT_FILES}
+          \`\`\`
+
+          Please resolve manually:
+          \`\`\`
+          git fetch origin ${TARGET}
+          git checkout -b cherry-pick/${TARGET}/pr-${PR_NUMBER} origin/${TARGET}
+          git cherry-pick -x ${MERGE_SHA}
+          \`\`\`
+          EOF
+          )"
+            gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+              -f content='confused'
+            exit 1
+          fi
+
+      - name: Push branch
+        if: steps.cmd.outputs.target != ''
+        env:
+          BRANCH: ${{ steps.pick.outputs.branch }}
+        run: |
+          git push --force-with-lease origin "HEAD:refs/heads/${BRANCH}"
+
+      - name: Check for existing backport PR
+        id: existing
+        if: steps.cmd.outputs.target != ''
+        env:
+          TARGET: ${{ steps.cmd.outputs.target }}
+          BRANCH: ${{ steps.pick.outputs.branch }}
+        run: |
+          EXISTING_URL=$(gh pr list -R "${REPO}" \
+            --head "${BRANCH}" --base "${TARGET}" \
+            --json url --jq '.[0].url // empty')
+          echo "url=${EXISTING_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment existing PR link
+        if: steps.cmd.outputs.target != '' && steps.existing.outputs.url != ''
+        env:
+          EXISTING_URL: ${{ steps.existing.outputs.url }}
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "Backport already open: ${EXISTING_URL}"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='rocket'
+
+      - name: Create backport PR
+        if: steps.cmd.outputs.target != '' && steps.existing.outputs.url == ''
+        id: newpr
+        env:
+          TARGET: ${{ steps.cmd.outputs.target }}
+          BRANCH: ${{ steps.pick.outputs.branch }}
+          TITLE: ${{ steps.pr.outputs.title }}
+          ORIGINAL_URL: ${{ steps.pr.outputs.url }}
+          ORIGINAL_BODY_B64: ${{ steps.pr.outputs.body_b64 }}
+        run: |
+          ORIGINAL_BODY=$(printf '%s' "${ORIGINAL_BODY_B64}" | base64 -d)
+          BODY="$(cat <<EOF
+          Automated cherry-pick of #${PR_NUMBER} to \`${TARGET}\`.
+
+          Original PR: ${ORIGINAL_URL}
+
+          ---
+
+          ${ORIGINAL_BODY}
+          EOF
+          )"
+
+          NEW_URL=$(gh pr create -R "${REPO}" \
+            --base "${TARGET}" \
+            --head "${BRANCH}" \
+            --title "[${TARGET}] ${TITLE} (backport #${PR_NUMBER})" \
+            --body "${BODY}")
+
+          echo "url=${NEW_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment new PR link
+        if: steps.cmd.outputs.target != '' && steps.existing.outputs.url == ''
+        env:
+          NEW_URL: ${{ steps.newpr.outputs.url }}
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "Opened backport PR: ${NEW_URL}"
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='rocket'
