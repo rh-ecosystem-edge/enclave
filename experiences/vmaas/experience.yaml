@@ -6,7 +6,6 @@ description: >-
 plugins:
   - name: trust-manager
   - name: rhbk
-  - name: authorino
   - name: aap
   - name: gpu-passthrough
   - name: osac

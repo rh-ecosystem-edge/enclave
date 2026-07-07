@@ -12,7 +12,7 @@ helm:
   - release: osac
     namespace: osac
     chart: "oci://ghcr.io/osac-project/charts/osac"
-    version: "0.0.1"
+    version: "0.0.6"
     valuesTemplate: templates/values.yaml.j2
     createNamespace: true
     timeout: "45m"
@@ -25,7 +25,7 @@ additionalImages:
   - docker.io/envoyproxy/envoy:v1.33.0
   - quay.io/openshift/origin-cli:4.20.0
   - quay.io/keycloak/keycloak:26.3
-  - quay.io/sclorg/postgresql-15-c9s:latest
+  - registry.redhat.io/rhel10/postgresql-18:latest
   - quay.io/prometheus/prometheus:v3.8.1
   - docker.io/bitnami/kubectl:latest
 
@@ -38,8 +38,8 @@ registries:
     mirror: "bitnami"
   - location: "quay.io/keycloak"
     mirror: "keycloak"
-  - location: "quay.io/sclorg"
-    mirror: "sclorg"
+  - location: "registry.redhat.io/rhel10"
+    mirror: "rhel10"
   - location: "quay.io/prometheus"
     mirror: "prometheus"
 

@@ -25,7 +25,7 @@ osac_keycloak_service_port: 8443
 # Fulfillment database (built-in dev postgres)
 osacBYODatabase: false
 osac_db_name: postgres
-osac_db_image: "quay.io/sclorg/postgresql-15-c9s:latest"
+osac_db_image: "registry.redhat.io/rhel10/postgresql-18:latest"
 osac_db_size: 5Gi
 osac_db_user: service
 osac_db_database: service
