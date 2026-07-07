@@ -2,15 +2,30 @@
 # Skip hardware provisioning for agent hosts that are already Ready nodes
 # in the target cluster (idempotent reruns of Phase 3).
 
+- name: Check if cluster kubeconfig exists
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_kubeconfig
+
 - name: Query existing cluster nodes
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   kubernetes.core.k8s_info:
     kind: Node
   register: r_existing_nodes
+  when: r_kubeconfig.stat.exists
   ignore_errors: true
-  retries: 1
-  delay: 0
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_existing_nodes is not failed
+
+- name: Report inability to reach cluster despite existing kubeconfig
+  ansible.builtin.debug:
+    msg: >-
+      Kubeconfig exists but cluster Node state could not be determined
+      after {{ k8s_retries }} attempts; proceeding to provision all
+      agent_hosts.
+  when: r_kubeconfig.stat.exists and r_existing_nodes is failed
 
 - name: Initialize list of Ready cluster node names
   ansible.builtin.set_fact:
