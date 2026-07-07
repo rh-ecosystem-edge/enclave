@@ -4,15 +4,19 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   cherry-pick:
+    permissions:
+      contents: write # push the backport branch
+      pull-requests: write # create/comment backport PRs
     if: >-
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/cherry-pick')
+    concurrency:
+      group: cherry-pick-${{ github.repository }}-${{ github.event.issue.number }}
+      cancel-in-progress: false
     runs-on: [self-hosted, pr-validation]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -101,19 +105,18 @@ jobs:
             echo "url=$(echo "${PR_JSON}" | jq -r '.url')"
           } >> "$GITHUB_OUTPUT"
 
-          # Body can be multiline; use a delimiter safe from PR body content.
-          {
-            echo "body<<CHERRY_PICK_PR_BODY_EOF"
-            echo "${PR_JSON}" | jq -r '.body'
-            echo "CHERRY_PICK_PR_BODY_EOF"
-          } >> "$GITHUB_OUTPUT"
+          # Body is untrusted and multiline; base64-encode it so it can't
+          # inject extra $GITHUB_OUTPUT entries.
+          BODY_B64=$(echo "${PR_JSON}" | jq -r '.body // ""' | base64 -w 0)
+          echo "body_b64=${BODY_B64}" >> "$GITHUB_OUTPUT"
 
       - name: Validate target branch exists
         if: steps.cmd.outputs.target != ''
         env:
           TARGET: ${{ steps.cmd.outputs.target }}
         run: |
-          if ! gh api "repos/${REPO}/branches/${TARGET}" >/dev/null 2>&1; then
+          ENCODED_TARGET=$(jq -rn --arg target "${TARGET}" '$target | @uri')
+          if ! gh api "repos/${REPO}/branches/${ENCODED_TARGET}" >/dev/null 2>&1; then
             gh pr comment "${PR_NUMBER}" -R "${REPO}" \
               --body "Branch \`${TARGET}\` does not exist."
             gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
@@ -123,7 +126,7 @@ jobs:
 
       - name: Checkout target branch
         if: steps.cmd.outputs.target != ''
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ steps.cmd.outputs.target }}
           fetch-depth: 0
@@ -142,8 +145,8 @@ jobs:
           BRANCH="cherry-pick/${TARGET}/pr-${PR_NUMBER}"
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
 
-          git push origin --delete "${BRANCH}" 2>/dev/null || true
-          git checkout -b "${BRANCH}"
+          git fetch origin "${BRANCH}:refs/remotes/origin/${BRANCH}" 2>/dev/null || true
+          git checkout -B "${BRANCH}"
 
           if ! git cherry-pick -x "${MERGE_SHA}"; then
             CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
@@ -175,7 +178,7 @@ jobs:
         env:
           BRANCH: ${{ steps.pick.outputs.branch }}
         run: |
-          git push --force origin "HEAD:refs/heads/${BRANCH}"
+          git push --force-with-lease origin "HEAD:refs/heads/${BRANCH}"
 
       - name: Check for existing backport PR
         id: existing
@@ -207,8 +210,9 @@ jobs:
           BRANCH: ${{ steps.pick.outputs.branch }}
           TITLE: ${{ steps.pr.outputs.title }}
           ORIGINAL_URL: ${{ steps.pr.outputs.url }}
-          ORIGINAL_BODY: ${{ steps.pr.outputs.body }}
+          ORIGINAL_BODY_B64: ${{ steps.pr.outputs.body_b64 }}
         run: |
+          ORIGINAL_BODY=$(printf '%s' "${ORIGINAL_BODY_B64}" | base64 -d)
           BODY="$(cat <<EOF
           Automated cherry-pick of #${PR_NUMBER} to \`${TARGET}\`.
 
