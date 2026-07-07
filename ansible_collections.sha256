@@ -1,6 +1,7 @@
-803635125670f17b0b09a154bfbc472f97d50c4e350861347e156ba87707cb36 *collections/community-crypto-3.0.5.tar.gz
-fcf9e22e0440a97e8fcb979b31ab82e87c3024765ebda0aac71217d7020d39aa *collections/containers-podman-1.18.0.tar.gz
-7e4435d4bb587c4b2e978cf7e31c02fe78063bcef5d8f07935ea0bae52c1a210 *collections/kubernetes-core-6.2.0.tar.gz
-2281e318d303c7eabb41e3b99eeda85b5bbfff1081f8b2f08fc2235b56d6606c *collections/community-general-12.1.0.tar.gz
-5ff232cf69492a991f2a0990dbb23ef25a600b7e9209de6e33377a6ff08a8a29 *collections/ansible-posix-2.1.0.tar.gz
-5062b15a597edf1beaa6a782747298727250bbb993fbf2d0abf954b5bcd56514 *collections/vastdata-vms-1.2.0.tar.gz
+4387332663b9d5567668db5b2b457ba89b755b2d60f91a0f092eb0d66dc41069 *collections/community-crypto-3.2.2.tar.gz
+8d848b434056fdfd2ec02283a614314074b1d5c645c692cb7fa139e684b2e3ac *collections/containers-podman-1.20.2.tar.gz
+9551eaec824d8b9c8778a24433256022ff5a31ff3ba736bb4b70278e3ad7d13d *collections/kubernetes-core-6.4.0.tar.gz
+53afe08f2a4e1761c805dc2a885c3f8da7b701541a8f5c3241db53e39f38964c *collections/community-general-13.1.0.tar.gz
+52b53315f274dfcc280de2f44f42f3a376b6e27b964158407c2652a92b5014ff *collections/ansible-utils-6.0.3.tar.gz
+8a5b6f23b0ab9cfd66a0a4d7075b57071cbbacbd2400fb293586a70c3a0fb527 *collections/ansible-posix-2.2.1.tar.gz
+f48b167af3e238f5d1b55363a4147dab6715db044a510ccc1f5beddf36c8e427 *collections/vastdata-vms-1.3.1.tar.gz
