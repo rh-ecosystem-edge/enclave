@@ -19,3 +19,11 @@
 # Optional: bring your own database
 # osacBYODatabase: true
 # osacDatabaseUrl: "postgres://user@host:5432/dbname?sslmode=require"
+
+# Optional: override container images (chart defaults apply when unset)
+# osac_images:
+#   osac_operator: "ghcr.io/osac-project/osac-operator:v0.0.4"
+#   fulfillment_service: "ghcr.io/osac-project/fulfillment-service:v0.0.4"
+#   envoy: "docker.io/envoyproxy/envoy:v1.33.0"
+#   aap_bootstrap: "ghcr.io/osac-project/osac-aap:v0.0.4"
+#   cli: "quay.io/openshift/origin-cli:4.20.0"
