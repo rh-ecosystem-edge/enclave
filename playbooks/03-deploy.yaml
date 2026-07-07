@@ -9,6 +9,7 @@
 # - Copy mirror manifests (disconnected only)
 # - Generate Agent-Based Installer ISO
 # - Copy ISO to web server
+# - Skip hosts already Ready in the cluster (idempotent reruns)
 # - Setup Ironic and boot agent hosts via virtual media
 # - Wait for deployment to complete
 # - Detach virtual media from hosts
@@ -44,15 +45,23 @@
               tags: configure-abi
           tags: configure-abi
 
+        - name: Filter agent hosts already provisioned in the cluster
+          ansible.builtin.include_tasks:
+            file: tasks/configure_hardware_filter_hosts.yaml
+            apply:
+              tags: hardware
+          tags: hardware
+
         - name: Setup Ironic for hardware configuration
           ansible.builtin.include_tasks:
             file: tasks/configure_hardware_ironic_setup.yaml
             apply:
               tags: hardware
           tags: hardware
+          when: agent_hosts_to_provision | length > 0
 
         - name: Configure and boot hosts via Ironic
-          loop: "{{ agent_hosts }}"
+          loop: "{{ agent_hosts_to_provision }}"
           loop_control:
             loop_var: agent_host
           ansible.builtin.include_tasks:
@@ -62,7 +71,7 @@
           tags: hardware
 
         - name: Wait for all hosts to reach active state
-          loop: "{{ agent_hosts }}"
+          loop: "{{ agent_hosts_to_provision }}"
           loop_control:
             loop_var: agent_host
           ansible.builtin.include_tasks:
@@ -72,7 +81,7 @@
           tags: hardware
 
         - name: Detach virtual media from hosts
-          loop: "{{ agent_hosts }}"
+          loop: "{{ agent_hosts_to_provision }}"
           loop_control:
             loop_var: agent_host
             label: "{{ agent_host.name }}"
