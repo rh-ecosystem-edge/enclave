@@ -6,7 +6,7 @@
         deploy-cluster-pre-install-validate \
         deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators \
         deploy-cluster-day2 deploy-cluster-discovery deploy-cluster-connected \
-        deploy-plugin mirror-plugin bootstrap sync
+        deploy-plugin mirror-plugin bootstrap sync build-rpm
 
 # Configuration
 WORKING_DIR ?= $(HOME)
@@ -49,6 +49,9 @@ help:
 	@echo "Convenience targets:"
 	@echo "  make bootstrap                        - Bootstrap the Landing Zone"
 	@echo "  make sync                             - Sync configuration to the Landing Zone"
+	@echo ""
+	@echo "Packaging targets:"
+	@echo "  make build-rpm                            - Build enclave RPM for RHEL 10 / CentOS Stream 10"
 	@echo ""
 	@echo "Development targets:"
 	@echo "  make dev-env                          - Install all Python dependencies (uv sync)"
@@ -140,6 +143,10 @@ bootstrap:
 
 sync:
 	@bash ./sync.sh
+
+# Packaging
+build-rpm:
+	@bash ./hack/rpm/build-rpm.sh
 
 python-format:
 	@uv run ruff format src/
