@@ -326,7 +326,7 @@ GitHub Actions workflows:
 3. **E2E Connected Mode** (manual / `test-e2e` label / weekly) — full end-to-end cluster deployment
 4. **Cleanup** (manual / weekly) — infrastructure teardown
 
-The `main` branch requires passing PR validation, code review approval, and an up-to-date branch.
+The `main` and `stable` branches requires passing PR validation, code review approval, and an up-to-date branch.
 
 Pull requests are automatically reviewed by [CodeRabbit AI](https://coderabbit.ai) for security and code quality.
 
