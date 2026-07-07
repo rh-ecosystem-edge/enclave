@@ -108,6 +108,7 @@ jobs:
           | `/retest` | Re-run all failed checks on this PR | — |
           | `/cancel <name>` | Cancel a running check (e.g. `/cancel e2e-connected`) | — |
           | `/cancel` | Cancel all running checks on this PR | — |
+          | `/cherry-pick <branch>` | Cherry-pick this merged PR onto `<branch>` and open a backport PR | pr-validation |
           EOF
           )"
 
