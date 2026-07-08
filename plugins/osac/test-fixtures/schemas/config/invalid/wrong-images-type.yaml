@@ -1,0 +1,5 @@
+---
+# Fixture: osac_images must be an object, not a string
+# Expected failure: type validation
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osac_images: "not-an-object"

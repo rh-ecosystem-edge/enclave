@@ -6,8 +6,10 @@
 operator:
   image:
     pullPolicy: Always
-    repository: "{{ osac_images.operator }}"
-    tag: "{{ osac_images.operator_tag }}"
+{% if osac_images is defined and osac_images.osac_operator is defined %}
+    repository: "{{ osac_images.osac_operator.rsplit(':', 1)[0] }}"
+    tag: "{{ osac_images.osac_operator.rsplit(':', 1)[1] }}"
+{% endif %}
   aap:
     insecureSkipVerify: "true"
     statusPollInterval: 30s
@@ -34,9 +36,15 @@ operator:
 
 service:
   variant: openshift
+{% if osac_images is defined and (osac_images.fulfillment_service is defined or osac_images.envoy is defined) %}
   images:
+{% if osac_images.fulfillment_service is defined %}
     service: "{{ osac_images.fulfillment_service }}"
+{% endif %}
+{% if osac_images.envoy is defined %}
     envoy: "{{ osac_images.envoy }}"
+{% endif %}
+{% endif %}
   certs:
     caBundle:
       configMap: ca-bundle
@@ -91,9 +99,20 @@ aap:
       name: "{{ osac_aap_name }}"
   bootstrap:
     backoffLimit: 15
+{% if osac_images is defined and osac_images.cli is defined %}
     cliImage: "{{ osac_images.cli }}"
+{% endif %}
     enabled: true
+{% if osac_images is defined and osac_images.aap_bootstrap is defined %}
     image: "{{ osac_images.aap_bootstrap }}"
+{% endif %}
+
+configAsCode:
+  projectGitUri: "{{ osac_aap_project_git_uri }}"
+  projectGitBranch: "{{ osac_aap_project_git_branch }}"
+{% if osac_images is defined and osac_images.aap_bootstrap is defined %}
+  eeImage: "{{ osac_images.aap_bootstrap }}"
+{% endif %}
 
 dbMigrate:
   enabled: false

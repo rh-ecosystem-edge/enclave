@@ -1,0 +1,5 @@
+---
+# Fixture: unknown top-level property
+# Expected failure: additionalProperties is false
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+unknownField: this-should-fail

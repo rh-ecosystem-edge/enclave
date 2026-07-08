@@ -17,8 +17,7 @@
 #   11. Create postgres-client-cert-service Certificate CR (when not BYO)
 #   12. Wait for certificate issuance
 #   13. Create fulfillment-db secret (when not BYO, or BYO with osacDatabaseUrl)
-#   14. Create config-as-code-ig secret
-#   15. Create config-as-code-manifest-ig secret (AAP license)
+#   14. Create config-as-code-manifest-ig secret (AAP license)
 
 # =====================================================================
 # 1. Create osac namespace with ca-bundle label
@@ -729,26 +728,7 @@
   no_log: true
 
 # =====================================================================
-# 14. Create config-as-code-ig secret
-# =====================================================================
-
-- name: Create config-as-code-ig secret for bootstrap
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: Secret
-      metadata:
-        name: config-as-code-ig
-        namespace: osac
-      type: Opaque
-      stringData:
-        AAP_EE_IMAGE: "{{ osac_images.aap_bootstrap }}"
-        AAP_PROJECT_GIT_URI: "{{ osac_aap_project_git_uri }}"
-        AAP_PROJECT_GIT_BRANCH: "{{ osac_aap_project_git_branch }}"
-
-# =====================================================================
-# 15. Create config-as-code-manifest-ig secret (AAP license)
+# 14. Create config-as-code-manifest-ig secret (AAP license)
 # =====================================================================
 
 - name: Create config-as-code-manifest-ig secret
