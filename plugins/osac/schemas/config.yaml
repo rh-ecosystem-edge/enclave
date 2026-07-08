@@ -1,5 +1,7 @@
 ---
+"$schema": "http://json-schema.org/draft-07/schema"
 type: object
+additionalProperties: false
 properties:
   osacAapLicenseFile:
     type: string
@@ -21,5 +23,27 @@ properties:
       Connection URL for external database. When provided with osacBYODatabase=true,
       post-operators.yaml creates the fulfillment-db secret from this value.
       If omitted, the user must pre-create the fulfillment-db secret manually.
+  osac_images:
+    type: object
+    additionalProperties: false
+    properties:
+      osac_operator:
+        type: string
+        description: "Override for osac-operator image (e.g. ghcr.io/osac-project/osac-operator:v0.0.4)"
+      fulfillment_service:
+        type: string
+        description: "Override for fulfillment-service image"
+      envoy:
+        type: string
+        description: "Override for envoy sidecar image"
+      aap_bootstrap:
+        type: string
+        description: "Override for AAP bootstrap image"
+      cli:
+        type: string
+        description: "Override for OpenShift CLI image"
+    description: >-
+      Optional container image overrides. When unset, the Helm chart's
+      built-in image references are used.
 required:
   - osacAapLicenseFile

@@ -1,0 +1,8 @@
+---
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacProfilesList:
+  - caas
+  - vmaas
+osac_images:
+  osac_operator: "ghcr.io/osac-project/osac-operator:v0.0.4"
+  fulfillment_service: "ghcr.io/osac-project/fulfillment-service:v0.0.4"
