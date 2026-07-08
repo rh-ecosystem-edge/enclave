@@ -16,9 +16,9 @@
 
 - name: Resolve sslCACertificate from system trust store if not provided
   when:
-    - sslCACertificate is not defined or not sslCACertificate
-    - (sslAPICertificateFullChain is defined and sslAPICertificateFullChain) or
-      (sslIngressCertificateFullChain is defined and sslIngressCertificateFullChain)
+    - sslCACertificate is not defined or sslCACertificate | length == 0
+    - (sslAPICertificateFullChain is defined and sslAPICertificateFullChain | length > 0) or
+      (sslIngressCertificateFullChain is defined and sslIngressCertificateFullChain | length > 0)
   block:
     - name: Get root CA from system trust store since it is not provided in the config
       ansible.builtin.command:
