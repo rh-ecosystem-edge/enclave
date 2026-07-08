@@ -14,6 +14,28 @@
   ansible.builtin.include_vars: "{{ item }}"
   loop: "{{ user_config_files }}"
 
+- name: Resolve sslCACertificate from system trust store if not provided
+  when:
+    - sslCACertificate is not defined or not sslCACertificate
+    - (sslAPICertificateFullChain is defined and sslAPICertificateFullChain) or
+      (sslIngressCertificateFullChain is defined and sslIngressCertificateFullChain)
+  block:
+    - name: Get root CA from system trust store since it is not provided in the config
+      ansible.builtin.command:
+        argv:
+          - enclave
+          - tools
+          - get-root-ca
+          - --chain-pem
+          - "{{ (sslAPICertificateFullChain | default('', true)) or (sslIngressCertificateFullChain | default('', true)) }}"
+      register: r_root_ca
+      changed_when: false
+
+    - name: Set sslCACertificate from system trust store
+      ansible.builtin.set_fact:
+        sslCACertificate: "{{ r_root_ca.stdout | trim }}"
+      when: r_root_ca.rc == 0 and r_root_ca.stdout | trim | length > 0
+
 - name: Write SSH public key to file if content provided
   when: sshPubKey is defined and sshPubKey | length > 0
   block:

@@ -9,16 +9,17 @@
   ansible.builtin.set_fact:
     quay_registry_hostname: "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}"
 
+- name: Build Quay registry CA resolve command arguments
+  ansible.builtin.set_fact:
+    _resolve_quay_ca_argv: >-
+      {{ ['enclave', 'tools', 'resolve-quay-registry-ca',
+          '--hostname', quay_registry_hostname,
+          '--oc', workingDir + '/bin/oc']
+         + (['--ca-pem', sslCACertificate] if sslCACertificate is defined and sslCACertificate | length > 0 else []) }}
+
 - name: Resolve Quay registry CA PEM for trust ConfigMap
   ansible.builtin.command:
-    argv:
-      - enclave
-      - tools
-      - resolve-quay-registry-ca
-      - --hostname
-      - "{{ quay_registry_hostname }}"
-      - --oc
-      - "{{ workingDir }}/bin/oc"
+    argv: "{{ _resolve_quay_ca_argv }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: quay_registry_ca_resolved
