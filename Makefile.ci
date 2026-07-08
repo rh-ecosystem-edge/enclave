@@ -171,13 +171,6 @@ deploy-cluster-setup: setup-dev-scripts
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh setup
 
-deploy-cluster-check-leftovers: setup-dev-scripts
-	@echo "=========================================="
-	@echo "Pre-bootstrap leftover check"
-	@echo "=========================================="
-	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh check-leftovers
-
 deploy-cluster-validate: setup-dev-scripts
 	@echo "=========================================="
 	@echo "Validate configuration"

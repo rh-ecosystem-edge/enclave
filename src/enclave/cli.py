@@ -1,6 +1,5 @@
 import click
 
-from enclave.environment.cli import cli as environment_cli
 from enclave.reconcile.cli import cli as reconcile_cli
 from enclave.tools.cli import cli as tools_cli
 from enclave.utils import LOG_LEVELS, configure_logging
@@ -19,7 +18,6 @@ def cli(log_level: str) -> None:
 
 
 # Add existing command groups as subcommands
-cli.add_command(environment_cli, name="environment")
 cli.add_command(reconcile_cli, name="reconcile")
 cli.add_command(tools_cli, name="tools")
 
