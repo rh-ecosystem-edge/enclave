@@ -138,7 +138,6 @@ def mgmt_cluster_version(
     if not use_defaults and not version:
         raise click.UsageError("Either --version or --use-defaults must be provided")
 
-    resolved_version: str
     if use_defaults:
         defaults_file = defaults_path("platforms.yaml")
         try:
@@ -164,7 +163,7 @@ def mgmt_cluster_version(
                 "No default version found in defaults/platforms.yaml; "
                 "set 'default: true' on one entry"
             )
-        resolved_version = str(default_entry["version"])
+        resolved_version: str = str(default_entry["version"])
     else:
         resolved_version = cast("str", version)
 
