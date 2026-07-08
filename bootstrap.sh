@@ -13,11 +13,9 @@ usage() {
     echo "Options:"
     echo "  --step STEP           Run a single step instead of all steps"
     echo "  --non-interactive     Skip interactive prompts"
-    echo "  -f, --force-cleanup   Automatically run cleanup if leftovers are detected"
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Available steps:"
-    echo "  check-leftovers     Check for leftover resources from a previous installation"
     echo "  setup               Configure environment (setup_env + setup_ansible)"
     echo "  validate            Validate configuration (schema + validations)"
     echo "  download-content    Download control binaries and dependency content (Phase 1)"
@@ -40,7 +38,6 @@ cloud_infra_vars=config/cloud_infra.yaml
 
 run_step=""
 non_interactive=false
-force_cleanup=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -50,10 +47,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --non-interactive)
             non_interactive=true
-            shift
-            ;;
-        -f|--force-cleanup)
-            force_cleanup=true
             shift
             ;;
         -h|--help)
@@ -67,7 +60,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate --step value if provided
-valid_steps="check-leftovers setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
 if [ -n "$run_step" ]; then
     step_valid=false
     for s in $valid_steps; do
@@ -180,27 +173,6 @@ step_done
 
 # --- Step functions ---
 
-step_check_leftovers() {
-    echo "Checking for leftover resources from a previous installation..." | tee -a ${log}
-    if ! WORKING_DIR="${workingDir}" enclave environment check-leftovers 2>&1 | tee -a ${log}; then
-        if [ "$force_cleanup" = true ]; then
-            echo "Leftover resources detected, running cleanup automatically (--force-cleanup)..." | tee -a ${log}
-            _log_backup=$(mktemp)
-            cp "$log" "$_log_backup"
-            WORKING_DIR="${workingDir}" enclave environment cleanup 2>&1 | tee -a "${log}" "${_log_backup}"
-            mkdir -p "$(dirname "$log")"
-            mv "$_log_backup" "$log"
-            echo "Cleanup complete, proceeding" | tee -a ${log}
-        else
-            echo "ERROR: Leftover resources detected, add --force-cleanup flag to this script" | tee -a ${log}
-            exit 1
-        fi
-    else
-        echo "Environment is clean, proceeding" | tee -a ${log}
-    fi
-    step_done
-}
-
 step_setup() {
     echo 'Runtime Host:' | tee -a ${log}
     cat /etc/redhat-release | tee -a ${log}
@@ -309,7 +281,6 @@ if [ -n "${run_step}" ]; then
     "$func_name"
 else
     # Full run mode: execute all steps sequentially
-    step_check_leftovers
     step_setup
     step_validate
     step_download_content
