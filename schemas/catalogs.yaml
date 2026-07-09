@@ -23,6 +23,9 @@ properties:
   mirror_certified_rh_operator_catalog:
     type: string
     description: Mirror Certified Red Hat Operator Catalog name
+  fleet_rh_operator_catalog:
+    type: string
+    description: Fleet Red Hat Operator Catalog name
 required:
 - mirror_rh_operator_catalog
 - mirror_certified_rh_operator_catalog
