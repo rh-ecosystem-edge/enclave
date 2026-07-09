@@ -36,6 +36,8 @@ operator:
 
 service:
   variant: openshift
+  externalHostname: "fulfillment-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
+  internalHostname: "fulfillment-internal-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
 {% if osac_images is defined and (osac_images.fulfillment_service is defined or osac_images.envoy is defined) %}
   images:
 {% if osac_images.fulfillment_service is defined %}
@@ -113,6 +115,9 @@ configAsCode:
 {% if osac_images is defined and osac_images.aap_bootstrap is defined %}
   eeImage: "{{ osac_images.aap_bootstrap }}"
 {% endif %}
+
+bmf:
+  enabled: false
 
 dbMigrate:
   enabled: false

@@ -119,25 +119,7 @@
         | list | length > 0
     fail_msg: "AAP instance {{ osac_aap_name }} is not ready in osac namespace"
 
-# 8. Authorino instance ready
-- name: Check Authorino instance in osac namespace
-  kubernetes.core.k8s_info:
-    api_version: operator.authorino.kuadrant.io/v1beta1
-    kind: Authorino
-    namespace: osac
-  register: __r_authorino
-
-- name: Assert Authorino instance is ready
-  ansible.builtin.assert:
-    that:
-      - __r_authorino.resources | length > 0
-      - __r_authorino.resources[0].status.conditions | default([])
-        | selectattr('type', 'equalto', 'Ready')
-        | selectattr('status', 'in', ['True', 'true'])
-        | list | length > 0
-    fail_msg: "Authorino instance not found or not ready in osac namespace"
-
-# 9. AAP bootstrap job completed
+# 8. AAP bootstrap job completed
 - name: Check AAP bootstrap job completed
   kubernetes.core.k8s_info:
     api_version: batch/v1
@@ -157,5 +139,5 @@
   ansible.builtin.debug:
     msg: >-
       OSAC post-validate passed: all fulfillment deployments running,
-      OSAC operator running, AAP instance ready, Authorino ready,
+      OSAC operator running, AAP instance ready,
       bootstrap job completed{{ ', PostgreSQL running' if not osacBYODatabase | bool else '' }}.
