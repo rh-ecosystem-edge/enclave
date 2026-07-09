@@ -22,7 +22,6 @@ OSAC is deployed as a set of Enclave plugins that are installed sequentially. Ea
 |--------|-------|---------|
 | `trust-manager` | 100 | cert-manager ClusterIssuer and CA bundle sync |
 | `rhbk` | 101 | Red Hat Build of Keycloak (identity provider) |
-| `authorino` | 102 | gRPC authorization operator |
 | `aap` | 103 | AAP operator installation (provides CRDs for the OSAC chart) |
 | `osac` | 200 | OSAC fulfillment service, operator, chart-managed AAP instance, bootstrap |
 
@@ -36,7 +35,6 @@ After a successful deployment, the `osac` namespace contains:
 - **OSAC operator**: manages tenant, networking, compute, and cluster order controllers
 - **AAP instance** (`osac-aap`): gateway, controller, EDA, Redis, PostgreSQL (AAP internal)
 - **PostgreSQL**: fulfillment database with mTLS (unless BYO database)
-- **Authorino instance**: gRPC authorization for the fulfillment API
 - **Bootstrap job**: configures AAP with execution environments and project templates
 
 ## Prerequisites
@@ -97,13 +95,10 @@ make deploy-plugin PLUGIN=trust-manager
 # 2. Red Hat Build of Keycloak — identity provider
 make deploy-plugin PLUGIN=rhbk
 
-# 3. Authorino — gRPC authorization operator
-make deploy-plugin PLUGIN=authorino
-
-# 4. AAP — installs operator only, no config required (provides CRDs for OSAC)
+# 3. AAP — installs operator only, no config required (provides CRDs for OSAC)
 make deploy-plugin PLUGIN=aap
 
-# 5. Deploy the OSAC plugin
+# 4. Deploy the OSAC plugin
 make deploy-plugin PLUGIN=osac
 ```
 
@@ -145,7 +140,6 @@ oc get pods -n osac
 # - osac-operator-*
 # - osac-aap-* (multiple pods: web, task, eda, redis, etc.)
 # - postgres-* (unless BYO database)
-# - authorino-* (Authorino instance)
 # - osac-aap-bootstrap-* (Completed)
 
 # Check Helm release
