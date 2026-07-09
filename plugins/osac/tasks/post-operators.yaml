@@ -53,21 +53,30 @@
   register: __r_ca_bundle
   retries: 30
   delay: 10
-  until: __r_ca_bundle.resources | length > 0
+  until:
+    - __r_ca_bundle.resources | length > 0
+    - __r_ca_bundle.resources[0].data['bundle.pem'] is defined
+    - __r_ca_bundle.resources[0].data['bundle.pem'] | length > 0
 
 # =====================================================================
 # 2b. Write CA bundle to local file for Keycloak TLS validation
 # =====================================================================
 
+- name: Create temp file for Keycloak CA bundle
+  ansible.builtin.tempfile:
+    state: file
+    suffix: -osac-ca-bundle.pem
+  register: __r_osac_keycloak_ca_file
+
 - name: Write CA bundle to temp file for Keycloak TLS validation
   ansible.builtin.copy:
     content: "{{ __r_ca_bundle.resources[0].data['bundle.pem'] }}"
-    dest: /tmp/osac-ca-bundle.pem
-    mode: '0644'
+    dest: "{{ __r_osac_keycloak_ca_file.path }}"
+    mode: '0600'
 
 - name: Set Keycloak CA path fact
   ansible.builtin.set_fact:
-    _osac_keycloak_ca_path: /tmp/osac-ca-bundle.pem
+    _osac_keycloak_ca_path: "{{ __r_osac_keycloak_ca_file.path }}"
 
 # =====================================================================
 # 3. Detect Keycloak hostname from cluster ingress config
@@ -282,6 +291,10 @@
   register: __r_mappers
   no_log: true
 
+- name: Set existing username mapper for client
+  ansible.builtin.set_fact:
+    _osac_existing_username_mapper: "{{ __r_mappers.json | selectattr('name', 'equalto', 'username') | list }}"
+
 - name: Add username protocol mapper to client
   ansible.builtin.uri:
     url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models"
@@ -306,7 +319,37 @@
     validate_certs: "{{ osac_keycloak_validate_certs }}"
     ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: [201]
-  when: __r_mappers.json | selectattr('name', 'equalto', 'username') | list | length == 0
+  when: _osac_existing_username_mapper | length == 0
+  no_log: true
+
+- name: Update username protocol mapper on client if type differs
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models/{{ _osac_existing_username_mapper[0].id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      id: "{{ _osac_existing_username_mapper[0].id }}"
+      name: username
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-property-mapper
+      config:
+        user.attribute: username
+        claim.name: username
+        jsonType.label: String
+        id.token.claim: "true"
+        access.token.claim: "true"
+        userinfo.token.claim: "true"
+        multivalued: "false"
+        aggregate.attrs: "false"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [204]
+  when:
+    - _osac_existing_username_mapper | length > 0
+    - _osac_existing_username_mapper[0].protocolMapper != 'oidc-usermodel-property-mapper'
   no_log: true
 
 # Assign realm-admin client role from the realm-management client to the
@@ -470,6 +513,10 @@
   register: __r_admin_mappers
   no_log: true
 
+- name: Set existing username mapper for osac-admin
+  ansible.builtin.set_fact:
+    _osac_admin_existing_username_mapper: "{{ __r_admin_mappers.json | selectattr('name', 'equalto', 'username') | list }}"
+
 - name: Add username protocol mapper to osac-admin client
   ansible.builtin.uri:
     url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_admin_client_uuid_config }}/protocol-mappers/models"
@@ -494,7 +541,37 @@
     validate_certs: "{{ osac_keycloak_validate_certs }}"
     ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: [201]
-  when: __r_admin_mappers.json | selectattr('name', 'equalto', 'username') | list | length == 0
+  when: _osac_admin_existing_username_mapper | length == 0
+  no_log: true
+
+- name: Update username protocol mapper on osac-admin if type differs
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_admin_client_uuid_config }}/protocol-mappers/models/{{ _osac_admin_existing_username_mapper[0].id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      id: "{{ _osac_admin_existing_username_mapper[0].id }}"
+      name: username
+      protocol: openid-connect
+      protocolMapper: oidc-usermodel-property-mapper
+      config:
+        user.attribute: username
+        claim.name: username
+        jsonType.label: String
+        id.token.claim: "true"
+        access.token.claim: "true"
+        userinfo.token.claim: "true"
+        multivalued: "false"
+        aggregate.attrs: "false"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [204]
+  when:
+    - _osac_admin_existing_username_mapper | length > 0
+    - _osac_admin_existing_username_mapper[0].protocolMapper != 'oidc-usermodel-property-mapper'
   no_log: true
 
 - name: Fetch service account user for osac-admin
