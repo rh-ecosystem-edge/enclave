@@ -41,9 +41,9 @@ This creates several problems:
   even without git history.
 * Bootstrap writes the control file on successful completion, so fresh installations skip all
   migrations on their first upgrade.
-* Add CI validation that enforces: migration timestamps are not in the future, timestamps are
-  unique across all migration files, and existing migration files are never modified after being
-  merged.
+* Add CI validation that enforces: migration timestamps are strictly greater than the latest
+  timestamp already present in the repo (monotonic ordering), timestamps are unique across all
+  migration files, and existing migration files are never modified after being merged.
 
 ## Non-objectives
 
@@ -69,7 +69,10 @@ tarballs.
 Each migration file is named `YYYYMMDDHHMMSS_description.yaml` where the timestamp is set by
 the developer writing the migration (in UTC, at the time of writing). CI enforces:
 
-1. All migration timestamps are ≤ the current UTC date (no future-dated files).
+1. The new migration timestamp is strictly greater than the maximum timestamp already present in
+   `playbooks/tasks/migrations/` (monotonic ordering). This also rejects future-dated files as a
+   side effect. Backport migrations are intentionally disallowed — a fix for an older migration
+   is written as a new migration with a current timestamp.
 1. No two migration files share the same timestamp prefix (uniqueness).
 1. No file already merged to `main` is modified in a subsequent PR (immutability).
 
