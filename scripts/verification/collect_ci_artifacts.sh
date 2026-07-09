@@ -555,8 +555,8 @@ collect_lz_oc_mirror_logs() {
         cd ~ || exit 2
         shopt -s nullglob
         files=(
-            logs/oc-mirror*.progress.*.log
-            config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
+            sessions/1/logs/oc-mirror*.progress.*.log
+            sessions/1/config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
         )
         if [ \${#files[@]} -eq 0 ]; then
             exit 2
@@ -591,7 +591,7 @@ collect_lz_config_files() {
     # For debugging, check cluster logs or use must-gather script which sanitizes it
 
     # OpenShift install log
-    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/ocp-cluster/.openshift_install.log "${OUTPUT_DIR}/landing-zone/" 2>/dev/null || warn "Could not collect .openshift_install.log"
+    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/.openshift_install.log "${OUTPUT_DIR}/landing-zone/" 2>/dev/null || warn "Could not collect .openshift_install.log"
 
     # agent-based installer log
     scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
@@ -720,6 +720,7 @@ collect_cluster_status() {
     info "Collecting cluster status..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=$PATH:/home/cloud-user/sessions/1/bin
 
         echo '=== Cluster Version ==='
         oc get clusterversion -o yaml
@@ -748,6 +749,7 @@ collect_cluster_events() {
     info "Collecting cluster events..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=$PATH:/home/cloud-user/sessions/1/bin
 
         echo '=== Recent Events (last 100) ==='
         oc get events --all-namespaces --sort-by='.lastTimestamp' | tail -100
@@ -764,6 +766,7 @@ collect_cluster_pods() {
     info "Collecting pod information..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=$PATH:/home/cloud-user/sessions/1/bin
 
         echo '=== All Pods ==='
         oc get pods --all-namespaces -o wide
@@ -786,6 +789,7 @@ collect_cluster_problem_pod_logs() {
     info "Collecting logs from problem pods..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=$PATH:/home/cloud-user/sessions/1/bin
         mkdir -p /tmp/problem-pods-${TIMESTAMP}
 
         # Get pods that are not Running/Succeeded
@@ -860,6 +864,7 @@ collect_cluster_plugin_diagnostics() {
         info "Collecting diagnostics for namespace: $ns"
         ssh $ssh_opts cloud-user@"$lz_ip" "
             export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+            export PATH=$PATH:/home/cloud-user/sessions/1/bin
 
             echo '=== Deployments ==='
             oc get deployments -n $ns -o wide 2>&1
