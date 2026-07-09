@@ -13,6 +13,14 @@
     backend: cryptography
     private_key_format: ssh
 
+- name: Generate SSH keypair if doesn't exist
+  community.crypto.openssh_keypair:
+    path: "{{ sshPubPath | replace('.pub','') }}"
+    type: ed25519
+    regenerate: never
+    backend: cryptography
+    private_key_format: ssh
+
 - name: Extract openshift-install binary
   ansible.builtin.command: |
     {{ workingDir }}/bin/oc adm release extract --registry-config={{ pullSecretPath }} --command=openshift-install --to {{ workingDir }}/bin/
