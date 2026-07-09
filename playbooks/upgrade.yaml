@@ -29,9 +29,6 @@
           - reconcile
           - mgmt-cluster-version
           - --use-defaults
-          - --no-dry-run
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       register: r_mgmt_cluster_upgrade
       when: upgrade_mgmt_cluster | default(true) | bool
 
@@ -47,9 +44,6 @@
           - reconcile
           - operator-versions
           - --use-defaults
-          - --no-dry-run
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       register: r_operator_versions_upgrade
       when: upgrade_operators | default(true) | bool
 
