@@ -46,20 +46,17 @@ Each Enclave tarball release includes:
     ```sh
     ./sync.sh
     ```
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations and updates. Currently executes the `playbooks/upgrade.yaml` playbook. Future versions will also automate steps 8 and 9 (cluster and operator upgrades):
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
     ```sh
     ./upgrade.sh
     ```
-8. **Upgrade management cluster** - Update OpenShift to the version in the tarball:
+8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
     ```sh
+    ansible-playbook playbooks/upgrade.yaml -e workingDir=<your global.yaml workingDir variable> -e upgrade_mgmt_cluster=false -e upgrade_operators=false
+
     WORKING_DIR=<your global.yaml workingDir variable>
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile mgmt-cluster-version --use-defaults
-    ```
-9. **Upgrade operators** - Update operators to the versions in the tarball:
-    ```sh
-    WORKING_DIR=<your global.yaml workingDir variable>
-    export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile operator-versions --use-defaults
     ```
 

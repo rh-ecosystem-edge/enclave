@@ -21,3 +21,33 @@
     - name: Run migrations
       ansible.builtin.include_tasks:
         file: tasks/migrations.yaml
+
+    - name: Upgrade management cluster OpenShift version
+      ansible.builtin.command:
+        argv:
+          - enclave
+          - reconcile
+          - mgmt-cluster-version
+          - --use-defaults
+      register: r_mgmt_cluster_upgrade
+      when: upgrade_mgmt_cluster | default(true) | bool
+
+    - name: Print management cluster upgrade output
+      ansible.builtin.debug:
+        var: r_mgmt_cluster_upgrade.stderr_lines
+      when: upgrade_mgmt_cluster | default(true) | bool
+
+    - name: Upgrade operator versions
+      ansible.builtin.command:
+        argv:
+          - enclave
+          - reconcile
+          - operator-versions
+          - --use-defaults
+      register: r_operator_versions_upgrade
+      when: upgrade_operators | default(true) | bool
+
+    - name: Print operator versions upgrade output
+      ansible.builtin.debug:
+        var: r_operator_versions_upgrade.stderr_lines
+      when: upgrade_operators | default(true) | bool
