@@ -27,5 +27,6 @@ jobs:
             -f run-disconnected=true \
             -f storage-plugin=odf \
             -f send-slack-notification=true \
+            -f workflow-display-name="E2E ODF" \
             -R "${{ github.repository }}"
           echo "Dispatched E2E Disconnected with ODF storage plugin" | tee -a $GITHUB_STEP_SUMMARY
