@@ -78,6 +78,7 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `osacAapLicenseFile` | string | Yes | — | Path to AAP license manifest.zip on the Landing Zone |
+| `osacChartVersion` | string | No | `0.0.6` | OSAC Helm chart version to deploy |
 | `osacProfilesList` | list | No | `[caas, vmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
