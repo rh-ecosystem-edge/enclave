@@ -1,0 +1,87 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+properties:
+  osacProfilesList:
+    type: array
+    minItems: 1
+    uniqueItems: true
+    items:
+      type: string
+      enum: [vmaas, caas, bmaas]
+    description: "List of enabled service profiles: vmaas, caas, bmaas"
+  osac_aap_name:
+    type: string
+    description: AAP CR name in the osac namespace.
+  osac_aap_operator_ns:
+    type: string
+    description: Namespace where the AAP operator is installed.
+  osac_aap_api_user:
+    type: string
+    description: AAP admin username for create_oauth2_token.
+  osac_aap_validate_certs:
+    type: boolean
+    description: Whether to validate TLS certificates for AAP API calls.
+  osac_keycloak_ns:
+    type: string
+    description: Namespace where Keycloak is deployed.
+  osac_keycloak_name:
+    type: string
+    description: Keycloak CR name (used for route hostname and admin API).
+  osac_keycloak_svc_name:
+    type: string
+    description: Keycloak service name created by the RHBK operator.
+  osac_keycloak_realm:
+    type: string
+    description: Keycloak realm for OSAC clients.
+  osac_keycloak_client_id:
+    type: string
+    description: Keycloak client ID for the osac-controller.
+  osac_keycloak_admin_client_id:
+    type: string
+    description: Keycloak client ID for the osac-admin service account.
+  osac_keycloak_service_port:
+    type: integer
+    description: Keycloak service port.
+  osac_keycloak_validate_certs:
+    type: boolean
+    description: Whether to validate TLS certificates for Keycloak API calls.
+  osacBYODatabase:
+    type: boolean
+    description: Use an external database instead of the built-in dev postgres.
+  osac_db_name:
+    type: string
+    description: PostgreSQL deployment and service name.
+  osac_db_image:
+    type: string
+    description: PostgreSQL container image.
+  osac_db_size:
+    type: string
+    description: PostgreSQL PVC size.
+  osac_db_user:
+    type: string
+    description: PostgreSQL user and client cert CN.
+  osac_db_database:
+    type: string
+    description: PostgreSQL database name.
+  osac_aap_project_git_uri:
+    type: string
+    description: Git URI for AAP config-as-code project.
+  osac_aap_project_git_branch:
+    type: string
+    description: Git branch for AAP config-as-code project.
+required:
+  - osacProfilesList
+  - osac_aap_name
+  - osac_keycloak_ns
+  - osac_keycloak_name
+  - osac_keycloak_realm
+  - osac_keycloak_client_id
+  - osac_keycloak_admin_client_id
+  - osac_keycloak_validate_certs
+  - osacBYODatabase
+  - osac_db_name
+  - osac_db_image
+  - osac_db_user
+  - osac_db_database

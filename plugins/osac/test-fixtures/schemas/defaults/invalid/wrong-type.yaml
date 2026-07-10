@@ -1,0 +1,15 @@
+---
+osacProfilesList:
+  - caas
+osac_aap_name: osac-aap
+osac_keycloak_ns: keycloak
+osac_keycloak_name: keycloak
+osac_keycloak_realm: osac
+osac_keycloak_client_id: osac-controller
+osac_keycloak_admin_client_id: osac-admin
+osac_keycloak_validate_certs: "not-a-boolean"
+osacBYODatabase: false
+osac_db_name: postgres
+osac_db_image: "registry.redhat.io/rhel10/postgresql-18:latest"
+osac_db_user: service
+osac_db_database: service
