@@ -31,6 +31,10 @@ inputs:
     description: 'URL to download artifacts (optional)'
     required: false
     default: ''
+  osac-chart-version:
+    description: 'OSAC Helm chart version (optional, shown in notification when set)'
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -47,6 +51,7 @@ runs:
         INPUT_FAILED_STEP: ${{ inputs.failed-step }}
         INPUT_ARTIFACT_URL: ${{ inputs.artifact-url }}
         INPUT_SLACK_WEBHOOKS: ${{ inputs.slack-webhook-urls }}
+        INPUT_OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
       run: |
         # Set status-specific values
         if [ "$INPUT_STATUS" = "success" ]; then
@@ -75,10 +80,11 @@ runs:
           --arg cluster "$INPUT_CLUSTER_NAME" \
           --arg branch "$INPUT_BRANCH_NAME" \
           --arg commit "${INPUT_COMMIT_SHA:0:7}" \
+          --arg chart "${INPUT_OSAC_CHART_VERSION}" \
           '[
             {"type": "mrkdwn", "text": ("*Cluster:* " + $cluster)},
             {"type": "mrkdwn", "text": ("*Branch:* " + $branch + " (" + $commit + ")")}
-          ]')
+          ] + (if $chart != "" then [{"type": "mrkdwn", "text": ("*OSAC Chart:* " + $chart)}] else [] end)')
 
         # Build action buttons
         if [ -n "$INPUT_ARTIFACT_URL" ]; then
