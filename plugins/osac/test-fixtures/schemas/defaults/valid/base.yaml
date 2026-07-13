@@ -1,4 +1,6 @@
 ---
+osacChartVersion: "0.0.6"
+
 osacProfilesList:
   - caas
   - vmaas

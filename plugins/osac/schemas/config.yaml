@@ -14,6 +14,10 @@ properties:
       type: string
       enum: [vmaas, caas, bmaas]
     description: "List of enabled service profiles: vmaas, caas, bmaas"
+  osacChartVersion:
+    type: string
+    minLength: 1
+    description: "OSAC Helm chart version to deploy (overrides default from defaults.yaml)"
   osacBYODatabase:
     type: boolean
     description: "Set to true to use an external database instead of the built-in dev postgres"
