@@ -76,6 +76,7 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Declarative operator and registry requirements in the descriptor
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
+
 - Every property added to a file under `config/` or `defaults/` (including plugin example/default
   configs) must also be added to its matching schema file under `schemas/` (same base filename,
   e.g. `defaults/catalogs.yaml` → `schemas/catalogs.yaml`) in the same PR
