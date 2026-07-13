@@ -863,7 +863,7 @@ collect_cluster_plugin_diagnostics() {
     for ns in $unique_ns; do
         info "Collecting diagnostics for namespace: $ns"
         ssh $ssh_opts cloud-user@"$lz_ip" "
-            export KUBECONFIG=/home/cloud-user/ocp-cluster/auth/kubeconfig
+            export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
             export PATH=$PATH:/home/cloud-user/sessions/1/bin
 
             echo '=== Deployments ==='
