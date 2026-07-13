@@ -32,15 +32,14 @@ This creates several problems:
 
 * Introduce a versioned migration system where each migration is a standalone task file with a
   UTC timestamp prefix (e.g., `20260709143200_description.yaml`).
-* Track the migration state of each installation using a control file on the Landing Zone host
-  (`~/.config/enclave/migration_version`). Only migrations newer than the control file timestamp
-  are run on upgrade.
-* Introduce a `repo_version` file committed to the repository (updated automatically on every
-  merge to main) that serves as the authoritative version reference. The file contains a single
-  UTC timestamp (`YYYYMMDDHHMMSS`) and is included in distributed tarballs, so it is available
-  even without git history.
-* Bootstrap writes the control file on successful completion, so fresh installations skip all
-  migrations on their first upgrade.
+* Track the migration state of each installation using an append-only control file on the
+  Landing Zone host (`~/.config/enclave/migration_tasks`). The file records every migration
+  that has been successfully applied, one filename per line. Only migrations absent from the
+  control file are run on upgrade.
+* Bootstrap writes the control file on successful completion, seeding it with all existing
+  migration filenames so that fresh installations skip them on their first upgrade.
+* If a migration fails, the upgrade stops immediately. The failed migration is not recorded in
+  the control file, so it is retried on the next upgrade run.
 * Add CI validation that enforces: migration timestamps are strictly greater than the latest
   timestamp already present in the repo (monotonic ordering), timestamps are unique across all
   migration files, and existing migration files are never modified after being merged.
@@ -56,13 +55,6 @@ This creates several problems:
   existing idempotency guarantees.
 
 ## Proposal
-
-### `repo_version` — the repository's version stamp
-
-A file named `repo_version` is committed to the repository root. It contains a single UTC
-timestamp in `YYYYMMDDHHMMSS` format. A CI job updates this file and commits it back to `main`
-on every merge. Because the file is committed, it is present in both git clones and distributed
-tarballs.
 
 ### Migration file naming
 
@@ -81,13 +73,21 @@ secondary sort.
 
 ### Control file on the Landing Zone host
 
-After a successful upgrade, the upgrade process writes the content of `repo_version` to
-`~/.config/enclave/migration_version` on the LZ host. This file is the authoritative record of
-the migration state of the installation.
+`~/.config/enclave/migration_tasks` is an append-only file, one applied migration filename
+per line:
 
-After a successful bootstrap, bootstrap also writes the control file, seeding it with the current
-`repo_version`. This means a freshly bootstrapped installation will skip all existing migrations
-on its first upgrade.
+```
+20260601120000_foundation_plugin_catalog_sources.yaml
+20260615090000_setup_enclave_kubeconfig_symlink.yaml
+20260709143200_trust_custom_ca.yaml
+```
+
+The file is the authoritative record of the migration state of the installation. It is
+human-readable and auditable at a glance.
+
+After a successful bootstrap, bootstrap writes all existing migration filenames (sorted) to the
+control file, seeding it so that fresh installations skip all existing migrations on their first
+upgrade.
 
 If the control file is absent (pre-migration-system installations), the upgrade process treats
 the installation as if no migrations have ever been run and applies all migrations in order.
@@ -96,16 +96,19 @@ the installation as if no migrations have ever been run and applies all migratio
 
 The migration runner (`playbooks/tasks/migrations.yaml`) is rewritten to:
 
-1. Read `repo_version` from the tarball.
-1. Read the LZ control file (or use `00000000000000` if absent).
+1. Read the control file (or treat as empty if absent) and build the set of already-applied
+   migration filenames.
 1. Discover all files in `playbooks/tasks/migrations/` matching the `YYYYMMDDHHMMSS_*.yaml`
    pattern.
-1. Select those whose timestamp is strictly greater than the control file timestamp.
-1. Execute them in ascending order (chronological, alphabetical within same timestamp).
-1. Write the `repo_version` timestamp to the LZ control file.
+1. Subtract the applied set from the discovered set to produce the pending list.
+1. Sort pending migrations ascending (chronological, alphabetical within same timestamp).
+1. For each pending migration in order:
+   - Execute the migration task file.
+   - If it succeeds, append its filename to the control file.
+   - If it fails, stop immediately. The control file reflects only what actually applied.
 
 Individual migration files are self-contained and own their own `when:` conditions (e.g.,
-"only run if disconnected"). The runner applies no conditions beyond timestamp comparison.
+"only run if disconnected"). The runner applies no conditions beyond set membership.
 
 ### Existing migrations
 
@@ -125,15 +128,17 @@ migrations are always linear (one upgrade path from one release to the next), an
 of a DAG-based system is not justified. Timestamp ordering with alphabetical tiebreaking is
 sufficient.
 
-* **A database or structured file as the state store.** Using a YAML or JSON file on the LZ that
-records every applied migration by name was considered. A flat timestamp in a single file was
-chosen instead because: (1) the comparison logic is trivial, (2) the file is human-readable and
-auditable at a glance, and (3) it requires no parsing or schema beyond reading a single string.
+* **A single high-watermark timestamp as the state store.** Storing only the latest applied
+migration timestamp was considered. An append-only file of all applied migration filenames was
+chosen instead because: (1) it provides a full audit trail of what ran on an installation,
+(2) pending detection is set subtraction rather than a timestamp comparison, making it robust
+to any ordering edge case, and (3) it mirrors the Rails `schema_migrations` table model which
+is well-understood.
 
-* **CI-generated `repo_version` injected at tarball build time (not committed).** The existing
-`.version` file pattern in the tarball build CI writes a version transiently without committing.
-This was rejected because a committed file is required: users who clone the repository (not the
-tarball) need `repo_version` to be present, and a CI-only file would not survive `git clone`.
+* **A `repo_version` committed file as the version stamp.** A file updated by a CI bot commit on
+every merge to main was considered as the reference timestamp for seeding the control file on
+bootstrap. This was dropped in favour of deriving the seed directly from the migration files
+themselves, eliminating the CI bot commit infrastructure entirely.
 
 ## Milestones
 
