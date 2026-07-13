@@ -47,6 +47,9 @@ properties:
   osac_keycloak_validate_certs:
     type: boolean
     description: Whether to validate TLS certificates for Keycloak API calls.
+  osacNetrisEnabled:
+    type: boolean
+    description: Enable Netris network backend for cluster/network fulfillment.
   osacBYODatabase:
     type: boolean
     description: Use an external database instead of the built-in dev postgres.
