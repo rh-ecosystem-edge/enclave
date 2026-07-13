@@ -30,17 +30,28 @@
     msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
   when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
 
-- name: Validate that Clair postgres config Secret exists
+- name: Get Secrets owned by the Quay registry
   kubernetes.core.k8s_info:
     kind: Secret
     namespace: quay-enterprise
     label_selectors:
-      - quay-component=clairpostgres
-  register: clair_postgres_config_secret
+      - quay-operator/quayregistry=registry
+  register: quay_registry_secrets
 
-- name: Fail if Secret is missing
+- name: Find the Clair postgres config Secret
+  ansible.builtin.set_fact:
+    clair_postgres_config_secret: "{{ quay_registry_secrets.resources | selectattr('metadata.name', 'match', 'registry-clairpostgres-config-secret') | list }}"
+
+- name: Fail if Clair postgres config Secret is missing
   ansible.builtin.assert:
     that:
-      - clair_postgres_config_secret.resources | length > 0
-    fail_msg: "Validation Failed: no Secret with label quay-component=clairpostgres was found in namespace quay-enterprise."
-    success_msg: "Validation Passed: Clair postgres config Secret ({{ clair_postgres_config_secret.resources[0].metadata.name }}) is present in namespace quay-enterprise."
+      - clair_postgres_config_secret | length > 0
+    fail_msg: >-
+      Validation Failed: no Secret with label quay-operator/quayregistry=registry
+      and a name starting with 'registry-clairpostgres-config-secret' was found
+      in namespace quay-enterprise.
+    success_msg: >-
+      Validation Passed: Clair postgres config Secret
+      ({{ clair_postgres_config_secret[0].metadata.name
+      if clair_postgres_config_secret | length > 0 else 'unknown' }})
+      is present in namespace quay-enterprise.
