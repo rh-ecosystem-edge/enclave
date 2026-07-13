@@ -1,12 +1,12 @@
 ---
 name: install-virtualized
 description: >-
-  Deploy or clean up an RHSE virtualized lab environment on a bare-metal host.
+  Deploy or clean up an Enclave virtualized lab environment on a bare-metal host.
   Use when the user says "install enclave", "deploy enclave", "install virtualized",
   "deploy on <host>", "clean up the deployment", "tear down the cluster",
   "install plugins", "deploy plugins", "install experience", or "deploy experience".
 when_to_use: >-
-  Use for deploying RHSE on bare-metal using dev-scripts VMs, cleaning up
+  Use for deploying Enclave on bare-metal using dev-scripts VMs, cleaning up
   an existing deployment, or installing day-2 addon plugins or experiences
   on a successful deployment. This skill dynamically reads the CI e2e workflow
   each time to stay in sync with the latest deployment steps.
@@ -14,7 +14,13 @@ disable-model-invocation: true
 allowed-tools: Bash(ssh *) Bash(scp *) Bash(grep *) Bash(cat *) Bash(make *) Bash(gh *) Bash(git *) Read AskUserQuestion
 ---
 
-# RHSE Virtualized Installation
+# Enclave Virtualized Installation
+
+> **Warning:** This skill is **not** a supported installation method. It is provided
+> for Enclave virtualized deployments intended for development and testing purposes only.
+> Use at your own risk.
+
+Display the warning above to the user before proceeding with any installation.
 
 This skill deploys Red Hat Sovereign Enclave on a bare-metal host using dev-scripts
 to create virtualized infrastructure (Landing Zone VM + OpenShift master VMs).
@@ -28,7 +34,10 @@ Whenever the skill needs the user to choose between options, use the
 `AskUserQuestion` tool to present the choices. This applies to all steps that
 offer a selection (installation mode, deployment mode, storage plugin, resource
 allocation, pull secret method, branch/PR, etc.). Group related questions into
-a single `AskUserQuestion` call when they appear in the same step.
+a single `AskUserQuestion` call when they appear in the same step. **Never mark
+any option as recommended** — present all choices neutrally and let the user
+decide. When a step has a default, note it with "(default)" in the label, not
+"(Recommended)".
 
 $ARGUMENTS
 
@@ -60,6 +69,10 @@ Execute them in that exact order.
 **Build the step list**: after extracting steps, assign each a sequential number.
 Count the total (filtering out steps whose conditions won't be met for this
 deployment). Store `TOTAL_STEPS` — you'll use it for the progress bar.
+
+**Every step must come from the workflow file.** Foundation plugins (like lvms
+or odf) are deployed by the `deploy-cluster-operators` playbook — they do NOT
+have a `deploy-plugin` step in the workflow.
 
 ## Check CI Health on Main
 
@@ -129,12 +142,12 @@ If day-2 addons is selected:
 
 Ask the user: **attended** or **unattended**?
 
-- **Attended** (default): ask for confirmation before running each deployment
-  step (Step 10) and each plugin installation (Step 12). Between steps, show
-  what's about to run and wait for the user to approve before proceeding.
-- **Unattended**: run all deployment steps (Step 10) and plugin/experience
-  installation (Step 12) automatically without asking for confirmation. If any
-  step fails, stop and ask the user what to do.
+- **Unattended** (default): run all deployment steps (Step 10) and
+  plugin/experience installation (Step 12) automatically without asking for
+  confirmation. If any step fails, stop and ask the user what to do.
+- **Attended**: ask for confirmation before running each deployment step
+  (Step 10) and each plugin installation (Step 12). Between steps, show what's
+  about to run and wait for the user to approve before proceeding.
 
 Both modes go through the same initial configuration (Steps 4-9), collecting
 required values and presenting options for confirmation.
@@ -226,8 +239,17 @@ export PULL_SECRET="\$(cat ~/.pull-secret.json)"
 
 Ask the user: **connected** or **disconnected**?
 
-- **Connected**: proceed with the workflow
-- **Disconnected**: tell the user this mode is not yet supported by this skill, stop
+- **Connected**: standard deployment with direct registry access. Estimated
+  time: 20-30 minutes. Minimum host disk: ~200 GB free.
+- **Disconnected** (air-gapped): deployment includes setting up a mirror
+  registry on the Landing Zone and mirroring all container images locally.
+  Estimated time: 45-90 minutes (includes ~30+ minutes of image mirroring).
+  Minimum host disk: ~1200 GB free.
+
+Both modes use the same sequence of make targets — the behavior difference is
+driven entirely by `ENCLAVE_DEPLOYMENT_MODE`. The Ansible playbooks on the
+Landing Zone handle mirror registry setup and image mirroring automatically
+when `disconnected: true` is set.
 
 ## Step 7: Check Host Resources
 
@@ -244,6 +266,22 @@ LZ resource defaults. Always check both files and use the values from
 `provision_landing_zone.sh` (the `--memory` and `--vcpus` args to `virt-install`)
 as the source of truth, since that script actually creates the LZ VM.
 
+### Disk space requirements
+
+Disk sizing differs between connected and disconnected modes. Extract the
+actual values dynamically from these files (do NOT hardcode them):
+
+- **`scripts/setup/validate_prerequisites.sh`** — grep for `MIN_DISK_GB` to
+  get the minimum disk thresholds for each deployment mode
+- **`scripts/setup/configure_devscripts.sh`** — grep for `VM_EXTRADISKS_SIZE_VAL`
+  to get the per-master extra disk size (differs by deployment mode)
+- **`scripts/infrastructure/provision_landing_zone.sh`** — grep for `LZ_DISK_SIZE`
+  to get the Landing Zone disk size (differs by deployment mode)
+
+Compare the host's available disk against the `MIN_DISK_GB` for the selected
+mode. If below the threshold, warn the user and explain that disconnected mode
+needs extra space for the mirror registry and mirrored container images.
+
 ```
 RAM:  NUM_MASTERS x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 (host overhead)
 vCPU: NUM_MASTERS x MASTER_VCPU_VAL + LANDINGZONE_VCPU
@@ -254,8 +292,8 @@ Disk: NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE) + LANDINGZONE_DISK + over
 
 Calculate `available_for_vms = total_ram_mb - 4096` (host overhead).
 
-**Hosts with ≤64 GB RAM** — **do not recommend installing RHSE**:
-- Warn: "This host has ≤64 GB RAM. RHSE requires 3 master nodes and the
+**Hosts with ≤64 GB RAM** — **do not recommend installing Enclave**:
+- Warn: "This host has ≤64 GB RAM. Enclave requires 3 master nodes and the
   platform components (ACM, Quay, Clair) need significant memory headroom.
   A minimum of 128 GB RAM is recommended for a stable deployment."
 - Ask the user if they want to proceed anyway with reduced resources or stop.
@@ -302,7 +340,7 @@ host-specific or secret values that cannot be derived from the workflow.
 - `LANDINGZONE_MEMORY` (override if adjusted in Step 7)
 - `LANDINGZONE_VCPU` (override if adjusted in Step 7)
 - `PULL_SECRET` (from Step 5: `$(cat ~/.pull-secret.json)`)
-- `ENCLAVE_IRONIC_HTTPS` (CI default, typically `true`)
+- `ENCLAVE_IRONIC_HTTPS` (connected mode only: `true`; do NOT set for disconnected)
 - `OPENSHIFT_CI` (CI default: `true`)
 - `CLEANUP_AFTER` (CI default: `true`)
 - `ENCLAVE_ENABLE_GPU_PASSTHROUGH` (CI default: `false`)
@@ -531,6 +569,12 @@ Summarize:
   export PATH=$PATH:/home/cloud-user/sessions/1/bin/
   ```
 
+For **disconnected** deployments, also verify the mirror registry is running
+on the Landing Zone and include the result in the summary:
+```bash
+ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'podman ps --filter name=quay --format \"table {{.Names}}\t{{.Status}}\"'"
+```
+
 ## Step 12: Install Day-2 Addon Plugins or Experience
 
 **Skip this step if the base deployment failed** (any step in Step 10 exited
@@ -561,7 +605,7 @@ If a plugin fails, report the error and ask the user whether to:
 
 When the skill is invoked with keywords like "install plugins", "deploy plugins",
 "install experience", or "deploy experience" on a host that already has a
-successful RHSE deployment:
+successful Enclave deployment:
 
 1. Ask for the SSH target (Step 1)
 2. Verify connectivity (Step 2)
@@ -609,11 +653,9 @@ When a step fails:
      check `oc describe nodes | grep -A5 "Allocated resources"` for request %,
      suggest redeploying with more RAM per master
    - `BASE_WORKING_DIR` double path → don't include `clusters` in the path
-4. **Suggest a fix** — provide the specific command or config change
-5. **Offer options**:
-   - Retry the failed step after applying the fix
-   - Skip and continue (if safe to do so)
-   - Clean up and redeploy from scratch
+4. **Suggest a fix** — provide the specific command or config change but
+   **do not apply any fix without explicit user approval**. Always ask the
+   user before running any command that is not part of the CI workflow steps.
 
 ## Self-Improvement
 
