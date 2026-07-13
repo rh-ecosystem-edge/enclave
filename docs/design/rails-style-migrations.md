@@ -87,7 +87,8 @@ human-readable and auditable at a glance.
 
 After a successful bootstrap, bootstrap writes all existing migration filenames (sorted) to the
 control file, seeding it so that fresh installations skip all existing migrations on their first
-upgrade.
+upgrade. Without this seeding, a system installed from current HEAD would re-run every migration
+already embedded in that release on its first upgrade.
 
 If the control file is absent (pre-migration-system installations), the upgrade process treats
 the installation as if no migrations have ever been run and applies all migrations in order.
