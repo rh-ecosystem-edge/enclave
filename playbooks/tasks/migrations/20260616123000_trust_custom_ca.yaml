@@ -1,0 +1,40 @@
+---
+# Custom CA Trust Migration
+#
+# Ensures the cluster Proxy trusts the custom Root CA certificate for clusters
+# installed with Enclave 0.1.0, where trust_custom_ca was not part of the
+# install flow.
+#
+# Without this migration, the ClusterVersion operator cannot verify the TLS
+# certificate presented by the Update Service route (signed by the custom CA),
+# leaving availableUpdates empty. The UpdateService deployment is restarted
+# after the proxy trust is applied so the graph-builder reloads the updated
+# CA bundle.
+#
+# Only applies when sslCACertificate is configured.
+
+- name: Custom CA trust migration
+  when:
+    - sslCACertificate is defined
+    - sslCACertificate | length > 0
+  block:
+    - name: Trust custom Root CA certificate
+      ansible.builtin.include_tasks: ../trust_custom_ca.yaml
+
+    - name: Restart UpdateService deployment to reload custom CA trust
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - rollout
+          - restart
+          - deployment/service
+          - -n
+          - openshift-update-service
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_updateservice_rollout_restart
+      when: not ca_already_trusted
+      changed_when: r_updateservice_rollout_restart.rc == 0
+      failed_when:
+        - r_updateservice_rollout_restart.rc != 0
+        - '"not found" not in r_updateservice_rollout_restart.stderr | lower'

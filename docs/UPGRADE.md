@@ -62,6 +62,56 @@ Each Enclave tarball release includes:
 
 ---
 
+## Migration System
+
+Enclave uses a versioned migration system to apply one-time operational changes to an existing
+cluster as part of an upgrade. Migrations are Ansible task files named with a UTC
+timestamp prefix (`YYYYMMDDHHMMSS_description.yaml`) and live under `playbooks/tasks/migrations/`.
+
+### How it works
+
+A control file at `~/.config/enclave/migration_tasks` on the Landing Zone host records the
+filename of every migration that has already been applied (one per line, append-only). When
+`upgrade.sh` runs, the migration runner computes the set of pending migrations (all files minus
+those in the control file) and applies them in lexicographic (timestamp) order.
+
+Each migration is recorded in the control file only after it succeeds. If a migration fails,
+Ansible stops and the migration is not recorded, so the next upgrade attempt will retry from that
+migration.
+
+### Fresh installs
+
+`bootstrap.sh` seeds the control file with all migration filenames present at install time. This
+ensures that migrations already baked into the release are not re-applied on the first upgrade.
+
+If the control file is absent (a pre-migration-system installation), all migrations are run on
+the next `upgrade.sh` execution. They are designed to be safe to run on an up-to-date enclave
+installation.
+
+### Adding a migration
+
+Create a new file under `playbooks/tasks/migrations/` with a UTC timestamp prefix:
+
+```sh
+# Use the current UTC time as the filename prefix
+date -u +%Y%m%d%H%M%S
+# e.g. 20261231235959_my_change.yaml
+```
+
+The file should be a plain Ansible task list. If the migration only applies under certain
+conditions (e.g., only in disconnected mode), add a `when:` condition inside the file using
+an Ansible `block:`. Migrations are immutable once merged — modify behavior with a new migration,
+not by editing an existing one.
+
+CI validates that all migration timestamps are monotonically increasing, not in the future,
+unique, and that existing merged files have not been modified:
+
+```sh
+make -f Makefile.ci validate-migrations
+```
+
+---
+
 ## Resources
 
 - [Enclave Deployment Guide](DEPLOYMENT_GUIDE.md)

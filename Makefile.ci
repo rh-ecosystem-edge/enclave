@@ -28,10 +28,11 @@ include Makefile
 
 .PHONY: validate validate-shell validate-yaml validate-json-schema validate-ansible \
         validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
-        validate-python \
+        validate-migrations validate-python \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-pre-install-validate \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
+        deploy-cluster-write-migration-tasks \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph verify-ceph \
         verify clean verify-cluster verify-cleanup \
@@ -64,6 +65,7 @@ help:
 	@echo "  make -f Makefile.ci validate-mirror       - Phase 2.5: Validate mirror artifacts"
 	@echo "  make -f Makefile.ci validate-makefile     - Validate Makefile syntax"
 	@echo "  make -f Makefile.ci validate-plugins      - Validate plugin directory structure"
+	@echo "  make -f Makefile.ci validate-migrations   - Validate migration file timestamps and immutability"
 	@echo ""
 	@echo "CI Image targets:"
 	@echo "  make -f Makefile.ci build-ci-image        - Build CI container image locally"
@@ -113,7 +115,8 @@ help:
 	@echo "  make -f Makefile.ci deploy-cluster-post-install      - Post-install configuration"
 	@echo "  make -f Makefile.ci deploy-cluster-operators         - Install operators"
 	@echo "  make -f Makefile.ci deploy-cluster-day2              - Day-2 operations"
-	@echo "  make -f Makefile.ci deploy-cluster-discovery         - Configure hardware discovery"
+	@echo "  make -f Makefile.ci deploy-cluster-discovery              - Configure hardware discovery"
+	@echo "  make -f Makefile.ci deploy-cluster-write-migration-tasks  - Seed migration control file"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -234,6 +237,9 @@ deploy-cluster-discovery: setup-dev-scripts
 	@echo ""
 	@./scripts/deployment/deploy_bootstrap_step.sh discovery
 
+deploy-cluster-write-migration-tasks: setup-dev-scripts
+	@./scripts/deployment/deploy_bootstrap_step.sh write-migration-tasks
+
 deploy-plugin: setup-dev-scripts
 	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
 
@@ -272,6 +278,9 @@ validate-makefile:
 
 validate-plugins:
 	@./scripts/verification/validate.sh plugins
+
+validate-migrations:
+	@./scripts/verification/validate.sh migrations
 
 validate-python:
 	@./scripts/verification/validate.sh python

@@ -1,0 +1,61 @@
+---
+# Foundation Plugin Catalog Source Migration
+#
+# Migrates foundation plugin operator subscriptions from legacy core catalog
+# sources to plugin-specific catalog sources.
+#
+# Background: Previous Enclave versions mirrored foundation plugin operators
+# as part of the core catalog source (cs-redhat-operator-index-v4-20).
+# The plugin framework now creates dedicated catalog sources per plugin (e.g.,
+# cs-redhat-operator-index-odf-v4-20 for ODF).
+#
+# Only applies to disconnected deployments and operators without explicit
+# operator.source definitions in their plugin descriptors.
+
+- name: Foundation plugin catalog source migration
+  when: disconnected | default(true) | bool
+  block:
+    - name: Find plugin descriptors
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../plugins"
+        patterns: "plugin.yaml"
+        recurse: true
+        depth: 2
+      register: r_mig_find
+
+    - name: Read plugin descriptors
+      ansible.builtin.slurp:
+        src: "{{ plugin_path }}"
+      loop: "{{ r_mig_find.files | default([]) | map(attribute='path') | list }}"
+      register: r_mig_slurp
+      loop_control:
+        loop_var: plugin_path
+
+    - name: Filter foundation plugins
+      ansible.builtin.set_fact:
+        _foundation_plugins: >-
+          {{ r_mig_slurp.results | default([])
+             | map(attribute='content')
+             | map('b64decode')
+             | map('from_yaml')
+             | selectattr('type', 'equalto', 'foundation')
+             | selectattr('name', 'in', enabled_plugins | default([]))
+             | list }}
+
+    - name: Migrate foundation plugin operator subscriptions
+      ansible.builtin.include_tasks:
+        file: ../operator_catalog_source.yaml
+      vars:
+        plugin: "{{ plugin_operator.0 }}"
+        operator: "{{ plugin_operator.1 }}"
+        operator_name: "{{ operator.name }}"
+        operator_namespace: "{{ operator.namespace }}"
+        legacy_source: "cs-redhat-operator-index-v4-20"
+        new_source: "cs-{{ mirror_rh_operator_catalog }}-{{ plugin.name }}-v4-20"
+      loop: "{{ _foundation_plugins | default([]) | subelements('operators', skip_missing=True) }}"
+      loop_control:
+        loop_var: plugin_operator
+        label: "{{ plugin_operator.0.name }}/{{ plugin_operator.1.name }}"
+      when:
+        - operator.source is not defined
+        - plugin.catalog | default('redhat') == 'redhat'
