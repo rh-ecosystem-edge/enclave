@@ -75,6 +75,13 @@ make -f Makefile.ci validate-plugins     # plugin descriptor validation
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
 
+### Config and schemas (`config/`, `defaults/`, `schemas/`)
+
+- Every property added to a file under `config/` or `defaults/` (including plugin example/default
+  configs) must also be added to its matching schema file under `schemas/` (same base filename,
+  e.g. `defaults/catalogs.yaml` → `schemas/catalogs.yaml`) in the same PR
+- Run `make -f Makefile.ci validate-json-schema` before opening a PR to catch missing schema entries
+
 ## Git workflow
 
 - **NEVER push commits directly to `main`** — all changes must go through pull requests
