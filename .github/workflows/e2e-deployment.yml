@@ -62,6 +62,11 @@ on:
         required: false
         type: string
         default: ''
+      workflow-display-name:
+        description: 'Display name prefix for Slack notifications (e.g., "E2E OSAC")'
+        required: false
+        type: string
+        default: 'E2E Deployment'
   workflow_call:
     inputs:
       run-connected:
@@ -85,6 +90,9 @@ on:
       aap-license-file:
         type: string
         default: ''
+      workflow-display-name:
+        type: string
+        default: 'E2E Deployment'
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -648,7 +656,7 @@ jobs:
         uses: ./.github/actions/notify-slack
         with:
           status: ${{ job.status }}
-          workflow-name: E2E Deployment - Connected
+          workflow-name: ${{ inputs.workflow-display-name || 'E2E Deployment' }} - Connected
           cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -1103,7 +1111,7 @@ jobs:
         uses: ./.github/actions/notify-slack
         with:
           status: ${{ job.status }}
-          workflow-name: E2E Deployment - Disconnected
+          workflow-name: ${{ inputs.workflow-display-name || 'E2E Deployment' }} - Disconnected
           cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

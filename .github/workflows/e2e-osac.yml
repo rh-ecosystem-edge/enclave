@@ -44,4 +44,5 @@ jobs:
       aap-license-file: '/etc/enclave-ci/aap-license.zip'
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
+      workflow-display-name: 'E2E OSAC'
     secrets: inherit
