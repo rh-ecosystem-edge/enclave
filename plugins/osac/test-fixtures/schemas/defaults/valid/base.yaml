@@ -1,0 +1,28 @@
+---
+osacProfilesList:
+  - caas
+  - vmaas
+
+osac_aap_name: osac-aap
+osac_aap_operator_ns: ansible-aap
+osac_aap_api_user: admin
+osac_aap_validate_certs: false
+
+osac_keycloak_ns: keycloak
+osac_keycloak_name: keycloak
+osac_keycloak_svc_name: keycloak-service
+osac_keycloak_realm: osac
+osac_keycloak_client_id: osac-controller
+osac_keycloak_admin_client_id: osac-admin
+osac_keycloak_service_port: 8443
+osac_keycloak_validate_certs: true
+
+osacBYODatabase: false
+osac_db_name: postgres
+osac_db_image: "registry.redhat.io/rhel10/postgresql-18:latest"
+osac_db_size: 5Gi
+osac_db_user: service
+osac_db_database: service
+
+osac_aap_project_git_uri: "https://github.com/osac-project/osac-aap"
+osac_aap_project_git_branch: main

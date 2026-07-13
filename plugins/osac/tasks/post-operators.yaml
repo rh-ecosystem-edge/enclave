@@ -11,7 +11,8 @@
 #   5.  Get Keycloak admin credentials
 #   6.  Obtain Keycloak admin access token via REST API
 #   7.  Create osac realm (idempotent)
-#   8.  Create osac-controller client (idempotent)
+#   8.  Create and configure osac-controller client (via keycloak_client.yaml)
+#   8b. Create and configure osac-admin client (via keycloak_client.yaml)
 #   9.  Fetch client UUID + secret, create fulfillment-controller-credentials
 #   10. Deploy PostgreSQL (when not BYO): certs, init secret, config, Deployment, Service, NetworkPolicy
 #   11. Create postgres-client-cert-service Certificate CR (when not BYO)
@@ -51,7 +52,30 @@
   register: __r_ca_bundle
   retries: 30
   delay: 10
-  until: __r_ca_bundle.resources | length > 0
+  until:
+    - __r_ca_bundle.resources | length > 0
+    - __r_ca_bundle.resources[0].data['bundle.pem'] is defined
+    - __r_ca_bundle.resources[0].data['bundle.pem'] | length > 0
+
+# =====================================================================
+# 2b. Write CA bundle to local file for Keycloak TLS validation
+# =====================================================================
+
+- name: Create temp file for Keycloak CA bundle
+  ansible.builtin.tempfile:
+    state: file
+    suffix: -osac-ca-bundle.pem
+  register: __r_osac_keycloak_ca_file
+
+- name: Write CA bundle to temp file for Keycloak TLS validation
+  ansible.builtin.copy:
+    content: "{{ __r_ca_bundle.resources[0].data['bundle.pem'] }}"
+    dest: "{{ __r_osac_keycloak_ca_file.path }}"
+    mode: '0600'
+
+- name: Set Keycloak CA path fact
+  ansible.builtin.set_fact:
+    _osac_keycloak_ca_path: "{{ __r_osac_keycloak_ca_file.path }}"
 
 # =====================================================================
 # 3. Detect Keycloak hostname from cluster ingress config
@@ -120,7 +144,8 @@
       client_id: admin-cli
       username: "{{ _osac_kc_admin_user }}"
       password: "{{ _osac_kc_admin_pass }}"
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: 200
   register: __r_kc_token
   retries: 10
@@ -143,7 +168,8 @@
     method: GET
     headers:
       Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: [200, 404]
   register: __r_realm_check
   no_log: true
@@ -160,166 +186,29 @@
       realm: "{{ osac_keycloak_realm }}"
       enabled: true
       organizationsEnabled: true
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: [201]
   when: __r_realm_check.status == 404
   no_log: true
 
 # =====================================================================
-# 8. Create osac-controller client (idempotent)
+# 8. Create and configure osac-controller client (idempotent)
 # =====================================================================
 
-- name: Check if osac-controller client exists
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_client_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_client_check
-  no_log: true
-
-- name: Create osac-controller client
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-      Content-Type: application/json
-    body_format: json
-    body:
-      clientId: "{{ osac_keycloak_client_id }}"
-      enabled: true
-      publicClient: false
-      serviceAccountsEnabled: true
-      clientAuthenticatorType: client-secret
-      protocol: openid-connect
-    validate_certs: false
-    status_code: [201]
-  when: __r_client_check.json | length == 0
-  no_log: true
+- name: Set up osac-controller Keycloak client
+  ansible.builtin.include_tasks: keycloak_client.yaml
+  vars:
+    _kc_setup_client_id: "{{ osac_keycloak_client_id }}"
 
 # =====================================================================
-# 8a. Configure client protocol mapper and service account roles
+# 8b. Create and configure osac-admin client (idempotent)
 # =====================================================================
 
-- name: Fetch osac-controller client UUID for configuration
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId={{ osac_keycloak_client_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_client_for_config
-  no_log: true
-
-- name: Set client UUID for configuration
-  ansible.builtin.set_fact:
-    _osac_client_uuid_config: "{{ __r_client_for_config.json[0].id }}"
-  no_log: true
-
-# The OPA policy in the AuthConfig references input.auth.identity.username,
-# but Keycloak JWTs use preferred_username. Add a protocol mapper that
-# copies the username user attribute into a "username" token claim.
-- name: Check if username protocol mapper exists
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_mappers
-  no_log: true
-
-- name: Add username protocol mapper to client
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/protocol-mappers/models"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-      Content-Type: application/json
-    body_format: json
-    body:
-      name: username
-      protocol: openid-connect
-      protocolMapper: oidc-usermodel-attribute-mapper
-      config:
-        user.attribute: username
-        claim.name: username
-        jsonType.label: String
-        id.token.claim: "true"
-        access.token.claim: "true"
-        userinfo.token.claim: "true"
-        multivalued: "false"
-        aggregate.attrs: "false"
-    validate_certs: false
-    status_code: [201]
-  when: __r_mappers.json | selectattr('name', 'equalto', 'username') | list | length == 0
-  no_log: true
-
-# Assign realm-admin client role from the realm-management client to the
-# service account so the controller can manage Keycloak organizations.
-- name: Fetch service account user for osac-controller
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ _osac_client_uuid_config }}/service-account-user"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_sa_user
-  no_log: true
-
-- name: Fetch realm-management client UUID
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId=realm-management"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_realm_mgmt
-  no_log: true
-
-- name: Fetch realm-admin role from realm-management client
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ __r_realm_mgmt.json[0].id }}/roles/realm-admin"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_realm_admin_role
-  no_log: true
-
-- name: Check current realm-management role mappings for service account
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_sa_user.json.id }}/role-mappings/clients/{{ __r_realm_mgmt.json[0].id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
-    status_code: 200
-  register: __r_sa_client_roles
-  no_log: true
-
-- name: Assign realm-admin role to service account
-  ansible.builtin.uri:
-    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ __r_sa_user.json.id }}/role-mappings/clients/{{ __r_realm_mgmt.json[0].id }}"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ _osac_kc_token }}"
-      Content-Type: application/json
-    body_format: json
-    body:
-      - "{{ __r_realm_admin_role.json }}"
-    validate_certs: false
-    status_code: [204]
-  when: __r_sa_client_roles.json | selectattr('name', 'equalto', 'realm-admin') | list | length == 0
-  no_log: true
+- name: Set up osac-admin Keycloak client
+  ansible.builtin.include_tasks: keycloak_client.yaml
+  vars:
+    _kc_setup_client_id: "{{ osac_keycloak_admin_client_id }}"
 
 # =====================================================================
 # 9. Fetch client UUID + secret, create fulfillment-controller-credentials
@@ -331,7 +220,8 @@
     method: GET
     headers:
       Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: 200
   register: __r_client_details
   no_log: true
@@ -356,7 +246,8 @@
     method: GET
     headers:
       Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: 200
   register: __r_fetched_secret
   when: _osac_client_secret is not defined
@@ -376,7 +267,8 @@
     method: POST
     headers:
       Authorization: "Bearer {{ _osac_kc_token }}"
-    validate_certs: false
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: 200
   register: __r_generated_secret
   when: _osac_client_secret is not defined
@@ -744,6 +636,16 @@
       data:
         license.zip: "{{ lookup('ansible.builtin.file', osacAapLicenseFile) | b64encode }}"
   no_log: true
+
+# =====================================================================
+# Cleanup: remove CA bundle temp file
+# =====================================================================
+
+- name: Remove CA bundle temp file
+  ansible.builtin.file:
+    path: "{{ __r_osac_keycloak_ca_file.path }}"
+    state: absent
+  when: __r_osac_keycloak_ca_file.path is defined
 
 - name: Log OSAC post-operators completion
   ansible.builtin.debug:
