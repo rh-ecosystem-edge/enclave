@@ -75,10 +75,16 @@
     namespace: "{{ operator.namespace }}"
   register: r_sub_check
 
+- name: "Determine if operator should use automatic approval"
+  ansible.builtin.set_fact:
+    _use_automatic_approval: >-
+      {{ operator.namespace == "openshift-operators" or
+         (operator.connected_auto | default(false) | bool and not (disconnected | default(true) | bool)) }}
+
 - name: "Ensure Subscription exists (Automatic)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - _use_automatic_approval | bool
   kubernetes.core.k8s:
     state: present
     definition:
@@ -101,7 +107,7 @@
 - name: "Ensure Subscription exists (Manual)"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace != "openshift-operators"
+    - not (_use_automatic_approval | bool)
   kubernetes.core.k8s:
     state: present
     definition:
@@ -125,7 +131,7 @@
 - name: "Wait for Install Plan ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace != "openshift-operators"
+    - not (_use_automatic_approval | bool)
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -141,7 +147,7 @@
 - name: "Approve Install Plan ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace != "openshift-operators"
+    - not (_use_automatic_approval | bool)
   ansible.builtin.shell: |
     enclave reconcile operator-versions \
       --name "{{ operator.name }}" \
@@ -154,14 +160,14 @@
 - name: Print Install Plan approval output ({{ operator.name }})
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace != "openshift-operators"
+    - not (_use_automatic_approval | bool)
   ansible.builtin.debug:
     var: operator_update_result.stderr_lines
 
 - name: "Get Installed CSV ({{ operator.name }})"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - _use_automatic_approval | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: Subscription
@@ -177,7 +183,7 @@
 - name: "Wait until CSV is installed"
   when:
     - r_sub_check.resources | length == 0
-    - operator.namespace == "openshift-operators"
+    - _use_automatic_approval | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: ClusterServiceVersion

@@ -12,9 +12,12 @@
 
 - name: Set MCE subscription spec for connected
   when: not (disconnected | default(true) | bool)
+  vars:
+    _mce_operator: "{{ (operators | selectattr('name', 'equalto', 'multicluster-engine') | list)[0] | default({}) }}"
+    _mce_use_automatic: "{{ _mce_operator.connected_auto | default(false) | bool }}"
   ansible.builtin.set_fact:
     mce_subscription_spec:
-      installPlanApproval: Manual
+      installPlanApproval: "{{ 'Automatic' if (_mce_use_automatic | bool) else 'Manual' }}"
 
 - name: Ensure RHACM MultiClusterHub is present with MCE subscription spec
   kubernetes.core.k8s:
