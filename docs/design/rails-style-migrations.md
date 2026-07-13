@@ -62,9 +62,12 @@ Each migration file is named `YYYYMMDDHHMMSS_description.yaml` where the timesta
 the developer writing the migration (in UTC, at the time of writing). CI enforces:
 
 1. The new migration timestamp is strictly greater than the maximum timestamp already present in
-   `playbooks/tasks/migrations/` (monotonic ordering). This also rejects future-dated files as a
-   side effect. Backport migrations are intentionally disallowed — a fix for an older migration
-   is written as a new migration with a current timestamp.
+   `playbooks/tasks/migrations/` (monotonic ordering). Backport migrations are intentionally
+   disallowed — a fix for an older migration is written as a new migration with a current
+   timestamp.
+1. The new migration timestamp is not in the future relative to the current UTC time at CI
+   execution. A future-dated timestamp would pass the monotonic check but poison all subsequent
+   migrations by raising the bar above any valid current timestamp.
 1. No two migration files share the same timestamp prefix (uniqueness).
 1. No file already merged to `main` is modified in a subsequent PR (immutability).
 
@@ -76,7 +79,7 @@ secondary sort.
 `~/.config/enclave/migration_tasks` is an append-only file, one applied migration filename
 per line:
 
-```
+```text
 20260601120000_foundation_plugin_catalog_sources.yaml
 20260615090000_setup_enclave_kubeconfig_symlink.yaml
 20260709143200_trust_custom_ca.yaml
