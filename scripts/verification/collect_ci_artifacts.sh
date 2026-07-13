@@ -720,7 +720,7 @@ collect_cluster_status() {
     info "Collecting cluster status..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
-        export PATH=$PATH:/home/cloud-user/sessions/1/bin
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
 
         echo '=== Cluster Version ==='
         oc get clusterversion -o yaml
@@ -749,7 +749,7 @@ collect_cluster_events() {
     info "Collecting cluster events..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
-        export PATH=$PATH:/home/cloud-user/sessions/1/bin
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
 
         echo '=== Recent Events (last 100) ==='
         oc get events --all-namespaces --sort-by='.lastTimestamp' | tail -100
@@ -766,7 +766,7 @@ collect_cluster_pods() {
     info "Collecting pod information..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
-        export PATH=$PATH:/home/cloud-user/sessions/1/bin
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
 
         echo '=== All Pods ==='
         oc get pods --all-namespaces -o wide
@@ -789,7 +789,7 @@ collect_cluster_problem_pod_logs() {
     info "Collecting logs from problem pods..."
     ssh $ssh_opts cloud-user@"$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
-        export PATH=$PATH:/home/cloud-user/sessions/1/bin
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
         mkdir -p /tmp/problem-pods-${TIMESTAMP}
 
         # Get pods that are not Running/Succeeded
@@ -864,7 +864,7 @@ collect_cluster_plugin_diagnostics() {
         info "Collecting diagnostics for namespace: $ns"
         ssh $ssh_opts cloud-user@"$lz_ip" "
             export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
-            export PATH=$PATH:/home/cloud-user/sessions/1/bin
+            export PATH=/home/cloud-user/sessions/1/bin:\$PATH
 
             echo '=== Deployments ==='
             oc get deployments -n $ns -o wide 2>&1
