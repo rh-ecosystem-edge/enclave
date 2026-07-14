@@ -15,17 +15,22 @@
 #
 # Called from upgrade.yaml via include_tasks.
 
+- name: Check LZ migration control file exists
+  ansible.builtin.stat:
+    path: "{{ migrationTasksFilePath }}"
+  register: r_control_file_stat
+
 - name: Read LZ migration control file
   ansible.builtin.slurp:
     src: "{{ migrationTasksFilePath }}"
   register: r_control_file
-  ignore_errors: true
+  when: r_control_file_stat.stat.exists
 
 - name: Set applied migrations fact
   ansible.builtin.set_fact:
     _applied_migrations: >-
       {{ (r_control_file.content | b64decode).splitlines()
-         if not r_control_file.failed else [] }}
+         if r_control_file_stat.stat.exists else [] }}
 
 - name: Find migration files
   ansible.builtin.find:

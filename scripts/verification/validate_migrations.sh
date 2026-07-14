@@ -13,6 +13,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
+source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+
 MIGRATIONS_DIR="${ENCLAVE_DIR}/playbooks/tasks/migrations"
 failed=0
 
@@ -59,7 +61,7 @@ for path in "${all_files[@]}"; do
         fi
     done
     if $is_new && (( ts <= max_main_ts )); then
-        echo "ERROR: $fname timestamp ($ts) is not greater than max on main ($max_main_ts)"
+        error "$fname timestamp ($ts) is not greater than max on main ($max_main_ts)"
         failed=1
     fi
 done
@@ -71,7 +73,7 @@ for path in "${all_files[@]}"; do
     fname="$(basename "$path")"
     ts="${fname:0:14}"
     if (( ts > now )); then
-        echo "ERROR: $fname timestamp ($ts) is in the future (current UTC: $now)"
+        error "$fname timestamp ($ts) is in the future (current UTC: $now)"
         failed=1
     fi
 done
@@ -83,7 +85,7 @@ for path in "${all_files[@]}"; do
     fname="$(basename "$path")"
     ts="${fname:0:14}"
     if [ -n "${seen_ts[$ts]+x}" ]; then
-        echo "ERROR: duplicate timestamp prefix $ts: ${seen_ts[$ts]} and $fname"
+        error "duplicate timestamp prefix $ts: ${seen_ts[$ts]} and $fname"
         failed=1
     fi
     seen_ts[$ts]="$fname"
@@ -92,20 +94,19 @@ done
 # --- 4. Immutability check ---
 
 if git rev-parse origin/main &>/dev/null; then
-    modified="$(git diff --name-only origin/main -- playbooks/tasks/migrations/ \
-        | grep -E '^playbooks/tasks/migrations/[0-9]{14}_' \
-        | sed 's|.*/||' \
-        || true)"
-    for fname in $modified; do
+    while IFS= read -r fname; do
         # Only flag files that already exist on main (not newly added)
         for mf in "${main_files[@]:-}"; do
             if [ "$mf" = "$fname" ]; then
-                echo "ERROR: existing migration $fname has been modified — migrations are immutable"
+                error "existing migration $fname has been modified — migrations are immutable"
                 failed=1
                 break
             fi
         done
-    done
+    done < <(git diff --name-only origin/main -- playbooks/tasks/migrations/ \
+        | grep -E '^playbooks/tasks/migrations/[0-9]{14}_' \
+        | sed 's|.*/||' \
+        || true)
 fi
 
 if [ "$failed" -eq 0 ]; then
