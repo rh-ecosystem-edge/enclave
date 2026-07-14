@@ -1356,6 +1356,12 @@ RHCOS ISOs are automatically extracted from OpenShift release images during the 
 3. Determines the ISO volume ID using `blkid`
 4. Stores the ISO at `/var/www/html/rhcos-<version>-x86_64-live-iso.x86_64.iso`
 
+**Note**: If an ISO already exists at the destination path above for a given
+version, extraction is skipped for that version. To provide your own ISO
+instead of extracting it from the release image, pre-place it at
+`/var/www/html/rhcos-<version>-x86_64-live-iso.x86_64.iso` before running the
+prepare phase.
+
 ## Complete Example
 
 Configuration is split across multiple files. Here are complete examples for each.
