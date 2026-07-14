@@ -149,10 +149,18 @@ if [ -n "${AAP_LICENSE_FILE:-}" ] && { [ "$PLUGIN_NAME" = "aap" ] || [ "$PLUGIN_
     # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
     if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/config/plugins/osac.yaml"; then
         info "Generating config/plugins/osac.yaml on Landing Zone"
+        if [ -n "${OSAC_CHART_VERSION:-}" ]; then
+            if [[ ! "$OSAC_CHART_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+                error "Invalid OSAC_CHART_VERSION: '$OSAC_CHART_VERSION'"
+                error "Version must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                exit 1
+            fi
+        fi
         # shellcheck disable=SC2086,SC2087  # SSH_OPTS needs word splitting, we want client-side expansion
         ssh $SSH_OPTS "$LZ_SSH" "mkdir -p $LZ_ENCLAVE_DIR/config/plugins && cat > $LZ_ENCLAVE_DIR/config/plugins/osac.yaml" <<OSAC_EOF
 ---
 osacAapLicenseFile: "${LZ_AAP_LICENSE}"
+${OSAC_CHART_VERSION:+osacChartVersion: "${OSAC_CHART_VERSION}"}
 osacProfilesList:
   - caas
 OSAC_EOF

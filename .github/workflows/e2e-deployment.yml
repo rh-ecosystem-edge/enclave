@@ -67,6 +67,11 @@ on:
         required: false
         type: string
         default: 'E2E Deployment'
+      osac-chart-version:
+        description: 'OSAC Helm chart version to deploy (overrides plugin default)'
+        required: false
+        type: string
+        default: ''
   workflow_call:
     inputs:
       run-connected:
@@ -93,6 +98,9 @@ on:
       workflow-display-name:
         type: string
         default: 'E2E Deployment'
+      osac-chart-version:
+        type: string
+        default: ''
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -251,6 +259,7 @@ jobs:
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
+      OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
 
     steps:
       - name: Checkout code
@@ -664,6 +673,7 @@ jobs:
           commit-sha: ${{ github.sha }}
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
           artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
+          osac-chart-version: ${{ inputs.osac-chart-version }}
 
   # ---------------------------------------------------------------------------
   # Disconnected mode E2E deployment
@@ -697,6 +707,7 @@ jobs:
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
+      OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
 
     steps:
       - name: Checkout code
@@ -1119,3 +1130,4 @@ jobs:
           commit-sha: ${{ github.sha }}
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
           artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
+          osac-chart-version: ${{ inputs.osac-chart-version }}

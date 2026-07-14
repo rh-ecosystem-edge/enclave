@@ -32,7 +32,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  get-latest-chart-version:
+    name: Get latest OSAC nightly chart version
+    if: github.event_name != 'pull_request'
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 5
+    permissions: {}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Query latest nightly OSAC chart version from OCI registry
+        id: version
+        run: |
+          VERSION=$(skopeo list-tags --no-creds docker://ghcr.io/osac-project/charts/osac \
+            | jq -r '.Tags[]' | { grep 'nightly' || test $? = 1; } | sort -V | tail -1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::No nightly chart version found"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Latest OSAC nightly chart version: $VERSION"
+
   e2e-osac:
+    needs: get-latest-chart-version
+    if: always() && needs.get-latest-chart-version.result != 'failure'
     permissions:
       contents: read
       checks: write  # required by e2e-deployment.yml for check-run updates
@@ -45,4 +68,5 @@ jobs:
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
       workflow-display-name: 'E2E OSAC'
+      osac-chart-version: ${{ needs.get-latest-chart-version.outputs.version || '' }}
     secrets: inherit
