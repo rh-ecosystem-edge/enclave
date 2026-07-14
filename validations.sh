@@ -1,5 +1,12 @@
 #!/bin/bash
 
+SKIP_CHECK_LEFTOVERS=false
+for arg in "$@"; do
+  case "$arg" in
+    --skip-check-leftovers) SKIP_CHECK_LEFTOVERS=true ;;
+  esac
+done
+
 # Config file paths — single source of truth matching load-vars.yaml
 global_vars=config/global.yaml
 certs_vars=config/certificates.yaml
@@ -179,52 +186,54 @@ machine_network=$(getValue .machineNetwork)
 rendezvous_ip=$(getValue .rendezvousIP)
 
 ## Leftover resources check
-validation_section "check_leftovers"
+if [[ "$SKIP_CHECK_LEFTOVERS" == "false" ]]; then
+    validation_section "check_leftovers"
 
-# Check for metal3 systemd units left from a previous bootstrap
-metal3_units=$(systemctl list-unit-files 'metal3-*.service' --no-legend 2>/dev/null || true)
-if [[ -n "$metal3_units" ]]; then
-    validation fail metal3_systemd "Metal3 systemd units detected from a previous installation" "$metal3_units"
-fi
-validation pass metal3_systemd "No metal3 systemd units found"
+    # Check for metal3 systemd units left from a previous bootstrap
+    metal3_units=$(systemctl list-unit-files 'metal3-*.service' --no-legend 2>/dev/null || true)
+    if [[ -n "$metal3_units" ]]; then
+        validation fail metal3_systemd "Metal3 systemd units detected from a previous installation" "$metal3_units"
+    fi
+    validation pass metal3_systemd "No metal3 systemd units found"
 
-# Check root podman context
-root_pods=$(sudo podman pod ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
-if [[ -n "$root_pods" ]]; then
-    validation fail root_podman_pods "Root podman pods with metal3/quay detected" "$root_pods"
-fi
-validation pass root_podman_pods "No metal3/quay root podman pods"
+    # Check root podman context
+    root_pods=$(sudo podman pod ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
+    if [[ -n "$root_pods" ]]; then
+        validation fail root_podman_pods "Root podman pods with metal3/quay detected" "$root_pods"
+    fi
+    validation pass root_podman_pods "No metal3/quay root podman pods"
 
-root_containers=$(sudo podman ps -a --format "{{.Names}}" 2>/dev/null | grep -E 'metal3|ironic|httpd|baremetal-operator' || true)
-if [[ -n "$root_containers" ]]; then
-    validation fail root_podman_containers "Root podman containers detected" "$root_containers"
-fi
-validation pass root_podman_containers "No leftover root podman containers"
+    root_containers=$(sudo podman ps -a --format "{{.Names}}" 2>/dev/null | grep -E 'metal3|ironic|httpd|baremetal-operator' || true)
+    if [[ -n "$root_containers" ]]; then
+        validation fail root_podman_containers "Root podman containers detected" "$root_containers"
+    fi
+    validation pass root_podman_containers "No leftover root podman containers"
 
-root_volumes=$(sudo podman volume ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
-if [[ -n "$root_volumes" ]]; then
-    validation fail root_podman_volumes "Root podman volumes with metal3/quay detected" "$root_volumes"
-fi
-validation pass root_podman_volumes "No leftover root podman volumes"
+    root_volumes=$(sudo podman volume ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
+    if [[ -n "$root_volumes" ]]; then
+        validation fail root_podman_volumes "Root podman volumes with metal3/quay detected" "$root_volumes"
+    fi
+    validation pass root_podman_volumes "No leftover root podman volumes"
 
-# Check user podman context
-user_pods=$(podman pod ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
-if [[ -n "$user_pods" ]]; then
-    validation fail user_podman_pods "User podman pods with metal3/quay detected" "$user_pods"
-fi
-validation pass user_podman_pods "No metal3/quay user podman pods"
+    # Check user podman context
+    user_pods=$(podman pod ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
+    if [[ -n "$user_pods" ]]; then
+        validation fail user_podman_pods "User podman pods with metal3/quay detected" "$user_pods"
+    fi
+    validation pass user_podman_pods "No metal3/quay user podman pods"
 
-user_containers=$(podman ps -a --format "{{.Names}}" 2>/dev/null | grep -E 'metal3|ironic|httpd|baremetal-operator' || true)
-if [[ -n "$user_containers" ]]; then
-    validation fail user_podman_containers "User podman containers detected" "$user_containers"
-fi
-validation pass user_podman_containers "No leftover user podman containers"
+    user_containers=$(podman ps -a --format "{{.Names}}" 2>/dev/null | grep -E 'metal3|ironic|httpd|baremetal-operator' || true)
+    if [[ -n "$user_containers" ]]; then
+        validation fail user_podman_containers "User podman containers detected" "$user_containers"
+    fi
+    validation pass user_podman_containers "No leftover user podman containers"
 
-user_volumes=$(podman volume ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
-if [[ -n "$user_volumes" ]]; then
-    validation fail user_podman_volumes "User podman volumes with metal3/quay detected" "$user_volumes"
+    user_volumes=$(podman volume ls --format "{{.Name}}" 2>/dev/null | grep -E 'metal3|quay' || true)
+    if [[ -n "$user_volumes" ]]; then
+        validation fail user_podman_volumes "User podman volumes with metal3/quay detected" "$user_volumes"
+    fi
+    validation pass user_podman_volumes "No leftover user podman volumes"
 fi
-validation pass user_podman_volumes "No leftover user podman volumes"
 
 ## IP Validations
 validation_section "ip_address"
