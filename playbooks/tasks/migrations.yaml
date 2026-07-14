@@ -4,9 +4,10 @@
 # Runs pending versioned migrations against the LZ host. Migrations are files
 # named YYYYMMDDHHMMSS_description.yaml under playbooks/tasks/migrations/.
 #
-# A control file at ~/.config/enclave/migration_tasks on the LZ host records
-# one applied migration filename per line (append-only). Migrations not listed
-# in the control file are considered pending and are run in lexicographic order.
+# A control file (path from migrationTasksFilePath, default workingDir/migrations/tasks.txt)
+# on the LZ host records one applied migration filename per line (append-only).
+# Migrations not listed in the control file are considered pending and are run
+# in lexicographic order.
 #
 # If the control file is absent (first upgrade on a pre-migration-system install)
 # all migrations are run. bootstrap.sh seeds the control file on fresh installs
@@ -16,7 +17,7 @@
 
 - name: Read LZ migration control file
   ansible.builtin.slurp:
-    src: "~/.config/enclave/migration_tasks"
+    src: "{{ migrationTasksFilePath }}"
   register: r_control_file
   ignore_errors: true
 

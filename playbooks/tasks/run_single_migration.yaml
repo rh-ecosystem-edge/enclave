@@ -10,7 +10,7 @@
 
 - name: Record migration {{ migration_file }} as applied
   ansible.builtin.lineinfile:
-    path: "~/.config/enclave/migration_tasks"
+    path: "{{ migrationTasksFilePath }}"
     line: "{{ migration_file }}"
     create: true
     mode: "0644"

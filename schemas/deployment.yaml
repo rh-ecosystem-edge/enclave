@@ -30,6 +30,11 @@ properties:
       type: string
     description: >-
       List of plugins to deploy during the pipeline. Default: [storage_plugin].
+  migrationTasksFilePath:
+    type: string
+    description: >-
+      Path to the migration control file on the Landing Zone host. Records one applied migration
+      filename per line (append-only).
   quayRegistryCAConfigmapName:
     type: string
     description: >-

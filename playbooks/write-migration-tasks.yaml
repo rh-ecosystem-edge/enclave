@@ -1,0 +1,18 @@
+---
+# Bootstrap helper: seed the migration control file on a fresh install.
+# See playbooks/tasks/write_migration_tasks.yaml for the task logic.
+
+- name: Write migration control file
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Seed migration control file
+      ansible.builtin.include_tasks:
+        file: tasks/write_migration_tasks.yaml

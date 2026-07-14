@@ -278,9 +278,7 @@ step_partner_overlay() {
 
 step_write_migration_tasks() {
     echo "Writing migration tasks file .. " | tee -a ${log}
-    mkdir -p ~/.config/enclave
-    find ./playbooks/tasks/migrations  -name '[0-9]*_*.yaml' -printf '%f\n' | \
-         sort > ~/.config/enclave/migration_tasks
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/write-migration-tasks.yaml $EXTRA_VARS
     step_done
 }
 

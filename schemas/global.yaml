@@ -25,6 +25,11 @@ properties:
     description: List of plugins to deploy during the pipeline
     items:
       "$ref": "#/definitions/nonEmptyString"
+  migrationTasksFilePath:
+    "$ref": "#/definitions/nonEmptyString"
+    description: >-
+      Path to the migration control file on the Landing Zone host. Records one applied migration
+      filename per line (append-only).
   pullSecretPath:
     "$ref": "#/definitions/nonEmptyString"
     description: Path to the pull secret JSON file

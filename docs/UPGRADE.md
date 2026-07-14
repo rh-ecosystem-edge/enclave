@@ -70,10 +70,12 @@ timestamp prefix (`YYYYMMDDHHMMSS_description.yaml`) and live under `playbooks/t
 
 ### How it works
 
-A control file at `~/.config/enclave/migration_tasks` on the Landing Zone host records the
-filename of every migration that has already been applied (one per line, append-only). When
-`upgrade.sh` runs, the migration runner computes the set of pending migrations (all files minus
-those in the control file) and applies them in lexicographic (timestamp) order.
+A control file on the Landing Zone host records the filename of every migration that has already
+been applied (one per line, append-only). The default path is
+`<workingDir>/migrations/tasks.txt`; override it by setting `migrationTasksFilePath` in
+`config/global.yaml`. When `upgrade.sh` runs, the migration runner computes the set of pending
+migrations (all files minus those in the control file) and applies them in lexicographic
+(timestamp) order.
 
 Each migration is recorded in the control file only after it succeeds. If a migration fails,
 Ansible stops and the migration is not recorded, so the next upgrade attempt will retry from that
