@@ -25,6 +25,11 @@ enabled_plugins:
 # Default pull secret path. Override in config/global.yaml if stored elsewhere.
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 
+# Path to the migration control file on the Landing Zone host. Records one applied migration
+# filename per line (append-only). Override in config/global.yaml if the default location
+# does not suit your deployment layout.
+migrationTasksFilePath: "{{ workingDir }}/migrations/tasks.txt"
+
 # ConfigMap name for Quay registry CA certificates used by image.config and UpdateService.
 # Partner overlays that replace image.config.spec.additionalTrustedCA must include the
 # 'updateservice-registry' key from this ConfigMap to prevent UpdateService reconciliation failures.

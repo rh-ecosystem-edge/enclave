@@ -810,6 +810,24 @@ pullSecret: |
 pullSecretPath: "{{ workingDir }}/config/pull-secret.json"
 ```
 
+##### `migrationTasksFilePath`
+
+**Description**: Path to the migration control file on the Landing Zone host. Each applied migration filename is appended to this file (one per line). `upgrade.sh` uses set-subtraction against this file to determine which migrations are pending. Override in `config/global.yaml` only when the default location does not suit your deployment layout.
+
+**Type**: String (file path)
+
+**Default** (`defaults/deployment.yaml`): `{{ workingDir }}/migrations/tasks.txt`
+
+**Example**:
+```yaml
+migrationTasksFilePath: "/opt/enclave/migrations/tasks.txt"
+```
+
+**Notes**:
+- The parent directory is created automatically by `bootstrap.sh` and `upgrade.sh`
+- The file is append-only; do not edit it manually
+- On a fresh install `bootstrap.sh` seeds this file with all migrations present in the release, so they are not re-applied on the first upgrade
+
 ### Storage Configuration
 
 Storage is configured via the plugin system. The `storage_plugin` variable selects which storage plugin to deploy, and each plugin provides its own operator definitions, defaults, and registry mirrors in `plugins/<name>/plugin.yaml`.

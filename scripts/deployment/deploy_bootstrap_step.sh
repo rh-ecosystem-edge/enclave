@@ -28,7 +28,7 @@ if [ $# -lt 1 ]; then
     error "Example: $0 build-cache"
     error ""
     error "Available steps: setup validate download-content build-cache"
-    error "  acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+    error "  acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
     exit 1
 fi
 
@@ -36,11 +36,11 @@ STEP_NAME="$1"
 
 # Validate step name against allowed values
 case "$STEP_NAME" in
-    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay)
+    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay|write-migration-tasks)
         ;;
     *)
         error "Unknown bootstrap step: $STEP_NAME"
-        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
         exit 1
         ;;
 esac

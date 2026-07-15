@@ -1,33 +1,56 @@
 ---
-# Red Hat Sovereign Enclave - Migrations
+# Red Hat Sovereign Enclave - Migration Runner
 #
-# This file contains all migration tasks for upgrading from previous Enclave versions.
+# Runs pending versioned migrations against the LZ host. Migrations are files
+# named YYYYMMDDHHMMSS_description.yaml under playbooks/tasks/migrations/.
+#
+# A control file (path from migrationTasksFilePath, default workingDir/migrations/tasks.txt)
+# on the LZ host records one applied migration filename per line (append-only).
+# Migrations not listed in the control file are considered pending and are run
+# in lexicographic order.
+#
+# If the control file is absent (first upgrade on a pre-migration-system install)
+# all migrations are run. bootstrap.sh seeds the control file on fresh installs
+# so that migrations already baked into the installer are not re-applied.
+#
 # Called from upgrade.yaml via include_tasks.
-#
-# Individual migrations are organized under playbooks/tasks/migrations/ and are
-# conditionally included based on enabled_plugins and other runtime conditions.
 
-- name: Foundation plugin catalog source migration
-  ansible.builtin.include_tasks:
-    file: migrations/foundation_plugin_catalog_sources.yaml
-  when: disconnected | default(true) | bool
+- name: Check LZ migration control file exists
+  ansible.builtin.stat:
+    path: "{{ migrationTasksFilePath }}"
+  register: r_control_file_stat
 
-- name: Foundation plugin fleet catalog migration
-  ansible.builtin.include_tasks:
-    file: migrations/foundation_plugin_fleet_catalogs.yaml
-  when: disconnected | default(true) | bool
+- name: Read LZ migration control file
+  ansible.builtin.slurp:
+    src: "{{ migrationTasksFilePath }}"
+  register: r_control_file
+  when: r_control_file_stat.stat.exists
 
-- name: Trust custom CA migration
-  ansible.builtin.include_tasks:
-    file: migrations/trust_custom_ca.yaml
-  when:
-    - sslCACertificate is defined
-    - sslCACertificate | length > 0
+- name: Set applied migrations fact
+  ansible.builtin.set_fact:
+    _applied_migrations: >-
+      {{ (r_control_file.content | b64decode).splitlines()
+         if r_control_file_stat.stat.exists else [] }}
 
-- name: Enclave kubeconfig symlink migration
-  ansible.builtin.include_tasks:
-    file: migrations/setup_enclave_kubeconfig_symlink.yaml
+- name: Find migration files
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/tasks/migrations"
+    patterns: "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.yaml"
+  register: r_migrations
 
-- name: Trust quay registry CA for image config
+- name: Set pending migrations fact
+  ansible.builtin.set_fact:
+    _pending_migrations: >-
+      {{ r_migrations.files
+         | map(attribute='path')
+         | map('basename')
+         | reject('in', _applied_migrations)
+         | sort
+         | list }}
+
+- name: Run pending migrations
   ansible.builtin.include_tasks:
-    file: trust_quay_registry_ca_for_image_config.yaml
+    file: run_single_migration.yaml
+  loop: "{{ _pending_migrations }}"
+  loop_control:
+    loop_var: migration_file

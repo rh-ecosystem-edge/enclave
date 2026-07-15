@@ -409,6 +409,13 @@ jobs:
           make -f Makefile.ci deploy-cluster-discovery
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Bootstrap - Write migration tasks
+        id: bootstrap_write_migration_tasks
+        run: |
+          echo "## Bootstrap: Write Migration Tasks" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-write-migration-tasks
+          echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
@@ -616,6 +623,7 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
+            ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_authorino"]="Deploy authorino plugin"
@@ -638,6 +646,7 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
+            bootstrap_write_migration_tasks
             deploy_trust_manager
             deploy_rhbk
             deploy_authorino
@@ -857,6 +866,13 @@ jobs:
           make -f Makefile.ci deploy-cluster-discovery
           echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
 
+      - name: Bootstrap - Write migration tasks
+        id: bootstrap_write_migration_tasks
+        run: |
+          echo "## Bootstrap: Write Migration Tasks" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-cluster-write-migration-tasks
+          echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
+
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
@@ -1073,6 +1089,7 @@ jobs:
             ["bootstrap_operators"]="Bootstrap: Operators"
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
+            ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_authorino"]="Deploy authorino plugin"
@@ -1095,6 +1112,7 @@ jobs:
             bootstrap_operators
             bootstrap_day2
             bootstrap_discovery
+            bootstrap_write_migration_tasks
             deploy_trust_manager
             deploy_rhbk
             deploy_authorino

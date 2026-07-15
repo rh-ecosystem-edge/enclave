@@ -1,0 +1,16 @@
+---
+# Runs a single migration file and records it in the LZ control file on success.
+# Called by migrations.yaml with loop_var migration_file set to the filename.
+# Fail-fast: if the migration tasks fail, Ansible stops before recording the
+# migration, so the next upgrade attempt will retry from this migration.
+
+- name: Run migration {{ migration_file }}
+  ansible.builtin.include_tasks:
+    file: "migrations/{{ migration_file }}"
+
+- name: Record migration {{ migration_file }} as applied
+  ansible.builtin.lineinfile:
+    path: "{{ migrationTasksFilePath }}"
+    line: "{{ migration_file }}"
+    create: true
+    mode: "0644"

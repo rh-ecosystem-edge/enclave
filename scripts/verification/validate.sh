@@ -228,6 +228,18 @@ validate_plugins() {
     fi
 }
 
+validate_migrations() {
+    print_header "Validating migration files"
+
+    if "${ENCLAVE_DIR}/scripts/verification/validate_migrations.sh"; then
+        print_success "Migration validation passed"
+        return 0
+    else
+        print_error "Migration validation failed"
+        return 1
+    fi
+}
+
 validate_mirror() {
     print_header "Validating mirror artifacts on Landing Zone"
 
@@ -304,6 +316,7 @@ validate_all() {
     validate_templates || failed=1
     validate_makefile || failed=1
     validate_plugins || failed=1
+    validate_migrations || failed=1
     validate_python || failed=1
 
     if [ $failed -eq 0 ]; then
@@ -347,6 +360,9 @@ case "${1:-all}" in
     plugins)
         validate_plugins
         ;;
+    migrations)
+        validate_migrations
+        ;;
     python)
         validate_python
         ;;
@@ -357,7 +373,7 @@ case "${1:-all}" in
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|python}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|migrations|python}"
         exit 1
         ;;
 esac

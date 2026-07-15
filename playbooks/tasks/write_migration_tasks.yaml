@@ -1,0 +1,25 @@
+---
+# Seed the migration control file with all migration filenames present at
+# install time. Called from playbooks/write-migration-tasks.yaml during
+# bootstrap.
+#
+# On a fresh install this prevents upgrade.sh from re-applying migrations
+# already baked into the release. The path is taken from migrationTasksFilePath
+
+- name: Ensure migration control file directory exists
+  ansible.builtin.file:
+    path: "{{ migrationTasksFilePath | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Find all migration files
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/tasks/migrations"
+    patterns: "[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_*.yaml"
+  register: r_migrations
+
+- name: Seed migration control file with all known migrations
+  ansible.builtin.copy:
+    content: "{{ r_migrations.files | map(attribute='path') | map('basename') | sort | join('\n') }}\n"
+    dest: "{{ migrationTasksFilePath }}"
+    mode: "0644"

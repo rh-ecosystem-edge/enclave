@@ -16,17 +16,18 @@ usage() {
     echo "  -h, --help            Show this help message"
     echo ""
     echo "Available steps:"
-    echo "  setup               Configure environment (setup_env + setup_ansible)"
-    echo "  validate            Validate configuration (schema + validations)"
-    echo "  download-content    Download control binaries and dependency content (Phase 1)"
-    echo "  build-cache         Build local cache (Phase 2 + configure-abi)"
-    echo "  acquire-hardware    Acquire and validate hardware (Phase 3a)"
-    echo "  deploy              Deploy management cluster (Phase 3b)"
-    echo "  post-install        Post-install configuration (Phase 4)"
-    echo "  operators           Deploy management apps (Phase 5)"
-    echo "  day2                Day-2 operations (Phase 6)"
-    echo "  discovery           Discover nodes (Phase 7)"
-    echo "  partner-overlay     Deploy partner overlay (optional)"
+    echo "  setup                  Configure environment (setup_env + setup_ansible)"
+    echo "  validate               Validate configuration (schema + validations)"
+    echo "  download-content       Download control binaries and dependency content (Phase 1)"
+    echo "  build-cache            Build local cache (Phase 2 + configure-abi)"
+    echo "  acquire-hardware       Acquire and validate hardware (Phase 3a)"
+    echo "  deploy                 Deploy management cluster (Phase 3b)"
+    echo "  post-install           Post-install configuration (Phase 4)"
+    echo "  operators              Deploy management apps (Phase 5)"
+    echo "  day2                   Day-2 operations (Phase 6)"
+    echo "  discovery              Discover nodes (Phase 7)"
+    echo "  partner-overlay        Deploy partner overlay (optional)"
+    echo "  write-migration-tasks  Write migration tasks to disk"
     exit "${1:-0}"
 }
 
@@ -60,7 +61,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate --step value if provided
-valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
 if [ -n "$run_step" ]; then
     step_valid=false
     for s in $valid_steps; do
@@ -275,6 +276,12 @@ step_partner_overlay() {
     step_done
 }
 
+step_write_migration_tasks() {
+    echo "Writing migration tasks file .. " | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/write-migration-tasks.yaml $EXTRA_VARS
+    step_done
+}
+
 # --- Execution ---
 
 if [ -n "${run_step}" ]; then
@@ -294,6 +301,7 @@ else
     step_day2
     step_discovery
     step_partner_overlay
+    step_write_migration_tasks
 fi
 
 # teardown / cleanout

@@ -1,0 +1,6 @@
+---
+# Trust the Quay registry route CA for image pulls and UpdateService.
+# Thin wrapper delegating to the shared task used by operator deployments.
+
+- name: Trust Quay registry CA for image config
+  ansible.builtin.include_tasks: ../trust_quay_registry_ca_for_image_config.yaml
