@@ -11,8 +11,10 @@
 # - Copy ISO to web server
 # - Skip hosts already Ready in the cluster (idempotent reruns)
 # - Setup Ironic and boot agent hosts via virtual media
-# - Wait for deployment to complete
+# - Validate plugins and release installation gate
+# - Wait for cluster to reach installing state
 # - Detach virtual media from hosts
+# - Wait for deployment to complete
 # - Clean up Ironic
 #
 # Usage:
@@ -80,6 +82,34 @@
               tags: hardware
           tags: hardware
 
+        - name: Pre-install validate plugins
+          ansible.builtin.include_tasks:
+            file: tasks/pre_install_validate_plugins.yaml
+            apply:
+              tags: pre-install-validate
+          tags: pre-install-validate
+          when: agent_hosts_to_provision | length > 0
+
+        - name: Wait for cluster disk write to complete before detaching virtual media
+          ansible.builtin.uri:
+            url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}"
+            method: GET
+            headers:
+              Authorization: "{{ assisted_auth_token }}"
+            status_code: [200]
+          register: r_cluster_installing
+          failed_when: >-
+            r_cluster_installing is success
+            and r_cluster_installing.json.status in ["error", "cancelled"]
+          retries: 60
+          delay: 60
+          until: >-
+            r_cluster_installing.json is not defined
+            or r_cluster_installing.json.status in ["finalizing", "installed", "error", "cancelled"]
+          no_log: true
+          when: agent_hosts_to_provision | length > 0
+          tags: pre-install-validate
+
         - name: Detach virtual media from hosts
           loop: "{{ agent_hosts_to_provision }}"
           loop_control:
@@ -90,13 +120,6 @@
             apply:
               tags: hardware
           tags: hardware
-
-        - name: Pre-install validate plugins
-          ansible.builtin.include_tasks:
-            file: tasks/pre_install_validate_plugins.yaml
-            apply:
-              tags: pre-install-validate
-          tags: pre-install-validate
 
         - name: Set up enclave kubeconfig symlink
           ansible.builtin.include_tasks:
