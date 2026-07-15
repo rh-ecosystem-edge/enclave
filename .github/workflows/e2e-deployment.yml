@@ -254,7 +254,8 @@ jobs:
       ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
-      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
+      # TEMPORARY: appends acs for testing PR #602 (acs plugin PoC) only — revert before merge.
+      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || format('{0},acs', matrix.storage-plugin) }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -438,6 +439,12 @@ jobs:
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
         run: make -f Makefile.ci deploy-plugin PLUGIN=osac
+
+      # TEMPORARY: for testing PR #602 (acs plugin PoC) only — revert before merge.
+      - name: Deploy acs plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',acs,')
+        id: deploy_acs
+        run: make -f Makefile.ci deploy-plugin PLUGIN=acs
 
       - name: Verify cluster deployment
         if: success()
@@ -702,7 +709,8 @@ jobs:
       ENCLAVE_DEPLOYMENT_MODE: disconnected
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
-      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
+      # TEMPORARY: appends acs for testing PR #602 (acs plugin PoC) only — revert before merge.
+      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || format('{0},acs', matrix.storage-plugin) }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
@@ -886,6 +894,12 @@ jobs:
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
         run: make -f Makefile.ci deploy-plugin PLUGIN=osac
+
+      # TEMPORARY: for testing PR #602 (acs plugin PoC) only — revert before merge.
+      - name: Deploy acs plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',acs,')
+        id: deploy_acs
+        run: make -f Makefile.ci deploy-plugin PLUGIN=acs
 
       - name: Verify cluster deployment
         if: success()
