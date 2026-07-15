@@ -193,6 +193,185 @@
   no_log: true
 
 # =====================================================================
+# 7b. Create OSAC-specific client scopes (groups, username, osac-api)
+# =====================================================================
+
+- name: Create OSAC client scopes
+  ansible.builtin.include_tasks: keycloak_client_scope.yaml
+  vars:
+    _kc_scope: "{{ item }}"
+  loop: "{{ osac_keycloak_client_scopes }}"
+
+# =====================================================================
+# 7c. Create osac-cli public client for UI/CLI login
+# =====================================================================
+
+- name: Check if osac-cli client exists
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId=osac-cli"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: __r_osac_cli_check
+  no_log: true
+
+- name: Create osac-cli public client
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      clientId: osac-cli
+      enabled: true
+      publicClient: true
+      standardFlowEnabled: true
+      directAccessGrantsEnabled: true
+      serviceAccountsEnabled: false
+      protocol: openid-connect
+      defaultClientScopes:
+        - groups
+        - basic
+        - username
+        - roles
+        - osac-api
+      optionalClientScopes: []
+      redirectUris:
+        - http://localhost
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [201]
+  when: __r_osac_cli_check.json | length == 0
+  no_log: true
+
+# =====================================================================
+# 7d. Create groups and test users
+# =====================================================================
+
+- name: Create Keycloak groups for test users
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/groups"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "{{ item }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [201, 409]
+  loop: "{{ osac_keycloak_test_users | map(attribute='groups') | flatten | unique }}"
+  no_log: true
+  when: osacTestUsers | bool
+
+- name: Create test users
+  ansible.builtin.include_tasks: keycloak_user.yaml
+  vars:
+    _kc_user: "{{ item }}"
+  loop: "{{ osac_keycloak_test_users }}"
+  loop_control:
+    label: "{{ item.username }}"
+  when: osacTestUsers | bool
+
+# =====================================================================
+# 7e. Verify test users exist with correct attributes and groups
+# =====================================================================
+
+- name: Fetch test user from Keycloak
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users?username={{ item.username }}&exact=true"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: __r_verify_users
+  loop: "{{ osac_keycloak_test_users }}"
+  no_log: true
+  when: osacTestUsers | bool
+
+- name: Assert test user attributes
+  ansible.builtin.assert:
+    that:
+      - item.json | length == 1
+      - item.json[0].username == item.item.username
+      - item.json[0].firstName == item.item.firstName
+      - item.json[0].lastName == item.item.lastName
+      - item.json[0].email == item.item.email
+      - item.json[0].enabled
+      - item.json[0].emailVerified
+  loop: "{{ __r_verify_users.results }}"
+  no_log: true
+  when: osacTestUsers | bool
+
+- name: Fetch test user group membership
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ item.json[0].id }}/groups"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: __r_verify_groups
+  loop: "{{ __r_verify_users.results }}"
+  no_log: true
+  when: osacTestUsers | bool
+
+- name: Assert test user group membership
+  ansible.builtin.assert:
+    that:
+      - (item.json | map(attribute='name') | sort) == (item.item.item.groups | sort)
+  loop: "{{ __r_verify_groups.results }}"
+  no_log: true
+  when: osacTestUsers | bool
+
+# =====================================================================
+# 7f. Verify osac-cli client has expected default scopes
+# =====================================================================
+
+- name: Fetch osac-cli client details
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients?clientId=osac-cli"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: __r_osac_cli_details
+  no_log: true
+
+- name: Fetch osac-cli default scopes
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/clients/{{ __r_osac_cli_details.json[0].id }}/default-client-scopes"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: __r_osac_cli_scopes
+  no_log: true
+
+- name: Assert osac-cli client scopes include OSAC-specific scopes
+  vars:
+    _scope_names: "{{ __r_osac_cli_scopes.json | map(attribute='name') | list }}"
+  ansible.builtin.assert:
+    that:
+      - "'groups' in _scope_names"
+      - "'username' in _scope_names"
+      - "'osac-api' in _scope_names"
+  no_log: true
+
+# =====================================================================
 # 8. Create and configure osac-controller client (idempotent)
 # =====================================================================
 

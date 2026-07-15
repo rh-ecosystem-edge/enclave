@@ -51,6 +51,52 @@ properties:
   osac_keycloak_validate_certs:
     type: boolean
     description: Whether to validate TLS certificates for Keycloak API calls.
+  osac_keycloak_client_scopes:
+    type: array
+    description: >-
+      Keycloak client scopes to create in the osac realm. Each item defines
+      a scope with protocol mappers for OSAC token claims (groups, username, audience).
+    items:
+      type: object
+      required: [name, description, protocolMappers]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        attributes:
+          type: object
+        protocolMappers:
+          type: array
+          items:
+            type: object
+  osac_keycloak_test_users:
+    type: array
+    description: >-
+      Test users to create in the osac realm for initial UI/CLI access.
+      Each user is created with the specified password and group memberships.
+    items:
+      type: object
+      required: [username, firstName, lastName, email, password, groups]
+      properties:
+        username:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        groups:
+          type: array
+          items:
+            type: string
+  osacTestUsers:
+    type: boolean
+    description: Create test users in the Keycloak osac realm for initial UI/CLI access.
   osacNetrisEnabled:
     type: boolean
     description: Enable Netris network backend for cluster/network fulfillment.

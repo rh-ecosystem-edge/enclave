@@ -19,6 +19,9 @@
 #   - vmaas
 #   - ...
 
+# Optional: create test users for initial UI/CLI access (default: false)
+# osacTestUsers: true
+
 # Optional: bring your own database
 # osacBYODatabase: true
 # osacDatabaseUrl: "postgres://user@host:5432/dbname?sslmode=require"

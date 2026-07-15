@@ -49,6 +49,9 @@ properties:
     description: >-
       Optional container image overrides. When unset, the Helm chart's
       built-in image references are used.
+  osacTestUsers:
+    type: boolean
+    description: "Create test users in the Keycloak osac realm for initial UI/CLI access"
   osacNetrisEnabled:
     type: boolean
     description: "Enable Netris network backend for cluster/network fulfillment"
