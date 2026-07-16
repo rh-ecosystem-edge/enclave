@@ -4,6 +4,7 @@ After=metal3-ironic-api.service
 
 [Container]
 ContainerName=baremetal-operator
+Network=host
 Image={{ metal3_baremetal_operator_image }}
 Pull=never
 User=65532:65532
