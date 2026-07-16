@@ -11,10 +11,18 @@
   ansible.builtin.command: |
     {{ workingDir }}/bin/openshift-install --dir {{ workingDir }}/ocp-cluster/ agent wait-for install-complete  --log-level=debug
 
+# Virtual media detach must stay here, after install-complete. Moving it earlier
+# (e.g. right after Ironic 'active') breaks hardware where coreos-installer reads
+# the RHCOS disk image directly from the mounted ISO in streaming mode: detaching
+# mid-stream causes an I/O error and aborts the disk write. A future improvement
+# should detach per-node as soon as each host's disk write completes (Assisted
+# Service host status 'rebooting') to also prevent UEFI firmware boot-loops on
+# hardware that ignores the one-shot boot order when virtual media is still attached.
 - name: Detach virtual media from hosts
   loop: "{{ agent_hosts }}"
   loop_control:
     loop_var: agent_host
+    label: "{{ agent_host.name }}"
   ansible.builtin.include_tasks:
     file: tasks/configure_hardware_ironic_detach_vmedia.yaml
 
