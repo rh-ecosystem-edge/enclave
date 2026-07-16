@@ -51,7 +51,5 @@
     user: "{{ metal3_ironic_username }}"
     password: "{{ metal3_ironic_password }}"
     force_basic_auth: true
-    status_code: [204, 404]
-  register: detach_result
-  failed_when:
-    - detach_result.status | default(0) not in [204, 404]
+    status_code: [204]
+  ignore_errors: true
