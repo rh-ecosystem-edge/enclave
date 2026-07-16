@@ -35,3 +35,7 @@ migrationTasksFilePath: "{{ workingDir }}/migrations/tasks.txt"
 # 'updateservice-registry' key from this ConfigMap to prevent UpdateService reconciliation failures.
 # See: https://github.com/gori-project/GoRI/issues/924
 quayRegistryCAConfigmapName: quay-registry-ca
+
+# Default network interface name for NMState configuration.
+# Override per host via discovery_hosts[].interfaceName.
+defaultInterfaceName: eno1

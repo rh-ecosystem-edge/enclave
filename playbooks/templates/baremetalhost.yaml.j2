@@ -12,6 +12,6 @@ spec:
   automatedCleaningMode: disabled
   bootMACAddress: "{{ discovery_host.macAddress }}"
   bmc:
-    address: "redfish-virtualmedia+https://{{ discovery_host.redfish }}/redfish/v1/Systems/{{ discovery_host.bmcSystemId | default('1') }}"
+    address: "redfish-virtualmedia+https://{{ discovery_host.redfish }}{% if discovery_host.bmcSystemId is defined %}/redfish/v1/Systems/{{ discovery_host.bmcSystemId }}{% endif %}"
     credentialsName: {{ discovery_host.name }}-bmc-secret
     disableCertificateVerification: true
