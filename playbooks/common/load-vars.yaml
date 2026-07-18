@@ -73,6 +73,46 @@
   ansible.builtin.set_fact:
     enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"
 
+- name: Find plugin directories for early remote fetch
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    file_type: directory
+    depth: 1
+  register: r_plugin_dirs_early
+
+- name: Check each plugin descriptor for remote type
+  ansible.builtin.stat:
+    path: "{{ item.path }}/plugin.yaml"
+  loop: "{{ r_plugin_dirs_early.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  register: r_plugin_yaml_stats_early
+
+- name: Load plugin descriptors to identify remote plugins
+  ansible.builtin.include_vars:
+    file: "{{ item.stat.path }}"
+    name: "plugin_descriptor_{{ item.item.path | basename }}"
+  loop: "{{ r_plugin_yaml_stats_early.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+
+- name: Fetch remote plugins before loading plugin configs
+  ansible.builtin.include_tasks:
+    file: ../tasks/fetch_remote_plugin.yaml
+  vars:
+    plugin_name: "{{ item.item.path | basename }}"
+    plugin_dir: "{{ item.item.path }}"
+    plugin: "{{ vars['plugin_descriptor_' + (item.item.path | basename)] }}"
+    r_plugin_yaml:
+      stat:
+        exists: true
+  loop: "{{ r_plugin_yaml_stats_early.results | selectattr('stat.exists') | list }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
+  when:
+    - item.item.path | basename in enabled_plugins
+    - vars['plugin_descriptor_' + (item.item.path | basename)].remote is defined
+
 - name: Find plugin directories
   ansible.builtin.find:
     paths: "{{ playbook_dir }}/../plugins"
