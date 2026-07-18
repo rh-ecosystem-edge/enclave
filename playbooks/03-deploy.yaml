@@ -80,17 +80,6 @@
               tags: hardware
           tags: hardware
 
-        - name: Detach virtual media from hosts
-          loop: "{{ agent_hosts_to_provision }}"
-          loop_control:
-            loop_var: agent_host
-            label: "{{ agent_host.name }}"
-          ansible.builtin.include_tasks:
-            file: tasks/configure_hardware_ironic_detach_vmedia.yaml
-            apply:
-              tags: hardware
-          tags: hardware
-
         - name: Pre-install validate plugins
           ansible.builtin.include_tasks:
             file: tasks/pre_install_validate_plugins.yaml
