@@ -1,0 +1,19 @@
+---
+name: external-secrets
+type: foundation
+order: 10
+mirror: core
+
+operators:
+  - name: openshift-external-secrets-operator
+    version: 1.0.0
+    channel: stable-v1.0
+    init_version: 1.0.0
+    namespace: external-secrets-operator
+    global: true
+    csvNames:
+      - external-secrets-operator
+
+registries:
+  - location: "registry.redhat.io/external-secrets-operator"
+    mirror: "external-secrets-operator"
