@@ -10,6 +10,12 @@ from enclave.tools.check_certificate_chains import (
     check_certificate_chains,
     main,
 )
+from tests.cert_helpers import (
+    generate_ca,
+    generate_expired_cert,
+    generate_intermediate_ca,
+    generate_signed_leaf,
+)
 
 
 def _write_certs(tmp_path: Path, **kwargs: str) -> str:
@@ -314,3 +320,85 @@ def test_main_propagates_validation_error(
     with pytest.raises(CertificateValidationError, match="chain incomplete"):
         main(str(tmp_path / "certs.yaml"))
     assert capsys.readouterr().out == ""
+
+
+def test_real_three_hop_chain_passes(tmp_path: Path) -> None:
+    """check_certificate_chains passes for a genuine three-certificate chain.
+
+    Builds a self-signed root CA, an intermediate CA signed by the root (with
+    basicConstraints=CA:TRUE), and a leaf cert signed by the intermediate. The
+    full chain leaf→intermediate→root is written to sslAPICertificateFullChain.
+    No mocks: is_self_signed and openssl_verify run real openssl subprocess calls,
+    so this test exercises the complete validation path with genuine certificates.
+    """
+    root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
+    inter_pem, inter_cert_path, inter_key_path = generate_intermediate_ca(
+        tmp_path, "Intermediate CA", root_cert_path, root_key_path
+    )
+    leaf_pem = generate_signed_leaf(tmp_path, inter_cert_path, inter_key_path, "Leaf")
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=f"{leaf_pem}\n{inter_pem}\n{root_pem}",
+    )
+    check_certificate_chains(path)
+
+
+def test_real_chain_missing_intermediate_fails(tmp_path: Path) -> None:
+    """Fail when the leaf is not directly signed by the provided CA (no mocks).
+
+    The root CA signs the intermediate, not the leaf directly. Presenting the leaf
+    alone with sslCACertificate=root causes openssl_verify(root, leaf) to return
+    False, which is the path we want to exercise without any mocking.
+    """
+    root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
+    _, inter_cert_path, inter_key_path = generate_intermediate_ca(
+        tmp_path, "Intermediate CA", root_cert_path, root_key_path
+    )
+    leaf_pem = generate_signed_leaf(tmp_path, inter_cert_path, inter_key_path, "Leaf")
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=leaf_pem,
+        sslCACertificate=root_pem,
+    )
+    with pytest.raises(CertificateValidationError):
+        check_certificate_chains(path)
+
+
+def test_expired_leaf_fails(tmp_path: Path) -> None:
+    """Fail when the leaf cert is expired.
+
+    openssl verify rejects expired certs by default, so openssl_verify(ca, expired_leaf)
+    returns False even though the CA did issue the cert.
+    """
+    root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
+    expired_leaf_pem = generate_expired_cert(
+        tmp_path, root_cert_path, root_key_path, "Leaf"
+    )
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=expired_leaf_pem,
+        sslCACertificate=root_pem,
+    )
+    with pytest.raises(CertificateValidationError):
+        check_certificate_chains(path)
+
+
+def test_expired_intermediate_fails(tmp_path: Path) -> None:
+    """Fail when an intermediate cert in the chain is expired.
+
+    The chain ends with the expired intermediate (non-self-signed). The root CA
+    issued it, but openssl_verify(root, expired_intermediate) returns False because
+    the cert has expired.
+    """
+    root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
+    expired_inter_pem = generate_expired_cert(
+        tmp_path, root_cert_path, root_key_path, "Intermediate CA"
+    )
+    leaf_pem = generate_signed_leaf(tmp_path, root_cert_path, root_key_path, "Leaf")
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=f"{leaf_pem}\n{expired_inter_pem}",
+        sslCACertificate=root_pem,
+    )
+    with pytest.raises(CertificateValidationError):
+        check_certificate_chains(path)

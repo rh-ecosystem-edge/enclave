@@ -12,7 +12,12 @@ from pathlib import Path
 import pytest
 
 from enclave.tools.cert_utils import is_self_signed, openssl_verify, pem_blocks
-from tests.cert_helpers import generate_ca, generate_self_issued_not_self_signed_cert
+from tests.cert_helpers import (
+    generate_ca,
+    generate_expired_cert,
+    generate_expired_self_signed,
+    generate_self_issued_not_self_signed_cert,
+)
 
 
 def test_pem_blocks_splits_multiple_certificates(
@@ -78,3 +83,21 @@ def test_is_self_signed_returns_false_for_self_issued_but_not_self_signed(
     """A cert with issuer==subject but signed by a different key is not self-signed."""
     cross_pem = generate_self_issued_not_self_signed_cert(tmp_path)
     assert is_self_signed(cross_pem) is False
+
+
+def test_is_self_signed_returns_true_for_expired_self_signed(tmp_path: Path) -> None:
+    """Return True for a self-signed cert whose validity window has passed.
+
+    is_self_signed is a structural check: it verifies that the cert's signature was
+    made by its own key, regardless of whether the cert is currently within its
+    validity period.
+    """
+    expired_ss_pem = generate_expired_self_signed(tmp_path, "Expired CA")
+    assert is_self_signed(expired_ss_pem) is True
+
+
+def test_openssl_verify_expired_cert_returns_false(tmp_path: Path) -> None:
+    """openssl_verify returns False when the cert is expired."""
+    ca_pem, ca_cert_path, ca_key_path = generate_ca(tmp_path, "Test CA")
+    expired_pem = generate_expired_cert(tmp_path, ca_cert_path, ca_key_path, "Leaf")
+    assert openssl_verify(ca_pem, expired_pem) is False
