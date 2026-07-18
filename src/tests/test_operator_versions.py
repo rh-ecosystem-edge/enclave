@@ -3,7 +3,11 @@ import json
 import pytest
 from pytest_mock import MockerFixture
 
-from enclave.reconcile.operator_versions import approve_install_plans, reconcile
+from enclave.reconcile.operator_versions import (
+    approve_and_wait_for_csv,
+    approve_install_plans,
+    reconcile,
+)
 from tests.fixtures import Fixtures, OcResultFactory
 
 fxt = Fixtures("operator_versions")
@@ -206,80 +210,127 @@ def test_approve_fixture_approves_when_at_desired(
 # ---------------------------------------------------------------------------
 
 
-def test_reconcile_calls_approve_and_wait(mocker: MockerFixture) -> None:
-    """reconcile calls approve_install_plans then waits for each CSV to reach Succeeded."""
-    mock_approve = mocker.patch(
-        "enclave.reconcile.operator_versions.approve_install_plans"
-    )
-    mock_wait = mocker.patch(
-        "enclave.reconcile.operator_versions.wait_for_resource_status"
-    )
+def test_reconcile_delegates_to_approve_and_wait_per_csv(mocker: MockerFixture) -> None:
+    """reconcile calls approve_and_wait_for_csv once per CSV with the right arguments."""
+    mock_aw = mocker.patch("enclave.reconcile.operator_versions.approve_and_wait_for_csv")
     dry_run = False
     reconcile("3.15.3", "quay-enterprise", ["quay-operator"], dry_run=dry_run)
-    mock_approve.assert_called_once_with(
+    mock_aw.assert_called_once_with(
         dry_run,
         "quay-enterprise",
         {"quay-operator": "3.15.3"},
-    )
-    mock_wait.assert_called_once_with(
-        "clusterserviceversion.operators.coreos.com",
-        "quay-operator.v3.15.3",
-        "phase",
-        "Succeeded",
-        namespace="quay-enterprise",
-        timeout_minutes=30,
-        sleep_interval=10,
+        "quay-operator",
+        "3.15.3",
     )
 
 
 def test_reconcile_dry_run_skips_wait(mocker: MockerFixture) -> None:
-    """In dry-run mode reconcile calls approve but never waits for CSV status."""
-    mocker.patch("enclave.reconcile.operator_versions.approve_install_plans")
-    mock_wait = mocker.patch(
-        "enclave.reconcile.operator_versions.wait_for_resource_status"
-    )
+    """In dry-run mode reconcile calls approve_install_plans once and skips the wait."""
+    mock_approve = mocker.patch("enclave.reconcile.operator_versions.approve_install_plans")
+    mock_aw = mocker.patch("enclave.reconcile.operator_versions.approve_and_wait_for_csv")
     reconcile("3.15.3", "quay-enterprise", ["quay-operator"], dry_run=True)
-    mock_wait.assert_not_called()
+    mock_approve.assert_called_once()
+    mock_aw.assert_not_called()
 
 
 def test_reconcile_replaces_plus_in_version(mocker: MockerFixture) -> None:
     """'+' in the version string is normalised to '-' before building CSV names."""
-    mock_approve = mocker.patch(
-        "enclave.reconcile.operator_versions.approve_install_plans"
-    )
-    mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
+    mock_aw = mocker.patch("enclave.reconcile.operator_versions.approve_and_wait_for_csv")
     dry_run = False
     reconcile(
         "4.20.0+202602261925", "metallb-system", ["metallb-operator"], dry_run=dry_run
     )
-    mock_approve.assert_called_once_with(
+    mock_aw.assert_called_once_with(
         dry_run,
         "metallb-system",
         {"metallb-operator": "4.20.0-202602261925"},
+        "metallb-operator",
+        "4.20.0-202602261925",
     )
+
+
+def test_approve_and_wait_approves_intermediate_then_target(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """When OLM requires stepping through 2.10.2 before 2.10.3, approve_and_wait_for_csv must approve both.
+
+    The 2.10.3 plan is created by OLM only after 2.10.2 installs, so approve_install_plans
+    is called on every poll iteration.
+    """
+    intermediate_plan = _plan(
+        "ip-intermediate", "RequiresApproval", ["my-operator.v2.10.2"]
+    )
+    target_plan = _plan("ip-target", "RequiresApproval", ["my-operator.v2.10.3"])
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(
+                stdout=json.dumps({"items": [intermediate_plan]})
+            ),  # get plans (iter 1)
+            oc_result(stdout="patched"),  # patch ip-intermediate
+            oc_result(stdout="Installing"),  # get CSV phase → not done
+            oc_result(
+                stdout=json.dumps({"items": [target_plan]})
+            ),  # get plans (iter 2)
+            oc_result(stdout="patched"),  # patch ip-target
+            oc_result(stdout="Succeeded"),  # get CSV phase → done
+        ],
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+
+    dry_run = False
+    approve_and_wait_for_csv(
+        dry_run, "test-ns", {"my-operator": "2.10.3"}, "my-operator", "2.10.3"
+    )
+
+    def contains(cmd: list[str], *substrings: str) -> bool:
+        return all(any(s in part for part in cmd) for s in substrings)
+
+    cmds = [call.args[0] for call in mock_run.call_args_list]
+    assert contains(cmds[0], "get", "installplan")
+    assert contains(cmds[1], "patch", "ip-intermediate")
+    assert contains(cmds[2], "get", "clusterserviceversion")
+    assert contains(cmds[3], "get", "installplan")
+    assert contains(cmds[4], "patch", "ip-target")
+    assert contains(cmds[5], "get", "clusterserviceversion")
+
+
+def test_approve_and_wait_raises_on_timeout(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """approve_and_wait_for_csv raises TimeoutError when CSV never reaches Succeeded."""
+    plan = _plan("ip-abc", "RequiresApproval", ["my-operator.v1.0.0"])
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(stdout=json.dumps({"items": [plan]})),
+            oc_result(stdout="patched"),
+            oc_result(stdout="Installing"),
+        ],
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+    mocker.patch("enclave.reconcile.operator_versions.time.time", side_effect=[0.0, 9999.0])
+
+    dry_run = False
+    with pytest.raises(TimeoutError, match=r"my-operator\.v1\.0\.0"):
+        approve_and_wait_for_csv(
+            dry_run, "test-ns", {"my-operator": "1.0.0"}, "my-operator", "1.0.0"
+        )
 
 
 def test_reconcile_multiple_csv_names(mocker: MockerFixture) -> None:
-    """When multiple CSV names are given, approve is called once and wait is called per CSV."""
-    mock_approve = mocker.patch(
-        "enclave.reconcile.operator_versions.approve_install_plans"
-    )
-    mock_wait = mocker.patch(
-        "enclave.reconcile.operator_versions.wait_for_resource_status"
-    )
-    dry_run = False
+    """When multiple CSV names are given, approve_and_wait_for_csv is called once per CSV."""
+    mock_aw = mocker.patch("enclave.reconcile.operator_versions.approve_and_wait_for_csv")
+    op_version_map = {"update-service-operator": "5.0.3", "another-csv": "5.0.3"}
     reconcile(
         "5.0.3",
         "openshift-update-service",
         ["update-service-operator", "another-csv"],
-        dry_run=dry_run,
+        dry_run=False,
     )
-    mock_approve.assert_called_once_with(
-        dry_run,
-        "openshift-update-service",
-        {"update-service-operator": "5.0.3", "another-csv": "5.0.3"},
-    )
-    assert mock_wait.call_count == 2
-    called_names = [c.args[1] for c in mock_wait.call_args_list]
-    assert "update-service-operator.v5.0.3" in called_names
-    assert "another-csv.v5.0.3" in called_names
+    assert mock_aw.call_count == 2
+    called_csv_names = [c.args[3] for c in mock_aw.call_args_list]
+    assert "update-service-operator" in called_csv_names
+    assert "another-csv" in called_csv_names
+    for call in mock_aw.call_args_list:
+        assert call.args[2] == op_version_map
