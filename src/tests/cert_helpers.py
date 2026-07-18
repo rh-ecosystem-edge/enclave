@@ -300,8 +300,8 @@ def generate_expired_cert(
     """Generate a cert with validity dates in the past, signed by the CA. Returns cert_pem.
 
     The validity window is set to the two-day period ending yesterday so the cert is
-    expired by the time the test runs. Requires OpenSSL 3.x in PATH (available on
-    RHEL 9/10 CI and macOS with Homebrew openssl@3).
+    expired by the time the test runs. Requires OpenSSL 3.4+ (-not_before/-not_after
+    were introduced in 3.4).
     """
     key_path = tmp_path / f"expired_{cn}.key"
     csr_path = tmp_path / f"expired_{cn}.csr"
@@ -370,12 +370,101 @@ def generate_expired_cert(
     return cert_path.read_text(encoding="utf-8").strip()
 
 
+def generate_expired_intermediate_ca(
+    tmp_path: Path,
+    cn: str,
+    parent_cert_path: Path,
+    parent_key_path: Path,
+) -> tuple[str, Path, Path]:
+    """Generate an expired intermediate CA cert signed by parent. Returns (cert_pem, cert_path, key_path).
+
+    Combines CA extensions (basicConstraints=CA:TRUE) with a past validity window so the
+    cert is both structurally a CA and already expired when the test runs.
+    Requires OpenSSL 3.4+ (-not_before/-not_after were introduced in 3.4).
+    """
+    key_path = tmp_path / f"expired_inter_{cn}.key"
+    csr_path = tmp_path / f"expired_inter_{cn}.csr"
+    cert_path = tmp_path / f"expired_inter_{cn}.crt"
+    # Generate a P-256 EC private key for the expired intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "genpkey",
+            "-algorithm",
+            "EC",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-out",
+            str(key_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Create a Certificate Signing Request (CSR) for the expired intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-new",
+            "-key",
+            str(key_path),
+            "-out",
+            str(csr_path),
+            "-subj",
+            f"/CN={cn}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Write a CA extensions config so the cert carries basicConstraints=CA:TRUE.
+    # openssl x509 -req does not support -addext, so an extfile is required.
+    ext_file = tmp_path / f"expired_inter_{cn}.ext"
+    ext_file.write_text(
+        "[ext]\nbasicConstraints=CA:TRUE,pathlen:0\nkeyUsage=keyCertSign,cRLSign\n",
+        encoding="utf-8",
+    )
+    # Compute a validity window that ends yesterday so the cert is already expired.
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    day_before = datetime.now(UTC).date() - timedelta(days=2)
+    not_before = day_before.strftime("%Y%m%d000000Z")
+    not_after = yesterday.strftime("%Y%m%d000000Z")
+    # Sign the CSR with the parent CA, embedding CA extensions and a past validity window.
+    subprocess.run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            str(csr_path),
+            "-CA",
+            str(parent_cert_path),
+            "-CAkey",
+            str(parent_key_path),
+            "-out",
+            str(cert_path),
+            "-not_before",
+            not_before,
+            "-not_after",
+            not_after,
+            "-set_serial",
+            "98",
+            "-extfile",
+            str(ext_file),
+            "-extensions",
+            "ext",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert_path.read_text(encoding="utf-8").strip(), cert_path, key_path
+
+
 def generate_expired_self_signed(tmp_path: Path, cn: str) -> str:
     """Generate a self-signed cert with validity dates in the past. Returns cert_pem.
 
     The validity window is set to the two-day period ending yesterday so the cert is
-    expired by the time the test runs. Requires OpenSSL 3.x in PATH (available on
-    RHEL 9/10 CI and macOS with Homebrew openssl@3).
+    expired by the time the test runs. Requires OpenSSL 3.4+ (-not_before/-not_after
+    were introduced in 3.4).
     """
     key_path = tmp_path / f"expired_ss_{cn}.key"
     cert_path = tmp_path / f"expired_ss_{cn}.crt"

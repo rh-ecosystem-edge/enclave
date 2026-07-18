@@ -18,18 +18,25 @@ class CertificateValidationError(Exception):
     """Raised when certificate chain validation fails."""
 
 
+def _check_self_signed_root(field: str, cert_pem: str, ca_pem: str) -> str | None:
+    """Return an issue string when the chain ends with a self-signed root, else None."""
+    if not openssl_verify(cert_pem, cert_pem):
+        return f"{field}: chain ends with a self-signed root that has expired."
+    if ca_pem and not openssl_verify(ca_pem, cert_pem):
+        return (
+            f"{field}: chain ends with a self-signed root but sslCACertificate "
+            f"does not verify it — they may belong to different CA hierarchies."
+        )
+    return None
+
+
 def _check_chain(field: str, chain_pem: str, ca_pem: str) -> str | None:
     """Return an issue string if the chain has a completeness or consistency problem, else None."""
     certs = pem_blocks(chain_pem)
     if not certs:
         return f"{field}: configured but contains no PEM certificate blocks — check the value"
     if is_self_signed(certs[-1]):
-        return (
-            f"{field}: chain ends with a self-signed root but sslCACertificate "
-            f"does not verify it — they may belong to different CA hierarchies."
-            if ca_pem and not openssl_verify(ca_pem, certs[-1])
-            else None
-        )
+        return _check_self_signed_root(field, certs[-1], ca_pem)
     if not ca_pem:
         try:
             system_ca = find_system_ca_for_chain(chain_pem)

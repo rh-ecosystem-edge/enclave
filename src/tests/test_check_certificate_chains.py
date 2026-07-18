@@ -13,6 +13,8 @@ from enclave.tools.check_certificate_chains import (
 from tests.cert_helpers import (
     generate_ca,
     generate_expired_cert,
+    generate_expired_intermediate_ca,
+    generate_expired_self_signed,
     generate_intermediate_ca,
     generate_signed_leaf,
 )
@@ -33,6 +35,9 @@ def test_check_passes_when_chain_ends_with_self_signed_root(
     """Pass when the chain ends with a self-signed root."""
     mocker.patch(
         "enclave.tools.check_certificate_chains.is_self_signed", return_value=True
+    )
+    mocker.patch(
+        "enclave.tools.check_certificate_chains.openssl_verify", return_value=True
     )
     path = _write_certs(
         tmp_path,
@@ -58,7 +63,7 @@ def test_check_passes_when_ca_matches_self_signed_root(
     )
     check_certificate_chains(path)
     mock_is_self_signed.assert_called_once_with(root_pem)
-    mock_openssl_verify.assert_called_once_with(root_pem, root_pem)
+    mock_openssl_verify.assert_called_with(root_pem, root_pem)
 
 
 def test_check_raises_when_ca_does_not_match_self_signed_root(
@@ -364,6 +369,19 @@ def test_real_chain_missing_intermediate_fails(tmp_path: Path) -> None:
         check_certificate_chains(path)
 
 
+def test_expired_self_signed_root_chain_fails(tmp_path: Path) -> None:
+    """Fail when the chain ends with an expired self-signed root and no CA is provided.
+
+    is_self_signed uses -no_check_time to detect structural self-signing regardless
+    of validity dates. This test ensures that the expiry check after that structural
+    check still rejects the chain.
+    """
+    expired_root_pem = generate_expired_self_signed(tmp_path, "Expired Root CA")
+    path = _write_certs(tmp_path, sslAPICertificateFullChain=expired_root_pem)
+    with pytest.raises(CertificateValidationError):
+        check_certificate_chains(path)
+
+
 def test_expired_leaf_fails(tmp_path: Path) -> None:
     """Fail when the leaf cert is expired.
 
@@ -384,17 +402,22 @@ def test_expired_leaf_fails(tmp_path: Path) -> None:
 
 
 def test_expired_intermediate_fails(tmp_path: Path) -> None:
-    """Fail when an intermediate cert in the chain is expired.
+    """Fail when an intermediate CA in the chain is expired.
 
-    The chain ends with the expired intermediate (non-self-signed). The root CA
-    issued it, but openssl_verify(root, expired_intermediate) returns False because
-    the cert has expired.
+    The expired intermediate has basicConstraints=CA:TRUE and was issued by the root.
+    The leaf is signed by the expired intermediate's key. The chain ends with the
+    expired intermediate (non-self-signed), and openssl_verify(root, expired_inter)
+    returns False because the cert has expired.
     """
     root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
-    expired_inter_pem = generate_expired_cert(
-        tmp_path, root_cert_path, root_key_path, "Intermediate CA"
+    expired_inter_pem, expired_inter_cert_path, expired_inter_key_path = (
+        generate_expired_intermediate_ca(
+            tmp_path, "Intermediate CA", root_cert_path, root_key_path
+        )
     )
-    leaf_pem = generate_signed_leaf(tmp_path, root_cert_path, root_key_path, "Leaf")
+    leaf_pem = generate_signed_leaf(
+        tmp_path, expired_inter_cert_path, expired_inter_key_path, "Leaf"
+    )
     path = _write_certs(
         tmp_path,
         sslAPICertificateFullChain=f"{leaf_pem}\n{expired_inter_pem}",
