@@ -8,17 +8,16 @@ There are two distinct, non-obvious ways an addon plugin's operator images get m
 disconnected mode. Mixing them up wastes real debugging time.
 
 **Convention A (self-declared):** the plugin declares its own `registries:` block in
-`plugins/<name>/plugin.yaml` (currently `lvms`, `nvidia-gpu`, `odf`, `vast-csi`, `osac`,
-`openshift-ai`). This drives `oc-mirror` via the standalone per-plugin two-hop flow in
+`plugins/<name>/plugin.yaml` — grep `plugins/*/plugin.yaml` for `registries:` to see which plugins
+currently do this. This drives `oc-mirror` via the standalone per-plugin two-hop flow in
 `playbooks/tasks/mirror_plugin.yaml` (Landing Zone hop, then a second hop into in-cluster Quay
 Enterprise) at `make deploy-plugin` time.
 
 **Convention B (pre-baked):** the operator's registry entries are hardcoded as static
 `[[registry]]`/`[[registry.mirror]]` TOML blocks directly in
-`operators/multicluster-engine/tasks.yaml` (confirmed for `rhacm2`, `container-native-virtualization`,
-plus core OCP registries), installed once when MCE is configured — no `registries:` block needed in
-that plugin's own `plugin.yaml` (confirmed for `cnv`, `rhbk`/rh-sso-7, `authorino`, `aap`,
-`trust-manager`).
+`operators/multicluster-engine/tasks.yaml`, installed once when MCE is configured — no
+`registries:` block needed in that plugin's own `plugin.yaml`. Grep that file to see which operators
+it currently covers.
 
 **The gotcha:** `playbooks/tasks/patch_mce_registries.yaml` re-patches the live `custom-registries`
 ConfigMap in the `multicluster-engine` namespace for any plugin with its own `registries:` block

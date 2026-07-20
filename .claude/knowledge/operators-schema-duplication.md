@@ -11,10 +11,10 @@ loop). Adding a property to one does not add it to the other.
 
 **Why:** PR #471 added `connected_auto` (and earlier, `seed`) to `schemas/operators.yaml`'s operator
 definition but not to `schemas/plugin.yaml`'s — so a plugin trying to set `connected_auto: true` (or
-`seed`) on one of its operators fails schema validation (`additionalProperties: false`) even though
-the runtime would honor it. As of this writing, `schemas/plugin.yaml` still lacks both properties
-(confirm with `grep -n "seed\|connected_auto" schemas/plugin.yaml`); a fix exists on branch
-`feature/plugin-operator-connected-auto-schema` (PR #597, unmerged).
+`seed`) on one of its operators failed schema validation (`additionalProperties: false`) even though
+the runtime would honor it. Don't assume this specific gap is still open by the time you read this —
+check both files directly (`grep -n "seed\|connected_auto" schemas/plugin.yaml schemas/operators.yaml`)
+before relying on it; the durable point is the pattern, not this one instance of it.
 
 A discussed but not-yet-implemented follow-up: extract the shared shape into
 `schemas/definitions.yaml` (which already backs cross-schema `$ref`s like `ipv4Address` via
@@ -25,3 +25,5 @@ only the `namespace`-required constraint local to `schemas/operators.yaml` via `
 **How to apply:** Any new operator-level property added to `schemas/operators.yaml` should also be
 added to `schemas/plugin.yaml`'s operator definition (or vice versa) until the two are unified behind
 a shared `$ref` — otherwise the same plugin-schema-validation gap will recur for every new property.
+If you find the two files have since been unified, this entry is stale — update or delete it rather
+than leaving it to mislead the next reader.

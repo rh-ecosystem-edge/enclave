@@ -51,6 +51,9 @@ this repo, so nobody has to re-spend tokens re-deriving something already known:
   directly and would save real investigation time for someone else, add it to the appropriate one —
   update `docs/` if it belongs in formal documentation, otherwise add a new file under
   `.claude/knowledge/`.
+- `.claude/knowledge/` is only auto-discovered by Claude Code. If you're working in this repo with a
+  different AI coding tool (Cursor, Copilot, Gemini, etc.), ask a maintainer to add that tool's own
+  reference/symlink to `.claude/knowledge/` rather than duplicating its contents elsewhere.
 
 ## Building and testing
 

@@ -14,10 +14,10 @@ them into new tasks.
 (symlinked by `migrations.yaml`) whenever `KUBECONFIG` isn't already set in the environment, so
 exporting it explicitly in a task's `environment:` block is also unnecessary. PR #584 removed both
 from `playbooks/upgrade.yaml` after reviewer rporres flagged them — but the repo-wide cleanup wasn't
-applied everywhere; `playbooks/tasks/configure_operator.yaml` still has the redundant `--no-dry-run`
-flag as of this writing.
+necessarily applied everywhere else that calls `enclave reconcile`, so older task files may still
+carry a stale `--no-dry-run` or explicit `KUBECONFIG`.
 
-**How to apply:** When writing a new `enclave reconcile` invocation, don't copy
-`configure_operator.yaml`'s flag as a template — check `playbooks/upgrade.yaml` instead for the
-cleaned-up form, and don't add an explicit `KUBECONFIG` env var unless there's a reason to override
-the auto-resolved default.
+**How to apply:** When writing or copying a new `enclave reconcile` invocation, don't assume an
+existing task file is the cleaned-up reference — check `src/enclave/reconcile/cli.py`'s actual
+defaults and `src/enclave/utils.py`'s `setup_kubeconfig()` behavior directly, and drop either flag
+unless there's a concrete reason to override the default.

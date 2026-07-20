@@ -34,5 +34,5 @@ Not an arbitrary nested filter-chain string — e.g. `selectattr('status.conditi
 A fact or variable holding the *string* `"False"` is truthy in Jinja. Any variable used in a `when:`
 or ternary needs an explicit `| bool` cast at the point of use — casting only where the fact is
 *defined* isn't enough if it's consumed as a raw variable elsewhere. Reviewer eurijon caught the
-same missing `| bool` in three separate spots in one PR (`configure_mch.yaml:20`,
-`configure_operator.yaml:85,109`).
+same missing `| bool` in three separate spots across two operator-configuration task files in one
+PR — it's an easy thing to miss more than once in the same change.

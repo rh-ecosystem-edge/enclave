@@ -9,8 +9,8 @@ variants — trusted-CA, complex-chain, and self-signed (`src/tests/test_system_
 `test_check_certificate_chains.py`, `test_cert_utils.py`) — but two known variants remain completely
 uncovered: short-lived/expiring certificates, and malformed CN/CNAME.
 
-**Why:** `validations.sh` has expiry-check logic (`checkCACert`, ~line 118) with zero automated test
-exercising it, and has no CN/CNAME validation logic at all.
+**Why:** `validations.sh` has expiry-check logic (`checkCACert`) with zero automated test exercising
+it, and has no CN/CNAME validation logic at all.
 
 **How to apply:** If picking up further TLS cert-handling test work, these two variants are the known
 remaining gap — no need to re-derive which cases PR #535 already covers.
