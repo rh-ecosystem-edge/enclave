@@ -1,6 +1,7 @@
 """Shared openssl helper functions for certificate generation in tests."""
 
 import subprocess
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
@@ -36,9 +37,17 @@ def generate_ca(tmp_path: Path, cn: str) -> tuple[str, Path, Path]:
 
 
 def generate_signed_leaf(
-    tmp_path: Path, ca_cert_path: Path, ca_key_path: Path, cn: str
+    tmp_path: Path,
+    ca_cert_path: Path,
+    ca_key_path: Path,
+    cn: str,
+    sans: list[str] | None = None,
 ) -> str:
-    """Generate a cert signed by the given CA. Returns cert_pem (stripped)."""
+    """Generate a cert signed by the given CA. Returns cert_pem (stripped).
+
+    Pass sans to embed a subjectAltName extension (e.g. ["foo.example.com", "*.example.com"]).
+    When None, no SAN extension is added and the cert is CN-only.
+    """
     leaf_key = tmp_path / "leaf.key"
     # Generate a P-256 EC private key for the leaf certificate.
     subprocess.run(
@@ -75,27 +84,33 @@ def generate_signed_leaf(
     leaf_cert = tmp_path / "leaf.crt"
     # Sign the CSR with the CA's certificate and key, producing the leaf cert.
     # -set_serial supplies a fixed serial number (required when not using a CA database).
-    subprocess.run(
-        [
-            "openssl",
-            "x509",
-            "-req",
-            "-in",
-            str(leaf_csr),
-            "-CA",
-            str(ca_cert_path),
-            "-CAkey",
-            str(ca_key_path),
-            "-out",
-            str(leaf_cert),
-            "-days",
-            "1",
-            "-set_serial",
-            "01",
-        ],
-        check=True,
-        capture_output=True,
-    )
+    cmd = [
+        "openssl",
+        "x509",
+        "-req",
+        "-in",
+        str(leaf_csr),
+        "-CA",
+        str(ca_cert_path),
+        "-CAkey",
+        str(ca_key_path),
+        "-out",
+        str(leaf_cert),
+        "-days",
+        "1",
+        "-set_serial",
+        "01",
+    ]
+    if sans:
+        # Write a minimal extensions config with the requested SANs. openssl x509 -req
+        # does not support -addext, so an extfile is required to inject extensions.
+        ext_file = tmp_path / "leaf.ext"
+        ext_file.write_text(
+            "[ext]\nsubjectAltName=" + ",".join(f"DNS:{s}" for s in sans) + "\n",
+            encoding="utf-8",
+        )
+        cmd += ["-extfile", str(ext_file), "-extensions", "ext"]
+    subprocess.run(cmd, check=True, capture_output=True)
     return leaf_cert.read_text(encoding="utf-8").strip()
 
 
@@ -195,3 +210,292 @@ def generate_self_issued_not_self_signed_cert(tmp_path: Path) -> str:
         capture_output=True,
     )
     return cross_cert.read_text(encoding="utf-8").strip()
+
+
+def generate_intermediate_ca(
+    tmp_path: Path,
+    cn: str,
+    parent_cert_path: Path,
+    parent_key_path: Path,
+) -> tuple[str, Path, Path]:
+    """Generate an intermediate CA cert signed by parent. Returns (cert_pem, cert_path, key_path)."""
+    key_path = tmp_path / f"{cn}.key"
+    csr_path = tmp_path / f"{cn}.csr"
+    cert_path = tmp_path / f"{cn}.crt"
+    # Generate a P-256 EC private key for the intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "genpkey",
+            "-algorithm",
+            "EC",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-out",
+            str(key_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Create a Certificate Signing Request (CSR) for the intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-new",
+            "-key",
+            str(key_path),
+            "-out",
+            str(csr_path),
+            "-subj",
+            f"/CN={cn}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Write an extensions config that marks the cert as a CA (basicConstraints=CA:TRUE)
+    # and restricts its usage to signing certs and CRLs. openssl x509 -req does not
+    # support -addext, so an extfile is required to inject extensions.
+    ext_file = tmp_path / f"{cn}.ext"
+    ext_file.write_text(
+        "[ext]\nbasicConstraints=CA:TRUE,pathlen:0\nkeyUsage=keyCertSign,cRLSign\n",
+        encoding="utf-8",
+    )
+    # Sign the CSR with the parent CA's key, embedding the CA extensions via -extfile.
+    # -set_serial supplies a fixed serial number (required when not using a CA database).
+    subprocess.run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            str(csr_path),
+            "-CA",
+            str(parent_cert_path),
+            "-CAkey",
+            str(parent_key_path),
+            "-out",
+            str(cert_path),
+            "-days",
+            "1",
+            "-set_serial",
+            "10",
+            "-extfile",
+            str(ext_file),
+            "-extensions",
+            "ext",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert_path.read_text(encoding="utf-8").strip(), cert_path, key_path
+
+
+def generate_expired_cert(
+    tmp_path: Path,
+    ca_cert_path: Path,
+    ca_key_path: Path,
+    cn: str,
+) -> str:
+    """Generate a cert with validity dates in the past, signed by the CA. Returns cert_pem.
+
+    The validity window is set to the two-day period ending yesterday so the cert is
+    expired by the time the test runs. Requires OpenSSL 3.4+ (-not_before/-not_after
+    were introduced in 3.4).
+    """
+    key_path = tmp_path / f"expired_{cn}.key"
+    csr_path = tmp_path / f"expired_{cn}.csr"
+    cert_path = tmp_path / f"expired_{cn}.crt"
+    # Generate a P-256 EC private key for the expired certificate.
+    subprocess.run(
+        [
+            "openssl",
+            "genpkey",
+            "-algorithm",
+            "EC",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-out",
+            str(key_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Create a Certificate Signing Request (CSR) for the soon-to-be-expired cert.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-new",
+            "-key",
+            str(key_path),
+            "-out",
+            str(csr_path),
+            "-subj",
+            f"/CN={cn}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Compute a validity window that ends yesterday so the cert is already expired.
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    day_before = datetime.now(UTC).date() - timedelta(days=2)
+    not_before = day_before.strftime("%Y%m%d000000Z")
+    not_after = yesterday.strftime("%Y%m%d000000Z")
+    # Sign the CSR with a past validity window. The CA's signature is valid; only the
+    # notBefore/notAfter dates place the cert outside its usable period.
+    subprocess.run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            str(csr_path),
+            "-CA",
+            str(ca_cert_path),
+            "-CAkey",
+            str(ca_key_path),
+            "-out",
+            str(cert_path),
+            "-not_before",
+            not_before,
+            "-not_after",
+            not_after,
+            "-set_serial",
+            "99",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert_path.read_text(encoding="utf-8").strip()
+
+
+def generate_expired_intermediate_ca(
+    tmp_path: Path,
+    cn: str,
+    parent_cert_path: Path,
+    parent_key_path: Path,
+) -> tuple[str, Path, Path]:
+    """Generate an expired intermediate CA cert signed by parent. Returns (cert_pem, cert_path, key_path).
+
+    Combines CA extensions (basicConstraints=CA:TRUE) with a past validity window so the
+    cert is both structurally a CA and already expired when the test runs.
+    Requires OpenSSL 3.4+ (-not_before/-not_after were introduced in 3.4).
+    """
+    key_path = tmp_path / f"expired_inter_{cn}.key"
+    csr_path = tmp_path / f"expired_inter_{cn}.csr"
+    cert_path = tmp_path / f"expired_inter_{cn}.crt"
+    # Generate a P-256 EC private key for the expired intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "genpkey",
+            "-algorithm",
+            "EC",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-out",
+            str(key_path),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Create a Certificate Signing Request (CSR) for the expired intermediate CA.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-new",
+            "-key",
+            str(key_path),
+            "-out",
+            str(csr_path),
+            "-subj",
+            f"/CN={cn}",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    # Write a CA extensions config so the cert carries basicConstraints=CA:TRUE.
+    # openssl x509 -req does not support -addext, so an extfile is required.
+    ext_file = tmp_path / f"expired_inter_{cn}.ext"
+    ext_file.write_text(
+        "[ext]\nbasicConstraints=CA:TRUE,pathlen:0\nkeyUsage=keyCertSign,cRLSign\n",
+        encoding="utf-8",
+    )
+    # Compute a validity window that ends yesterday so the cert is already expired.
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    day_before = datetime.now(UTC).date() - timedelta(days=2)
+    not_before = day_before.strftime("%Y%m%d000000Z")
+    not_after = yesterday.strftime("%Y%m%d000000Z")
+    # Sign the CSR with the parent CA, embedding CA extensions and a past validity window.
+    subprocess.run(
+        [
+            "openssl",
+            "x509",
+            "-req",
+            "-in",
+            str(csr_path),
+            "-CA",
+            str(parent_cert_path),
+            "-CAkey",
+            str(parent_key_path),
+            "-out",
+            str(cert_path),
+            "-not_before",
+            not_before,
+            "-not_after",
+            not_after,
+            "-set_serial",
+            "98",
+            "-extfile",
+            str(ext_file),
+            "-extensions",
+            "ext",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert_path.read_text(encoding="utf-8").strip(), cert_path, key_path
+
+
+def generate_expired_self_signed(tmp_path: Path, cn: str) -> str:
+    """Generate a self-signed cert with validity dates in the past. Returns cert_pem.
+
+    The validity window is set to the two-day period ending yesterday so the cert is
+    expired by the time the test runs. Requires OpenSSL 3.4+ (-not_before/-not_after
+    were introduced in 3.4).
+    """
+    key_path = tmp_path / f"expired_ss_{cn}.key"
+    cert_path = tmp_path / f"expired_ss_{cn}.crt"
+    # Compute a validity window that ended yesterday so the cert is already expired.
+    yesterday = datetime.now(UTC).date() - timedelta(days=1)
+    day_before = datetime.now(UTC).date() - timedelta(days=2)
+    # Generate a self-signed cert in one step (-x509 produces a cert rather than a CSR).
+    # -newkey ec creates and uses a fresh P-256 key; -nodes skips key encryption.
+    # -not_before/-not_after set the validity window in the past.
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "ec",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-keyout",
+            str(key_path),
+            "-out",
+            str(cert_path),
+            "-nodes",
+            "-subj",
+            f"/CN={cn}",
+            "-not_before",
+            day_before.strftime("%Y%m%d000000Z"),
+            "-not_after",
+            yesterday.strftime("%Y%m%d000000Z"),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    return cert_path.read_text(encoding="utf-8").strip()

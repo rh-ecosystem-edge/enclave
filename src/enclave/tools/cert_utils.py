@@ -96,6 +96,7 @@ def is_self_signed(cert_pem: str) -> bool:
                     "verify",
                     "-no-CAfile",
                     "-no-CApath",
+                    "-no_check_time",
                     "-check_ss_sig",
                     "-CAfile",
                     str(cert_path),
