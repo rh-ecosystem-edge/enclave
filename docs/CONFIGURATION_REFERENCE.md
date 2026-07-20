@@ -373,6 +373,7 @@ agent_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
+| `bmcSystemId` | Redfish system ID path component (`/redfish/v1/Systems/<bmcSystemId>`). Defaults to `1` | `1` |
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
 
@@ -1220,6 +1221,12 @@ discovery_hosts:
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Username for Redfish API authentication | `admin` |
 | `redfishPassword` | Password for Redfish API authentication | `YourSecurePassword` |
+
+**Optional fields for each host**:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `bmcSystemId` | Redfish system ID path component (`/redfish/v1/Systems/<bmcSystemId>`). Defaults to `1` | `1` |
 
 **Notes**:
 - MAC addresses must be unique
