@@ -1,0 +1,63 @@
+---
+# Supporting ACM plumbing the vendored autoshiftv2 chart needs but doesn't provide at the
+# right scope. See docs/design/acs-plugin-poc-via-autoshiftv2.md ("Do we need any tasks at all?") for why
+# this lives here instead of tasks/post-operators.yaml, and why it doesn't reuse
+# autoshiftv2's own advanced-cluster-management/cluster-labels charts.
+#
+# Runs after the Helm chart deploy (createNamespace: true on the helm entry already ensures
+# open-cluster-policies exists by this point). ACM Policy/Placement reconciliation is
+# eventually consistent, so ordering relative to the Helm deploy doesn't matter functionally.
+
+- name: Create ManagedClusterSets for ACS hub/managed placement
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cluster.open-cluster-management.io/v1beta2
+      kind: ManagedClusterSet
+      metadata:
+        name: "{{ item }}"
+      spec:
+        clusterSelector:
+          selectorType: ExclusiveClusterSetLabel
+  loop:
+    - hub
+    - managed
+  register: r_acs_clusterset
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acs_clusterset is success
+
+- name: Bind ManagedClusterSets in the ACS policy namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cluster.open-cluster-management.io/v1beta2
+      kind: ManagedClusterSetBinding
+      metadata:
+        name: "{{ item }}"
+        namespace: open-cluster-policies
+      spec:
+        clusterSet: "{{ item }}"
+  loop:
+    - hub
+    - managed
+  register: r_acs_csb
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acs_csb is success
+
+- name: Opt local-cluster into ACS via ACM labels
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cluster.open-cluster-management.io/v1
+      kind: ManagedCluster
+      metadata:
+        name: local-cluster
+        labels:
+          autoshift.io/acs: "true"
+          cluster.open-cluster-management.io/clusterset: hub
+  register: r_acs_local_cluster_label
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acs_local_cluster_label is success

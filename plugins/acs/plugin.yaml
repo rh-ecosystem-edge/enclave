@@ -1,0 +1,42 @@
+---
+name: acs
+type: addon
+order: 130
+
+# Advanced Cluster Security is installed via ACM policy (the vendored autoshiftv2 Helm chart
+# below renders an OperatorPolicy), not via enclave's own Ansible-driven OLM install. See
+# docs/design/acs-plugin-poc-via-autoshiftv2.md for the full rationale.
+#
+# installOperators: false => skip the local/hub Subscription creation enclave would normally do.
+# clusterSelector + installOperatorsFleet: false => only push the mirrored CatalogSource to
+# clusters matching the selector (hub included, once labeled); the actual operator install and
+# ACS custom resources are owned entirely by the autoshiftv2 chart's own ACM policies.
+catalog: redhat
+operators:
+  - name: rhacs-operator
+    version: 4.11.1
+    channel: stable
+    init_version: 4.11.1
+    namespace: rhacs-operator
+    global: true
+
+installOperators: false
+installOperatorsFleet: false
+clusterSelector:
+  matchLabels:
+    autoshift.io/acs: "true"
+
+helm:
+  - release: acs
+    namespace: open-cluster-policies
+    chart: "oci://quay.io/autoshift/policies/advanced-cluster-security"
+    version: "0.0.4"
+    valuesTemplate: templates/values.yaml.j2
+    createNamespace: true
+
+# RHACS operand images (Central, Scanner, Sensor, Collector, Admission Controller, etc.) are
+# published under this registry path, separate from the operator bundle/catalog itself. This
+# feeds MCE's custom-registries patch so fleet/spoke clusters can resolve them too.
+registries:
+  - location: "registry.redhat.io/advanced-cluster-security"
+    mirror: "advanced-cluster-security"
