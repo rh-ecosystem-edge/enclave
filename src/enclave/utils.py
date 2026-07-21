@@ -11,19 +11,25 @@ import click
 logger = logging.getLogger(__name__)
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+LOG_FORMATS = ["full", "plain"]
 
 
-def configure_logging(log_level: str) -> None:
-    """Configure logging with the specified level if not already configured.
+def configure_logging(log_level: str, log_format: str = "full") -> None:
+    """Configure logging with the specified level and format if not already configured.
 
     This helper is shared across all CLI entry points to avoid duplication.
     Logging is only configured if the root logger has no handlers yet, so parent
     CLIs can set up logging once and subcommands will skip reconfiguration.
     """
     if not logging.getLogger().handlers:
+        fmt = (
+            "%(message)s"
+            if log_format == "plain"
+            else "%(asctime)s %(levelname)-8s %(message)s"
+        )
         logging.basicConfig(
             level=getattr(logging, log_level.upper()),
-            format="%(asctime)s %(levelname)-8s %(message)s",
+            format=fmt,
             datefmt="%Y-%m-%dT%H:%M:%S",
             stream=sys.stderr,
         )

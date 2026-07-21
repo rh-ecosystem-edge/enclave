@@ -1,4 +1,5 @@
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,7 @@ import yaml
 from enclave.tools.cert_utils import pem_blocks
 from enclave.tools.check_certificate_chains import (
     CertificateValidationError,
-    main as check_certificate_chains_main,
+    check_certificate_chains as check_certificate_chains_helper,
 )
 from enclave.tools.node_image_digests import main as collect_node_image_digests_main
 from enclave.tools.quay_registry_ca import main as quay_registry_ca_main
@@ -114,18 +115,33 @@ def collect_node_image_digests(
 
 
 @cli.command("check-certificate-chains")
+@click.argument("cert_type", type=click.Choice(["api", "ingress", "ironic"]))
 @click.option(
     "--config",
     required=True,
     type=click.Path(exists=True, dir_okay=False),
     help="Path to certificates.yaml.",
 )
-def check_certificate_chains(config: str) -> None:
-    """Check certificate chain completeness and CA consistency."""
+@click.option(
+    "--hostname",
+    "hostnames",
+    multiple=True,
+    required=True,
+    help="Hostname the cert must cover (exact or wildcard). Repeat for multiple names.",
+)
+def check_certificate_chains(
+    cert_type: str,
+    config: str,
+    hostnames: tuple[str, ...],
+) -> None:
+    """Check certificate expiry, SAN coverage, and (for api/ingress) chain completeness."""
     try:
-        check_certificate_chains_main(config)
+        check_certificate_chains_helper(
+            config, cert_type=cert_type, hostnames=list(hostnames)
+        )
     except CertificateValidationError as exc:
-        raise click.ClickException(str(exc)) from exc
+        logger.error("%s", exc)  # noqa: TRY400 — traceback is unwanted for user-facing errors
+        sys.exit(1)
 
 
 @cli.command("get-root-ca")

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
@@ -270,24 +271,35 @@ def test_check_certificate_chains_help() -> None:
 def test_check_certificate_chains_forwards_config(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
-    """Forward --config path to check_certificate_chains_main."""
-    mock_main = mocker.patch("enclave.tools.cli.check_certificate_chains_main")
+    """Forward cert_type, --config path, and --hostname values to check_certificate_chains_helper."""
+    mock_main = mocker.patch("enclave.tools.cli.check_certificate_chains_helper")
     config_file = tmp_path / "certificates.yaml"
     config_file.write_text("", encoding="utf-8")
     result = CliRunner().invoke(
         cli,
-        ["check-certificate-chains", "--config", str(config_file)],
+        [
+            "check-certificate-chains",
+            "api",
+            "--config",
+            str(config_file),
+            "--hostname",
+            "api.cluster.example.com",
+        ],
     )
     assert result.exit_code == 0
-    mock_main.assert_called_once_with(str(config_file))
+    mock_main.assert_called_once_with(
+        str(config_file),
+        cert_type="api",
+        hostnames=["api.cluster.example.com"],
+    )
 
 
 def test_check_certificate_chains_reports_runtime_error(
-    mocker: MockerFixture, tmp_path: Path
+    mocker: MockerFixture, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Surface a CertificateValidationError as a non-zero exit with field name."""
+    """Surface a CertificateValidationError as a logger.error call and exit code 1."""
     mocker.patch(
-        "enclave.tools.cli.check_certificate_chains_main",
+        "enclave.tools.cli.check_certificate_chains_helper",
         side_effect=CertificateValidationError(
             "sslAPICertificateFullChain: chain ends with a non-self-signed certificate"
         ),
@@ -296,19 +308,74 @@ def test_check_certificate_chains_reports_runtime_error(
     config_file.write_text("", encoding="utf-8")
     result = CliRunner().invoke(
         cli,
-        ["check-certificate-chains", "--config", str(config_file)],
+        [
+            "check-certificate-chains",
+            "api",
+            "--config",
+            str(config_file),
+            "--hostname",
+            "api.cluster.example.com",
+        ],
     )
-    assert result.exit_code != 0
-    assert "sslAPICertificateFullChain" in result.output
+    assert result.exit_code == 1
+    assert "sslAPICertificateFullChain" in caplog.text
 
 
 def test_check_certificate_chains_rejects_missing_file() -> None:
     """Reject a non-existent --config path."""
     result = CliRunner().invoke(
         cli,
-        ["check-certificate-chains", "--config", "/nonexistent/certificates.yaml"],
+        [
+            "check-certificate-chains",
+            "api",
+            "--config",
+            "/nonexistent/certificates.yaml",
+            "--hostname",
+            "api.example.com",
+        ],
     )
     assert result.exit_code != 0
+
+
+def test_check_certificate_chains_ironic_type(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    """Forward ironic cert_type with --hostname to check_certificate_chains_helper."""
+    mock_main = mocker.patch("enclave.tools.cli.check_certificate_chains_helper")
+    config_file = tmp_path / "certificates.yaml"
+    config_file.write_text("", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "check-certificate-chains",
+            "ironic",
+            "--config",
+            str(config_file),
+            "--hostname",
+            "bmc.example.com",
+        ],
+    )
+    assert result.exit_code == 0
+    mock_main.assert_called_once_with(
+        str(config_file),
+        cert_type="ironic",
+        hostnames=["bmc.example.com"],
+    )
+
+
+@pytest.mark.parametrize("cert_type", ["api", "ingress", "ironic"])
+def test_check_certificate_chains_requires_hostname(
+    tmp_path: Path, cert_type: str
+) -> None:
+    """Reject any cert_type when --hostname is omitted."""
+    config_file = tmp_path / "certificates.yaml"
+    config_file.write_text("", encoding="utf-8")
+    result = CliRunner().invoke(
+        cli,
+        ["check-certificate-chains", cert_type, "--config", str(config_file)],
+    )
+    assert result.exit_code != 0
+    assert "--hostname" in result.output
 
 
 def test_collect_node_image_digests_help() -> None:
