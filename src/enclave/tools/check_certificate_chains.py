@@ -41,6 +41,22 @@ class CertificateValidationError(Exception):
     """Raised when certificate chain validation fails."""
 
 
+def _get_config_str(raw: dict[str, Any], field: str) -> str:
+    """Return raw[field] as a stripped string, or "" if absent or None.
+
+    Raises CertificateValidationError if the field is present but not a string,
+    so a misconfigured YAML value (list, int, bool) never leaks an AttributeError.
+    """
+    value = raw.get(field)
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise CertificateValidationError(
+            f"{field}: expected a string value, got {type(value).__name__}"
+        )
+    return value.strip()
+
+
 def _load_config(config_path: str) -> dict[str, Any]:
     """Read and parse a YAML config file, raising CertificateValidationError on any failure."""
     try:
@@ -153,7 +169,7 @@ def check_certificate_chains(
 
     raw = _load_config(config_path)
 
-    cert_pem: str = (raw.get(field) or "").strip()
+    cert_pem: str = _get_config_str(raw, field)
     if not cert_pem:
         logger.debug("%s: no certificate configured; skipping", cert_type)
         return
@@ -162,7 +178,7 @@ def check_certificate_chains(
         msg = f"{cert_type}: at least one hostname is required"
         raise CertificateValidationError(msg)
 
-    key_pem: str = (raw.get(key_field) or "").strip()
+    key_pem: str = _get_config_str(raw, key_field)
     if not key_pem:
         msg = f"{key_field} is required when {field} is configured"
         raise CertificateValidationError(msg)
@@ -170,7 +186,7 @@ def check_certificate_chains(
     issues: list[str] = []
 
     if cert_type in CHAIN_CERT_TYPES:
-        ca_pem: str = (raw.get("sslCACertificate") or "").strip()
+        ca_pem: str = _get_config_str(raw, "sslCACertificate")
         issue = _check_chain(field, cert_pem, ca_pem)
         if issue:
             issues.append(issue)
