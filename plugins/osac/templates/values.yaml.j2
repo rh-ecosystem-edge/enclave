@@ -55,6 +55,11 @@ service:
       name: default-ca
   auth:
     issuerUrl: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
+    emergencyServiceAccounts:
+    - admin
+    - osac-operator
+    - osac-operator-controller-manager
+    - template-publisher
     controllerCredentials:
       - secret:
           name: fulfillment-controller-credentials
