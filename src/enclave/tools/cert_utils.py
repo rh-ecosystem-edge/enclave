@@ -15,6 +15,36 @@ PEM_BLOCK_RE = re.compile(
     re.DOTALL,
 )
 
+# OpenSSL always outputs English month abbreviations in notBefore/notAfter regardless
+# of the system locale. Python's %b in strptime follows LC_TIME, so it would reject
+# "Jan" on a French or German system. We map month names explicitly instead.
+OPENSSL_MONTHS = {
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
+}
+
+
+def _parse_openssl_date(date_str: str) -> datetime:
+    """Parse an OpenSSL notBefore/notAfter string into a UTC-aware datetime."""
+    parts = date_str.strip().split()
+    if len(parts) < 4:  # noqa: PLR2004 — month, day, HH:MM:SS, year
+        raise ValueError(f"unexpected OpenSSL date string: {date_str!r}")
+    month = OPENSSL_MONTHS.get(parts[0])
+    if month is None:
+        raise ValueError(f"unknown month abbreviation {parts[0]!r} in: {date_str!r}")
+    normalized = f"{month:02d} {parts[1]} {parts[2]} {parts[3]}"
+    return datetime.strptime(normalized, "%m %d %H:%M:%S %Y").replace(tzinfo=UTC)
+
 
 def openssl_verify(ca_pem: str, cert_pem: str) -> bool:
     """Return True if ca_pem signs cert_pem according to openssl verify.
@@ -171,20 +201,14 @@ def cert_validity_window_ok(cert_pem: str) -> bool:
     not_after_match = re.search(r"^notAfter=(.+)$", result.stdout, re.MULTILINE)
     if not not_before_match or not not_after_match:
         return False
-    fmt = "%b %d %H:%M:%S %Y %Z"
     try:
-        not_before = datetime.strptime(not_before_match.group(1).strip(), fmt).replace(
-            tzinfo=UTC
-        )
-        not_after = datetime.strptime(not_after_match.group(1).strip(), fmt).replace(
-            tzinfo=UTC
-        )
+        not_before = _parse_openssl_date(not_before_match.group(1))
+        not_after = _parse_openssl_date(not_after_match.group(1))
     except ValueError:
         logger.warning(
-            "cert_validity_window_ok: could not parse date strings %r / %r using format %r",
+            "cert_validity_window_ok: could not parse date strings %r / %r",
             not_before_match.group(1).strip(),
             not_after_match.group(1).strip(),
-            fmt,
         )
         return False
     now = datetime.now(UTC)
