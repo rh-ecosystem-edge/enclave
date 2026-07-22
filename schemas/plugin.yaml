@@ -203,10 +203,20 @@ definitions:
       extractImages:
         type: boolean
         description: >-
-          Extract container image references from the chart's default values
-          via helm template and merge into additionalImages for mirroring.
-          Only works for local charts (repo and oci:// must not be set).
+          Extract container image references from the chart via helm template
+          and merge into additionalImages for mirroring. Supports local charts
+          and OCI charts (oci://). When a valuesTemplate or valuesFile is
+          defined, it is used during templating to satisfy required values.
           Default: false.
+      extractPlaceholders:
+        type: object
+        description: >-
+          Placeholder values for Ansible variables that the valuesTemplate
+          references but are only available at deploy time (e.g. from
+          post-operators.yaml). These are set as facts during the extract
+          phase only if the variable is not already defined. The actual
+          values don't matter — they just prevent template rendering failures
+          during image extraction.
     required:
       - release
       - namespace

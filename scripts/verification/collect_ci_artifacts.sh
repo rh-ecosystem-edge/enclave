@@ -542,20 +542,20 @@ collect_lz_deployment_logs() {
     fi
 }
 
-collect_lz_oc_mirror_logs() {
+collect_lz_pipeline_logs() {
     local lz_ip="$1"
     local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
-    mkdir -p "${OUTPUT_DIR}/landing-zone/oc-mirror"
-    info "Collecting oc-mirror logs from Landing Zone..."
+    mkdir -p "${OUTPUT_DIR}/landing-zone/pipeline-logs"
+    info "Collecting pipeline logs from Landing Zone..."
 
-    local remote_tar="/tmp/oc-mirror-logs-${TIMESTAMP}.tar.gz"
+    local remote_tar="/tmp/pipeline-logs-${TIMESTAMP}.tar.gz"
 
     if ! ssh $ssh_opts cloud-user@"$lz_ip" "
         cd ~ || exit 2
         shopt -s nullglob
         files=(
-            sessions/1/logs/oc-mirror*.progress.*.log
+            sessions/1/logs/*.log
             sessions/1/config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
         )
         if [ \${#files[@]} -eq 0 ]; then
@@ -563,20 +563,20 @@ collect_lz_oc_mirror_logs() {
         fi
         tar czf ${remote_tar} \${files[@]}
     "; then
-        warn "No oc-mirror logs found or SSH failed"
+        warn "No pipeline logs found or SSH failed"
         return
     fi
 
-    if scp $ssh_opts cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/oc-mirror/"; then
+    if scp $ssh_opts cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/pipeline-logs/"; then
         (
-            cd "${OUTPUT_DIR}/landing-zone/oc-mirror" && \
-            tar xzf "oc-mirror-logs-${TIMESTAMP}.tar.gz" && \
-            rm "oc-mirror-logs-${TIMESTAMP}.tar.gz"
+            cd "${OUTPUT_DIR}/landing-zone/pipeline-logs" && \
+            tar xzf "pipeline-logs-${TIMESTAMP}.tar.gz" && \
+            rm "pipeline-logs-${TIMESTAMP}.tar.gz"
         ) || warn "Failed to extract logs"
 
         ssh $ssh_opts cloud-user@"$lz_ip" "rm -f ${remote_tar}" >/dev/null 2>&1 || true
     else
-        warn "Failed to download oc-mirror logs"
+        warn "Failed to download pipeline logs"
     fi
 }
 
@@ -966,7 +966,7 @@ collect_deployment() {
     collect_lz_dns_config "$lz_ip"
     collect_lz_cloud_init "$lz_ip"
     collect_lz_deployment_logs "$lz_ip"
-    collect_lz_oc_mirror_logs "$lz_ip"
+    collect_lz_pipeline_logs "$lz_ip"
     collect_lz_config_files "$lz_ip"
     collect_lz_enclave_config "$lz_ip"
     collect_lz_services "$lz_ip"

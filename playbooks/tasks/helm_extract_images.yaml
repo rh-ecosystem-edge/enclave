@@ -34,7 +34,7 @@
          }) }}
   when: _helm_all_extracted_images | default([]) | length > 0
 
-- name: "HelmExtract | Show extracted images"
+- name: "HelmExtract | Total extracted images"
   ansible.builtin.debug:
-    msg: "Extracted {{ _helm_all_extracted_images | default([]) | length }} image(s) from Helm charts: {{ _helm_all_extracted_images | default([]) }}"
+    msg: "{{ _helm_all_extracted_images | default([]) }}"
   when: _helm_all_extracted_images | default([]) | length > 0
