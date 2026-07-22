@@ -117,6 +117,9 @@ storage_plugin: lvms
 # Log level for oc-mirror (default: info, options: trace, debug, info, error)
 # ocMirrorLogLevel: debug
 
+# Log level for wait-and-detach-vmedia (default: info, options: debug, info, warning, error, critical)
+# waitAndDetachVmediaLogLevel: debug
+
 # Apply master PinnedImageSet after Quay mirror (default: true). Set false to skip
 # post-mirror prefetch pinning (e.g. faster iteration or when MCO pin step is unwanted).
 # quayPinnedImageSetEnabled: false

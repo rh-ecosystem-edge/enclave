@@ -13,6 +13,7 @@ from enclave.tools.check_certificate_chains import (
 from enclave.tools.node_image_digests import main as collect_node_image_digests_main
 from enclave.tools.quay_registry_ca import main as quay_registry_ca_main
 from enclave.tools.system_ca import find_system_ca_for_chain
+from enclave.tools.wait_and_detach_vmedia import main as wait_and_detach_vmedia_main
 from enclave.utils import KubeconfigGroup
 
 logger = logging.getLogger(__name__)
@@ -209,9 +210,84 @@ def check_root_ca(config: str) -> None:
         )
 
 
+@cli.command("wait-and-detach-vmedia", no_args_is_help=True)
+@click.option(
+    "--host-name",
+    required=True,
+    help="Ironic node name (matches Assisted Service requested_hostname).",
+)
+@click.option(
+    "--assisted-service-url",
+    required=True,
+    help="Assisted Service base URL (e.g. http://<rendezvousIP>:8090/api/assisted-install/v2).",
+)
+@click.option(
+    "--assisted-cluster-id", required=True, help="Assisted Service cluster UUID."
+)
+@click.option(
+    "--assisted-auth-token",
+    envvar="ASSISTED_AUTH_TOKEN",
+    required=True,
+    help="Assisted Service auth token (also accepted via ASSISTED_AUTH_TOKEN env var).",
+)
+@click.option(
+    "--ironic-base-url",
+    default="http://localhost:6385",
+    show_default=True,
+    help="Ironic API base URL.",
+)
+@click.option(
+    "--ironic-api-version",
+    default="1.89",
+    show_default=True,
+    help="X-OpenStack-Ironic-API-Version header value.",
+)
+@click.option("--ironic-user", required=True, help="Ironic HTTP basic auth username.")
+@click.option(
+    "--ironic-password",
+    envvar="IRONIC_PASSWORD",
+    required=True,
+    help="Ironic HTTP basic auth password (also accepted via IRONIC_PASSWORD env var).",
+)
+@click.option(
+    "--poll-interval",
+    default=1,
+    show_default=True,
+    type=click.IntRange(min=1),
+    help="Seconds between Assisted Service polls.",
+)
+def wait_and_detach_vmedia(
+    host_name: str,
+    assisted_service_url: str,
+    assisted_cluster_id: str,
+    assisted_auth_token: str,
+    ironic_base_url: str,
+    ironic_api_version: str,
+    ironic_user: str,
+    ironic_password: str,
+    poll_interval: int,
+) -> None:
+    """Poll Assisted Service until host disk write completes, then detach vmedia via Ironic."""
+    try:
+        wait_and_detach_vmedia_main(
+            host_name,
+            assisted_service_url,
+            assisted_cluster_id,
+            assisted_auth_token,
+            ironic_base_url,
+            ironic_api_version,
+            ironic_user,
+            ironic_password,
+            poll_interval=poll_interval,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
 check_certificate_chains.no_kubeconfig = True  # type: ignore[attr-defined]
 get_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
 check_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
+wait_and_detach_vmedia.no_kubeconfig = True  # type: ignore[attr-defined]
 
 if __name__ == "__main__":
     cli()

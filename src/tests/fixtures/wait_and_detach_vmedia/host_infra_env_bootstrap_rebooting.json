@@ -1,0 +1,8 @@
+{
+  "bootstrap": true,
+  "id": "a2868f98-c696-697a-ca65-ad6b44e7aa3b",
+  "infra_env_id": "4c104ffc-8543-4108-9fb7-2e59f86ab126",
+  "requested_hostname": "eci-8dbffc00-master-00",
+  "status": "installing-in-progress",
+  "status_info": "Rebooting"
+}
