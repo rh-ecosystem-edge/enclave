@@ -40,3 +40,20 @@ osac_db_database: service
 # AAP bootstrap
 osac_aap_project_git_uri: "https://github.com/osac-project/osac-aap"
 osac_aap_project_git_branch: main
+
+# Container images
+osac_images:
+  operator: "ghcr.io/osac-project/osac-operator"
+  operator_tag: "latest"
+  fulfillment_service: "ghcr.io/osac-project/fulfillment-service:latest"
+  envoy: "docker.io/envoyproxy/envoy:v1.33.0"
+  aap_bootstrap: "ghcr.io/osac-project/osac-aap:latest"
+  cli: "quay.io/openshift/origin-cli:4.20.0"
+
+# BCM inventory (NVIDIA Base Command Manager)
+osacBcmEnabled: false
+osacBcmApiUrl: ""
+osacBcmClientCert: ""
+osacBcmClientKey: ""
+osacBcmValidateCerts: true
+osacBcmDisableBmcCertVerification: false

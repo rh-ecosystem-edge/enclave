@@ -74,3 +74,12 @@
 #   -----BEGIN OPENSSH PRIVATE KEY-----
 #   ...
 #   -----END OPENSSH PRIVATE KEY-----
+# Optional: enable BCM (NVIDIA Base Command Manager) as an additional
+# bare metal inventory source. discovery_hosts in cloud_infra.yaml are
+# always used when the CaaS profile is active.
+# osacBcmEnabled: true
+# osacBcmApiUrl: "https://bcm-head:8081"
+# osacBcmClientCert: "<PEM-encoded client certificate>"
+# osacBcmClientKey: "<PEM-encoded client private key>"
+# osacBcmValidateCerts: true
+# osacBcmDisableBmcCertVerification: false

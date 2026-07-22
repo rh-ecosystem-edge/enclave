@@ -129,6 +129,32 @@ properties:
   osacNetrisSshBastionKey:
     type: string
     description: "SSH private key for bastion host access"
+  osacBcmEnabled:
+    type: boolean
+    title: "Enable BCM Inventory"
+    description: "Enable NVIDIA Base Command Manager as an additional bare metal inventory source"
+  osacBcmApiUrl:
+    type: string
+    title: "BCM API URL"
+    description: "BCM head node API endpoint (e.g. https://bcm-head:8081)"
+  osacBcmClientCert:
+    type: string
+    title: "BCM Client Certificate"
+    format: textarea
+    description: "PEM-encoded client certificate for BCM mTLS authentication"
+  osacBcmClientKey:
+    type: string
+    title: "BCM Client Key"
+    format: textarea
+    description: "PEM-encoded client private key for BCM mTLS authentication"
+  osacBcmValidateCerts:
+    type: boolean
+    title: "BCM Validate Certificates"
+    description: "Verify BCM server TLS certificates"
+  osacBcmDisableBmcCertVerification:
+    type: boolean
+    title: "BCM Disable BMC Cert Verification"
+    description: "Skip BMC TLS certificate verification during BCM system discovery"
 required:
   - osacAapLicenseFile
 dependencies:
