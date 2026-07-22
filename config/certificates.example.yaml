@@ -70,6 +70,15 @@ sslCACertificate: |
 # The SAN on this certificate must cover lzBmcHostname (DNS SAN, for Let's Encrypt certs)
 # or lzBmcIP (IP SAN, for private CA certs). Set lzBmcHostname in global.yaml when using
 # a publicly trusted certificate such as Let's Encrypt.
-ironicHTTPSCertificate: ""
-
-ironicHTTPSKey: ""
+#
+# Leave these commented out (not set to an empty string) when not serving boot ISOs
+# over HTTPS: the schema requires a non-empty value if the key is present at all.
+# ironicHTTPSCertificate: |
+#   -----BEGIN CERTIFICATE-----
+#   YOUR_IRONIC_HTTPS_CERTIFICATE
+#   -----END CERTIFICATE-----
+#
+# ironicHTTPSKey: |
+#   -----BEGIN PRIVATE KEY-----
+#   YOUR_IRONIC_HTTPS_PRIVATE_KEY
+#   -----END PRIVATE KEY-----
