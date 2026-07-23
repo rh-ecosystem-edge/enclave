@@ -1,0 +1,212 @@
+---
+- name: Wait for MachineConfigPool to detect pending changes (if any)
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_detect
+  retries: 6
+  delay: 30
+  failed_when: false
+  until: >-
+    (
+      r_mcp_detect.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) > 0
+
+- name: Set MCP updating detected fact
+  ansible.builtin.set_fact:
+    _mcp_updating_detected: >-
+      {{
+        r_mcp_detect.resources | default([])
+        | rejectattr('spec.paused', 'equalto', true)
+        | selectattr('status.conditions', 'defined')
+        | map(attribute='status.conditions')
+        | flatten
+        | selectattr('type', 'equalto', 'Updating')
+        | selectattr('status', 'equalto', 'True')
+        | list
+        | length > 0
+      }}
+
+- name: Scale down OpenShift Update Service to prevent PDB deadlock during MCO rollout
+  when:
+    - _mcp_updating_detected | bool
+    - storage_plugin | default('lvms') == 'lvms'
+  block:
+    - name: Get current UpdateService replica count
+      kubernetes.core.k8s_info:
+        api_version: updateservice.operator.openshift.io/v1
+        kind: UpdateService
+        name: service
+        namespace: openshift-update-service
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_update_service_info
+
+    - name: Save current UpdateService replica count
+      ansible.builtin.set_fact:
+        _update_service_replicas: "{{ r_update_service_info.resources[0].spec.replicas | default(1) }}"
+      when: r_update_service_info.resources | default([]) | length > 0
+
+    - name: Scale down UpdateService operator
+      when: _update_service_replicas is defined
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - scale
+          - deployment
+          - updateservice-operator
+          - -n
+          - openshift-update-service
+          - --replicas=0
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_scale_down_operator
+      changed_when: r_scale_down_operator.rc == 0
+
+    - name: Scale down UpdateService deployment
+      when: _update_service_replicas is defined
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - scale
+          - deployment
+          - service
+          - -n
+          - openshift-update-service
+          - --replicas=0
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_scale_down_service
+      changed_when: r_scale_down_service.rc == 0
+
+    - name: Wait for UpdateService pods to terminate
+      when: _update_service_replicas is defined
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: openshift-update-service
+        label_selectors:
+          - app=service
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_update_service_pods
+      retries: 12
+      delay: 10
+      until: r_update_service_pods.resources | default([]) | length == 0
+
+- name: Wait for MachineConfigPool to finish updating
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp
+  retries: 60
+  delay: 30
+  when: _mcp_updating_detected | bool
+  until: >-
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updated')
+      | rejectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Degraded')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+
+- name: Restore OpenShift Update Service after MCO rollout
+  when:
+    - _mcp_updating_detected | bool
+    - storage_plugin | default('lvms') == 'lvms'
+    - _update_service_replicas is defined
+  block:
+    - name: Scale up UpdateService operator
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - scale
+          - deployment
+          - updateservice-operator
+          - -n
+          - openshift-update-service
+          - --replicas=1
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_scale_up_operator
+      changed_when: r_scale_up_operator.rc == 0
+
+    - name: Scale up UpdateService deployment
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - scale
+          - deployment
+          - service
+          - -n
+          - openshift-update-service
+          - "--replicas={{ _update_service_replicas }}"
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_scale_up_service
+      changed_when: r_scale_up_service.rc == 0
+
+    - name: Wait for UpdateService pods to be ready
+      kubernetes.core.k8s_info:
+        api_version: v1
+        kind: Pod
+        namespace: openshift-update-service
+        label_selectors:
+          - app=service
+        field_selectors:
+          - status.phase=Running
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_update_service_ready
+      retries: 36
+      delay: 10
+      until: >-
+        r_update_service_ready.resources | default([])
+        | selectattr('status.containerStatuses', 'defined')
+        | map(attribute='status.containerStatuses')
+        | flatten
+        | rejectattr('ready', 'equalto', true)
+        | list | length == 0
+        and
+        r_update_service_ready.resources | default([]) | length >= (_update_service_replicas | int)
