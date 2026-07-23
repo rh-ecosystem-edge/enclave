@@ -231,7 +231,7 @@
       enabled: true
       publicClient: true
       standardFlowEnabled: true
-      directAccessGrantsEnabled: true
+      directAccessGrantsEnabled: false
       serviceAccountsEnabled: false
       protocol: openid-connect
       defaultClientScopes:
@@ -325,10 +325,42 @@
   no_log: true
   when: osacTestUsers | bool
 
+- name: Build expected group map from test users
+  ansible.builtin.set_fact:
+    _expected_groups_by_user: >-
+      {{
+        dict(
+          osac_keycloak_test_users
+          | map(attribute='username')
+          | zip(
+              osac_keycloak_test_users
+              | map(attribute='groups')
+              | map('default', [])
+            )
+        )
+      }}
+  when: osacTestUsers | bool
+
 - name: Assert test user group membership
+  vars:
+    _username: "{{ item.item.json[0].username }}"
+    _actual_groups: >-
+      {{
+        item.json
+        | default([])
+        | map(attribute='name')
+        | list
+        | sort
+      }}
+    _expected_groups: >-
+      {{
+        _expected_groups_by_user[_username]
+        | default([])
+        | sort
+      }}
   ansible.builtin.assert:
     that:
-      - (item.json | map(attribute='name') | sort) == (item.item.item.groups | sort)
+      - _actual_groups == _expected_groups
   loop: "{{ __r_verify_groups.results }}"
   no_log: true
   when: osacTestUsers | bool

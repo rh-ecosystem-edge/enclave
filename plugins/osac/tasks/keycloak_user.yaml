@@ -1,5 +1,6 @@
 ---
-# Reusable task: create a Keycloak user with group membership (idempotent).
+# Reusable task: create or update a Keycloak user with group membership
+# (idempotent).
 #
 # Required variables (set by caller via include_tasks vars):
 #   _kc_user — dict with keys: username, firstName, lastName, email,
@@ -19,6 +20,24 @@
     ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: 200
   register: __r_kc_user_check
+  no_log: true
+
+- name: "{{ _kc_user.username }} | Set existing user facts"
+  ansible.builtin.set_fact:
+    _kc_existing_user: "{{ __r_kc_user_check.json | first | default({}) }}"
+  no_log: true
+
+- name: "{{ _kc_user.username }} | Check whether user needs update"
+  ansible.builtin.set_fact:
+    _kc_user_update_required: >-
+      {{
+        _kc_existing_user != {} and (
+          (_kc_existing_user.firstName | default('')) != _kc_user.firstName or
+          (_kc_existing_user.lastName | default('')) != _kc_user.lastName or
+          (_kc_existing_user.email | default('')) != _kc_user.email or
+          not (_kc_existing_user.enabled | default(false))
+        )
+      }}
   no_log: true
 
 - name: "{{ _kc_user.username }} | Create user"
@@ -44,5 +63,29 @@
     validate_certs: "{{ osac_keycloak_validate_certs }}"
     ca_path: "{{ _osac_keycloak_ca_path }}"
     status_code: [201]
-  when: __r_kc_user_check.json | length == 0
+  when: _kc_existing_user == {}
+  no_log: true
+
+- name: "{{ _kc_user.username }} | Update user"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/users/{{ _kc_existing_user.id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body: >-
+      {{
+        _kc_existing_user | combine({
+          'firstName': _kc_user.firstName,
+          'lastName': _kc_user.lastName,
+          'email': _kc_user.email,
+          'emailVerified': true,
+          'enabled': true
+        })
+      }}
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 204
+  when: _kc_user_update_required
   no_log: true
