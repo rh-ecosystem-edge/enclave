@@ -114,15 +114,42 @@ aap:
     image: "{{ osac_images.aap_bootstrap }}"
 {% endif %}
 
-configAsCode:
-  projectGitUri: "{{ osac_aap_project_git_uri }}"
-  projectGitBranch: "{{ osac_aap_project_git_branch }}"
+  configAsCode:
+    projectGitUri: "{{ osac_aap_project_git_uri }}"
+    projectGitBranch: "{{ osac_aap_project_git_branch }}"
 {% if osac_images is defined and osac_images.aap_bootstrap is defined %}
-  eeImage: "{{ osac_images.aap_bootstrap }}"
+    eeImage: "{{ osac_images.aap_bootstrap }}"
 {% endif %}
-
-bmf:
-  enabled: false
+{% set _has_discovery = discovery_hosts | default([]) | length > 0 %}
+{% set _has_bcm = osacBcmEnabled | default(false) %}
+{% if _has_discovery %}
+    importAgentsEnabled: true
+{% endif %}
+{% if _has_bcm %}
+    importBcmAgentsEnabled: true
+{% endif %}
+{% if _has_discovery %}
+  importAgents:
+    servers:
+{% for host in discovery_hosts %}
+      - name: "{{ host.name }}"
+        bmc_url: "redfish-virtualmedia+https://{{ host.redfish }}:443/redfish/v1/Systems/1"
+        bmc_username: "{{ host.redfishUser }}"
+        bmc_password: "{{ host.redfishPassword }}"
+        boot_mac: "{{ host.macAddress }}"
+        netris_server_name: "{{ host.name }}"
+        resource_class: "{{ host.resource_class | default('default') }}"
+{% endfor %}
+{% endif %}
+{% if _has_bcm %}
+  importBcmAgents:
+    cert: |
+{{ osacBcmClientCert | indent(6, true) }}
+    key: |
+{{ osacBcmClientKey | indent(6, true) }}
+{% endif %}
+  bmf:
+    enabled: false
 
 dbMigrate:
   enabled: false
