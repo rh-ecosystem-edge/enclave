@@ -17,41 +17,41 @@
     fail_msg: "plugin_name must be a valid name (alphanumeric, dots, hyphens, underscores; no path separators)"
   tags: always
 
-- name: Set plugin directory
+- name: "{{ plugin_name }} | Set plugin directory"
   ansible.builtin.set_fact:
     plugin_dir: "{{ playbook_dir }}/../plugins/{{ plugin_name }}"
   tags: always
 
-- name: Verify plugin.yaml exists
+- name: "{{ plugin_name }} | Verify plugin.yaml exists"
   ansible.builtin.stat:
     path: "{{ plugin_dir }}/plugin.yaml"
   register: r_plugin_yaml
   tags: always
 
-- name: Fail if plugin.yaml is missing
+- name: "{{ plugin_name }} | Fail if plugin.yaml is missing"
   ansible.builtin.assert:
     that: r_plugin_yaml.stat.exists
     fail_msg: "Plugin descriptor not found: {{ plugin_dir }}/plugin.yaml"
   tags: always
 
-- name: Load plugin descriptor
+- name: "{{ plugin_name }} | Load plugin descriptor"
   ansible.builtin.include_vars:
     file: "{{ plugin_dir }}/plugin.yaml"
     name: plugin
   tags: always
 
-- name: Display plugin info
+- name: "{{ plugin_name }} | Display plugin info"
   ansible.builtin.debug:
     msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
   tags: always
 
-- name: Stat plugin defaults.yaml
+- name: "{{ plugin_name }} | Stat plugin defaults.yaml"
   ansible.builtin.stat:
     path: "{{ plugin_dir }}/defaults.yaml"
   register: r_plugin_defaults_yaml
   tags: always
 
-- name: Fail if both defaults.yaml and defaults field are defined
+- name: "{{ plugin_name }} | Fail if both defaults.yaml and defaults field are defined"
   ansible.builtin.fail:
     msg: "Plugin '{{ plugin.name }}' has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
   when:
@@ -59,7 +59,7 @@
     - plugin.defaults is defined
   tags: always
 
-- name: Load plugin defaults from defaults.yaml
+- name: "{{ plugin_name }} | Load plugin defaults from defaults.yaml"
   ansible.builtin.include_vars:
     file: "{{ plugin_dir }}/defaults.yaml"
   when: r_plugin_defaults_yaml.stat.exists
@@ -67,7 +67,7 @@
 
 # noqa: var-naming[no-jinja] — Jinja2 in the variable name is the only way
 # to set dynamic fact names from a dict.
-- name: Load plugin defaults from plugin.yaml  # noqa: var-naming[no-jinja]
+- name: "{{ plugin_name }} | Load plugin defaults from plugin.yaml"  # noqa: var-naming[no-jinja]
   ansible.builtin.set_fact:
     "{{ item.key }}": "{{ item.value }}"
   loop: "{{ plugin.defaults | dict2items }}"
@@ -81,19 +81,19 @@
 # Load user config for this plugin (config/plugins/<name>.yaml) if it exists.
 # The load-vars.yaml only loads config files for plugins in enabled_plugins,
 # but day-2 plugins deployed via deploy-plugin.yaml may not be in that list.
-- name: Stat plugin user config file
+- name: "{{ plugin_name }} | Stat plugin user config file"
   ansible.builtin.stat:
     path: "{{ playbook_dir }}/../config/plugins/{{ plugin_name }}.yaml"
   register: r_plugin_user_config
   tags: always
 
-- name: Load plugin user config
+- name: "{{ plugin_name }} | Load plugin user config"
   ansible.builtin.include_vars:
     file: "{{ r_plugin_user_config.stat.path }}"
   when: r_plugin_user_config.stat.exists
   tags: always
 
-- name: Validate plugin requirements (vars)
+- name: "{{ plugin_name }} | Validate plugin requirements (vars)"
   ansible.builtin.assert:
     that: "item.name in vars"
     fail_msg: >-
@@ -108,7 +108,7 @@
     - item.when | default(true) | bool
   tags: always
 
-- name: Stat plugin required files
+- name: "{{ plugin_name }} | Stat plugin required files"
   ansible.builtin.stat:
     path: "{{ plugin_dir }}/{{ item.path }}"
   loop: "{{ plugin.requires.files | default([]) }}"
@@ -120,7 +120,7 @@
     - plugin.requires.files is defined
   tags: always
 
-- name: Validate plugin requirements (files)
+- name: "{{ plugin_name }} | Validate plugin requirements (files)"
   ansible.builtin.assert:
     that: r_required_files.results[ansible_loop.index0].stat.exists
     fail_msg: >-
@@ -137,7 +137,7 @@
     - item.when | default(true) | bool
   tags: always
 
-- name: Run pre-validate
+- name: "{{ plugin_name }} | Run pre-validate"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/pre-validate.yaml"
     apply:
@@ -147,7 +147,7 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
-- name: Extract images from Helm charts for mirroring
+- name: "{{ plugin_name }} | Extract images from Helm charts for mirroring"
   ansible.builtin.include_tasks:
     file: tasks/helm_extract_images.yaml
     apply:
@@ -161,14 +161,14 @@
       | list | length > 0
   tags: mirror
 
-- name: Set catalog image and mirror defaults
+- name: "{{ plugin_name }} | Set catalog image and mirror defaults"
   ansible.builtin.set_fact:
     catalog_image: "{{ rh_operator_catalog }}"
     catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
     catalog_version: "{{ rh_operator_catalog_version }}"
   tags: always
 
-- name: Override variables for certified catalog
+- name: "{{ plugin_name }} | Override variables for certified catalog"
   ansible.builtin.set_fact:
     catalog_image: "{{ certified_operator_catalog }}"
     catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
@@ -177,7 +177,7 @@
     - plugin.catalog | default("") == "certified"
   tags: always
 
-- name: Mirror plugin
+- name: "{{ plugin_name }} | Mirror plugin"
   ansible.builtin.include_tasks:
     file: mirror_plugin.yaml
   when:
@@ -186,7 +186,7 @@
     - disconnected | default(true) | bool
   tags: mirror
 
-- name: Patch MCE custom-registries with plugin entries
+- name: "{{ plugin_name }} | Patch MCE custom-registries with plugin entries"
   ansible.builtin.include_tasks:
     file: tasks/patch_mce_registries.yaml
     apply:
@@ -201,7 +201,7 @@
     - disconnected | default(true) | bool
   tags: mirror
 
-- name: Install plugin operators
+- name: "{{ plugin_name }} | Install plugin operators"
   vars:
     default_operator_source: "cs-{{ catalog_mirror }}-v4-20"
   ansible.builtin.include_tasks:
@@ -218,7 +218,7 @@
     - plugin.installOperators | default(true)
   tags: operators
 
-- name: Install plugin operators to fleet
+- name: "{{ plugin_name }} | Install plugin operators to fleet"
   ansible.builtin.include_tasks:
     file: tasks/configure_operators_fleet.yaml
     apply:
@@ -231,7 +231,7 @@
     - plugin.clusterSelector | length > 0
   tags: operators
 
-- name: Run post-operators
+- name: "{{ plugin_name }} | Run post-operators"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/post-operators.yaml"
     apply:
@@ -241,7 +241,7 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/post-operators.yaml') | length > 0
   tags: post-operators
 
-- name: Deploy Helm charts
+- name: "{{ plugin_name }} | Deploy Helm charts"
   ansible.builtin.include_tasks:
     file: tasks/helm_deploy.yaml
     apply:
@@ -257,7 +257,7 @@
     - plugin.helm | length > 0
   tags: helm
 
-- name: Run deploy
+- name: "{{ plugin_name }} | Run deploy"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/deploy.yaml"
     apply:
@@ -267,7 +267,7 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/deploy.yaml') | length > 0
   tags: deploy
 
-- name: Run post-validate
+- name: "{{ plugin_name }} | Run post-validate"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/post-validate.yaml"
     apply:
