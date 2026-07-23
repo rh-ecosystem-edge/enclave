@@ -74,6 +74,8 @@ properties:
     "$ref": "#/definitions/cidr"
   ocMirrorLogLevel:
     "$ref": "#/definitions/ocMirrorLogLevel"
+  waitAndDetachVmediaLogLevel:
+    "$ref": "#/definitions/pythonLoggingLogLevel"
   quayPinnedImageSetEnabled:
     type: boolean
     default: false
