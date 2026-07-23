@@ -136,10 +136,20 @@
           --server-side --force-conflicts
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_apply_mirrors
+      changed_when: "'configured' in r_apply_mirrors.stdout or 'created' in r_apply_mirrors.stdout"
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
+
+- name: Wait for MachineConfigPool to finish updating after LZ mirrors
+  ansible.builtin.include_tasks: wait_mcp.yaml
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+    - r_apply_mirrors.changed | default(false)
 
 - name: Wait for updated CatalogSource to be ready
   kubernetes.core.k8s_info:
@@ -282,3 +292,11 @@
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
+
+- name: Wait for MachineConfigPool to finish updating after Quay Enterprise mirrors
+  ansible.builtin.include_tasks: wait_mcp.yaml
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror_quay is defined
+    - r_plugin_mirror_quay is success
+    - (r_apply_quay_idms.changed | default(false)) or (r_apply_quay_itms.changed | default(false))
