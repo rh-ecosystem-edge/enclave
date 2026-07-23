@@ -356,6 +356,7 @@ from the workflow `env:` block for non-secret values. Only ask the user for
 host-specific or secret values that cannot be derived from the workflow.
 
 **Fixed variable allowlist** (do NOT scan or expose other CI env vars):
+- `BASE_WORKING_DIR` (default: `/opt/clusters`, required by `setup-working-dir`)
 - `ENCLAVE_CLUSTER_NAME` (default: `enclave-test`, ask user)
 - `ENCLAVE_DEPLOYMENT_MODE` (set from Step 6: `connected` or `disconnected`)
 - `STORAGE_PLUGIN` (set from Step 8: `lvms`)
@@ -371,7 +372,7 @@ host-specific or secret values that cannot be derived from the workflow.
 - `AAP_LICENSE_FILE` (only when OSAC plugin selected, set in day-2 config)
 - `OSAC_CHART_VERSION` (only when OSAC plugin selected, optional override)
 
-All other CI variables (`BASE_WORKING_DIR`, `LZ_OS_VARIANT`, RHSM secrets,
+All other CI variables (`LZ_OS_VARIANT`, RHSM secrets,
 cloud image URLs, Slack webhooks, etc.) are CI-runner-specific and must NOT
 be collected or exposed to the user.
 
