@@ -77,71 +77,6 @@ checkDNS(){
     validation pass $check_name "$name points to $value"
 }
 
-checkCerts(){
-    local check_name=$1
-    local cert_name=$2
-    local key=$3
-    local cert=$4
-    local now_ts not_before not_after
-
-    # Check that key matches certificate
-    if [[ $(getValue $key | openssl pkey -pubout) != $(getValue $cert | openssl x509 -noout -pubkey) ]]; then
-        validation fail $check_name "Key $key does not match $cert"
-    fi
-
-    # Check that certificate is valid now
-    now_ts=$(date +%s)
-    not_before=$(getValue $cert | openssl x509 -noout -startdate | cut -d= -f2)
-    not_after=$(getValue $cert | openssl x509 -noout -enddate | cut -d= -f2)
-    not_before_ts=$(date -d "$not_before" +%s)
-    not_after_ts=$(date -d "$not_after" +%s)
-
-    if [[ $now_ts -lt $not_before_ts ]]; then
-        validation fail $check_name "Certificate $cert not valid yet (starts on $not_before)"
-    fi
-
-    if [[ $now_ts -gt $not_after_ts ]]; then
-        validation fail $check_name "Certificate $cert is expired (expired on $not_after)"
-    fi
-
-    cert_alt_names=$(getValue $cert | openssl x509 -noout -ext subjectAltName | tail -n +2 | tr -d ,| xargs -n1 | cut -d : -f 2)
-    if ! echo "$cert_alt_names" | grep -qx "$cert_name"; then
-        message="Valid names for certificate:
-$cert_alt_names"
-        validation fail $check_name "Certificate is not valid for name $cert_name" "$message"
-    fi
-
-    validation pass $check_name "Certificate $cert is valid"
-
-}
-
-checkCACert(){
-    local check_name=$1
-    local cert_jq=$2
-    local ca_pem now_ts not_before not_after not_before_ts not_after_ts
-
-    ca_pem=$(getValue "$cert_jq")
-
-    if ! echo "$ca_pem" | openssl x509 -noout 2>/dev/null; then
-        validation fail "$check_name" "sslCACertificate is not a valid PEM certificate"
-    fi
-
-    now_ts=$(date +%s)
-    not_before=$(echo "$ca_pem" | openssl x509 -noout -startdate | cut -d= -f2)
-    not_after=$(echo "$ca_pem" | openssl x509 -noout -enddate | cut -d= -f2)
-    not_before_ts=$(date -d "$not_before" +%s)
-    not_after_ts=$(date -d "$not_after" +%s)
-
-    if [[ $now_ts -lt $not_before_ts ]]; then
-        validation fail "$check_name" "CA certificate not valid yet (starts on $not_before)"
-    fi
-    if [[ $now_ts -gt $not_after_ts ]]; then
-        validation fail "$check_name" "CA certificate is expired (expired on $not_after)"
-    fi
-
-    validation pass "$check_name" "CA certificate is valid"
-}
-
 checkIP(){
     local check_subnet_net ip_net prefix
     local check_name="$1"
@@ -390,28 +325,43 @@ fi
 ## SSL Certificates
 validation_section ssl_certificates
 
-# Check SSL certificate validity
-checkCerts api api.$cluster_fqdn .sslAPICertificateKey .sslAPICertificateFullChain
-checkCerts ingress "*.apps.$cluster_fqdn" .sslIngressCertificateKey .sslIngressCertificateFullChain
-
-# Check CA certificate (optional)
-ca_cert=$(getValue .sslCACertificate)
-if [[ -n "$ca_cert" && "$ca_cert" != "null" ]]; then
-    checkCACert ssl_ca_certificate .sslCACertificate
+if output=$(enclave --log-format plain tools check-root-ca --config "${certs_vars}" 2>&1); then
+    validation pass root_ca "Root CA check passed"
 else
-    validation pass ssl_ca_certificate_skipped "sslCACertificate not configured. Skipping validation"
+    validation fail root_ca "Root CA check failed" "$output"
 fi
 
-# Check Ironic HTTPS certificate (optional)
-lz_bmc_ip=$(getValue .lzBmcIP)
-lz_bmc_hostname=$(getValue .lzBmcHostname)
-[[ "$lz_bmc_hostname" == "null" ]] && lz_bmc_hostname=""
-ironic_cert_name="${lz_bmc_hostname:-$lz_bmc_ip}"
-ironic_https_cert=$(getValue .ironicHTTPSCertificate)
-if [[ -n "$ironic_https_cert" && "$ironic_https_cert" != "null" ]]; then
-    checkCerts ironic_https "$ironic_cert_name" .ironicHTTPSKey .ironicHTTPSCertificate
+if output=$(enclave --log-format plain tools check-certificate-chains api \
+    --config "${certs_vars}" \
+    --hostname "api.${cluster_fqdn}" 2>&1); then
+    validation pass cert_api "API certificate chain check passed"
 else
-    validation pass ironic_https_skipped "Ironic HTTPS certificate not configured. Skipping validation"
+    validation fail cert_api "API certificate chain check failed" "$output"
+fi
+
+# Pass the wildcard pattern as the hostname so cert_covers_hostname confirms the
+# cert's SAN is exactly "*.apps.<cluster_fqdn>", matching what OpenShift ingress requires.
+if output=$(enclave --log-format plain tools check-certificate-chains ingress \
+    --config "${certs_vars}" \
+    --hostname "*.apps.${cluster_fqdn}" 2>&1); then
+    validation pass cert_ingress "Ingress certificate chain check passed"
+else
+    validation fail cert_ingress "Ingress certificate chain check failed" "$output"
+fi
+
+lz_bmc_hostname=$(getValue .lzBmcHostname 2>/dev/null || true)
+lz_bmc_ip=$(getValue .lzBmcIP 2>/dev/null || true)
+[[ "$lz_bmc_hostname" == "null" ]] && lz_bmc_hostname=""
+[[ "$lz_bmc_ip" == "null" ]] && lz_bmc_ip=""
+ironic_cert_name="${lz_bmc_hostname:-$lz_bmc_ip}"
+if [[ -n "${ironic_cert_name}" ]]; then
+    if output=$(enclave --log-format plain tools check-certificate-chains ironic \
+        --config "${certs_vars}" \
+        --hostname "${ironic_cert_name}" 2>&1); then
+        validation pass cert_ironic "Ironic certificate check passed"
+    else
+        validation fail cert_ironic "Ironic certificate check failed" "$output"
+    fi
 fi
 
 ## Check nmstate config (if defined)
