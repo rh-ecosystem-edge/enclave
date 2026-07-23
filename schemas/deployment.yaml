@@ -54,3 +54,4 @@ required:
   - diskEncryption
   - ocMirrorLogLevel
   - pullSecretPath
+  - defaultInterfaceName

@@ -324,27 +324,30 @@ for host in 0 1 2; do
         validation fail $host_name "Connection to $host_name ($redfish) is not healthy. Return code: $redfish_curl_return"
     else
         validation pass $host_name "Redfish connection to $host_name ($redfish) successful"
-    fi
 
-    bmc_system_id=$(getValue ".agent_hosts[$host].bmcSystemId")
-    system_count=$(jq -r '."Members@odata.count" // (.Members | length)' "$redfish_response" 2>/dev/null)
-    if [[ -z "$bmc_system_id" || "$bmc_system_id" == "null" ]]; then
-        if [[ "$system_count" =~ ^[0-9]+$ && "$system_count" -gt 1 ]]; then
-            rm -f "$redfish_response"
-            validation fail "${host_name}_system_id" "BMC on $host_name ($redfish) manages $system_count systems but bmcSystemId is not set. Set bmcSystemId in agent_hosts config"
+        bmc_system_id=$(getValue ".agent_hosts[$host].bmcSystemId")
+        system_count=$(jq -r '."Members@odata.count" // (.Members | length)' "$redfish_response" 2>/dev/null)
+        if [[ -z "$bmc_system_id" || "$bmc_system_id" == "null" ]]; then
+            if [[ ! "$system_count" =~ ^[0-9]+$ ]]; then
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "Could not determine system count from BMC on $host_name ($redfish). Set bmcSystemId explicitly"
+            elif [[ "$system_count" -gt 1 ]]; then
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "BMC on $host_name ($redfish) manages $system_count systems but bmcSystemId is not set. Set bmcSystemId in agent_hosts config"
+            else
+                validation pass "${host_name}_system_id" "BMC on $host_name ($redfish) has a single system, bmcSystemId not required"
+            fi
         else
-            validation pass "${host_name}_system_id" "BMC on $host_name ($redfish) has a single system, bmcSystemId not required"
+            if jq -e --arg id "/redfish/v1/Systems/${bmc_system_id}" '.Members[]? | select(."@odata.id" == $id)' "$redfish_response" > /dev/null 2>&1; then
+                validation pass "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' found on $host_name ($redfish)"
+            else
+                available_systems=$(jq -r '.Members[]?."@odata.id" // empty' "$redfish_response" 2>/dev/null | sed 's|/redfish/v1/Systems/||' | paste -sd ', ')
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' not found on $host_name ($redfish). Available systems: ${available_systems}"
+            fi
         fi
-    else
-        if jq -e --arg id "/redfish/v1/Systems/${bmc_system_id}" '.Members[]? | select(."@odata.id" == $id)' "$redfish_response" > /dev/null 2>&1; then
-            validation pass "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' found on $host_name ($redfish)"
-        else
-            available_systems=$(jq -r '.Members[]?."@odata.id" // empty' "$redfish_response" 2>/dev/null | sed 's|/redfish/v1/Systems/||' | paste -sd ', ')
-            rm -f "$redfish_response"
-            validation fail "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' not found on $host_name ($redfish). Available systems: ${available_systems}"
-        fi
+        rm -f "$redfish_response"
     fi
-    rm -f "$redfish_response"
 done
 
 ## Validate S3 configuration (only for RadosGWStorage backend)
