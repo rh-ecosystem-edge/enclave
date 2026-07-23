@@ -18,6 +18,7 @@ discovery_hosts:
     ipAddress: YOUR_IP_ADDRESS        # Should be in machineNetwork
     # interfaceName: eno1np0          # Optional: NIC name (default: eno1). Override for hardware with different naming
     redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
+    # bmcSystemId: System.Embedded.1  # Optional. Redfish System ID. Only needed for multi-system BMCs
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: YOUR_REDFISH_USER
     redfishPassword: YOUR_REDFISH_PASSWORD

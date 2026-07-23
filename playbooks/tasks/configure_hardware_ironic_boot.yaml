@@ -36,9 +36,9 @@
         redfish_address: "https://{{ agent_host.redfish }}"
         redfish_username: "{{ agent_host.redfishUser }}"
         redfish_password: "{{ agent_host.redfishPassword }}"
-        redfish_system_id: "/redfish/v1/Systems/{{ agent_host.bmcSystemId | default('1') }}"
         redfish_verify_ca: false
         force_persistent_boot_device: "Never"
+        redfish_system_id: "{{ '/redfish/v1/Systems/' + agent_host.bmcSystemId if agent_host.bmcSystemId is defined else omit }}"
       properties:
         capabilities: "boot_mode:uefi"
     headers:

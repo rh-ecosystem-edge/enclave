@@ -252,11 +252,36 @@ for host in 0 1 2; do
     redfish=$(getValue .agent_hosts[$host].redfish)
     redfish_user=$(getValue .agent_hosts[$host].redfishUser)
     redfish_password=$(getValue .agent_hosts[$host].redfishPassword)
-    redfish_curl_return=$(curl -o /dev/null -s -w '%{http_code}' -u "${redfish_user}:${redfish_password}" -k https://${redfish}/redfish/v1/Systems)
+    redfish_response=$(mktemp)
+    redfish_curl_return=$(curl -s -w '%{http_code}' -o "$redfish_response" -u "${redfish_user}:${redfish_password}" -k "https://${redfish}/redfish/v1/Systems")
     if [[ $redfish_curl_return != 200 ]]; then
+        rm -f "$redfish_response"
         validation fail $host_name "Connection to $host_name ($redfish) is not healthy. Return code: $redfish_curl_return"
     else
         validation pass $host_name "Redfish connection to $host_name ($redfish) successful"
+
+        bmc_system_id=$(getValue ".agent_hosts[$host].bmcSystemId")
+        system_count=$(jq -r '."Members@odata.count" // (.Members | length)' "$redfish_response" 2>/dev/null)
+        if [[ -z "$bmc_system_id" || "$bmc_system_id" == "null" ]]; then
+            if [[ ! "$system_count" =~ ^[0-9]+$ ]]; then
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "Could not determine system count from BMC on $host_name ($redfish). Set bmcSystemId explicitly"
+            elif [[ "$system_count" -gt 1 ]]; then
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "BMC on $host_name ($redfish) manages $system_count systems but bmcSystemId is not set. Set bmcSystemId in agent_hosts config"
+            else
+                validation pass "${host_name}_system_id" "BMC on $host_name ($redfish) has a single system, bmcSystemId not required"
+            fi
+        else
+            if jq -e --arg id "/redfish/v1/Systems/${bmc_system_id}" '.Members[]? | select(."@odata.id" == $id)' "$redfish_response" > /dev/null 2>&1; then
+                validation pass "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' found on $host_name ($redfish)"
+            else
+                available_systems=$(jq -r '.Members[]?."@odata.id" // empty' "$redfish_response" 2>/dev/null | sed 's|/redfish/v1/Systems/||' | paste -sd ', ')
+                rm -f "$redfish_response"
+                validation fail "${host_name}_system_id" "bmcSystemId '${bmc_system_id}' not found on $host_name ($redfish). Available systems: ${available_systems}"
+            fi
+        fi
+        rm -f "$redfish_response"
     fi
 done
 

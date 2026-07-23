@@ -373,7 +373,7 @@ agent_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `bmcSystemId` | Redfish system ID path component (`/redfish/v1/Systems/<bmcSystemId>`). Defaults to `1` | `1` |
+| `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
 
@@ -1226,7 +1226,8 @@ discovery_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `bmcSystemId` | Redfish system ID path component (`/redfish/v1/Systems/<bmcSystemId>`). Defaults to `1` | `1` |
+| `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; auto-discovered when omitted | `System.Embedded.1` |
+| `interfaceName` | Network interface name. Defaults to `eno1` | `ens3f0` |
 
 **Notes**:
 - MAC addresses must be unique
