@@ -1,0 +1,97 @@
+---
+# Reusable task: create or update a Keycloak client scope (idempotent).
+#
+# Required variables (set by caller via include_tasks vars):
+#   _kc_scope — dict with keys: name, description, protocolMappers, and
+#               optional attributes overrides
+#
+# Required variables (in scope from post-operators.yaml):
+#   _osac_keycloak_hostname, _osac_kc_token, osac_keycloak_realm,
+#   osac_keycloak_validate_certs, _osac_keycloak_ca_path
+
+- name: "{{ _kc_scope.name }} | Get client scopes"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/client-scopes"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  register: _kc_client_scopes
+  no_log: true
+
+- name: "{{ _kc_scope.name }} | Find client scope"
+  ansible.builtin.set_fact:
+    _kc_existing_scope: >-
+      {{
+        _kc_client_scopes.json
+        | selectattr('name', 'equalto', _kc_scope.name)
+        | first
+        | default({})
+      }}
+    _kc_desired_attributes: >-
+      {{
+        _kc_scope.attributes
+        | default({
+            'include.in.token.scope': 'false',
+            'display.on.consent.screen': 'true'
+          })
+      }}
+  no_log: true
+
+- name: "{{ _kc_scope.name }} | Check whether client scope needs update"
+  ansible.builtin.set_fact:
+    _kc_scope_update_required: >-
+      {{
+        _kc_existing_scope != {} and (
+          (_kc_existing_scope.description | default('')) != _kc_scope.description or
+          (_kc_existing_scope.attributes | default({})) != _kc_desired_attributes or
+          (_kc_existing_scope.protocol | default('')) != 'openid-connect'
+        )
+      }}
+  no_log: true
+
+- name: "{{ _kc_scope.name }} | Create client scope"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/client-scopes"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "{{ _kc_scope.name }}"
+      description: "{{ _kc_scope.description }}"
+      protocol: openid-connect
+      attributes: "{{ _kc_desired_attributes }}"
+      protocolMappers: "{{ _kc_scope.protocolMappers | default([]) }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 201
+  when: _kc_existing_scope == {}
+  no_log: true
+
+- name: "{{ _kc_scope.name }} | Update client scope"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/client-scopes/{{ _kc_existing_scope.id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body: >-
+      {{
+        _kc_existing_scope | combine({
+          'name': _kc_scope.name,
+          'description': _kc_scope.description,
+          'protocol': 'openid-connect',
+          'attributes': _kc_desired_attributes,
+          'protocolMappers': _kc_scope.protocolMappers | default([])
+        }, recursive=True)
+      }}
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: 200
+  when: _kc_scope_update_required
+  no_log: true

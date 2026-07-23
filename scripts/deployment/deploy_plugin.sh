@@ -163,6 +163,7 @@ osacAapLicenseFile: "${LZ_AAP_LICENSE}"
 ${OSAC_CHART_VERSION:+osacChartVersion: "${OSAC_CHART_VERSION}"}
 osacProfilesList:
   - caas
+osacTestUsers: true
 OSAC_EOF
     fi
 fi
