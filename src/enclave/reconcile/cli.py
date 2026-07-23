@@ -8,6 +8,10 @@ from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
     reconcile as cluster_upgrade_reconcile,
 )
+from enclave.reconcile.ironic_version import (
+    IronicVersionError,
+    reconcile as ironic_version_reconcile,
+)
 from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
 from enclave.utils import (
     LOG_LEVELS,
@@ -24,6 +28,59 @@ def defaults_path(filename: str) -> Path:
     if not path.exists():
         path = enclave_pkg.parent.parent / "defaults" / filename
     return path
+
+
+def resolve_platform_version(version: str | None, use_defaults: bool) -> str:
+    """Resolve OpenShift version from either direct input or defaults.
+
+    Args:
+        version: Direct version string (e.g., "4.20.21")
+        use_defaults: If True, load default from platforms.yaml
+
+    Returns:
+        Resolved version string
+
+    Raises:
+        click.UsageError: If arguments are mutually exclusive or missing
+        click.ClickException: If defaults file issues or missing version key
+    """
+    if use_defaults and version:
+        raise click.UsageError("--use-defaults is mutually exclusive with --version")
+
+    if not use_defaults and not version:
+        raise click.UsageError("Either --version or --use-defaults must be provided")
+
+    if use_defaults:
+        defaults_file = defaults_path("platforms.yaml")
+        try:
+            with defaults_file.open(encoding="utf-8") as fh:
+                platforms = yaml.safe_load(fh)
+        except FileNotFoundError as exc:
+            raise click.ClickException(
+                f"{defaults_file} not found; run from the repo root"
+            ) from exc
+        except yaml.YAMLError as exc:
+            raise click.ClickException(
+                f"Failed to parse {defaults_file}: {exc}"
+            ) from exc
+
+        openshift_versions: list[dict[str, object]] = platforms.get(
+            "openshift_versions", []
+        )
+        default_entry = next(
+            (v for v in openshift_versions if v.get("default") is True), None
+        )
+        if default_entry is None:
+            raise click.ClickException(
+                "No default version found in defaults/platforms.yaml; "
+                "set 'default: true' on one entry"
+            )
+        if "version" not in default_entry:
+            raise click.ClickException(
+                "Default OpenShift entry in defaults/platforms.yaml is missing 'version'"
+            )
+        return str(default_entry["version"])
+    return cast("str", version)
 
 
 @click.group(cls=KubeconfigGroup)
@@ -132,46 +189,54 @@ def mgmt_cluster_version(
     timeout_minutes: int,
     sleep_interval: int,
 ) -> None:
-    if use_defaults and version:
-        raise click.UsageError("--use-defaults is mutually exclusive with --version")
-
-    if not use_defaults and not version:
-        raise click.UsageError("Either --version or --use-defaults must be provided")
-
-    if use_defaults:
-        defaults_file = defaults_path("platforms.yaml")
-        try:
-            with defaults_file.open(encoding="utf-8") as fh:
-                platforms = yaml.safe_load(fh)
-        except FileNotFoundError as exc:
-            raise click.ClickException(
-                f"{defaults_file} not found; run from the repo root"
-            ) from exc
-        except yaml.YAMLError as exc:
-            raise click.ClickException(
-                f"Failed to parse {defaults_file}: {exc}"
-            ) from exc
-
-        openshift_versions: list[dict[str, object]] = platforms.get(
-            "openshift_versions", []
-        )
-        default_entry = next(
-            (v for v in openshift_versions if v.get("default") is True), None
-        )
-        if default_entry is None:
-            raise click.ClickException(
-                "No default version found in defaults/platforms.yaml; "
-                "set 'default: true' on one entry"
-            )
-        resolved_version: str = str(default_entry["version"])
-    else:
-        resolved_version = cast("str", version)
+    resolved_version = resolve_platform_version(version, use_defaults)
 
     try:
         cluster_upgrade_reconcile(
             resolved_version, dry_run, timeout_minutes, sleep_interval
         )
     except (ClusterUpgradeError, RuntimeError, TimeoutError) as e:
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command(no_args_is_help=True)
+@click.option(
+    "--version", "version", default=None, help="OpenShift version to get ironic from"
+)
+@click.option(
+    "--use-defaults",
+    is_flag=True,
+    default=False,
+    help="Load the default OpenShift version from defaults/platforms.yaml (mutually exclusive with --version)",
+)
+@click.option("--dry-run/--no-dry-run", default=False)
+@click.option(
+    "--timeout-minutes",
+    default=10,
+    type=click.IntRange(min=1),
+    help="Timeout for waiting operations in minutes (default: 10)",
+)
+@click.option(
+    "--sleep-interval",
+    default=5,
+    type=click.IntRange(min=1),
+    help="Sleep interval between polling attempts in seconds (default: 5)",
+)
+def ironic_version(
+    version: str | None,
+    use_defaults: bool,
+    dry_run: bool,
+    timeout_minutes: int,
+    sleep_interval: int,
+) -> None:
+    """Update ironic to the version bundled with the specified OpenShift release."""
+    resolved_version = resolve_platform_version(version, use_defaults)
+
+    try:
+        ironic_version_reconcile(
+            resolved_version, dry_run, timeout_minutes, sleep_interval
+        )
+    except (IronicVersionError, RuntimeError, TimeoutError) as e:
         raise click.ClickException(str(e)) from e
 
 
