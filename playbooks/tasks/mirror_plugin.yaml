@@ -137,7 +137,6 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
@@ -279,6 +278,5 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success

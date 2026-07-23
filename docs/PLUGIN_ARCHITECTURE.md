@@ -78,7 +78,7 @@ registries:
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
 | `requires` | Declarative requirements validated at load time, before any deployment work begins. See [Load-Time Validation](#load-time-validation). |
-| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts and remote repos. Each entry specifies `release`, `namespace`, and optional `repo`, `version`, values template, and `extractImages`. When `extractImages: true` is set on a local chart, `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. |
+| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts, OCI charts (`oci://`), and remote repos. Each entry specifies `release`, `namespace`, and optional `chart`, `repo`, `version`, values template, and `extractImages`. When `extractImages: true` is set on a chart (local or OCI), `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. |
 
 The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during `make validate`. The validator (`make validate-plugins`) also checks directory structure.
 
@@ -105,7 +105,7 @@ Here's what runs and in what order:
 
 Steps 3-4 are the load-time validation gate. If any declared requirement is missing or the early-validate script fails, the plugin fails immediately -- before mirroring, operator installation, or deployment. Note that `early-validate.yaml` runs before the cluster exists, so it cannot use KUBECONFIG. Use it for config format checks, external connectivity validation, or other pre-flight logic.
 
-Step 6 runs `helm template` (with chart defaults, no custom values) on local charts that have `extractImages: true`. The discovered image references are merged into `additionalImages` before mirroring. This is opt-in because `helm template` can fail if sub-chart dependencies aren't populated. Remote charts (with `repo` set) are skipped.
+Step 6 runs `helm template` on charts that have `extractImages: true`. Both local charts and OCI charts (`oci://`) are supported. When a `valuesTemplate` or `valuesFile` is defined on the chart entry, it is rendered and passed to `helm template` to satisfy required values. Since extraction runs before operators and post-operators, some runtime variables may not exist yet. Use `extractPlaceholders` in the helm entry to provide stub values for variables that are only set at deploy time — the actual values don't matter for image discovery. The discovered image references are merged into `additionalImages` before mirroring. This is opt-in because `helm template` can fail if sub-chart dependencies aren't populated or required values are missing. Remote charts (with `repo` set) are skipped.
 
 Step 9 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before Helm charts or deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that the Helm values template depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
 
@@ -385,7 +385,7 @@ requires:
 1. Add `requires` to declare variables or files that must exist at load time
 1. Add `tasks/early-validate.yaml` for custom pre-flight checks that don't need cluster access (optional)
 1. Add `tasks/post-operators.yaml` for setup needed after operators but before Helm or deploy (optional)
-1. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/` or from a remote `repo`. Set `extractImages: true` on local charts to auto-discover container images for mirroring
+1. Add `helm` list if you need Helm chart deployments, with chart sources under `charts/`, OCI references (`oci://`), or from a remote `repo`. Set `extractImages: true` on charts to auto-discover container images for mirroring
 1. Add `tasks/deploy.yaml` with your post-operator (or post-Helm) setup logic
 1. Add `tasks/quay.yaml` if your plugin provides storage for Quay
 1. Run `make validate-plugins` to verify

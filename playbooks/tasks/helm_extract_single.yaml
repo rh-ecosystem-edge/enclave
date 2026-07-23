@@ -1,50 +1,191 @@
 ---
-# Extract container images from a single local Helm chart via helm template.
+# Extract container images from a single Helm chart via helm template.
+#
+# Supports local charts and OCI charts (oci://), with optional valuesTemplate.
 #
 # Required loop_var: _extract_chart (helm entry with extractImages: true)
-# Required variables: plugin_dir, workingDir
+# Required variables: plugin_dir, plugin_name, workingDir
 
-- name: "HelmExtract | Set chart path for {{ _extract_chart.release }}"
+# --- Log setup (early, so all steps can reference it) ---
+
+- name: "HelmExtract | Ensure log directory exists"
+  ansible.builtin.file:
+    path: "{{ workingDir }}/logs/"
+    state: directory
+
+- name: "HelmExtract | Set log path: {{ _extract_chart.release }}"
   ansible.builtin.set_fact:
-    _extract_chart_path: >-
-      {{ plugin_dir ~ '/' ~ (_extract_chart.chart | default('charts/' ~ _extract_chart.release)) }}
+    _extract_log: "{{ workingDir }}/logs/helm-extract-{{ plugin_name }}-{{ _extract_chart.release }}.{{ lookup('pipe', 'date +%s') }}.log"
 
-- name: "HelmExtract | Verify chart exists: {{ _extract_chart.release }}"
+# --- Determine chart type ---
+
+- name: "HelmExtract | Detect OCI chart: {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _extract_is_oci: "{{ _extract_chart.chart is defined and _extract_chart.chart is match('^oci://') }}"
+
+# --- Set chart reference ---
+
+- name: "HelmExtract | Set chart reference for {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _extract_chart_ref: >-
+      {{ _extract_chart.chart
+         if (_extract_is_oci | bool)
+         else (plugin_dir ~ '/' ~ (_extract_chart.chart | default('charts/' ~ _extract_chart.release))) }}
+
+- name: "HelmExtract | Show chart reference: {{ _extract_chart.release }}"
+  ansible.builtin.debug:
+    msg: |
+      Chart: {{ _extract_chart_ref }}
+      OCI: {{ _extract_is_oci }}
+      Version: {{ _extract_chart.version | default('latest') }}
+      Log: {{ _extract_log }}
+
+# --- Local chart: verify exists ---
+
+- name: "HelmExtract | Verify local chart exists: {{ _extract_chart.release }}"
   ansible.builtin.stat:
-    path: "{{ _extract_chart_path }}"
+    path: "{{ _extract_chart_ref }}"
   register: _r_extract_chart_stat
+  when: not (_extract_is_oci | bool)
 
-- name: "HelmExtract | Assert chart exists: {{ _extract_chart.release }}"
+- name: "HelmExtract | Assert local chart exists: {{ _extract_chart.release }}"
   ansible.builtin.assert:
     that: _r_extract_chart_stat.stat.exists
     fail_msg: >-
-      Helm chart not found at {{ _extract_chart_path }}.
+      Helm chart not found at {{ _extract_chart_ref }}.
       Cannot extract images for release '{{ _extract_chart.release }}'.
+      Plugin directory: {{ plugin_dir }}
+  when: not (_extract_is_oci | bool)
+
+# --- Local chart: dependency build (if chart has dependencies) ---
+
+- name: "HelmExtract | Read Chart.yaml: {{ _extract_chart.release }}"
+  ansible.builtin.slurp:
+    src: "{{ _extract_chart_ref }}/Chart.yaml"
+  register: _r_extract_chart_yaml
+  when: not (_extract_is_oci | bool)
+
+- name: "HelmExtract | Build dependencies: {{ _extract_chart.release }}"
+  block:
+    - name: "HelmExtract | Run helm dependency build: {{ _extract_chart.release }}"
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ workingDir }}/bin/helm dependency build {{ _extract_chart_ref }} 2>&1 | tee -a {{ _extract_log }}
+      args:
+        executable: /bin/bash
+      changed_when: true
+  rescue:
+    - name: "HelmExtract | Dependency build failed: {{ _extract_chart.release }}"
+      ansible.builtin.fail:
+        msg: >-
+          helm dependency build failed for chart '{{ _extract_chart.release }}' at {{ _extract_chart_ref }}.
+          Full output: {{ _extract_log }}
+  when:
+    - not (_extract_is_oci | bool)
+    - (_r_extract_chart_yaml.content | b64decode | from_yaml).dependencies is defined
+
+# --- Render values template (if defined) ---
+# The extract phase runs before operators and post-operators (step 6 vs 8-9),
+# so runtime variables like __r_ingress_config may not exist yet. We only need
+# the template to render without errors — actual values don't matter because
+# we're only parsing image references from the helm template output.
+
+- name: "HelmExtract | Set placeholder variables for extraction: {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ _extract_chart.extractPlaceholders | default({}) | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - _extract_chart.extractPlaceholders is defined
+    - lookup('ansible.builtin.vars', item.key, default='__undefined__') == '__undefined__'
+
+- name: "HelmExtract | Render values template: {{ _extract_chart.release }}"
+  block:
+    - name: "HelmExtract | Template values: {{ _extract_chart.release }}"
+      ansible.builtin.template:
+        src: "{{ plugin_dir }}/{{ _extract_chart.valuesTemplate }}"
+        dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ _extract_chart.release }}.yaml"
+  rescue:
+    - name: "HelmExtract | Values template rendering failed: {{ _extract_chart.release }}"
+      ansible.builtin.fail:
+        msg: >-
+          Failed to render values template '{{ _extract_chart.valuesTemplate }}' for chart '{{ _extract_chart.release }}'.
+          Template: {{ plugin_dir }}/{{ _extract_chart.valuesTemplate }}
+          This template requires Ansible variables that may not be available during the extract phase.
+          If a variable is only needed at deploy time (not for image discovery), add it to
+          extractPlaceholders in the helm entry of plugin.yaml.
+  when: _extract_chart.valuesTemplate is defined
+
+- name: "HelmExtract | Copy static values file: {{ _extract_chart.release }}"
+  ansible.builtin.copy:
+    src: "{{ plugin_dir }}/{{ _extract_chart.valuesFile }}"
+    dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ _extract_chart.release }}.yaml"
+  when:
+    - _extract_chart.valuesFile is defined
+    - _extract_chart.valuesTemplate is not defined
+
+- name: "HelmExtract | Build values arg: {{ _extract_chart.release }}"
+  ansible.builtin.set_fact:
+    _extract_values_arg: >-
+      {{ '-f ' ~ workingDir ~ '/helm-values-' ~ plugin_name ~ '-' ~ _extract_chart.release ~ '.yaml'
+         if (_extract_chart.valuesTemplate is defined or _extract_chart.valuesFile is defined)
+         else '' }}
+
+# --- Run helm template ---
 
 - name: "HelmExtract | Run helm template: {{ _extract_chart.release }}"
-  ansible.builtin.command:
-    cmd: >-
-      {{ workingDir }}/bin/helm template _extract {{ _extract_chart_path }}
+  ansible.builtin.shell: |
+    set -o pipefail
+    {{ workingDir }}/bin/helm template extract {{ _extract_chart_ref }} \
+      {{ '--version ' ~ _extract_chart.version if (_extract_is_oci | bool) and _extract_chart.version is defined else '' }} \
+      {{ _extract_values_arg }} \
+      2>&1 | tee -a {{ _extract_log }}
+  args:
+    executable: /bin/bash
   register: _r_helm_template
   failed_when: false
   changed_when: false
 
+- name: "HelmExtract | Read log tail on failure: {{ _extract_chart.release }}"
+  ansible.builtin.command:
+    cmd: tail -10 {{ _extract_log }}
+  register: _r_extract_log_tail
+  changed_when: false
+  failed_when: false
+  when: _r_helm_template.rc != 0
+
 - name: "HelmExtract | Fail on template error: {{ _extract_chart.release }}"
   ansible.builtin.fail:
-    msg: >-
-      helm template failed for chart '{{ _extract_chart.release }}' at {{ _extract_chart_path }}.
-      If the chart has sub-chart dependencies, run 'helm dependency build' first.
-      Error: {{ _r_helm_template.stderr | default('unknown') }}
+    msg: |
+      helm template failed for chart '{{ _extract_chart.release }}'.
+      Chart ref: {{ _extract_chart_ref }}
+      Values: {{ _extract_values_arg | default('none') }}
+      Error: {{ _r_extract_log_tail.stdout | default('(log not available)') }}
+      Full output: {{ _extract_log }}
   when: _r_helm_template.rc != 0
+
+# --- Parse images ---
 
 - name: "HelmExtract | Parse images from template output: {{ _extract_chart.release }}"
   ansible.builtin.set_fact:
     _chart_images: >-
       {{ _r_helm_template.stdout_lines
-         | select('match', '^\s*image:\s*')
+         | select('match', '^\s*image:\s*\S+')
          | map('regex_replace', '^\s*image:\s*["'']?([^"''\s]+)["'']?\s*$', '\1')
          | reject('match', '^\s*$')
          | unique | sort | list }}
+
+- name: "HelmExtract | Show extracted images: {{ _extract_chart.release }}"
+  ansible.builtin.debug:
+    msg: "{{ _chart_images }}"
+
+- name: "HelmExtract | Warn if no images found: {{ _extract_chart.release }}"
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: No images extracted from chart '{{ _extract_chart.release }}'.
+      Check {{ _extract_log }} for the full helm template output.
+  when: _chart_images | length == 0
 
 - name: "HelmExtract | Accumulate images from {{ _extract_chart.release }}"
   ansible.builtin.set_fact:

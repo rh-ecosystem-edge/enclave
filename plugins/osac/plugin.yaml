@@ -17,17 +17,19 @@ helm:
     createNamespace: true
     timeout: "45m"
     wait: false    # AAP takes 30+ minutes; deploy.yaml handles post-install waits
+    extractImages: true
+    extractPlaceholders:
+      __r_ingress_config:
+        resources:
+          - spec:
+              domain: "apps.placeholder.example.com"
+      _osac_keycloak_hostname: "keycloak.placeholder.example.com"
 
+# Images not referenced in the Helm chart templates (deployed by AAP operator, etc.)
 additionalImages:
-  - ghcr.io/osac-project/osac-operator:latest
-  - ghcr.io/osac-project/fulfillment-service:latest
-  - ghcr.io/osac-project/osac-aap:latest
-  - docker.io/envoyproxy/envoy:v1.33.0
-  - quay.io/openshift/origin-cli:4.20.0
   - quay.io/keycloak/keycloak:26.3
   - registry.redhat.io/rhel10/postgresql-18:latest
   - quay.io/prometheus/prometheus:v3.8.1
-  - docker.io/bitnami/kubectl:latest
 
 registries:
   - location: "ghcr.io/osac-project"
