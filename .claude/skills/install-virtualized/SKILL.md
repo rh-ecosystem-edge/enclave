@@ -11,7 +11,7 @@ when_to_use: >-
   on a successful deployment. This skill dynamically reads the CI e2e workflow
   each time to stay in sync with the latest deployment steps.
 disable-model-invocation: true
-allowed-tools: Bash(ssh *) Bash(scp *) Bash(grep *) Bash(cat *) Bash(make *) Bash(gh *) Bash(git *) Read AskUserQuestion
+allowed-tools: Bash(ssh *) Bash(scp *) Bash(grep *) Bash(cat *) Bash(ls *) Bash(make *) Bash(gh *) Bash(git *) Read AskUserQuestion
 ---
 
 # Enclave Virtualized Installation
@@ -90,10 +90,15 @@ have a `deploy-plugin` step in the workflow.
 Before proceeding, check whether the corresponding e2e job is currently passing on `main`:
 
 ```bash
-gh run list --workflow=e2e-deployment.yml --branch=main --limit=5 --json status,conclusion,displayTitle,createdAt
+gh run list --workflow=e2e-deployment.yml --branch=main --limit=5 --json databaseId,status,conclusion,displayTitle,createdAt
 ```
 
-If the most recent run for the selected mode (connected or disconnected) is **failing**:
+Then inspect the specific job for the selected mode using the most recent run ID:
+```bash
+gh run view <run-id> --json jobs --jq '.jobs[] | select(.name | test("e2e-connected|e2e-disconnected")) | {name, status, conclusion, url}'
+```
+
+If the job matching the selected mode is **failing**:
 - **Warn the user clearly**: "The CI e2e-connected job is currently failing on main.
   This deployment follows the same workflow, so it may hit the same failure."
 - Show the failure details (run URL, which step failed)
@@ -115,11 +120,13 @@ If it fails, stop and tell the user to set up passwordless SSH (e.g., `ssh-copy-
 After verifying SSH, check for existing enclave deployments on the host:
 
 ```bash
-ssh <host> "sudo virsh list --all --name 2>/dev/null | grep -v '^$' || true"
+ssh <host> "test -f /tmp/working_dir && echo WORKDIR_EXISTS; test -d ~/dev-scripts && echo DEVSCRIPTS_EXISTS; sudo -n virsh list --all --name 2>/dev/null | grep -v '^$' || true"
 ```
 
-If VMs are found (any output), an enclave deployment is already running. This
-skill does not support multiple concurrent deployments on the same host.
+If enclave artifacts are found (`/tmp/working_dir` or `~/dev-scripts` exist),
+a previous enclave deployment exists on this host. This skill does not support
+multiple concurrent deployments on the same host. Show the user the list of
+running VMs regardless, for context.
 
 Show the user:
 - The list of running VMs
@@ -166,6 +173,10 @@ required values and presenting options for confirmation.
 ## Step 4: Clone Enclave Repository on Host
 
 Instead of assuming the repo exists, clone it on the bare-metal host.
+
+**Shell quoting**: always shell-quote user-provided values (branch names, paths,
+pull-secret content) when interpolating into SSH commands. Use `scp` for file
+transfers instead of heredocs for secret/config content.
 
 1. **Derive the repo URL** from the local checkout:
    ```bash
@@ -294,14 +305,14 @@ mode. If below the threshold, warn the user and explain that disconnected mode
 needs extra space for the mirror registry and mirrored container images.
 
 ```
-RAM:  NUM_MASTERS x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 (host overhead)
-vCPU: NUM_MASTERS x MASTER_VCPU_VAL + LANDINGZONE_VCPU
-Disk: NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE) + LANDINGZONE_DISK
+RAM:  ENCLAVE_NUM_MASTERS x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 (host overhead)
+vCPU: ENCLAVE_NUM_MASTERS x MASTER_VCPU_VAL + LANDINGZONE_VCPU
+Disk: ENCLAVE_NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE_VAL) + LZ_DISK_SIZE
 ```
 
 Disk images use qcow2 thin provisioning — actual usage is much lower than the
 formula's theoretical maximum. Compare available disk against `MIN_DISK_GB`
-from `validate_prerequisites.sh` (200 GB connected, 1200 GB disconnected).
+extracted from `validate_prerequisites.sh` (do not hardcode — grep the value).
 
 ### Resource sizing logic
 
@@ -312,8 +323,9 @@ Calculate `available_for_vms = total_ram_mb - 4096` (host overhead).
   platform components (ACM, Quay, Clair) need significant memory headroom.
   A minimum of 128 GB RAM is recommended for a stable deployment."
 - Ask the user if they want to proceed anyway with reduced resources or stop.
-- If proceeding: calculate best-effort values (see below) and warn that the
-  deployment may fail due to insufficient memory for scheduling pods.
+- If proceeding: use the same calculation as >64 GB hosts below, with a floor
+  of `MASTER_MEMORY_VAL=16384` (16 GB) and `LANDINGZONE_MEMORY=2048`. If even
+  these minimums don't fit, stop — the host cannot run Enclave.
 
 **Hosts with >64 GB RAM** — use **3 masters** (default):
 - Check if the CI defaults from `configure_devscripts.sh` fit:
@@ -346,7 +358,7 @@ host-specific or secret values that cannot be derived from the workflow.
 **Fixed variable allowlist** (do NOT scan or expose other CI env vars):
 - `ENCLAVE_CLUSTER_NAME` (default: `enclave-test`, ask user)
 - `ENCLAVE_DEPLOYMENT_MODE` (set from Step 6: `connected` or `disconnected`)
-- `STORAGE_PLUGIN` (set from Step 8: `lvms` or `odf`)
+- `STORAGE_PLUGIN` (set from Step 8: `lvms`)
 - `ENABLED_PLUGINS` (default: same as `STORAGE_PLUGIN`, updated in Step 9 day-2 selection)
 - `MASTER_MEMORY_VAL` (override if adjusted in Step 7)
 - `MASTER_VCPU_VAL` (override if adjusted in Step 7)
@@ -544,7 +556,7 @@ takes 30-60+ minutes), provide live feedback:
 
 3. **Check VM status**:
    ```bash
-   ssh <host> "sudo virsh list --all"
+   ssh <host> "sudo -n virsh list --all"
    ```
 
 4. **Interpret log patterns** and report human-readable status:
@@ -653,19 +665,21 @@ ssh <host> "cd ~/enclave && <env-block> make -f Makefile.ci verify-cleanup"
 When a step fails:
 
 1. **Capture the error** — show the last 50 lines of output
-2. **For long-running steps**: also dump the LZ deployment log tail:
+2. **For long-running steps**: also dump the LZ deployment log tail using the
+   correct log filename from the target-to-log mapping table above (the log
+   name does not always match the make target name):
    ```bash
-   ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'tail -50 /home/cloud-user/enclave/deployment_bootstrap_<step>.log 2>/dev/null'"
+   ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'tail -50 /home/cloud-user/enclave/deployment_bootstrap_<LOG_NAME>.log 2>/dev/null'"
    ```
 3. **Analyze** — look for known patterns:
    - `CI_TOKEN` / `No valid CI_TOKEN` → verify `OPENSHIFT_CI=true` is set
    - OOM / `Out of memory` / `Killed process` → check `free -m` and `dmesg | grep -i oom`,
      suggest lower `MASTER_MEMORY_VAL`
-   - Network errors → check `sudo virsh net-list`
-   - `bootstrap process timed out` → check VM status with `sudo virsh list --all`,
+   - Network errors → check `sudo -n virsh net-list`
+   - `bootstrap process timed out` → check VM status with `sudo -n virsh list --all`,
      check if a master VM is shut off (likely OOM killed)
    - Timeout during install → check VM status, check if nodes are booting
-   - Pool/volume errors → check `sudo virsh pool-list --all`
+   - Pool/volume errors → check `sudo -n virsh pool-list --all`
    - Pod CrashLoopBackOff → get pod logs, check for root cause
    - `Insufficient memory` / pod Pending → nodes are at memory request capacity;
      check `oc describe nodes | grep -A5 "Allocated resources"` for request %,
