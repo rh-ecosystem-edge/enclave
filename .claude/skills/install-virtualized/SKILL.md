@@ -22,6 +22,17 @@ allowed-tools: Bash(ssh *) Bash(scp *) Bash(grep *) Bash(cat *) Bash(make *) Bas
 
 Display the warning above to the user before proceeding with any installation.
 
+## Prerequisites
+
+Before starting, ensure the bare-metal host meets these minimum requirements:
+- 128 GB RAM (64 GB minimum, but not recommended)
+- 200 GB free disk (connected) / 1,200 GB (disconnected)
+- 16+ CPU cores
+- RHEL/CentOS with libvirt available
+- Passwordless SSH access from your machine
+
+Requirements are validated in detail during Step 7.
+
 This skill deploys Red Hat Sovereign Enclave on a bare-metal host using dev-scripts
 to create virtualized infrastructure (Landing Zone VM + OpenShift master VMs).
 
@@ -285,8 +296,12 @@ needs extra space for the mirror registry and mirrored container images.
 ```
 RAM:  NUM_MASTERS x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 (host overhead)
 vCPU: NUM_MASTERS x MASTER_VCPU_VAL + LANDINGZONE_VCPU
-Disk: NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE) + LANDINGZONE_DISK + overhead
+Disk: NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE) + LANDINGZONE_DISK
 ```
+
+Disk images use qcow2 thin provisioning — actual usage is much lower than the
+formula's theoretical maximum. Compare available disk against `MIN_DISK_GB`
+from `validate_prerequisites.sh` (200 GB connected, 1200 GB disconnected).
 
 ### Resource sizing logic
 
@@ -317,12 +332,10 @@ Calculate `available_for_vms = total_ram_mb - 4096` (host overhead).
 This is what `configure_devscripts.sh` reads when the fix from PR #562 is present.
 Also pass `MASTER_VCPU_VAL`, `LANDINGZONE_MEMORY`, `LANDINGZONE_VCPU` if adjusted.
 
-## Step 8: Ask Storage Plugin
+## Step 8: Storage Plugin
 
-Ask the user: **lvms** or **odf**?
-
-- **lvms**: proceed (default, lightweight)
-- **odf**: tell the user this is not yet supported by this skill, stop
+The virtualized deployment uses **lvms** as the storage plugin. Inform the user
+that lvms will be used (it is the only supported option for virtualized installs).
 
 ## Step 9: Collect Environment Variables and Day-2 Options
 
@@ -340,7 +353,6 @@ host-specific or secret values that cannot be derived from the workflow.
 - `LANDINGZONE_MEMORY` (override if adjusted in Step 7)
 - `LANDINGZONE_VCPU` (override if adjusted in Step 7)
 - `PULL_SECRET` (from Step 5: `$(cat ~/.pull-secret.json)`)
-- `ENCLAVE_IRONIC_HTTPS` (connected mode only: `true`; do NOT set for disconnected)
 - `OPENSHIFT_CI` (CI default: `true`)
 - `CLEANUP_AFTER` (CI default: `true`)
 - `ENCLAVE_ENABLE_GPU_PASSTHROUGH` (CI default: `false`)
@@ -499,8 +511,8 @@ For each step:
 5. On success: update progress bar with ✓ and move to next
 6. On failure: go to **Failure Handling** below
 
-Handle conditional steps as the CI workflow does (e.g., `setup-ceph` only for ODF,
-`generate-ironic-cert` only when `ENCLAVE_IRONIC_HTTPS=true`).
+Handle conditional steps as the CI workflow does (e.g., skip `setup-ceph` since
+this skill uses lvms only).
 
 After `setup-working-dir`, capture WORKING_DIR: `cat /tmp/working_dir` and add it
 to the env block for all subsequent commands.
@@ -511,6 +523,12 @@ ssh <host> "cd ~/enclave && ./scripts/utils/get_landing_zone_ip.sh"
 ```
 Store this as `LZ_IP` — needed for monitoring long-running steps and log paths.
 
+Immediately verify double-hop SSH connectivity to the LZ before proceeding:
+```bash
+ssh <host> "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 cloud-user@<LZ_IP> 'hostname'"
+```
+If this fails, stop and troubleshoot — all subsequent log monitoring depends on it.
+
 ### Long-Running Step Monitoring
 
 For steps known to take >10 minutes (especially `deploy-cluster-install` which
@@ -518,7 +536,7 @@ takes 30-60+ minutes), provide live feedback:
 
 1. **Run the command in background**: use the Bash tool with `run_in_background: true`
 
-2. **Poll every 2-3 minutes** while the background task runs. Use the LZ log file
+2. **Poll every 5-6 minutes** while the background task runs. Use the LZ log file
    from the mapping table above. Tail via double-hop SSH:
    ```bash
    ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'tail -30 ~/enclave/deployment_bootstrap_deploy.log 2>/dev/null'"
