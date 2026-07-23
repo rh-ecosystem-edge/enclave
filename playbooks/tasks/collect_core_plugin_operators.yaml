@@ -22,18 +22,18 @@
 
 - name: Build combined plugin operators dictionary
   vars:
-    _foundation: >-
+    _enabled: >-
       {{ r_cp_slurp.results
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
-         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('name', 'defined')
          | selectattr('name', 'in', enabled_plugins)
          | list }}
   ansible.builtin.set_fact:
     _core_plugin_operators: |-
       {% set tmp = {} %}
-      {% for p in _foundation if p.operators is defined %}
+      {% for p in _enabled if p.operators is defined %}
       {% set _ = tmp.update({p.name: {'operators': p.operators, 'catalog': p.catalog | default('redhat')}}) %}
       {% endfor %}
       {{ tmp }}
