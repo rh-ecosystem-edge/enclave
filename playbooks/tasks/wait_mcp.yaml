@@ -1,0 +1,85 @@
+---
+- name: Wait for MachineConfigPool to detect pending changes (if any)
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp_detect
+  retries: 12
+  delay: 30
+  failed_when: false
+  until: >-
+    (
+      r_mcp_detect.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) > 0
+
+- name: Set MCP updating detected fact
+  ansible.builtin.set_fact:
+    _mcp_updating_detected: >-
+      {{
+        r_mcp_detect.resources | default([])
+        | rejectattr('spec.paused', 'equalto', true)
+        | selectattr('status.conditions', 'defined')
+        | map(attribute='status.conditions')
+        | flatten
+        | selectattr('type', 'equalto', 'Updating')
+        | selectattr('status', 'equalto', 'True')
+        | list
+        | length > 0
+      }}
+
+- name: Wait for MachineConfigPool to finish updating
+  kubernetes.core.k8s_info:
+    api_version: machineconfiguration.openshift.io/v1
+    kind: MachineConfigPool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_mcp
+  retries: 60
+  delay: 30
+  when: _mcp_updating_detected | bool
+  until: >-
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updating')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Updated')
+      | rejectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0
+    and
+    (
+      r_mcp.resources | default([])
+      | rejectattr('spec.paused', 'equalto', true)
+      | selectattr('status.conditions', 'defined')
+      | map(attribute='status.conditions')
+      | flatten
+      | selectattr('type', 'equalto', 'Degraded')
+      | selectattr('status', 'equalto', 'True')
+      | list
+      | length
+    ) == 0

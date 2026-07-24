@@ -80,6 +80,8 @@
       - "{{ quay_idms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_apply_quay_idms
+  changed_when: "'configured' in r_apply_quay_idms.stdout or 'created' in r_apply_quay_idms.stdout"
   when: quay_idms_src_stat.stat.exists
 
 - name: Apply Quay ITMS to cluster (fallback mirrors to internal Quay)
@@ -91,6 +93,8 @@
       - "{{ quay_itms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_apply_quay_itms
+  changed_when: "'configured' in r_apply_quay_itms.stdout or 'created' in r_apply_quay_itms.stdout"
   when: quay_itms_src_stat.stat.exists
 
 - name: Trust Quay registry CA in image.config for image pulls
