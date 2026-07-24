@@ -129,7 +129,6 @@
         state: absent
       when: lz_itms_src_stat.stat.exists
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
@@ -252,7 +251,6 @@
   vars:
     quay_mirror_skip_apply: true
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
 
@@ -266,7 +264,9 @@
       lz_cluster_resources_dir: "{{ lz_cluster_resources_dir | default('n/a') }}"
       quay_idms_manifest: "{{ quay_idms_apply_manifest | default('n/a') }}"
       quay_itms_manifest: "{{ quay_itms_apply_manifest | default('n/a') }}"
-  when: plugin.installOperators | default(true)
+  when:
+    - (r_plugin_mirror is defined and r_plugin_mirror is success) or
+      (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
 
 - name: Apply LZ mirror manifests to cluster
   ansible.builtin.shell: |
@@ -276,7 +276,6 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
@@ -290,7 +289,6 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
     - quay_idms_apply_manifest is defined
@@ -305,7 +303,6 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
-    - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
     - quay_itms_apply_manifest is defined
@@ -313,7 +310,6 @@
 - name: Wait for MachineConfigPool to finish updating
   ansible.builtin.include_tasks: wait_mcp.yaml
   when:
-    - plugin.installOperators | default(true)
     - (r_plugin_mirror is defined and r_plugin_mirror is success) or
       (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
 

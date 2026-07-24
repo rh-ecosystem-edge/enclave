@@ -115,7 +115,7 @@
   ansible.builtin.set_fact:
     _helm_log: "{{ workingDir }}/logs/helm-{{ plugin_name }}-{{ helm_chart.release }}.{{ lookup('pipe', 'date +%s') }}.log"
 
-- name: "Helm | Install {{ helm_chart.release }}{{ ' v' ~ (helm_chart.version | default('')) if helm_chart.version is defined else '' }}"
+- name: "Helm | Install {{ helm_chart.release }}{{ ' ' ~ helm_chart.version if helm_chart.version is defined else '' }}"
   ansible.builtin.shell: |
     set -o pipefail
     {{ workingDir }}/bin/helm upgrade --install \

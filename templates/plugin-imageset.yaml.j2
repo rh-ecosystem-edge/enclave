@@ -2,11 +2,12 @@
 kind: ImageSetConfiguration
 apiVersion: mirror.openshift.io/v2alpha1
 mirror:
+{% if plugin.operators | default([]) | length > 0 %}
   operators:
     - catalog: {{ catalog_image }}:{{ catalog_version }}
       targetCatalog: redhat/{{ catalog_mirror }}
       packages:
-{% for operator in plugin.operators | default([]) %}
+{% for operator in plugin.operators %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
 {% for operator_name in [operator.name] + additional_operator_names %}
         - name: {{ operator_name }}
@@ -20,6 +21,7 @@ mirror:
         - name: {{ pkg }}
 {% endfor %}
 {% endfor %}
+{% endif %}
 {% if plugin.additionalImages | default([]) | length > 0 %}
   additionalImages:
 {% for img in plugin.additionalImages %}
