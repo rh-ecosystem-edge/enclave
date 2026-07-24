@@ -141,6 +141,13 @@
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
+- name: Wait for MachineConfigPool to finish updating after LZ mirrors
+  ansible.builtin.include_tasks: wait_mcp.yaml
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+
 - name: Wait for updated CatalogSource to be ready
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
@@ -278,6 +285,13 @@
     apply:
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror_quay is defined
+    - r_plugin_mirror_quay is success
+
+- name: Wait for MachineConfigPool to finish updating after Quay Enterprise mirrors
+  ansible.builtin.include_tasks: wait_mcp.yaml
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
