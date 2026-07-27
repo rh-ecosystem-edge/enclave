@@ -67,7 +67,7 @@ registries:
 | Field | What it does |
 |-------|-------------|
 | `name` | Plugin identifier. Must match the directory name. |
-| `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deployed separately. |
+| `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deploys after core operators and Quay mirroring. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
@@ -348,10 +348,10 @@ A validation-only plugin can hook into any of these checkpoints:
 |------|---------------|----------------|-----------------|
 | `early-validate.yaml` | Phase 1 (Prepare) start | No | Yes -- any enabled plugin with `requires` |
 | `pre-install-validate.yaml` | Phase 3 (Deploy), before cluster install | No | Yes |
-| `pre-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
-| `post-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Only `type: foundation` plugins |
+| `pre-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Yes -- all enabled plugins |
+| `post-validate.yaml` | Phase 5 (Operators), inside `deploy_plugin.yaml` | Yes | Yes -- all enabled plugins |
 
-`pre-validate.yaml` and `post-validate.yaml` run inside `deploy_plugin.yaml`, which is only triggered automatically for `type: foundation` plugins (via `deploy_plugins.yaml`). Use `type: foundation` with an `order` field for validation-only plugins that need cluster access.
+`pre-validate.yaml` and `post-validate.yaml` run inside `deploy_plugin.yaml`, which is triggered automatically for both `foundation` and `addon` plugins (via `deploy_plugins.yaml`).
 
 Example -- a plugin that validates network config before mirroring:
 

@@ -102,3 +102,16 @@
             apply:
               tags: operators
           tags: operators
+
+        - name: Auto-discover and deploy addon plugins
+          ansible.builtin.include_tasks:
+            file: tasks/deploy_plugins.yaml
+            apply:
+              tags:
+                - addon-plugins
+                - operators
+          vars:
+            plugin_type: addon
+          tags:
+            - addon-plugins
+            - operators
