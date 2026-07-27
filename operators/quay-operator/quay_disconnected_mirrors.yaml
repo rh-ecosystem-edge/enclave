@@ -1,10 +1,15 @@
 ---
-# Quay disconnected: apply IDMS/ITMS from oc-mirror and trust Quay registry CA for image pulls.
-# Included from quay_disconnected.yaml.
+# Quay disconnected: prepare and optionally apply IDMS/ITMS from oc-mirror,
+# then trust Quay registry CA for image pulls.
+# Included from quay_disconnected_finish.yaml and mirror_plugin.yaml.
+#
 # Copy to a target manifest name based on mode:
 # - default: idms-<slice>-internal (core); plugin mode: quay_mirror_suffix is plugin-<plugin>-internal
 #   → idms-<slice>-plugin-<plugin>-internal (oc-mirror may emit multiple slices per file; keep \2 in the name).
 # LZ plugin manifests use idms-<slice>-plugin-<plugin> (mirror_plugin.yaml).
+#
+# Set quay_mirror_skip_apply: true to prepare manifests without applying them (mirror_plugin.yaml
+# batches all applies to trigger a single MCO rollout).
 
 - name: Set target mirror suffix and base directory
   ansible.builtin.set_fact:
@@ -80,7 +85,9 @@
       - "{{ quay_idms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when: quay_idms_src_stat.stat.exists
+  when:
+    - quay_idms_src_stat.stat.exists
+    - not (quay_mirror_skip_apply | default(false) | bool)
 
 - name: Apply Quay ITMS to cluster (fallback mirrors to internal Quay)
   ansible.builtin.command:
@@ -91,7 +98,9 @@
       - "{{ quay_itms_apply_manifest }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when: quay_itms_src_stat.stat.exists
+  when:
+    - quay_itms_src_stat.stat.exists
+    - not (quay_mirror_skip_apply | default(false) | bool)
 
 - name: Trust Quay registry CA in image.config for image pulls
   ansible.builtin.include_tasks: ../../playbooks/tasks/trust_quay_registry_ca_for_image_config.yaml

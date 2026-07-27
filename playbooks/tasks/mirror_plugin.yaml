@@ -70,7 +70,7 @@
 
           Full log: {{ _oc_mirror_plugin_log }}
 
-- name: Apply updated mirror manifests to cluster
+- name: Prepare LZ mirror manifests
   block:
     - name: Set landing-zone cluster resources directory
       ansible.builtin.set_fact:
@@ -128,42 +128,6 @@
         path: "{{ lz_cluster_resources_dir }}/itms-oc-mirror.yaml"
         state: absent
       when: lz_itms_src_stat.stat.exists
-
-    - name: Apply updated mirror manifests to cluster
-      ansible.builtin.shell: |
-        {{ workingDir }}/bin/oc apply \
-          -f {{ lz_cluster_resources_dir }}/ \
-          --server-side --force-conflicts
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  when:
-    - plugin.installOperators | default(true)
-    - r_plugin_mirror is defined
-    - r_plugin_mirror is success
-
-- name: Wait for MachineConfigPool to finish updating after LZ mirrors
-  ansible.builtin.include_tasks: wait_mcp.yaml
-  when:
-    - plugin.installOperators | default(true)
-    - r_plugin_mirror is defined
-    - r_plugin_mirror is success
-
-- name: Wait for updated CatalogSource to be ready
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    namespace: openshift-marketplace
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_catalog_sources
-  retries: 24
-  delay: 10
-  until: >-
-    r_catalog_sources.resources | default([])
-    | selectattr('status', 'defined')
-    | selectattr('status.connectionState', 'defined')
-    | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
-    | list | length >= (r_catalog_sources.resources | length)
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
@@ -279,20 +243,97 @@
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
-- name: Apply Quay Enterprise mirrors for plugin
+- name: Prepare Quay Enterprise mirrors for plugin
   ansible.builtin.include_tasks:
     file: "../../operators/quay-operator/quay_disconnected_mirrors.yaml"
     apply:
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    quay_mirror_skip_apply: true
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
 
-- name: Wait for MachineConfigPool to finish updating after Quay Enterprise mirrors
-  ansible.builtin.include_tasks: wait_mcp.yaml
+# --- Apply all mirror manifests at once to trigger a single MCO rollout ---
+# Both oc-mirror runs (LZ and Quay Enterprise) complete without needing IDMS/ITMS
+# on the cluster. Applying all manifests here triggers one MCO rollout instead of two.
+
+- name: Show mirror manifests to apply
+  ansible.builtin.debug:
+    msg:
+      lz_cluster_resources_dir: "{{ lz_cluster_resources_dir | default('n/a') }}"
+      quay_idms_manifest: "{{ quay_idms_apply_manifest | default('n/a') }}"
+      quay_itms_manifest: "{{ quay_itms_apply_manifest | default('n/a') }}"
+  when: plugin.installOperators | default(true)
+
+- name: Apply LZ mirror manifests to cluster
+  ansible.builtin.shell: |
+    {{ workingDir }}/bin/oc apply \
+      -f {{ lz_cluster_resources_dir }}/ \
+      --server-side --force-conflicts
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
+
+- name: Apply Quay IDMS to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ quay_idms_apply_manifest }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
     - plugin.installOperators | default(true)
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
+    - quay_idms_apply_manifest is defined
+
+- name: Apply Quay ITMS to cluster
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - apply
+      - -f
+      - "{{ quay_itms_apply_manifest }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror_quay is defined
+    - r_plugin_mirror_quay is success
+    - quay_itms_apply_manifest is defined
+
+- name: Wait for MachineConfigPool to finish updating
+  ansible.builtin.include_tasks: wait_mcp.yaml
+  when:
+    - plugin.installOperators | default(true)
+    - (r_plugin_mirror is defined and r_plugin_mirror is success) or
+      (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+
+- name: Wait for updated CatalogSource to be ready
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_sources
+  retries: 24
+  delay: 10
+  until: >-
+    r_catalog_sources.resources | default([])
+    | selectattr('status', 'defined')
+    | selectattr('status.connectionState', 'defined')
+    | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+    | list | length >= (r_catalog_sources.resources | length)
+  when:
+    - plugin.installOperators | default(true)
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success
