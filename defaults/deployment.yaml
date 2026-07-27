@@ -39,3 +39,6 @@ quayRegistryCAConfigmapName: quay-registry-ca
 # Default network interface name for NMState configuration.
 # Override per host via discovery_hosts[].interfaceName.
 defaultInterfaceName: eno1
+
+# agent installer minimal or full ISO
+minimalISO: false

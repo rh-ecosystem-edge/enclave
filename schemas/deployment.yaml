@@ -35,6 +35,10 @@ properties:
     description: >-
       Path to the migration control file on the Landing Zone host. Records one applied migration
       filename per line (append-only).
+  minimalISO:
+    type: boolean
+    description: >-
+      Defines whether the Agent-based Installer generates a full ISO or a minimal ISO image.
   quayRegistryCAConfigmapName:
     type: string
     description: >-

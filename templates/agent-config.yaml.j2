@@ -13,6 +13,8 @@ additionalNTPSources:
 {{ defaultNtpServers | to_nice_yaml }}
 {% endif %}
 
+minimalISO: {{ minimalISO }}
+
 # And we add the network configuration of each host, in nmstate format
 hosts:
 {% for host in agent_hosts %}

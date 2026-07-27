@@ -34,6 +34,13 @@ lzBmcIP: YOUR_LZ_WEB_SERVER_IP        # Example: 100.64.1.10
 # Required when using publicly trusted certificates (e.g. Let's Encrypt), which
 # only support DNS SANs. The hostname must resolve to lzBmcIP from the BMC network.
 # lzBmcHostname: mirror.example.com
+#
+# ============================================================================
+# Agent-based installer
+# ============================================================================
+# Defines whether the Agent-based Installer generates a full ISO
+# or a minimal ISO image (default: false).
+minimalISO: false
 
 # ============================================================================
 # Quay Registry Configuration
