@@ -104,6 +104,7 @@ cat > "$GLOBAL_VARS_OUTPUT" <<EOF
 # ============================================================================
 workingDir: "/home/cloud-user/sessions/1"
 schemaValidationNoLog: true
+minimalISO: true
 
 # ============================================================================
 # Network Configuration
