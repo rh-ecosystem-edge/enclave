@@ -140,10 +140,24 @@
 
         GATE_SCRIPT_B64=$(base64 -w0 {{ workingDir }}/ocp-cluster/installation-gate.sh)
 
+        # Minimal ISOs have kargs that differ across boot entries (EFI GRUB
+        # adds /images/assisted_installer_custom.img, ISOLINUX does not),
+        # causing coreos-installer iso ignition show to fail its consistency
+        # check. Reset kargs on a temporary copy so extraction works, then
+        # embed the modified ignition back into the original ISO.
+        cp {{ workingDir }}/ocp-cluster/agent.x86_64.iso \
+           {{ workingDir }}/ocp-cluster/agent_extract_tmp.x86_64.iso
+        trap 'rm -f {{ workingDir }}/ocp-cluster/agent_extract_tmp.x86_64.iso' EXIT
+
         podman run --privileged --rm \
           -v {{ workingDir }}/ocp-cluster:/data:z -w /data \
           quay.io/coreos/coreos-installer:release \
-          iso ignition show agent.x86_64.iso \
+          iso kargs reset agent_extract_tmp.x86_64.iso
+
+        podman run --privileged --rm \
+          -v {{ workingDir }}/ocp-cluster:/data:z -w /data \
+          quay.io/coreos/coreos-installer:release \
+          iso ignition show agent_extract_tmp.x86_64.iso \
         | jq --compact-output \
             --arg script_b64 "$GATE_SCRIPT_B64" \
             '
