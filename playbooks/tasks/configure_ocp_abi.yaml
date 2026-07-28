@@ -134,25 +134,72 @@
           done
           echo "Gate released. Proceeding with installation..."
 
+    - name: Write kargs normalization script for minimal ISO
+      ansible.builtin.copy:
+        dest: "{{ workingDir }}/ocp-cluster/_patch_iso_kargs.py"
+        content: |
+          import sys
+          CUSTOM_PREFIX = b'/images/assisted_installer_custom.img '
+          URL_KARG = b'coreos.live.rootfs_url='
+          iso_path = sys.argv[1]
+          chunk_size = 64 * 1024
+          overlap = len(CUSTOM_PREFIX)
+          found_offset = -1
+          pos = 0
+          prev = b''
+          with open(iso_path, 'r+b') as f:
+              while True:
+                  f.seek(pos)
+                  chunk = f.read(chunk_size)
+                  if not chunk:
+                      break
+                  buf = prev + chunk
+                  idx = buf.find(CUSTOM_PREFIX)
+                  if idx >= 0:
+                      found_offset = pos - len(prev) + idx
+                      break
+                  prev = chunk[-overlap:]
+                  pos += len(chunk)
+              if found_offset < 0:
+                  sys.exit(0)
+              f.seek(found_offset)
+              field = bytearray(f.read(2048))
+              null_end = field.find(b'\x00')
+              if null_end < 0:
+                  null_end = len(field)
+              kargs = bytes(field[len(CUSTOM_PREFIX):null_end])
+              url_pos = kargs.find(URL_KARG)
+              if url_pos >= 0:
+                  url_val_end = url_pos + len(URL_KARG)
+                  while url_val_end < len(kargs) and kargs[url_val_end] not in (32, 9):
+                      url_val_end += 1
+                  kargs = (kargs[:url_pos] + b"'" +
+                           kargs[url_pos:url_val_end] + b"'" +
+                           kargs[url_val_end:])
+              padded = kargs + b'\x00' * (null_end - len(kargs))
+              f.seek(found_offset)
+              f.write(padded)
+          sys.stderr.write('Patched kargs at offset {}\n'.format(found_offset))
+
     - name: Extract ignition and inject gate service
       ansible.builtin.shell: |
         set -euo pipefail
 
         GATE_SCRIPT_B64=$(base64 -w0 {{ workingDir }}/ocp-cluster/installation-gate.sh)
 
-        # Minimal ISOs have kargs that differ across boot entries (EFI GRUB
-        # adds /images/assisted_installer_custom.img, ISOLINUX does not),
-        # causing coreos-installer iso ignition show to fail its consistency
-        # check. Reset kargs on a temporary copy so extraction works, then
-        # embed the modified ignition back into the original ISO.
+        # Minimal ISOs have EFI GRUB kargs that differ from ISOLINUX kargs:
+        # EFI GRUB prepends /images/assisted_installer_custom.img and omits
+        # the single-quote wrapping around the rootfs_url value that ISOLINUX
+        # uses. coreos-installer validates karg consistency before reading the
+        # ignition embed area, so iso ignition show and iso kargs reset both
+        # fail. Bypass coreos-installer by directly patching the EFI GRUB karg
+        # field in a copy of the ISO, then embed the result back into the original.
         cp {{ workingDir }}/ocp-cluster/agent.x86_64.iso \
            {{ workingDir }}/ocp-cluster/agent_extract_tmp.x86_64.iso
         trap 'rm -f {{ workingDir }}/ocp-cluster/agent_extract_tmp.x86_64.iso' EXIT
 
-        podman run --privileged --rm \
-          -v {{ workingDir }}/ocp-cluster:/data:z -w /data \
-          quay.io/coreos/coreos-installer:release \
-          iso kargs reset agent_extract_tmp.x86_64.iso
+        python3 {{ workingDir }}/ocp-cluster/_patch_iso_kargs.py \
+          {{ workingDir }}/ocp-cluster/agent_extract_tmp.x86_64.iso
 
         podman run --privileged --rm \
           -v {{ workingDir }}/ocp-cluster:/data:z -w /data \
@@ -200,6 +247,7 @@
       loop:
         - "{{ workingDir }}/ocp-cluster/gated.ign"
         - "{{ workingDir }}/ocp-cluster/installation-gate.sh"
+        - "{{ workingDir }}/ocp-cluster/_patch_iso_kargs.py"
 
 - name: Move to {{ workingDir }}/ocp-cluster/abi-iso/
   ansible.builtin.command:
