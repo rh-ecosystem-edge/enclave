@@ -111,6 +111,19 @@ MASTER_MEMORY_VAL=${MASTER_MEMORY_VAL:-$MASTER_MEMORY_VAL_DEFAULT}
 MASTER_VCPU_VAL=${MASTER_VCPU_VAL:-$MASTER_VCPU_VAL_DEFAULT}
 LANDINGZONE_DISK_VAL=${LANDINGZONE_DISK_VAL:-$LANDINGZONE_DISK_VAL_DEFAULT}
 
+# Resolve base domain: when using real certs the DNS names issued in the cert
+# must match the baseDomain written into dev-scripts config so that libvirt
+# dnsmasq creates records for mirror.<baseDomain>, api.<cluster>.<baseDomain>,
+# etc. that downstream validation and installation steps resolve.
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    require_env_var "ENCLAVE_BASE_DOMAIN"
+    DEVSCRIPTS_BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
+    DEVSCRIPTS_CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}"
+else
+    DEVSCRIPTS_BASE_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
+    DEVSCRIPTS_CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
+fi
+
 # Create configuration file
 cat > "$CONFIG_FILE" <<EOF
 #!/bin/bash
@@ -196,11 +209,10 @@ export MANAGE_INT_BRIDGE="n"
 # Cluster name (used for VM naming prefix)
 export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 
-# Cluster domain (for DNS)
-export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
-
-# Base domain (so dev-scripts uses .lab not test.metalkube.org for CLUSTER_DOMAIN)
-export BASE_DOMAIN="lab"
+# Base domain: .lab for self-signed cert runs; ENCLAVE_BASE_DOMAIN for real-cert runs
+# so libvirt dnsmasq creates records matching the cert SANs and baseDomain in global.yaml.
+export CLUSTER_DOMAIN="${DEVSCRIPTS_CLUSTER_DOMAIN}"
+export BASE_DOMAIN="${DEVSCRIPTS_BASE_DOMAIN}"
 
 # Working directory (where VMs and configs are stored)
 # Cluster-specific path for parallel execution isolation

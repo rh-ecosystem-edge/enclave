@@ -72,6 +72,19 @@ on:
         required: false
         type: string
         default: ''
+      cert-type:
+        description: 'TLS certificate type for API/ingress/ironic (self-signed = local CA, auto = day-of-week rotation)'
+        required: false
+        type: choice
+        default: self-signed
+        options:
+          - self-signed
+          - auto
+          - le-rsa
+          - le-ecdsa-long
+          - le-ecdsa-short
+          - zerossl-rsa
+          - zerossl-ecdsa
   workflow_call:
     inputs:
       run-connected:
@@ -99,6 +112,9 @@ on:
         type: string
         default: 'E2E Deployment'
       osac-chart-version:
+        type: string
+        default: ''
+      cert-type:
         type: string
         default: ''
   pull_request:
@@ -252,7 +268,6 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
-      ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
       ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
@@ -711,6 +726,7 @@ jobs:
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
       OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
+      ENCLAVE_IRONIC_HTTPS: 'true'
 
     steps:
       - name: Checkout code
@@ -727,6 +743,32 @@ jobs:
         run: |
           make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Determine certificate type
+        env:
+          INPUT_CERT_TYPE: ${{ inputs.cert-type }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          CERT_TYPE="${INPUT_CERT_TYPE}"
+          if [ "${CERT_TYPE}" = "self-signed" ]; then
+              CERT_TYPE=""
+          fi
+          if [ "${EVENT_NAME}" = "schedule" ] && [ -z "${CERT_TYPE}" ]; then
+              CERT_TYPE="auto"
+          fi
+          if [ "${CERT_TYPE}" = "auto" ]; then
+              TYPES=(le-rsa le-ecdsa-long le-ecdsa-short zerossl-rsa zerossl-ecdsa)
+              CERT_TYPE="${TYPES[$(( ($(date +%u) - 1) % 5 ))]}"
+          fi
+          if [ -n "${CERT_TYPE}" ]; then
+              case "${CERT_TYPE}" in
+                le-rsa|le-ecdsa-long|le-ecdsa-short|zerossl-rsa|zerossl-ecdsa) ;;
+                *) echo "Invalid cert type: ${CERT_TYPE}" >&2; exit 1 ;;
+              esac
+              echo "ENCLAVE_CERT_TYPE=${CERT_TYPE}" >> "$GITHUB_ENV"
+              echo "ENCLAVE_BASE_DOMAIN=nodns.in" >> "$GITHUB_ENV"
+              echo "Certificate type for this run: ${CERT_TYPE}"
+          fi
 
       - name: Workflow information
         run: |
@@ -777,6 +819,11 @@ jobs:
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
+          ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -787,6 +834,11 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
+          ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
         run: make -f Makefile.ci generate-ironic-cert
 
       - name: Setup Ceph on Landing Zone

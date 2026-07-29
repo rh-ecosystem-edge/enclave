@@ -26,6 +26,7 @@ dependencies = [
 
 [project.scripts]
 enclave = "enclave.cli:cli"
+enclave-cert-gen = "enclave.cert_gen.main:cli"
 
 [dependency-groups]
 dev = [
@@ -37,6 +38,10 @@ dev = [
     "pytest-mock ==3.15.1",
     "ruff ==0.16.4",
     "yamllint ==1.38.0",
+]
+cert-gen = [
+    "certbot ==5.7.0",
+    "certbot-dns-hetzner ==4.0.0",
 ]
 
 [build-system]

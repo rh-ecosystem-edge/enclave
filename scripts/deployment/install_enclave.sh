@@ -120,6 +120,21 @@ success "Dependencies installed"
 # Step 5: Generate config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml configuration
 info "Step 5: Generating Enclave Lab configuration (config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml)..."
 
+# Ensure uv is available locally (runner side) at the expected version.
+# setup_ansible.sh installs uv on the Landing Zone VM; here we ensure the
+# runner also has uv so generate_enclave_vars.sh and generate_ironic_cert.sh
+# can call 'uv run --group cert-gen enclave-cert-gen' without SSH.
+UV_VERSION="0.12.5"
+current_uv_version=$(uv --version 2>/dev/null | awk '{print $2}' || true)
+if [ "${current_uv_version}" != "${UV_VERSION}" ]; then
+    info "Installing uv ${UV_VERSION} locally..."
+    UV_INSTALLER=$(mktemp)
+    curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" -o "$UV_INSTALLER"
+    UV_UNMANAGED_INSTALL="$HOME/.local/bin" sh "$UV_INSTALLER"
+    rm -f "$UV_INSTALLER"
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 # Generate config files using helper script
 "${ENCLAVE_DIR}/scripts/infrastructure/generate_enclave_vars.sh"
 

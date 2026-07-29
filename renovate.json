@@ -14,7 +14,7 @@
     {
       "customType": "regex",
       "description": "Update uv version in setup_ansible.sh",
-      "managerFilePatterns": ["setup_ansible.sh"],
+      "managerFilePatterns": ["setup_ansible.sh", "scripts/deployment/install_enclave.sh"],
       "matchStrings": ["UV_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "astral-sh/uv",
       "datasourceTemplate": "github-releases",
