@@ -1,0 +1,24 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  download_timeout:
+    type: integer
+    minimum: 1
+    description: Timeout in seconds for binary download (get_url) tasks
+  download_retries:
+    type: integer
+    minimum: 1
+    description: Number of retries for binary download tasks
+  download_delay:
+    type: integer
+    minimum: 1
+    description: Delay in seconds between binary download retries
+
+required:
+  - download_timeout
+  - download_retries
+  - download_delay

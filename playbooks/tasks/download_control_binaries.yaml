@@ -24,6 +24,11 @@
     url: "{{ control_binaries.openshift_client.url }}"
     dest: "{{ workingDir }}/dist/openshift-client-linux.tar.gz"
     checksum: "{{ control_binaries.openshift_client.checksum }}"
+    timeout: "{{ download_timeout }}"
+  register: _download_oc
+  retries: "{{ download_retries }}"
+  delay: "{{ download_delay }}"
+  until: _download_oc is success
 
 - name: Unarchive openshift-client-linux.tar.gz to {{ workingDir }}/bin/
   ansible.builtin.unarchive:
@@ -37,12 +42,22 @@
     dest: "{{ workingDir }}/bin/helm"
     checksum: "{{ control_binaries.helm.checksum }}"
     mode: "0750"
+    timeout: "{{ download_timeout }}"
+  register: _download_helm
+  retries: "{{ download_retries }}"
+  delay: "{{ download_delay }}"
+  until: _download_helm is success
 
 - name: Download latest mirror registry available
   ansible.builtin.get_url:
     url: "{{ control_binaries.mirror_registry.url }}"
     dest: "{{ workingDir }}/dist/mirror-registry-amd64.tar.gz"
     checksum: "{{ control_binaries.mirror_registry.checksum }}"
+    timeout: "{{ download_timeout }}"
+  register: _download_mirror_registry
+  retries: "{{ download_retries }}"
+  delay: "{{ download_delay }}"
+  until: _download_mirror_registry is success
 
 - name: Unarchive mirror-registry-amd64.tar.gz to {{ workingDir }}/bin/
   ansible.builtin.unarchive:
@@ -55,6 +70,11 @@
     url: "{{ control_binaries.oc_mirror.url }}"
     dest: "{{ workingDir }}/dist/oc-mirror.tar.gz"
     checksum: "{{ control_binaries.oc_mirror.checksum }}"
+    timeout: "{{ download_timeout }}"
+  register: _download_oc_mirror
+  retries: "{{ download_retries }}"
+  delay: "{{ download_delay }}"
+  until: _download_oc_mirror is success
 
 - name: Unarchive oc-mirror.tar.gz to {{ workingDir }}/bin/
   ansible.builtin.unarchive:

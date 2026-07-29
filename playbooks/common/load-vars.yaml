@@ -59,6 +59,7 @@
   ansible.builtin.include_vars: "../../defaults/{{ config_file }}"
   loop:
     - control_binaries.yaml
+    - download.yaml
     - operators.yaml
     - platforms.yaml
     - catalogs.yaml
