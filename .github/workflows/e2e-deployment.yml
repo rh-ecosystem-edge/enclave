@@ -72,6 +72,19 @@ on:
         required: false
         type: string
         default: ''
+      cert-type:
+        description: 'TLS certificate type for API/ingress/ironic (empty = self-signed, auto = day-of-week rotation)'
+        required: false
+        type: choice
+        default: ''
+        options:
+          - ''
+          - auto
+          - le-rsa
+          - le-ecdsa-long
+          - le-ecdsa-short
+          - zerossl-rsa
+          - zerossl-ecdsa
   workflow_call:
     inputs:
       run-connected:
@@ -99,6 +112,9 @@ on:
         type: string
         default: 'E2E Deployment'
       osac-chart-version:
+        type: string
+        default: ''
+      cert-type:
         type: string
         default: ''
   pull_request:
@@ -251,7 +267,6 @@ jobs:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
       ENCLAVE_DEPLOYMENT_MODE: connected
-      ENCLAVE_IRONIC_HTTPS: 'true'
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
       ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
@@ -717,6 +732,11 @@ jobs:
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
       OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
+      ENCLAVE_IRONIC_HTTPS: 'true'
+      HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+      ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+      ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
+      ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
 
     steps:
       - name: Checkout code
@@ -733,6 +753,22 @@ jobs:
         run: |
           make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+
+      - name: Determine certificate type
+        run: |
+          CERT_TYPE="${{ inputs.cert-type }}"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -z "${CERT_TYPE}" ]; then
+              CERT_TYPE="auto"
+          fi
+          if [ "${CERT_TYPE}" = "auto" ]; then
+              TYPES=(le-rsa le-ecdsa-long le-ecdsa-short zerossl-rsa zerossl-ecdsa)
+              CERT_TYPE="${TYPES[$(( ($(date +%u) - 1) % 5 ))]}"
+          fi
+          if [ -n "${CERT_TYPE}" ]; then
+              echo "ENCLAVE_CERT_TYPE=${CERT_TYPE}" >> "$GITHUB_ENV"
+              echo "ENCLAVE_BASE_DOMAIN=nodns.in" >> "$GITHUB_ENV"
+              echo "Certificate type for this run: ${CERT_TYPE}"
+          fi
 
       - name: Workflow information
         run: |

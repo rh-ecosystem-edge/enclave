@@ -196,11 +196,11 @@ export MANAGE_INT_BRIDGE="n"
 # Cluster name (used for VM naming prefix)
 export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 
-# Cluster domain (for DNS)
-export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.lab"
-
 # Base domain (so dev-scripts uses .lab not test.metalkube.org for CLUSTER_DOMAIN)
-export BASE_DOMAIN="lab"
+export BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN:-lab}"
+
+# Cluster domain (for DNS)
+export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.${BASE_DOMAIN}"
 
 # Working directory (where VMs and configs are stored)
 # Cluster-specific path for parallel execution isolation

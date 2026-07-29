@@ -47,7 +47,7 @@ COPY pyproject.toml uv.lock .python-version README.md /workspace/
 # of the deps resolution layer leading to faster builds.
 RUN uv sync --all-groups --no-install-project
 COPY src/ /workspace/src/
-RUN uv sync --no-editable
+RUN uv sync --all-groups --no-editable
 
 # Put venv on PATH so all commands are available
 ENV PATH="/workspace/.venv/bin:$PATH"
