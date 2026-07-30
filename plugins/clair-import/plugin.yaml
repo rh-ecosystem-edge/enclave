@@ -2,3 +2,8 @@
 name: clair-import
 type: addon
 order: 100
+
+remote:
+  url: https://github.com/rh-ecosystem-edge/enclave-plugins
+  path: clair-import
+  ref: 78200c11c0a18953cec0ee45f4f1a0bbb46b75de

@@ -25,6 +25,37 @@
         fail_msg: "workingDir must be provided (e.g., -e workingDir=/home/cloud-user)"
       tags: always
 
+    - name: Set plugin directory for early fetch
+      ansible.builtin.set_fact:
+        plugin_dir: "{{ playbook_dir }}/../plugins/{{ plugin_name }}"
+      when: plugin_name is defined
+      tags: always
+
+    - name: Check if plugin descriptor exists
+      ansible.builtin.stat:
+        path: "{{ plugin_dir }}/plugin.yaml"
+      register: r_plugin_yaml
+      when: plugin_name is defined
+      tags: always
+
+    - name: Load plugin descriptor for early fetch
+      ansible.builtin.include_vars:
+        file: "{{ plugin_dir }}/plugin.yaml"
+        name: plugin
+      when:
+        - plugin_name is defined
+        - r_plugin_yaml.stat.exists
+      tags: always
+
+    - name: Fetch remote plugin before loading vars
+      ansible.builtin.include_tasks:
+        file: tasks/fetch_remote_plugin.yaml
+      when:
+        - plugin_name is defined
+        - r_plugin_yaml.stat.exists
+        - plugin.remote is defined
+      tags: always
+
     - name: Load common variables
       ansible.builtin.include_tasks:
         file: common/load-vars.yaml

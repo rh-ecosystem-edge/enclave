@@ -88,7 +88,7 @@ dir_name = sys.argv[2]
 required_fields = ['name', 'type']
 valid_fields = ['name', 'type', 'order', 'catalog', 'operators', 'defaults',
                 'installOperators', 'installOperatorsFleet', 'registries', 'additionalImages', 'blockedImages',
-                'requires', 'helm', 'clusterSelector']
+                'requires', 'helm', 'clusterSelector', 'remote']
 
 try:
     with open(filepath) as f:
