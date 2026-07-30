@@ -10,3 +10,7 @@ operators:
     init_version: 1.3.0
     namespace: authorino-operator
     global: true
+
+registries:
+  - location: "registry.redhat.io/rhcl-1"
+    mirror: "rhcl-1"
