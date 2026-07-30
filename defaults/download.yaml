@@ -1,6 +1,6 @@
 ---
 # Retry settings for binary download (get_url) tasks.
 # These are internal defaults and are not meant to be overridden by the user.
-download_timeout: 600
+download_timeout: 120
 download_retries: 3
 download_delay: 10
