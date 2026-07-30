@@ -33,6 +33,28 @@ defaults/        Default variable values (catalogs, operators, platforms)
 docs/            Deployment, configuration, and architecture guides
 ```
 
+## Shared knowledge base
+
+Two git-checked-in places hold knowledge shared across everyone's Claude Code instance working in
+this repo, so nobody has to re-spend tokens re-deriving something already known:
+
+- **`docs/`** — the formal, maintained deployment, configuration, and architecture guides. Check
+  here first for how a subsystem is *meant* to work.
+- **`.claude/knowledge/`** — non-obvious project facts, conventions, gotchas, and settled decisions
+  that aren't formal-documentation material (see `.claude/knowledge/README.md` for the format and
+  inclusion criteria).
+
+- **Before** spending significant tokens investigating something that might already be documented,
+  a known gotcha, or an already-settled scope question, check both (e.g. `grep -ril <topic> docs/
+  .claude/knowledge/`).
+- **After** discovering something during a session that isn't derivable by reading the code/config
+  directly and would save real investigation time for someone else, add it to the appropriate one —
+  update `docs/` if it belongs in formal documentation, otherwise add a new file under
+  `.claude/knowledge/`.
+- `.claude/knowledge/` is only auto-discovered by Claude Code. If you're working in this repo with a
+  different AI coding tool (Cursor, Copilot, Gemini, etc.), ask a maintainer to add that tool's own
+  reference/symlink to `.claude/knowledge/` rather than duplicating its contents elsewhere.
+
 ## Building and testing
 
 ```bash
