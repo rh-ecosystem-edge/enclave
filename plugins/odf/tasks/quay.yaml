@@ -14,40 +14,40 @@
       spec:
         configBundleSecret: quay-config
         components:
-        - kind: horizontalpodautoscaler
-          managed: true
-        - kind: quay
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: "8"
-                memory: 32Gi
-              requests:
-                cpu: "{{ '4' if (disconnected | default(true)) else '2' }}"
-                memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
-        - kind: objectstorage
-          managed: false
-        - kind: postgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 1
-                memory: 4Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
-        - kind: clairpostgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 1
-                memory: 4Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
+          - kind: horizontalpodautoscaler
+            managed: true
+          - kind: quay
+            managed: true
+            overrides:
+              resources:
+                limits:
+                  cpu: "8"
+                  memory: 32Gi
+                requests:
+                  cpu: "{{ '4' if (disconnected | default(true)) else '2' }}"
+                  memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
+          - kind: objectstorage
+            managed: false
+          - kind: postgres
+            managed: true
+            overrides:
+              resources:
+                limits:
+                  cpu: 1
+                  memory: 4Gi
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+          - kind: clairpostgres
+            managed: true
+            overrides:
+              resources:
+                limits:
+                  cpu: 1
+                  memory: 4Gi
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
   retries: 60
   delay: 10
   register: r_quay

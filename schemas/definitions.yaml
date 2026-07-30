@@ -133,9 +133,9 @@ definitions:
         not:
           anyOf:
             - required:
-              - networkConfig
+                - networkConfig
             - required:
-              - mapInterfaces
+                - mapInterfaces
       - required:
           - networkConfig
           - mapInterfaces
