@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Install build tools
-        run: dnf install -y rpm-build git-core
+        run: dnf install -y rpm-build git-core python3
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
       - name: Extract version
         id: meta
         run: |
-          VERSION=$(grep '^version' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          VERSION=$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create source tarball

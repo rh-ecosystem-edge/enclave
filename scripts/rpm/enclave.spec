@@ -8,6 +8,10 @@ BuildArch:      noarch
 
 Source0:        enclave-%{enclave_version}.tar.gz
 
+%dnl Build with: rpmbuild --define "enclave_version X.Y.Z" -ba enclave.spec
+BuildRequires:  tar
+BuildRequires:  gzip
+
 Requires:       bind-utils
 Requires:       curl
 Requires:       git-core
@@ -46,7 +50,8 @@ scripts, schemas, plugins, and the Python CLI source. After installing, run
 mkdir -p %{buildroot}/opt/enclave
 cp -a . %{buildroot}/opt/enclave
 
-# Remove dev-only files that must not ship
+# Remove dev-only files that must not ship — review this list when adding new
+# top-level directories to the repo
 rm -rf %{buildroot}/opt/enclave/.github
 rm -rf %{buildroot}/opt/enclave/.githooks
 rm -rf %{buildroot}/opt/enclave/.claude

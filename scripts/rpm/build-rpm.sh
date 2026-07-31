@@ -6,7 +6,7 @@ REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${REPO_DIR}/out"
 SPEC_FILE="${SCRIPT_DIR}/enclave.spec"
 
-VERSION=$(grep '^version' "${REPO_DIR}/pyproject.toml" | sed 's/version = "\(.*\)"/\1/')
+VERSION=$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('${REPO_DIR}/pyproject.toml').read_text())['project']['version'])")
 if [[ -z "${VERSION}" ]]; then
     echo "ERROR: Could not extract version from pyproject.toml"
     exit 1
@@ -41,7 +41,7 @@ podman run --rm \
         set -euo pipefail
 
         echo '  Installing rpm-build...'
-        dnf install -y rpm-build 2>/dev/null >/dev/null
+        dnf install -y -q rpm-build
 
         RPMBUILD_DIR=\$(mktemp -d)
         mkdir -p \${RPMBUILD_DIR}/{SOURCES,SPECS,RPMS,BUILD,SRPMS}
