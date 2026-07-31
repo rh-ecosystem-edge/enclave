@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${REPO_DIR}/out"
-SPEC_FILE="${SCRIPT_DIR}/enclave.spec"
 
 VERSION=$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('${REPO_DIR}/pyproject.toml').read_text())['project']['version'])")
 if [[ -z "${VERSION}" ]]; then
