@@ -146,7 +146,7 @@ sync:
 
 # Packaging
 build-rpm:
-	@bash ./hack/rpm/build-rpm.sh
+	@bash ./scripts/rpm/build-rpm.sh
 
 python-format:
 	@uv run ruff format src/

@@ -55,7 +55,6 @@ rm -rf %{buildroot}/opt/enclave/.pytest_cache
 rm -rf %{buildroot}/opt/enclave/scripts
 rm -rf %{buildroot}/opt/enclave/src/tests
 rm -rf %{buildroot}/opt/enclave/test-fixtures
-rm -rf %{buildroot}/opt/enclave/hack
 rm -rf %{buildroot}/opt/enclave/out
 rm -rf %{buildroot}/opt/enclave/artifacts
 rm -rf %{buildroot}/opt/enclave/docs/superpowers
@@ -74,33 +73,42 @@ find %{buildroot}/opt/enclave/plugins -type d -name test-fixtures -exec rm -rf {
 %post
 for f in /opt/enclave/config/*.example.yaml; do
     [ -f "$f" ] || continue
-    target="${f%.example.yaml}.yaml"
-    [ -f "$target" ] || cp "$f" "$target"
+    target="${f%%.example.yaml}.yaml"
+    [ -f "$target" ] || cp "$f" "$target" || :
 done
 for f in /opt/enclave/config/plugins/*.example.yaml; do
     [ -f "$f" ] || continue
-    target="${f%.example.yaml}.yaml"
-    [ -f "$target" ] || cp "$f" "$target"
+    target="${f%%.example.yaml}.yaml"
+    [ -f "$target" ] || cp "$f" "$target" || :
 done
 
 %postun
 if [ $1 -eq 0 ]; then
-    rm -f /opt/enclave/config/global.yaml
-    rm -f /opt/enclave/config/certificates.yaml
-    rm -f /opt/enclave/config/cloud_infra.yaml
-    rm -f /opt/enclave/config/plugins/lvms.yaml
-    rm -f /opt/enclave/config/plugins/odf.yaml
-    rm -f /opt/enclave/config/plugins/osac.yaml
-    rm -f /opt/enclave/config/plugins/rhbk.yaml
-    rm -f /opt/enclave/config/plugins/vast-csi.yaml
-    rm -rf /opt/enclave/.local
-    rm -rf /opt/enclave/.cache
-    rm -rf /opt/enclave/collections
+    rm -f /opt/enclave/config/global.yaml || :
+    rm -f /opt/enclave/config/certificates.yaml || :
+    rm -f /opt/enclave/config/cloud_infra.yaml || :
+    rm -f /opt/enclave/config/plugins/lvms.yaml || :
+    rm -f /opt/enclave/config/plugins/odf.yaml || :
+    rm -f /opt/enclave/config/plugins/osac.yaml || :
+    rm -f /opt/enclave/config/plugins/rhbk.yaml || :
+    rm -f /opt/enclave/config/plugins/vast-csi.yaml || :
+    rm -rf /opt/enclave/.local || :
+    rm -rf /opt/enclave/.cache || :
+    rm -rf /opt/enclave/collections || :
+    rmdir /opt/enclave/config/plugins /opt/enclave/config /opt/enclave 2>/dev/null || :
 fi
 
 %files
+%license LICENSE
+%doc README.md
 /opt/enclave
 
 %changelog
+* Thu Jul 31 2026 Ricardo Piccoli <rpiccoli@redhat.com> - 0.1.0-1
+- Move build scripts from hack/ to scripts/
+- Add %license and %doc directives
+- Guard scriptlets with || : for safety
+- Add GitHub Actions workflow for RPM build
+
 * Tue Jul 07 2026 Ricardo Piccoli <rpiccoli@redhat.com> - 0.1.0-1
-- Initial RPM packaging with Mock-based build system
+- Initial RPM packaging
