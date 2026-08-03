@@ -14,6 +14,17 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
+# Remove ookla speedtest-cli repo files if present: packagecloud.io now returns
+# HTTP 402 for all ookla repos (binary and source), which causes every subsequent
+# dnf invocation (including dev-scripts' make requirements) to fail when refreshing
+# metadata.
+for repo_file in /etc/yum.repos.d/ookla_speedtest-cli*.repo; do
+    [ -f "$repo_file" ] || continue
+    echo "Removing broken ookla repo: $repo_file (HTTP 402)..."
+    sudo rm -f "$repo_file"
+    echo "✓ Removed $repo_file"
+done
+
 # Validate required environment variables
 require_env_var "DEV_SCRIPTS_PATH"
 
