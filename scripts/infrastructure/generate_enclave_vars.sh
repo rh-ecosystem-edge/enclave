@@ -219,7 +219,8 @@ CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     require_env_var "ENCLAVE_BASE_DOMAIN"
     info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
-    CERTS_VARS_TEMP=$(mktemp)
+    CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
+    trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
     uv run --group cert-gen enclave-cert-gen ingress-api \
         --san "api.${CLUSTER_NAME}.${BASE_DOMAIN}" \
         --san "*.apps.${CLUSTER_NAME}.${BASE_DOMAIN}" \
@@ -227,6 +228,7 @@ if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
         > "${CERTS_VARS_TEMP}"
     chmod 600 "${CERTS_VARS_TEMP}"
     mv "${CERTS_VARS_TEMP}" "${CERTS_VARS_OUTPUT}"
+    trap - EXIT
     info "✓ Real CA certificates written for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
 else
     CERT_DIR=$(mktemp -d)

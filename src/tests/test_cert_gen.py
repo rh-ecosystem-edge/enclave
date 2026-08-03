@@ -172,7 +172,9 @@ class TestExtractRootCa:
         root_cert_obj = x509.load_pem_x509_certificate(root_pem.encode())
         root_der = root_cert_obj.public_bytes(Encoding.DER)
         mock_resp = MagicMock()
-        mock_resp.content = root_der
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.raw.read.return_value = root_der
 
         with patch("enclave.cert_gen.main.requests.get", return_value=mock_resp):
             result = extract_root_ca(chain_path)

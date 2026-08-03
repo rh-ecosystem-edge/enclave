@@ -199,11 +199,11 @@ def _fetch_cert(url: str) -> x509.Certificate:
     if not url.startswith(("http://", "https://")):
         raise RootCaExtractionError(f"Unsupported AIA issuer URL scheme: {url}")
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
+        with requests.get(url, timeout=15, stream=True) as resp:
+            resp.raise_for_status()
+            data = resp.raw.read(65536, decode_content=True)
     except requests.RequestException as exc:
         raise RootCaExtractionError(f"Failed to fetch AIA issuer {url}: {exc}") from exc
-    data = resp.content[:65536]
     try:
         return x509.load_der_x509_certificate(data)
     except ValueError:
