@@ -38,31 +38,71 @@ class RootCaExtractionError(Exception):
 LE_SERVER = "https://acme-v02.api.letsencrypt.org/directory"
 ZS_SERVER = "https://acme.zerossl.com/v2/DV90"
 
+# Each entry drives one certbot invocation.  Fields:
+#   server          — ACME directory URL
+#   key_type        — certbot --key-type value ("rsa" or "ecdsa")
+#   key_param       — --rsa-key-size (RSA) or --elliptic-curve (ECDSA)
+#   preferred_chain — certbot --preferred-chain; empty string = CA default
 CERT_TYPES: dict[str, dict[str, str]] = {
+    # Let's Encrypt — RSA 2048
+    # Key:   RSA 2048-bit
+    # Chain: leaf → R10/R11 intermediate (RSA, signed by ISRG Root X1)
+    # Root:  ISRG Root X1 (RSA 4096); trusted by virtually all TLS clients,
+    #        including Android < 7.1 and other legacy devices.
+    # Notes: broadest compatibility; largest handshake of the five types.
     "le-rsa": {
         "server": LE_SERVER,
         "key_type": "rsa",
         "key_param": "2048",
         "preferred_chain": "",
     },
+    # Let's Encrypt — ECDSA P-384, long chain (cross-signed to RSA root)
+    # Key:   ECDSA P-384 (secp384r1)
+    # Chain: leaf → E5/E6 intermediate (ECDSA, cross-signed by ISRG Root X1)
+    # Root:  ISRG Root X1 (RSA 4096)
+    # Notes: smaller leaf+intermediate than le-rsa but the RSA root keeps the
+    #        chain compatible with clients that do not yet trust ISRG Root X2.
+    #        "Long" refers to the cross-signature adding an extra cert vs the
+    #        short ECDSA chain; preferred_chain="" lets certbot pick this default.
     "le-ecdsa-long": {
         "server": LE_SERVER,
         "key_type": "ecdsa",
         "key_param": "secp384r1",
         "preferred_chain": "",
     },
+    # Let's Encrypt — ECDSA P-384, short chain (native ECDSA root)
+    # Key:   ECDSA P-384 (secp384r1)
+    # Chain: leaf → E5/E6 intermediate (ECDSA, signed directly by ISRG Root X2)
+    # Root:  ISRG Root X2 (ECDSA P-384); present in major trust stores since ~2021
+    #        (Chrome, Firefox, Safari, Android 8+, iOS 14+, RHEL 9+).
+    # Notes: shortest and fastest handshake of the LE options; requires a modern
+    #        trust store.  preferred_chain="ISRG Root X2" instructs certbot to
+    #        select this chain instead of the cross-signed default.
     "le-ecdsa-short": {
         "server": LE_SERVER,
         "key_type": "ecdsa",
         "key_param": "secp384r1",
         "preferred_chain": "ISRG Root X2",
     },
+    # ZeroSSL — RSA 2048
+    # Key:   RSA 2048-bit
+    # Chain: leaf → ZeroSSL RSA Domain Secure Site CA → USERTrust RSA CA
+    # Root:  USERTrust RSA Certification Authority (RSA 4096, Sectigo/COMODO);
+    #        trusted by all major browsers and OS trust stores.
+    # Notes: second CA vendor; diversifies CA dependency vs Let's Encrypt.
+    #        Requires EAB credentials (ZEROSSL_EAB_KID + ZEROSSL_EAB_HMAC_KEY).
     "zerossl-rsa": {
         "server": ZS_SERVER,
         "key_type": "rsa",
         "key_param": "2048",
         "preferred_chain": "",
     },
+    # ZeroSSL — ECDSA P-384
+    # Key:   ECDSA P-384 (secp384r1)
+    # Chain: leaf → ZeroSSL ECC Domain Secure Site CA → USERTrust ECC CA
+    # Root:  USERTrust ECC Certification Authority (ECDSA P-384, Sectigo/COMODO);
+    #        trusted by major browsers and OS trust stores (Android 7+, iOS 10+).
+    # Notes: smallest ZeroSSL chain; same EAB credential requirement as zerossl-rsa.
     "zerossl-ecdsa": {
         "server": ZS_SERVER,
         "key_type": "ecdsa",
