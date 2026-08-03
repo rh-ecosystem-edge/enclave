@@ -38,6 +38,8 @@ RGW_SERVICE_NAME="ci-rgw"
 S3_USER="quay-ci"
 S3_BUCKET="quay-storage"
 RBD_POOL="ceph-rbd"
+CEPH_CONFIG_DIR_USER=${CEPH_CONFIG_DIR_USER:-cloud-user}
+CEPH_CONFIG_DIR_GROUP=${CEPH_CONFIG_DIR_GROUP:-cloud-user}
 
 # Internal CIDRs allowed to reach Ceph ports
 ALLOWED_CIDRS=("192.168.0.0/16" "100.64.0.0/16" "127.0.0.0/8")
@@ -533,14 +535,17 @@ wait_for_ceph_health 30 10
 CEPH_CONFIG_DIR="${CEPH_CONFIG_DIR:-}"
 if [ -n "$CEPH_CONFIG_DIR" ]; then
     info "Step 13: Writing config files to $CEPH_CONFIG_DIR..."
+
     mkdir -p "$CEPH_CONFIG_DIR"
+    chown $CEPH_CONFIG_DIR_USER:$CEPH_CONFIG_DIR_GROUP "$CEPH_CONFIG_DIR"
+    chmod 700 "$CEPH_CONFIG_DIR"
+    install -m 600 -o $CEPH_CONFIG_DIR_USER -g $CEPH_CONFIG_DIR_GROUP /dev/null "${CEPH_CONFIG_DIR}/odf_external_config.json"
+    install -m 600 -o $CEPH_CONFIG_DIR_USER -g $CEPH_CONFIG_DIR_GROUP /dev/null "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml"
+
     echo "$ODF_EXTERNAL_CONFIG" > "${CEPH_CONFIG_DIR}/odf_external_config.json"
     cat > "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml" <<EOF
 {access_key: ${S3_ACCESS_KEY}, secret_key: ${S3_SECRET_KEY}, bucket_name: ${S3_BUCKET}, hostname: ${CEPH_HOST_IP}, port: ${RGW_PORT}, is_secure: false}
 EOF
-    # Make files readable by non-root users
-    chmod 644 "${CEPH_CONFIG_DIR}/odf_external_config.json"
-    chmod 644 "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml"
     success "Config files written to $CEPH_CONFIG_DIR"
 else
     info "Step 13: Skipping config file output (CEPH_CONFIG_DIR not set)"
