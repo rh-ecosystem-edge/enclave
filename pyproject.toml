@@ -15,7 +15,7 @@ dependencies = [
     "jsonschema ==4.26.0",
     "kubernetes ==36.0.2",
     "oauthlib ==3.2.2",
-    "pyasn1 ==0.6.3",
+    "pyasn1 ==0.6.4",
     "pyasn1-modules ==0.4.2",
     "pyyaml ==6.0.3",
     "requests-oauthlib ==2.0.0",
