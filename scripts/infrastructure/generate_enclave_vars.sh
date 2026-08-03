@@ -217,12 +217,16 @@ done
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
 
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    require_env_var "ENCLAVE_BASE_DOMAIN"
     info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
+    CERTS_VARS_TEMP=$(mktemp)
     uv run --group cert-gen enclave-cert-gen ingress-api \
         --san "api.${CLUSTER_NAME}.${BASE_DOMAIN}" \
         --san "*.apps.${CLUSTER_NAME}.${BASE_DOMAIN}" \
         --type "${ENCLAVE_CERT_TYPE}" \
-        > "$CERTS_VARS_OUTPUT"
+        > "${CERTS_VARS_TEMP}"
+    chmod 600 "${CERTS_VARS_TEMP}"
+    mv "${CERTS_VARS_TEMP}" "${CERTS_VARS_OUTPUT}"
     info "✓ Real CA certificates written for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
 else
     CERT_DIR=$(mktemp -d)
@@ -338,7 +342,11 @@ info "  - Worker IPs: ${WORKER_IP_START}-${WORKER_IP_END} (will be assigned duri
 info "  - Storage: ${ACTIVE_STORAGE} with /dev/vda root disk"
 info "  - Registry: ${ACTIVE_REGISTRY}"
 info "  - Pull secret: Embedded in config/global.yaml (written to pullSecretPath at runtime)"
-info "  - SSL certificates: Self-signed (generated for CI/testing)"
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    info "  - SSL certificates: Real CA (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen"
+else
+    info "  - SSL certificates: Self-signed (generated for CI/testing)"
+fi
 echo ""
 info "Review config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml"
 info "and adjust if needed before running Enclave Lab"

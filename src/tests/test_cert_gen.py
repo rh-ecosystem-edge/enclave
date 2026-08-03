@@ -11,6 +11,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 
 from enclave.cert_gen.main import (
+    CertIssuanceError,
+    RootCaExtractionError,
     _indent_pem,
     cli,
     extract_root_ca,
@@ -153,7 +155,7 @@ class TestExtractRootCa:
 
         chain_path = tmp_path / "chain.pem"
         chain_path.write_text(f"{leaf_pem}\n{inter_pem}\n", encoding="utf-8")
-        with pytest.raises(ValueError, match="no AIA extension"):
+        with pytest.raises(RootCaExtractionError, match="no AIA extension"):
             extract_root_ca(chain_path)
 
     def test_aia_walk_finds_root(self, tmp_path: Path) -> None:
@@ -313,7 +315,7 @@ class TestIssueCert:
                     1, stderr="Error: retry after 2026-08-01T06:00:00Z"
                 ),
             ),
-            pytest.raises(RuntimeError, match="CA rate limit reached"),
+            pytest.raises(CertIssuanceError, match="CA rate limit reached"),
         ):
             issue_cert(
                 tmp_path,
@@ -336,7 +338,7 @@ class TestIssueCert:
                 "subprocess.run",
                 return_value=_make_result(1, stderr="ACME server rejected the request"),
             ),
-            pytest.raises(RuntimeError, match="Certificate issuance failed"),
+            pytest.raises(CertIssuanceError, match="Certificate issuance failed"),
         ):
             issue_cert(
                 tmp_path,
@@ -379,7 +381,7 @@ class TestCliIngressApi:
         result = runner.invoke(
             cli,
             ["ingress-api", "--san", "api.x.nodns.in", "--type", "le-rsa"],
-            env={"ACME_EMAIL": "a@b.com"},
+            env={"ACME_EMAIL": "a@b.com", "HETZNER_API_TOKEN": None},
             catch_exceptions=False,
         )
         assert result.exit_code != 0
@@ -390,7 +392,7 @@ class TestCliIngressApi:
         result = runner.invoke(
             cli,
             ["ingress-api", "--san", "api.x.nodns.in", "--type", "le-rsa"],
-            env={"HETZNER_API_TOKEN": "tok"},
+            env={"HETZNER_API_TOKEN": "tok", "ACME_EMAIL": None},
             catch_exceptions=False,
         )
         assert result.exit_code != 0
@@ -401,7 +403,7 @@ class TestCliIngressApi:
         result = runner.invoke(
             cli,
             ["ingress-api", "--san", "api.x.nodns.in", "--type", "zerossl-rsa"],
-            env=self._env(),
+            env={**self._env(), "ZEROSSL_EAB_KID": None, "ZEROSSL_EAB_HMAC_KEY": None},
             catch_exceptions=False,
         )
         assert result.exit_code != 0
@@ -427,7 +429,8 @@ class TestCliIngressApi:
     def test_issue_cert_failure(self) -> None:
         runner = CliRunner()
         with patch(
-            "enclave.cert_gen.main.issue_cert", side_effect=RuntimeError("cert failed")
+            "enclave.cert_gen.main.issue_cert",
+            side_effect=CertIssuanceError("cert failed"),
         ):
             result = runner.invoke(
                 cli,
@@ -451,7 +454,7 @@ class TestCliIronic:
         result = runner.invoke(
             cli,
             ["ironic", "--san", "ironic.x.nodns.in", "--type", "le-rsa"],
-            env={"ACME_EMAIL": "a@b.com"},
+            env={"ACME_EMAIL": "a@b.com", "HETZNER_API_TOKEN": None},
             catch_exceptions=False,
         )
         assert result.exit_code != 0
@@ -462,7 +465,7 @@ class TestCliIronic:
         result = runner.invoke(
             cli,
             ["ironic", "--san", "ironic.x.nodns.in", "--type", "zerossl-rsa"],
-            env=self._env(),
+            env={**self._env(), "ZEROSSL_EAB_KID": None, "ZEROSSL_EAB_HMAC_KEY": None},
             catch_exceptions=False,
         )
         assert result.exit_code != 0

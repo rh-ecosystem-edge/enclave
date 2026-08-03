@@ -26,6 +26,15 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import UniformResourceIdentifier
 from cryptography.x509.oid import AuthorityInformationAccessOID
 
+
+class CertIssuanceError(Exception):
+    pass
+
+
+class RootCaExtractionError(Exception):
+    pass
+
+
 LE_SERVER = "https://acme-v02.api.letsencrypt.org/directory"
 ZS_SERVER = "https://acme.zerossl.com/v2/DV90"
 
@@ -121,32 +130,47 @@ def issue_cert(
     result = subprocess.run(args, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         output = result.stdout + result.stderr
+        for secret in (eab_kid, eab_hmac_key):
+            if secret:
+                output = output.replace(secret, "***REDACTED***")
         match = re.search(r"retry after \S+", output, re.IGNORECASE)
         if match:
-            raise RuntimeError(f"CA rate limit reached — {match.group()}")
-        raise RuntimeError(f"Certificate issuance failed:\n{output}")
+            raise CertIssuanceError(f"CA rate limit reached — {match.group()}")
+        raise CertIssuanceError(f"Certificate issuance failed:\n{output}")
 
 
 def _aia_issuer_url(cert: x509.Certificate) -> str:
     try:
         aia = cert.extensions.get_extension_for_class(x509.AuthorityInformationAccess)
     except x509.ExtensionNotFound as exc:
-        raise ValueError(f"Cert has no AIA extension: {cert.subject}") from exc
+        raise RootCaExtractionError(
+            f"Cert has no AIA extension: {cert.subject}"
+        ) from exc
     for desc in aia.value:
         if (
             desc.access_method == AuthorityInformationAccessOID.CA_ISSUERS
             and isinstance(desc.access_location, UniformResourceIdentifier)
         ):
             return desc.access_location.value
-    raise ValueError(f"No CA Issuers URI in AIA of cert: {cert.subject}")
+    raise RootCaExtractionError(f"No CA Issuers URI in AIA of cert: {cert.subject}")
 
 
 def _fetch_cert(url: str) -> x509.Certificate:
-    data = requests.get(url, timeout=15).content
+    if not url.startswith(("http://", "https://")):
+        raise RootCaExtractionError(f"Unsupported AIA issuer URL scheme: {url}")
+    try:
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        raise RootCaExtractionError(f"Failed to fetch AIA issuer {url}: {exc}") from exc
+    data = resp.content[:65536]
     try:
         return x509.load_der_x509_certificate(data)
     except ValueError:
-        return x509.load_pem_x509_certificate(data)
+        try:
+            return x509.load_pem_x509_certificate(data)
+        except ValueError as exc:
+            raise RootCaExtractionError(f"Cannot parse cert from {url}") from exc
 
 
 def extract_root_ca(chain_pem_path: Path) -> str:
@@ -163,7 +187,7 @@ def extract_root_ca(chain_pem_path: Path) -> str:
         re.DOTALL,
     )
     if not pem_blocks:
-        raise ValueError(f"No certificates found in {chain_pem_path}")
+        raise RootCaExtractionError(f"No certificates found in {chain_pem_path}")
 
     for pem in reversed(pem_blocks):
         cert = x509.load_pem_x509_certificate(pem.encode())
@@ -174,8 +198,8 @@ def extract_root_ca(chain_pem_path: Path) -> str:
     for _ in range(5):
         try:
             url = _aia_issuer_url(current)
-        except ValueError as exc:
-            raise ValueError(
+        except RootCaExtractionError as exc:
+            raise RootCaExtractionError(
                 f"Chain in {chain_pem_path} contains no root CA and {exc}"
             ) from exc
         fetched = _fetch_cert(url)
@@ -183,7 +207,9 @@ def extract_root_ca(chain_pem_path: Path) -> str:
             return fetched.public_bytes(Encoding.PEM).decode()
         current = fetched
 
-    raise ValueError(f"Could not find root CA after 5 AIA hops from {chain_pem_path}")
+    raise RootCaExtractionError(
+        f"Could not find root CA after 5 AIA hops from {chain_pem_path}"
+    )
 
 
 def _indent_pem(pem: str) -> str:
@@ -252,7 +278,8 @@ def cmd_ingress_api(sans: tuple[str, ...], cert_type: str, root_ca: bool) -> Non
     eab_hmac_key = os.environ.get("ZEROSSL_EAB_HMAC_KEY", "")
     if cert_type.startswith("zerossl") and not (eab_kid and eab_hmac_key):
         raise click.UsageError(
-            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required for zerossl cert types"
+            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required "
+            "for zerossl cert types"
         )
 
     cfg = CERT_TYPES[cert_type]
@@ -276,7 +303,7 @@ def cmd_ingress_api(sans: tuple[str, ...], cert_type: str, root_ca: bool) -> Non
                 eab_kid=eab_kid,
                 eab_hmac_key=eab_hmac_key,
             )
-        except RuntimeError as exc:
+        except CertIssuanceError as exc:
             raise click.ClickException(str(exc)) from exc
 
         live_dir = config_dir / "live" / primary_san
@@ -287,7 +314,7 @@ def cmd_ingress_api(sans: tuple[str, ...], cert_type: str, root_ca: bool) -> Non
         if root_ca:
             try:
                 extracted_root = extract_root_ca(live_dir / "chain.pem")
-            except ValueError as exc:
+            except RootCaExtractionError as exc:
                 raise click.ClickException(str(exc)) from exc
 
         click.echo(
@@ -314,7 +341,8 @@ def cmd_ironic(sans: tuple[str, ...], cert_type: str) -> None:
     eab_hmac_key = os.environ.get("ZEROSSL_EAB_HMAC_KEY", "")
     if cert_type.startswith("zerossl") and not (eab_kid and eab_hmac_key):
         raise click.UsageError(
-            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required for zerossl cert types"
+            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required "
+            "for zerossl cert types"
         )
 
     cfg = CERT_TYPES[cert_type]
@@ -338,7 +366,7 @@ def cmd_ironic(sans: tuple[str, ...], cert_type: str) -> None:
                 eab_kid=eab_kid,
                 eab_hmac_key=eab_hmac_key,
             )
-        except RuntimeError as exc:
+        except CertIssuanceError as exc:
             raise click.ClickException(str(exc)) from exc
 
         live_dir = config_dir / "live" / primary_san

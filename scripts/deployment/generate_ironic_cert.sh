@@ -75,6 +75,7 @@ LZ_BMC_HOSTNAME=$(ssh_exec "awk '/^lzBmcHostname:/ {print \$2}' ${LZ_ENCLAVE_DIR
 info "Generating TLS certificate for Ironic ISO server"
 
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    require_env_var "ENCLAVE_BASE_DOMAIN"
     info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
     IRONIC_YAML=$(uv run --group cert-gen enclave-cert-gen ironic \
         --san "ironic.${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
@@ -82,11 +83,11 @@ if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     if [ -n "${GITHUB_ENV:-}" ]; then
         {
             echo "ENCLAVE_IRONIC_CERT<<EOF"
-            echo "${IRONIC_YAML}" | python3 -c \
+            echo "${IRONIC_YAML}" | uv run python -c \
                 "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSCertificate'].strip())"
             echo "EOF"
             echo "ENCLAVE_IRONIC_KEY<<EOF"
-            echo "${IRONIC_YAML}" | python3 -c \
+            echo "${IRONIC_YAML}" | uv run python -c \
                 "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSKey'].strip())"
             echo "EOF"
         } >> "$GITHUB_ENV"

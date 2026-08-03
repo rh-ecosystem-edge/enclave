@@ -200,7 +200,7 @@ export CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
 export BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN:-lab}"
 
 # Cluster domain (for DNS)
-export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.${BASE_DOMAIN}"
+export CLUSTER_DOMAIN="${ENCLAVE_CLUSTER_NAME}.\${BASE_DOMAIN}"
 
 # Working directory (where VMs and configs are stored)
 # Cluster-specific path for parallel execution isolation
