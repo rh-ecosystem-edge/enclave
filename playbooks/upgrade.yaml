@@ -22,6 +22,9 @@
       ansible.builtin.include_tasks:
         file: tasks/migrations.yaml
 
+    - name: Run metal3 upgrade tasks
+      ansible.builtin.include_tasks: tasks/upgrade/metal3-components.yaml
+
     - name: Upgrade management cluster OpenShift version
       ansible.builtin.command:
         argv:

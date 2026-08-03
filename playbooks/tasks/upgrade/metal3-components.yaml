@@ -1,0 +1,32 @@
+---
+# Upgrade Metal3 components (Ironic + BMO) to new versions
+
+- name: Load common variables (without version override)
+  ansible.builtin.include_tasks: common/load-vars.yaml
+
+- name: Override OpenShift version if manually specified
+  ansible.builtin.set_fact:
+    mgmt_openshift_version: "{{ metal3_openshift_version | default(mgmt_openshift_version) }}"
+
+- name: Enable persistent deployment for upgrades
+  ansible.builtin.set_fact:
+    metal3_persistent: true
+
+- name: Display upgrade plan
+  ansible.builtin.debug:
+    msg: |
+      Upgrading Metal3 components to OpenShift version {{ mgmt_openshift_version }}
+
+- name: Deploy Metal3 common resources
+  ansible.builtin.include_tasks: ../../tasks/deploy_metal3_common.yaml
+
+- name: Upgrade Ironic
+  ansible.builtin.include_tasks: ../../tasks/deploy_ironic.yaml
+
+- name: Upgrade Baremetal Operator
+  ansible.builtin.include_tasks: ../../tasks/deploy_bmo.yaml
+
+- name: Display upgrade completion
+  ansible.builtin.debug:
+    msg: |
+      Metal3 components upgrade completed successfully to OpenShift version {{ mgmt_openshift_version }}

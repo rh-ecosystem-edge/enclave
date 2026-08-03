@@ -17,7 +17,7 @@ Upgrading to a new Enclave release follows this sequence:
 
 1. **Deploy new Enclave tarball** - Extract new release to Landing Zone, preserving your `config/*.yaml` customizations
 2. **Sync/Mirror new content** - Run sync process to download and mirror new OpenShift and operator images to local registry (disconnected mode)
-3. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball
+3. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball (includes Metal3 stack)
 4. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
 5. **Upgrade operators** - Update operators to the versions specified in the new tarball
 
@@ -46,10 +46,12 @@ Each Enclave tarball release includes:
     ```sh
     ./sync.sh
     ```
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
     ```sh
     ./upgrade.sh
     ```
+
+    **Metal3 Upgrade Phase**: Upgrades Ironic and Baremetal Operator in persistent mode (`metal3_persistent: true`) to match the management cluster OpenShift version. For intermediate version requirements, use the migration system.
 8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
     ```sh
     ansible-playbook playbooks/upgrade.yaml -e workingDir=<your global.yaml workingDir variable> -e upgrade_mgmt_cluster=false -e upgrade_operators=false

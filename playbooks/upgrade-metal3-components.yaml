@@ -1,0 +1,19 @@
+---
+# Upgrade Metal3 components (Ironic + BMO) to new versions
+# This playbook can be used as a migration to trigger Bare Metal Operator and Ironic upgrades
+
+- name: Upgrade Metal3 components
+  hosts: localhost
+  gather_facts: false
+
+  # Specific version can be forced by either:
+  # - Passing "-e metal3_openshift_version=4.20.4" via command line
+  # - Hardcoding the variable in the following vars section
+
+  # Uncomment to use hardcoded version
+  # vars:
+  #   metal3_openshift_version: "4.20.5"
+
+  tasks:
+    - name: Run metal3 upgrade tasks
+      ansible.builtin.include_tasks: tasks/upgrade/metal3-components.yaml
