@@ -169,9 +169,9 @@ Access to the rootful Podman socket is restricted to the `runners` system group:
 | `/run/podman/` | `root:runners` | `0750` | Persisted via `/etc/tmpfiles.d/podman-socket.conf` |
 | `/run/podman/podman.sock` | `root:runners` | `0660` | Set via systemd socket override |
 
-Any account that needs to reach the Podman API must belong to `runners` as a
-**supplementary** group member. Accounts whose **primary GID** is `runners` are
-also validated during setup and must appear in the approved-account list.
+Any account that needs to reach the Podman API must use `runners` as either a
+supplementary group or its primary group. Both cases are validated during setup
+and must appear in the approved-account list.
 
 The setup script maintains an allowlist (`APPROVED_RUNNER_ACCOUNTS`). It aborts
 if any unapproved account — supplementary or primary-GID — is found in the group
