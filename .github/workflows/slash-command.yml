@@ -63,6 +63,15 @@ jobs:
             echo "is_fork=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Block commands on fork PRs
+        if: steps.pr.outputs.is_fork == 'true'
+        run: |
+          gh pr comment "${PR_NUMBER}" -R "${REPO}" \
+            --body "CI commands (\`/test\`, \`/retest\`, \`/cancel\`) are not supported on pull requests from forks, since they would run fork-controlled code with access to CI secrets and infrastructure. Ask a maintainer to open this PR from a branch within this repository instead."
+          gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
+            -f content='confused'
+          exit 1
+
       - name: React with eyes
         run: |
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
@@ -115,32 +124,6 @@ jobs:
           gh api "repos/${REPO}/issues/comments/${COMMENT_ID}/reactions" \
             -f content='rocket'
 
-      - name: Create temp branch for fork PRs
-        id: ref
-        if: >-
-          steps.cmd.outputs.command != '?' &&
-          steps.cmd.outputs.command != 'help' &&
-          !startsWith(steps.cmd.outputs.command, 'cancel:')
-        env:
-          IS_FORK: ${{ steps.pr.outputs.is_fork }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-        run: |
-          if [ "${IS_FORK}" = "true" ]; then
-            TEMP_BRANCH="test/pr-${PR_NUMBER}"
-            if gh api "repos/${REPO}/git/refs/heads/${TEMP_BRANCH}" \
-                 -X PATCH -f sha="${HEAD_SHA}" 2>/dev/null; then
-              echo "Updated existing temp branch ${TEMP_BRANCH}"
-            else
-              gh api "repos/${REPO}/git/refs" \
-                -f ref="refs/heads/${TEMP_BRANCH}" \
-                -f sha="${HEAD_SHA}"
-              echo "Created temp branch ${TEMP_BRANCH}"
-            fi
-            echo "dispatch_ref=${TEMP_BRANCH}" >> "$GITHUB_OUTPUT"
-          else
-            echo "dispatch_ref=" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Execute command
         if: >-
           steps.cmd.outputs.command != '?' &&
@@ -151,7 +134,6 @@ jobs:
           COMMAND: ${{ steps.cmd.outputs.command }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
           HEAD_BRANCH: ${{ steps.pr.outputs.head_branch }}
-          DISPATCH_REF: ${{ steps.ref.outputs.dispatch_ref }}
         run: |
           # Re-run a workflow's latest PR run for this commit.
           # The re-run stays associated with the PR in the Checks tab.
@@ -178,9 +160,8 @@ jobs:
           dispatch_workflow() {
             local workflow="$1"
             shift
-            local ref="${DISPATCH_REF:-${HEAD_BRANCH}}"
-            echo "Dispatching ${workflow} on ref ${ref}"
-            gh workflow run "${workflow}" --ref "${ref}" "$@" -R "${REPO}"
+            echo "Dispatching ${workflow} on ref ${HEAD_BRANCH}"
+            gh workflow run "${workflow}" --ref "${HEAD_BRANCH}" "$@" -R "${REPO}"
           }
 
           SUCCEEDED=""
