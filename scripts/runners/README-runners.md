@@ -158,8 +158,24 @@ Jobs run in parallel across available runners using podman for container isolati
 
 - **System podman socket:** `/run/podman/podman.sock` (enabled via systemd)
 - **Docker compatibility:** `/var/run/docker.sock` → symlink to podman socket
-- **Permissions:** Socket is world-accessible (666) for GitHub Actions
 - **No Docker:** Pure podman setup, Docker removed if present
+
+#### Socket permissions
+
+Access to the rootful Podman socket is restricted to the `runners` system group:
+
+| Path | Owner | Mode | Notes |
+|---|---|---|---|
+| `/run/podman/` | `root:runners` | `0750` | Persisted via `/etc/tmpfiles.d/podman-socket.conf` |
+| `/run/podman/podman.sock` | `root:runners` | `0660` | Set via systemd socket override |
+
+Any account that needs to reach the Podman API must belong to `runners` as a
+**supplementary** group member. Accounts whose **primary GID** is `runners` are
+also validated during setup and must appear in the approved-account list.
+
+The setup script maintains an allowlist (`APPROVED_RUNNER_ACCOUNTS`). It aborts
+if any unapproved account — supplementary or primary-GID — is found in the group
+before assigning `SocketGroup=runners`.
 
 ### Runner Services
 
@@ -226,8 +242,8 @@ sudo -u github-runner podman ps
 
 Socket should be:
 ```
-srw-rw-rw-. 1 root root 0 /run/podman/podman.sock
-lrwxrwxrwx. 1 root root 23 /var/run/docker.sock -> /run/podman/podman.sock
+srw-rw----. 1 root runners 0 /run/podman/podman.sock
+lrwxrwxrwx. 1 root root    23 /var/run/docker.sock -> /run/podman/podman.sock
 ```
 
 ### Remove specific runner
