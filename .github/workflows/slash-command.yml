@@ -5,7 +5,6 @@ on:
     types: [created]
 
 permissions:
-  contents: write
   pull-requests: write
   actions: write
   checks: write
@@ -48,20 +47,15 @@ jobs:
         id: pr
         run: |
           PR_JSON=$(gh pr view "${PR_NUMBER}" -R "${REPO}" \
-            --json headRefName,headRefOid,headRepositoryOwner)
+            --json headRefName,headRefOid,isCrossRepository)
 
           HEAD_BRANCH=$(echo "${PR_JSON}" | jq -r '.headRefName')
           HEAD_SHA=$(echo "${PR_JSON}" | jq -r '.headRefOid')
-          HEAD_REPO_OWNER=$(echo "${PR_JSON}" | jq -r '.headRepositoryOwner.login')
+          IS_CROSS_REPO=$(echo "${PR_JSON}" | jq -r '.isCrossRepository')
 
           echo "head_branch=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
           echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
-
-          if [ "${HEAD_REPO_OWNER}" != "${{ github.repository_owner }}" ]; then
-            echo "is_fork=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_fork=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "is_fork=${IS_CROSS_REPO}" >> "$GITHUB_OUTPUT"
 
       - name: Block commands on fork PRs
         if: steps.pr.outputs.is_fork == 'true'
