@@ -685,3 +685,80 @@ def test_check_root_ca_rejects_missing_file() -> None:
         ["check-root-ca", "--config", "/nonexistent/certificates.yaml"],
     )
     assert result.exit_code != 0
+
+
+WAIT_DETACH_HOST = "eci-8dbffc00-master-00"
+WAIT_DETACH_SERVICE_URL = "http://10.187.89.217:8090/api/assisted-install/v2"
+WAIT_DETACH_CLUSTER_ID = "05b406d0-e765-495f-8682-e0a78f226ce1"
+WAIT_DETACH_IRONIC_URL = "http://localhost:6385"
+WAIT_DETACH_IRONIC_VERSION = "1.89"
+WAIT_DETACH_IRONIC_USER = "ironic"
+WAIT_DETACH_CLI_ARGS = [
+    "wait-and-detach-vmedia",
+    "--host-name",
+    WAIT_DETACH_HOST,
+    "--assisted-service-url",
+    WAIT_DETACH_SERVICE_URL,
+    "--assisted-cluster-id",
+    WAIT_DETACH_CLUSTER_ID,
+    "--ironic-base-url",
+    WAIT_DETACH_IRONIC_URL,
+    "--ironic-api-version",
+    WAIT_DETACH_IRONIC_VERSION,
+    "--ironic-user",
+    WAIT_DETACH_IRONIC_USER,
+]
+WAIT_DETACH_CLI_ENV = {
+    "ASSISTED_AUTH_TOKEN": "Bearer test-token",
+    "IRONIC_PASSWORD": "ironic-pass",
+}
+
+
+def test_wait_and_detach_vmedia_cli_help() -> None:
+    """Show key options in help output."""
+    result = CliRunner().invoke(cli, ["wait-and-detach-vmedia", "--help"])
+    assert result.exit_code == 0
+    assert "--host-name" in result.output
+    assert "--assisted-service-url" in result.output
+    assert "--ironic-base-url" in result.output
+
+
+def test_wait_and_detach_vmedia_cli_forwards_args(mocker: MockerFixture) -> None:
+    """Forward all CLI options to wait_and_detach_vmedia_main."""
+    mock_main = mocker.patch("enclave.tools.cli.wait_and_detach_vmedia_main")
+    result = CliRunner().invoke(cli, WAIT_DETACH_CLI_ARGS, env=WAIT_DETACH_CLI_ENV)
+    assert result.exit_code == 0, result.output
+    mock_main.assert_called_once_with(
+        WAIT_DETACH_HOST,
+        WAIT_DETACH_SERVICE_URL,
+        WAIT_DETACH_CLUSTER_ID,
+        "Bearer test-token",
+        WAIT_DETACH_IRONIC_URL,
+        WAIT_DETACH_IRONIC_VERSION,
+        WAIT_DETACH_IRONIC_USER,
+        "ironic-pass",
+        poll_interval=1,
+    )
+
+
+def test_wait_and_detach_vmedia_cli_accepts_env_var_credentials(
+    mocker: MockerFixture,
+) -> None:
+    """Credentials injected via env vars reach main as positional arguments."""
+    mock_main = mocker.patch("enclave.tools.cli.wait_and_detach_vmedia_main")
+    result = CliRunner().invoke(cli, WAIT_DETACH_CLI_ARGS, env=WAIT_DETACH_CLI_ENV)
+    assert result.exit_code == 0, result.output
+    _, _, _, auth_token, _, _, _, ironic_password = mock_main.call_args.args
+    assert auth_token == "Bearer test-token"  # noqa: S105
+    assert ironic_password == "ironic-pass"  # noqa: S105
+
+
+def test_wait_and_detach_vmedia_cli_runtime_error(mocker: MockerFixture) -> None:
+    """Surface a RuntimeError from main as a non-zero CLI exit with error text."""
+    mocker.patch(
+        "enclave.tools.cli.wait_and_detach_vmedia_main",
+        side_effect=RuntimeError("host not found"),
+    )
+    result = CliRunner().invoke(cli, WAIT_DETACH_CLI_ARGS, env=WAIT_DETACH_CLI_ENV)
+    assert result.exit_code != 0
+    assert "host not found" in result.output
