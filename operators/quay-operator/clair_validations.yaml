@@ -12,7 +12,7 @@
     - r_clair_deployment.resources | length > 0
     - r_clair_deployment.resources[0].status.availableReplicas | default(0) | int > 0
 
-- name: Get the name of the first Clair pod
+- name: Get all Clair pods
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: quay-enterprise
@@ -20,9 +20,19 @@
       - quay-component=clair-app
   register: clair_pods
 
-- name: Set clair pod name fact
+- name: Set clair pod name fact (pod with fewest restarts)
+  vars:
+    restart_counts: >-
+      {{ clair_pods.resources
+         | map(attribute='status.containerStatuses')
+         | map('map', attribute='restartCount')
+         | map('list')
+         | map('min')
+         | list }}
+    min_restarts: "{{ restart_counts | min }}"
+    min_index: "{{ restart_counts.index(min_restarts | int) }}"
   ansible.builtin.set_fact:
-    clair_pod_name: "{{ clair_pods.resources[0].metadata.name }}"
+    clair_pod_name: "{{ clair_pods.resources[min_index | int].metadata.name }}"
 
 - name: Validate CPE mapping files in Clair pod
   block:
@@ -78,7 +88,7 @@
       ansible.builtin.debug:
         var: debug_clair_deploy.resources[0].status
 
-    - name: "[debug] Get current Clair container logs"
+    - name: "[debug] Get current Clair container logs (k8s_log module)"
       kubernetes.core.k8s_log:
         namespace: quay-enterprise
         pod: "{{ clair_pod_name }}"
@@ -87,11 +97,11 @@
       register: debug_clair_logs
       failed_when: false
 
-    - name: "[debug] Print current Clair container logs"
+    - name: "[debug] Print k8s_log module full result"
       ansible.builtin.debug:
-        var: debug_clair_logs.log
+        var: debug_clair_logs
 
-    - name: "[debug] Get previous Clair container logs"
+    - name: "[debug] Get previous Clair container logs (k8s_log module)"
       kubernetes.core.k8s_log:
         namespace: quay-enterprise
         pod: "{{ clair_pod_name }}"
@@ -101,9 +111,52 @@
       register: debug_clair_prev_logs
       failed_when: false
 
-    - name: "[debug] Print previous Clair container logs"
+    - name: "[debug] Print previous k8s_log module full result"
       ansible.builtin.debug:
-        var: debug_clair_prev_logs.log
+        var: debug_clair_prev_logs
+
+    - name: "[debug] Get current logs for all Clair pods via oc"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - logs
+          - -n
+          - quay-enterprise
+          - "{{ item.metadata.name }}"
+          - --all-containers=true
+          - --tail=100
+      loop: "{{ debug_clair_pods.resources | default([]) }}"
+      register: debug_oc_logs_current
+      failed_when: false
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+    - name: "[debug] Print current logs for all Clair pods"
+      ansible.builtin.debug:
+        msg: "=== Pod {{ item.item.metadata.name }} ===\n{{ item.stdout }}\nSTDERR: {{ item.stderr }}"
+      loop: "{{ debug_oc_logs_current.results | default([]) }}"
+
+    - name: "[debug] Get previous logs for all Clair pods via oc"
+      ansible.builtin.command:
+        argv:
+          - oc
+          - logs
+          - -n
+          - quay-enterprise
+          - "{{ item.metadata.name }}"
+          - --all-containers=true
+          - --previous
+          - --tail=50
+      loop: "{{ debug_clair_pods.resources | default([]) }}"
+      register: debug_oc_logs_prev
+      failed_when: false
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+    - name: "[debug] Print previous logs for all Clair pods"
+      ansible.builtin.debug:
+        msg: "=== Pod {{ item.item.metadata.name }} (previous) ===\n{{ item.stdout }}\nSTDERR: {{ item.stderr }}"
+      loop: "{{ debug_oc_logs_prev.results | default([]) }}"
 
     - name: "[debug] List /data directory in Clair pod"
       kubernetes.core.k8s_exec:
@@ -131,6 +184,7 @@
     - name: "[debug] Print exec task results"
       ansible.builtin.debug:
         msg:
+          - "clair_pod_name: {{ clair_pod_name }}"
           - "cpe_file_check: {{ cpe_file_check | default('not attempted') }}"
           - "repo_map_check: {{ repo_map_check | default('not attempted') }}"
 
