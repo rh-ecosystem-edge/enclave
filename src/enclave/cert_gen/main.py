@@ -163,7 +163,14 @@ def issue_cert(
     if preferred_chain:
         args += ["--preferred-chain", preferred_chain]
     if eab_kid and eab_hmac_key:
-        args += ["--eab-kid", eab_kid, "--eab-hmac-key", eab_hmac_key]
+        # Write EAB credentials to a 0600 file and pass --config so they never
+        # appear in the process argument list (readable via /proc/<pid>/cmdline).
+        eab_ini = config_dir / "eab.ini"
+        eab_ini.write_text(
+            f"eab-kid = {eab_kid}\neab-hmac-key = {eab_hmac_key}\n", encoding="utf-8"
+        )
+        eab_ini.chmod(0o600)
+        args += ["--config", str(eab_ini)]
     for domain in domains:
         args += ["-d", domain]
 
@@ -291,6 +298,20 @@ def _get_env(name: str) -> str:
     return val
 
 
+def _load_credentials(cert_type: str) -> tuple[str, str, str, str]:
+    """Return (token, email, eab_kid, eab_hmac_key) for the given cert type."""
+    token = _get_env("HETZNER_API_TOKEN")
+    email = _get_env("ACME_EMAIL")
+    eab_kid = os.environ.get("ZEROSSL_EAB_KID", "")
+    eab_hmac_key = os.environ.get("ZEROSSL_EAB_HMAC_KEY", "")
+    if cert_type.startswith("zerossl") and not (eab_kid and eab_hmac_key):
+        raise click.UsageError(
+            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required "
+            "for zerossl cert types"
+        )
+    return token, email, eab_kid, eab_hmac_key
+
+
 @click.group()
 def cli() -> None:
     """Issue real CA TLS certificates for enclave deployments."""
@@ -312,15 +333,7 @@ def cli() -> None:
 )
 def cmd_ingress_api(sans: tuple[str, ...], cert_type: str, root_ca: bool) -> None:
     """Issue a multi-SAN cert and print certificates.yaml fields to stdout."""
-    token = _get_env("HETZNER_API_TOKEN")
-    email = _get_env("ACME_EMAIL")
-    eab_kid = os.environ.get("ZEROSSL_EAB_KID", "")
-    eab_hmac_key = os.environ.get("ZEROSSL_EAB_HMAC_KEY", "")
-    if cert_type.startswith("zerossl") and not (eab_kid and eab_hmac_key):
-        raise click.UsageError(
-            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required "
-            "for zerossl cert types"
-        )
+    token, email, eab_kid, eab_hmac_key = _load_credentials(cert_type)
 
     cfg = CERT_TYPES[cert_type]
     primary_san = sans[0]
@@ -375,15 +388,7 @@ def cmd_ingress_api(sans: tuple[str, ...], cert_type: str, root_ca: bool) -> Non
 )
 def cmd_ironic(sans: tuple[str, ...], cert_type: str) -> None:
     """Issue a cert and print ironicHTTPS* YAML fields to stdout."""
-    token = _get_env("HETZNER_API_TOKEN")
-    email = _get_env("ACME_EMAIL")
-    eab_kid = os.environ.get("ZEROSSL_EAB_KID", "")
-    eab_hmac_key = os.environ.get("ZEROSSL_EAB_HMAC_KEY", "")
-    if cert_type.startswith("zerossl") and not (eab_kid and eab_hmac_key):
-        raise click.UsageError(
-            "ZEROSSL_EAB_KID and ZEROSSL_EAB_HMAC_KEY are required "
-            "for zerossl cert types"
-        )
+    token, email, eab_kid, eab_hmac_key = _load_credentials(cert_type)
 
     cfg = CERT_TYPES[cert_type]
     primary_san = sans[0]

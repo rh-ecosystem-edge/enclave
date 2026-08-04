@@ -5,7 +5,9 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
+import requests
 from click.testing import CliRunner
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
@@ -13,7 +15,9 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from enclave.cert_gen.main import (
     CertIssuanceError,
     RootCaExtractionError,
+    _fetch_cert,
     _indent_pem,
+    _load_credentials,
     cli,
     extract_root_ca,
     issue_cert,
@@ -182,6 +186,90 @@ class TestExtractRootCa:
         cert = x509.load_pem_x509_certificate(result.encode())
         assert cert.subject == cert.issuer
 
+    def test_aia_walk_exhausted_after_five_hops(self, tmp_path: Path) -> None:
+        _, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
+        aia_url = "http://test.example.com/inter.crt"
+        inter_pem = _generate_intermediate_with_aia(
+            tmp_path, root_cert_path, root_key_path, aia_url
+        )
+        chain_path = tmp_path / "chain.pem"
+        chain_path.write_text(inter_pem + "\n", encoding="utf-8")
+
+        # Every fetch returns the same non-self-signed intermediate, so the loop
+        # never converges and must raise after exactly 5 hops.
+        inter_der = x509.load_pem_x509_certificate(inter_pem.encode()).public_bytes(
+            Encoding.DER
+        )
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.raw.read.return_value = inter_der
+
+        with (
+            patch("enclave.cert_gen.main.requests.get", return_value=mock_resp),
+            pytest.raises(RootCaExtractionError, match="after 5 AIA hops"),
+        ):
+            extract_root_ca(chain_path)
+
+
+class TestFetchCert:
+    def test_invalid_scheme_raises(self) -> None:
+        with pytest.raises(
+            RootCaExtractionError, match="Unsupported AIA issuer URL scheme"
+        ):
+            _fetch_cert("ftp://example.com/cert.crt")
+
+    def test_request_exception_raises(self) -> None:
+        with (
+            patch(
+                "enclave.cert_gen.main.requests.get",
+                side_effect=requests.RequestException("timeout"),
+            ),
+            pytest.raises(RootCaExtractionError, match="Failed to fetch AIA issuer"),
+        ):
+            _fetch_cert("http://example.com/cert.crt")
+
+    def test_unparsable_body_raises(self) -> None:
+        mock_resp = MagicMock()
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_resp.raw.read.return_value = b"not a cert"
+        with (
+            patch("enclave.cert_gen.main.requests.get", return_value=mock_resp),
+            pytest.raises(RootCaExtractionError, match="Cannot parse cert"),
+        ):
+            _fetch_cert("http://example.com/cert.crt")
+
+
+class TestLoadCredentials:
+    def test_missing_token_raises(self) -> None:
+        with (
+            patch.dict(
+                "os.environ", {"HETZNER_API_TOKEN": "", "ACME_EMAIL": "a@b.com"}
+            ),
+            pytest.raises(click.UsageError, match="HETZNER_API_TOKEN"),
+        ):
+            _load_credentials("le-rsa")
+
+    def test_zerossl_missing_eab_raises(self) -> None:
+        env = {
+            "HETZNER_API_TOKEN": "tok",
+            "ACME_EMAIL": "a@b.com",
+            "ZEROSSL_EAB_KID": "",
+            "ZEROSSL_EAB_HMAC_KEY": "",
+        }
+        with (
+            patch.dict("os.environ", env),
+            pytest.raises(click.UsageError, match="ZEROSSL_EAB_KID"),
+        ):
+            _load_credentials("zerossl-rsa")
+
+    def test_le_returns_empty_eab(self) -> None:
+        env = {"HETZNER_API_TOKEN": "tok", "ACME_EMAIL": "a@b.com"}
+        with patch.dict("os.environ", env, clear=True):
+            result = _load_credentials("le-rsa")
+        assert result == ("tok", "a@b.com", "", "")
+
 
 class TestIndentPem:
     def test_adds_two_space_indent(self) -> None:
@@ -304,8 +392,17 @@ class TestIssueCert:
                 eab_hmac_key="hmac456",
             )
         args = mock_run.call_args[0][0]
-        assert "--eab-kid" in args
-        assert "kid123" in args
+        # EAB creds must not appear in argv (readable via /proc/<pid>/cmdline).
+        assert "--eab-kid" not in args
+        assert "kid123" not in args
+        # Instead they are written to a 0600 config file passed via --config.
+        eab_ini = tmp_path / "eab.ini"
+        assert eab_ini.exists()
+        content = eab_ini.read_text(encoding="utf-8")
+        assert "eab-kid = kid123" in content
+        assert "eab-hmac-key = hmac456" in content
+        assert "--config" in args
+        assert oct(eab_ini.stat().st_mode)[-3:] == "600"
 
     def test_rate_limit_error(self, tmp_path: Path) -> None:
         ini = tmp_path / "h.ini"

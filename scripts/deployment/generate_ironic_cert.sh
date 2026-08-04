@@ -2,8 +2,14 @@
 # Generate a TLS certificate for the Ironic ISO server, signed by the CA
 # produced by generate_ironic_ca.sh
 #
-# Reads lzBmcIP from config/global.yaml on the Landing Zone to set the
-# certificate SAN. Key and CSR are generated locally on the CI runner and
+# When ENCLAVE_CERT_TYPE is set, requests a real certificate from a public CA
+# via enclave-cert-gen and exits early without needing SSH or local CA files.
+# Note: public CAs (Let's Encrypt, ZeroSSL) cannot issue IP SANs; the SAN must
+# be a DNS name. Set lzBmcHostname in config/global.yaml so that TLS validation
+# can resolve the cert via hostname rather than IP.
+#
+# Otherwise, reads lzBmcIP from config/global.yaml on the Landing Zone to set
+# the certificate SAN. Key and CSR are generated locally on the CI runner and
 # the CSR is signed with the CA key present in the ironic-ca working directory.
 #
 # Exports ENCLAVE_IRONIC_CERT and ENCLAVE_IRONIC_KEY to GITHUB_ENV for
@@ -28,6 +34,41 @@ source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 require_env_var "DEV_SCRIPTS_PATH"
 require_env_var "WORKING_DIR"
 
+# Determine cluster name before the real-CA early-exit path below.
+ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+
+# Real-CA path: exits early without needing SSH or the local self-signed CA files.
+# Public CAs (Let's Encrypt, ZeroSSL) cannot issue IP SANs; the SAN here is a
+# DNS name (ironic.<cluster>.<domain>). Set lzBmcHostname in config/global.yaml
+# so that validation and Ironic TLS checks resolve via hostname rather than IP.
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    require_env_var "ENCLAVE_BASE_DOMAIN"
+    info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
+    IRONIC_YAML=$(uv run --group cert-gen enclave-cert-gen ironic \
+        --san "ironic.${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --type "${ENCLAVE_CERT_TYPE}")
+    if [ -n "${GITHUB_ENV:-}" ]; then
+        # Parse into variables first; a failure here aborts before any write to
+        # GITHUB_ENV, preventing a truncated heredoc delimiter in that file.
+        IRONIC_CERT=$(echo "${IRONIC_YAML}" | uv run python -c \
+            "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSCertificate'].strip())")
+        IRONIC_KEY=$(echo "${IRONIC_YAML}" | uv run python -c \
+            "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSKey'].strip())")
+        {
+            echo "ENCLAVE_IRONIC_CERT<<EOF"
+            echo "${IRONIC_CERT}"
+            echo "EOF"
+            echo "ENCLAVE_IRONIC_KEY<<EOF"
+            echo "${IRONIC_KEY}"
+            echo "EOF"
+        } >> "$GITHUB_ENV"
+        success "Ironic real CA certificate exported to GITHUB_ENV"
+    else
+        echo "$IRONIC_YAML"
+    fi
+    exit 0
+fi
+
 IRONIC_CA_DIR="${WORKING_DIR}/ironic-ca"
 CA_KEY="${IRONIC_CA_DIR}/ca.key"
 CA_CRT="${IRONIC_CA_DIR}/ca.crt"
@@ -37,9 +78,6 @@ if [ ! -f "$CA_KEY" ] || [ ! -f "$CA_CRT" ]; then
     error "Run generate_ironic_ca.sh before this script"
     exit 1
 fi
-
-# Determine cluster name for SSH access
-ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
 load_devscripts_config
@@ -73,30 +111,6 @@ fi
 LZ_BMC_HOSTNAME=$(ssh_exec "awk '/^lzBmcHostname:/ {print \$2}' ${LZ_ENCLAVE_DIR}/config/global.yaml" 2>/dev/null || echo "")
 
 info "Generating TLS certificate for Ironic ISO server"
-
-if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
-    require_env_var "ENCLAVE_BASE_DOMAIN"
-    info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
-    IRONIC_YAML=$(uv run --group cert-gen enclave-cert-gen ironic \
-        --san "ironic.${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
-        --type "${ENCLAVE_CERT_TYPE}")
-    if [ -n "${GITHUB_ENV:-}" ]; then
-        {
-            echo "ENCLAVE_IRONIC_CERT<<EOF"
-            echo "${IRONIC_YAML}" | uv run python -c \
-                "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSCertificate'].strip())"
-            echo "EOF"
-            echo "ENCLAVE_IRONIC_KEY<<EOF"
-            echo "${IRONIC_YAML}" | uv run python -c \
-                "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSKey'].strip())"
-            echo "EOF"
-        } >> "$GITHUB_ENV"
-        success "Ironic real CA certificate exported to GITHUB_ENV"
-    else
-        echo "$IRONIC_YAML"
-    fi
-    exit 0
-fi
 
 # Work in a temp directory; cleaned up on exit
 WORK_DIR=$(mktemp -d)
