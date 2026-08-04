@@ -72,7 +72,7 @@ LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}
 MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
 
 # Get base domain from config or use default
-BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN:-lab}"
+BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
 
 # Get first master IP as rendezvous IP (bootstrap) before generating config
 RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")

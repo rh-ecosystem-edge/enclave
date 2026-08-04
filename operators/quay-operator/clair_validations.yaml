@@ -1,18 +1,5 @@
 ---
-- name: Wait for Clair deployment to have available replicas
-  kubernetes.core.k8s_info:
-    api_version: apps/v1
-    kind: Deployment
-    name: registry-clair-app
-    namespace: quay-enterprise
-  register: r_clair_deployment
-  retries: 30
-  delay: 30
-  until:
-    - r_clair_deployment.resources | length > 0
-    - r_clair_deployment.resources[0].status.availableReplicas | default(0) | int > 0
-
-- name: Get all Clair pods
+- name: Get the name of the first Clair pod
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: quay-enterprise
@@ -20,177 +7,28 @@
       - quay-component=clair-app
   register: clair_pods
 
-- name: Set clair pod name fact (pod with fewest restarts)
-  vars:
-    restart_counts: >-
-      {{ clair_pods.resources
-         | map(attribute='status.containerStatuses')
-         | map('map', attribute='restartCount')
-         | map('list')
-         | map('min')
-         | list }}
-    min_restarts: "{{ restart_counts | min }}"
-    min_index: "{{ restart_counts.index(min_restarts | int) }}"
+- name: Set clair pod name fact
   ansible.builtin.set_fact:
-    clair_pod_name: "{{ clair_pods.resources[min_index | int].metadata.name }}"
+    clair_pod_name: "{{ clair_pods.resources[0].metadata.name }}"
 
-- name: Validate CPE mapping files in Clair pod
-  block:
-    - name: Check for repository-to-cpe.json in the pod
-      kubernetes.core.k8s_exec:
-        namespace: quay-enterprise
-        pod: "{{ clair_pod_name }}"
-        command: ls /data/repository-to-cpe.json
-      register: cpe_file_check
-      retries: 5
-      delay: 10
-      until: cpe_file_check is not failed
+- name: Check for repository-to-cpe.json in the pod
+  kubernetes.core.k8s_exec:
+    namespace: quay-enterprise
+    pod: "{{ clair_pod_name }}"
+    command: ls /data/repository-to-cpe.json
+  register: cpe_file_check
 
-    - name: Check for container-name-repos-map.json in the pod
-      kubernetes.core.k8s_exec:
-        namespace: quay-enterprise
-        pod: "{{ clair_pod_name }}"
-        command: ls /data/container-name-repos-map.json
-      register: repo_map_check
-      retries: 5
-      delay: 10
-      until: repo_map_check is not failed
+- name: Check for container-name-repos-map.json in the pod
+  kubernetes.core.k8s_exec:
+    namespace: quay-enterprise
+    pod: "{{ clair_pod_name }}"
+    command: ls /data/container-name-repos-map.json
+  register: repo_map_check
 
-    - name: Fail if files are missing
-      ansible.builtin.fail:
-        msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
-      when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
-
-  rescue:
-    - name: "[debug] Get all Clair pod details"
-      kubernetes.core.k8s_info:
-        kind: Pod
-        namespace: quay-enterprise
-        label_selectors:
-          - quay-component=clair-app
-      register: debug_clair_pods
-      failed_when: false
-
-    - name: "[debug] Print all Clair pod statuses"
-      ansible.builtin.debug:
-        msg: "{{ debug_clair_pods.resources | map(attribute='status') | list }}"
-
-    - name: "[debug] Get Clair deployment status"
-      kubernetes.core.k8s_info:
-        api_version: apps/v1
-        kind: Deployment
-        name: registry-clair-app
-        namespace: quay-enterprise
-      register: debug_clair_deploy
-      failed_when: false
-
-    - name: "[debug] Print Clair deployment status"
-      ansible.builtin.debug:
-        var: debug_clair_deploy.resources[0].status
-
-    - name: "[debug] Get current Clair container logs (k8s_log module)"
-      kubernetes.core.k8s_log:
-        namespace: quay-enterprise
-        pod: "{{ clair_pod_name }}"
-        container: clair-app
-        tail_lines: 100
-      register: debug_clair_logs
-      failed_when: false
-
-    - name: "[debug] Print k8s_log module full result"
-      ansible.builtin.debug:
-        var: debug_clair_logs
-
-    - name: "[debug] Get previous Clair container logs (k8s_log module)"
-      kubernetes.core.k8s_log:
-        namespace: quay-enterprise
-        pod: "{{ clair_pod_name }}"
-        container: clair-app
-        previous: true
-        tail_lines: 50
-      register: debug_clair_prev_logs
-      failed_when: false
-
-    - name: "[debug] Print previous k8s_log module full result"
-      ansible.builtin.debug:
-        var: debug_clair_prev_logs
-
-    - name: "[debug] Get current logs for all Clair pods via oc"
-      ansible.builtin.command:
-        argv:
-          - oc
-          - logs
-          - -n
-          - quay-enterprise
-          - "{{ item.metadata.name }}"
-          - --all-containers=true
-          - --tail=100
-      loop: "{{ debug_clair_pods.resources | default([]) }}"
-      register: debug_oc_logs_current
-      failed_when: false
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-
-    - name: "[debug] Print current logs for all Clair pods"
-      ansible.builtin.debug:
-        msg: "=== Pod {{ item.item.metadata.name }} ===\n{{ item.stdout }}\nSTDERR: {{ item.stderr }}"
-      loop: "{{ debug_oc_logs_current.results | default([]) }}"
-
-    - name: "[debug] Get previous logs for all Clair pods via oc"
-      ansible.builtin.command:
-        argv:
-          - oc
-          - logs
-          - -n
-          - quay-enterprise
-          - "{{ item.metadata.name }}"
-          - --all-containers=true
-          - --previous
-          - --tail=50
-      loop: "{{ debug_clair_pods.resources | default([]) }}"
-      register: debug_oc_logs_prev
-      failed_when: false
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-
-    - name: "[debug] Print previous logs for all Clair pods"
-      ansible.builtin.debug:
-        msg: "=== Pod {{ item.item.metadata.name }} (previous) ===\n{{ item.stdout }}\nSTDERR: {{ item.stderr }}"
-      loop: "{{ debug_oc_logs_prev.results | default([]) }}"
-
-    - name: "[debug] List /data directory in Clair pod"
-      kubernetes.core.k8s_exec:
-        namespace: quay-enterprise
-        pod: "{{ clair_pod_name }}"
-        command: ls -la /data/
-      register: debug_data_dir
-      failed_when: false
-
-    - name: "[debug] Print /data directory listing"
-      ansible.builtin.debug:
-        var: debug_data_dir
-
-    - name: "[debug] Get quay-enterprise namespace events"
-      kubernetes.core.k8s_info:
-        kind: Event
-        namespace: quay-enterprise
-      register: debug_ns_events
-      failed_when: false
-
-    - name: "[debug] Print Clair-related events"
-      ansible.builtin.debug:
-        msg: "{{ debug_ns_events.resources | default([]) | selectattr('involvedObject.name', 'match', 'registry-clair') | list }}"
-
-    - name: "[debug] Print exec task results"
-      ansible.builtin.debug:
-        msg:
-          - "clair_pod_name: {{ clair_pod_name }}"
-          - "cpe_file_check: {{ cpe_file_check | default('not attempted') }}"
-          - "repo_map_check: {{ repo_map_check | default('not attempted') }}"
-
-    - name: Fail after debug collection
-      ansible.builtin.fail:
-        msg: "Clair CPE validation failed on pod {{ clair_pod_name }}. See [debug] tasks above for diagnostics."
+- name: Fail if files are missing
+  fail:
+    msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
+  when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
 
 - name: Get Secrets owned by the Quay registry
   kubernetes.core.k8s_info:
