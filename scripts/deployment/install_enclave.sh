@@ -125,7 +125,7 @@ info "Step 5: Generating Enclave Lab configuration (config/global.yaml, config/c
 # runner also has uv so generate_enclave_vars.sh and generate_ironic_cert.sh
 # can call 'uv run --group cert-gen enclave-cert-gen' without SSH.
 UV_VERSION="0.11.13"
-current_uv_version=$(uv --version 2>/dev/null | awk '{print $2}')
+current_uv_version=$(uv --version 2>/dev/null | awk '{print $2}' || true)
 if [ "${current_uv_version}" != "${UV_VERSION}" ]; then
     info "Installing uv ${UV_VERSION} locally..."
     UV_INSTALLER=$(mktemp)
