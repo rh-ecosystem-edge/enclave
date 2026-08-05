@@ -16,7 +16,6 @@ from enclave.cert_gen.main import (
     CertIssuanceError,
     RootCaExtractionError,
     _fetch_cert,
-    _indent_pem,
     _load_credentials,
     cli,
     extract_root_ca,
@@ -271,19 +270,14 @@ class TestLoadCredentials:
         assert result == ("tok", "a@b.com", "", "")
 
 
-class TestIndentPem:
-    def test_adds_two_space_indent(self) -> None:
-        result = _indent_pem("line1\nline2\n")
-        assert result == "  line1\n  line2"
-
-    def test_strips_trailing_newline(self) -> None:
-        result = _indent_pem("line1\n")
-        assert result == "  line1"
+PEM_CHAIN = "CHAIN\n"
+PEM_KEY = "KEY\n"
+PEM_ROOT = "ROOT\n"
 
 
 class TestRenderIngressApiYaml:
     def test_all_four_ssl_keys_present(self) -> None:
-        out = render_ingress_api_yaml("CHAIN", "KEY")
+        out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY)
         assert "sslAPICertificateKey: |" in out
         assert "sslAPICertificateFullChain: |" in out
         assert "sslIngressCertificateKey: |" in out
@@ -291,28 +285,28 @@ class TestRenderIngressApiYaml:
         assert "sslCACertificate" not in out
 
     def test_with_root_ca(self) -> None:
-        out = render_ingress_api_yaml("CHAIN", "KEY", root_ca="ROOT")
+        out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY, root_ca=PEM_ROOT)
         assert "sslCACertificate: |" in out
         assert "  ROOT" in out
 
     def test_values_indented(self) -> None:
-        out = render_ingress_api_yaml("line1\nline2", "KEY")
+        out = render_ingress_api_yaml("line1\nline2\n", PEM_KEY)
         assert "  line1\n  line2" in out
 
     def test_api_and_ingress_share_cert(self) -> None:
-        out = render_ingress_api_yaml("MYCHAIN", "MYKEY")
-        assert out.count("MYCHAIN") == 2
-        assert out.count("MYKEY") == 2
+        out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY)
+        assert out.count("CHAIN") == 2
+        assert out.count("KEY") == 2
 
 
 class TestRenderIronicYaml:
     def test_ironic_keys_present(self) -> None:
-        out = render_ironic_yaml("CERT", "KEY")
+        out = render_ironic_yaml(PEM_CHAIN, PEM_KEY)
         assert "ironicHTTPSCertificate: |" in out
         assert "ironicHTTPSKey: |" in out
 
     def test_values_indented(self) -> None:
-        out = render_ironic_yaml("line1\nline2", "KEY")
+        out = render_ironic_yaml("line1\nline2\n", PEM_KEY)
         assert "  line1\n  line2" in out
 
 

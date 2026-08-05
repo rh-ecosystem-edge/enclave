@@ -21,6 +21,7 @@ from pathlib import Path
 
 import click
 import requests
+import yaml
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import UniformResourceIdentifier
@@ -28,11 +29,11 @@ from cryptography.x509.oid import AuthorityInformationAccessOID
 
 
 class CertIssuanceError(Exception):
-    pass
+    """Raised when certbot fails to issue or renew a certificate."""
 
 
 class RootCaExtractionError(Exception):
-    pass
+    """Raised when the root CA cannot be located in the certificate chain."""
 
 
 LE_SERVER = "https://acme-v02.api.letsencrypt.org/directory"
@@ -113,6 +114,7 @@ CERT_TYPES: dict[str, dict[str, str]] = {
 
 
 def write_hetzner_ini(work_dir: Path, token: str) -> Path:
+    """Write a 0600 certbot-dns-hetzner credentials file and return its path."""
     ini_path = work_dir / "hetzner.ini"
     ini_path.write_text(f"dns_hetzner_api_token = {token}\n", encoding="utf-8")
     ini_path.chmod(0o600)
@@ -132,6 +134,7 @@ def issue_cert(
     eab_kid: str,
     eab_hmac_key: str,
 ) -> None:
+    """Run certbot to obtain a certificate via DNS-01 and store it under config_dir."""
     args = [
         "certbot",
         "certonly",
@@ -187,6 +190,7 @@ def issue_cert(
 
 
 def _aia_issuer_url(cert: x509.Certificate) -> str:
+    """Return the CA Issuers URL from a certificate's AIA extension."""
     try:
         aia = cert.extensions.get_extension_for_class(x509.AuthorityInformationAccess)
     except x509.ExtensionNotFound as exc:
@@ -203,6 +207,7 @@ def _aia_issuer_url(cert: x509.Certificate) -> str:
 
 
 def _fetch_cert(url: str) -> x509.Certificate:
+    """Download a DER or PEM certificate from url and return it parsed."""
     if not url.startswith(("http://", "https://")):
         raise RootCaExtractionError(f"Unsupported AIA issuer URL scheme: {url}")
     try:
@@ -221,12 +226,7 @@ def _fetch_cert(url: str) -> x509.Certificate:
 
 
 def extract_root_ca(chain_pem_path: Path) -> str:
-    """Return the root CA PEM from a certificate chain file.
-
-    First checks whether the chain already contains a self-signed cert (fast path).
-    If not, walks the AIA CA Issuers chain from the topmost intermediate, downloading
-    each issuer until a self-signed root is found (requires network access).
-    """
+    """Return the root CA PEM by scanning the chain file or walking AIA issuer URLs."""
     pem_text = chain_pem_path.read_text(encoding="utf-8")
     pem_blocks = re.findall(
         r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
@@ -259,39 +259,68 @@ def extract_root_ca(chain_pem_path: Path) -> str:
     )
 
 
-def _indent_pem(pem: str) -> str:
-    return "\n".join("  " + line for line in pem.strip().splitlines())
+class _BlockLiteralDumper(yaml.Dumper):
+    pass
+
+
+def _literal_str(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+    r"""PyYAML representer that renders multiline strings as YAML literal block scalars.
+
+    PyYAML calls registered representers once per Python value being serialized,
+    including both mapping keys and values.  This function is registered for the
+    ``str`` type on ``_BlockLiteralDumper`` via ``add_representer``.
+
+    When ``data`` contains a newline the YAML ``|`` (literal block) style is
+    requested, which preserves every embedded newline exactly — the reader gets
+    back the string character-for-character.  PEM blobs always contain newlines,
+    so they reliably take this path and appear as indented blocks in the output:
+
+        sslAPICertificateKey: |
+          <base64 key data>
+          ...
+
+    When ``data`` has no newline (e.g. YAML mapping key names such as
+    ``sslAPICertificateKey``) ``style=None`` lets PyYAML choose the default plain
+    scalar style, which keeps key names on the same line as their ``:``.
+
+    PyYAML automatically selects the chomp indicator based on whether ``data``
+    ends with ``\\n``: ``|`` (clip — keep one trailing newline) when it does,
+    ``|-`` (strip — drop it) when it does not.  Real PEM files always end with
+    ``\\n``, so the output consistently uses ``|`` rather than ``|-``.
+    """
+    style = "|" if "\n" in data else None
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+
+_BlockLiteralDumper.add_representer(str, _literal_str)
 
 
 def render_ingress_api_yaml(
     fullchain: str, key: str, root_ca: str | None = None
 ) -> str:
-    fields = [
-        ("sslAPICertificateKey", key),
-        ("sslAPICertificateFullChain", fullchain),
-        ("sslIngressCertificateKey", key),
-        ("sslIngressCertificateFullChain", fullchain),
-    ]
-    lines: list[str] = []
-    for name, val in fields:
-        lines.extend((f"{name}: |", _indent_pem(val)))
+    """Render the sslAPI*/sslIngress* (and optionally sslCACertificate) YAML block."""
+    data: dict[str, str] = {
+        "sslAPICertificateKey": key,
+        "sslAPICertificateFullChain": fullchain,
+        "sslIngressCertificateKey": key,
+        "sslIngressCertificateFullChain": fullchain,
+    }
     if root_ca is not None:
-        lines.extend(("sslCACertificate: |", _indent_pem(root_ca)))
-    return "\n".join(lines) + "\n"
+        data["sslCACertificate"] = root_ca
+    return yaml.dump(data, Dumper=_BlockLiteralDumper, sort_keys=False)
 
 
 def render_ironic_yaml(cert: str, key: str) -> str:
-    fields = [
-        ("ironicHTTPSCertificate", cert),
-        ("ironicHTTPSKey", key),
-    ]
-    lines: list[str] = []
-    for name, val in fields:
-        lines.extend((f"{name}: |", _indent_pem(val)))
-    return "\n".join(lines) + "\n"
+    """Render the ironicHTTPSCertificate and ironicHTTPSKey YAML block."""
+    return yaml.dump(
+        {"ironicHTTPSCertificate": cert, "ironicHTTPSKey": key},
+        Dumper=_BlockLiteralDumper,
+        sort_keys=False,
+    )
 
 
 def _get_env(name: str) -> str:
+    """Return the value of environment variable name, raising UsageError if unset."""
     val = os.environ.get(name, "")
     if not val:
         raise click.UsageError(f"Missing required environment variable: {name}")
