@@ -11,16 +11,12 @@
   ansible.builtin.set_fact:
     clair_pod_name: "{{ clair_pods.resources[0].metadata.name }}"
 
-- name: Wait for CPE mapping files in the Clair pod
+- name: Check for CPE mapping files in the Clair pod
   ansible.builtin.shell: >-
     {{ workingDir }}/bin/oc exec -n quay-enterprise {{ clair_pod_name }} --
     sh -c 'test -f /data/repository-to-cpe.json && test -f /data/container-name-repos-map.json'
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: cpe_files_check
-  retries: 1000
-  delay: 60
-  until: cpe_files_check.rc == 0
 
 - name: Get Secrets owned by the Quay registry
   kubernetes.core.k8s_info:
