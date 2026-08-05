@@ -1,0 +1,21 @@
+---
+# Values for autoshiftv2's advanced-cluster-security policy chart.
+# See docs/design/acs-plugin-poc-via-autoshiftv2.md for why these are the only overrides needed.
+
+policy_namespace: open-cluster-policies
+
+# Non-empty hubClusterSets/managedClusterSets gate the chart's hub-only (Central, hub's own
+# SecuredCluster) and spoke-facing (SecuredCluster) resources respectively. Cluster set names
+# must match the ManagedClusterSets created by tasks/deploy.yaml.
+hubClusterSets:
+  hub: {}
+managedClusterSets:
+  managed: {}
+
+acs:
+  # Must match the CatalogSource name enclave's fleet mechanism enforces on clusters matching
+  # this plugin's clusterSelector (see tasks/configure_operators_fleet.yaml: the CatalogSource
+  # is always named "{{ catalog_mirror }}"), so the chart's own OperatorPolicy resolves to the
+  # same, already-mirrored catalog.
+  source: >-
+    {{ 'redhat-operators' if not (disconnected | default(true) | bool) else catalog_mirror }}
