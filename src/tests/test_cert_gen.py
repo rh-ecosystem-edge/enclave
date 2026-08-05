@@ -395,6 +395,8 @@ class TestIssueCert:
         # EAB creds must not appear in argv (readable via /proc/<pid>/cmdline).
         assert "--eab-kid" not in args
         assert "kid123" not in args
+        assert "--eab-hmac-key" not in args
+        assert "hmac456" not in args
         # Instead they are written to a 0600 config file passed via --config.
         eab_ini = tmp_path / "eab.ini"
         assert eab_ini.exists()

@@ -3,10 +3,10 @@
 # produced by generate_ironic_ca.sh
 #
 # When ENCLAVE_CERT_TYPE is set, requests a real certificate from a public CA
-# via enclave-cert-gen and exits early without needing SSH or local CA files.
-# Note: public CAs (Let's Encrypt, ZeroSSL) cannot issue IP SANs; the SAN must
-# be a DNS name. Set lzBmcHostname in config/global.yaml so that TLS validation
-# can resolve the cert via hostname rather than IP.
+# via enclave-cert-gen using a DNS-01 challenge (dns-hetzner) and exits early
+# without needing SSH or local CA files. The only SAN issued is the DNS name
+# ironic.<cluster>.<domain>; public CAs cannot issue IP SANs. lzBmcHostname in
+# config/global.yaml must match that DNS name exactly for TLS validation to pass.
 #
 # Otherwise, reads lzBmcIP from config/global.yaml on the Landing Zone to set
 # the certificate SAN. Key and CSR are generated locally on the CI runner and
@@ -37,10 +37,10 @@ require_env_var "WORKING_DIR"
 # Determine cluster name before the real-CA early-exit path below.
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Real-CA path: exits early without needing SSH or the local self-signed CA files.
-# Public CAs (Let's Encrypt, ZeroSSL) cannot issue IP SANs; the SAN here is a
-# DNS name (ironic.<cluster>.<domain>). Set lzBmcHostname in config/global.yaml
-# so that validation and Ironic TLS checks resolve via hostname rather than IP.
+# Real-CA path (DNS-01 via dns-hetzner): exits early without needing SSH or the
+# local self-signed CA files. The only SAN requested is the DNS name
+# ironic.<cluster>.<domain>; public CAs cannot issue IP SANs. lzBmcHostname in
+# config/global.yaml must match that DNS name exactly.
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     require_env_var "ENCLAVE_BASE_DOMAIN"
     info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
