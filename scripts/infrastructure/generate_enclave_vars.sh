@@ -71,8 +71,15 @@ LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}
 # Get master count
 MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
 
-# Get base domain from config or use default
-BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
+# Get base domain from config or use default.
+# When using real certs, the SAN is api.<cluster>.<ENCLAVE_BASE_DOMAIN>, so
+# baseDomain in global.yaml must match ENCLAVE_BASE_DOMAIN for cert validation to pass.
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    require_env_var "ENCLAVE_BASE_DOMAIN"
+    BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
+else
+    BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
+fi
 
 # Get first master IP as rendezvous IP (bootstrap) before generating config
 RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")
@@ -217,7 +224,6 @@ done
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
 
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
-    require_env_var "ENCLAVE_BASE_DOMAIN"
     info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
     CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
     trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
