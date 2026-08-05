@@ -222,8 +222,8 @@ if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
     trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
     uv run --group cert-gen enclave-cert-gen ingress-api \
-        --san "api.${CLUSTER_NAME}.${BASE_DOMAIN}" \
-        --san "*.apps.${CLUSTER_NAME}.${BASE_DOMAIN}" \
+        --san "api.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --san "*.apps.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
         --type "${ENCLAVE_CERT_TYPE}" \
         > "${CERTS_VARS_TEMP}"
     chmod 600 "${CERTS_VARS_TEMP}"
