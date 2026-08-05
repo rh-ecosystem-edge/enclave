@@ -138,6 +138,13 @@ Required secrets:
 - `WORKING_DIR`: `/opt/dev-scripts`
 - `PULL_SECRET`: Your OpenShift pull secret (JSON format)
 
+Additional secrets required for real TLS certificate runs (`cert-type` dispatch input):
+- `HETZNER_API_TOKEN`: Hetzner DNS API token (used for DNS-01 challenge record creation)
+- `ZEROSSL_EAB_KID`: ZeroSSL External Account Binding key ID
+- `ZEROSSL_EAB_HMAC_KEY`: ZeroSSL External Account Binding HMAC key
+- `ACME_EMAIL`: Email address registered with ZeroSSL
+- `ENCLAVE_BASE_DOMAIN`: Public DNS domain used for SAN generation (e.g. `example.com`)
+
 ## Verification
 
 Test that the runner can execute basic commands:

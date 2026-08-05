@@ -188,6 +188,7 @@ make -f Makefile.ci validate-makefile     # Validate Makefile syntax
 make -f Makefile.ci environment                     # Create test infrastructure
 make -f Makefile.ci provision-landing-zone          # Provision Landing Zone VM
 make -f Makefile.ci install-enclave                 # Install Enclave Lab
+make -f Makefile.ci generate-ironic-cert            # Generate Ironic TLS cert (real CA when ENCLAVE_CERT_TYPE is set)
 make -f Makefile.ci clean                           # Clean up all infrastructure
 
 # Verification

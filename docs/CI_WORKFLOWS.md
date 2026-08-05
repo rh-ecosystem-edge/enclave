@@ -176,8 +176,18 @@ Both connected and disconnected jobs run automatically on every PR with E2E-rele
    - **run-connected**: Run connected mode (default: true)
    - **run-disconnected**: Run disconnected mode (default: true)
    - **storage-plugin**: lvms or odf (default: lvms)
+   - **cert-type**: TLS certificate type for ingress/API/Ironic certs; empty = self-signed,
+     `zerossl-ecdsa` = real certificate via ZeroSSL DNS-01 challenge (default: empty)
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
+
+**Note on real certificates** (`cert-type` set): The workflow calls `make generate-ironic-cert`
+before deployment to obtain a real Ironic TLS certificate via a DNS-01 challenge against
+Hetzner DNS. Ingress and API certificates are requested by `generate_enclave_vars.sh` during
+environment setup. Disconnected mode always enables Ironic HTTPS (`ENCLAVE_IRONIC_HTTPS=true`).
+Real-cert runs require the additional repository secrets listed in the Runner Setup guide:
+`HETZNER_API_TOKEN`, `ZEROSSL_EAB_KID`, `ZEROSSL_EAB_HMAC_KEY`, `ACME_EMAIL`, and
+`ENCLAVE_BASE_DOMAIN`.
 
 **Slash Commands**:
 - `/test e2e-connected` - Dispatch connected mode only

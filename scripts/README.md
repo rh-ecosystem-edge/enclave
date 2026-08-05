@@ -109,6 +109,7 @@ Scripts for deploying OpenShift clusters on the provisioned infrastructure.
 | `install_enclave.sh` | Install Enclave Lab on Landing Zone VM and generate configuration |
 | `deploy_cluster.sh` | Deploy full OpenShift cluster (connected or disconnected mode) |
 | `deploy_phase.sh` | Deploy specific phase of deployment (for phased workflows) |
+| `generate_ironic_cert.sh` | Generate TLS certificate for the Ironic ISO server; self-signed (local CA) by default, or a real DNS-01 certificate from a public CA when `ENCLAVE_CERT_TYPE` is set |
 
 **Deployment Modes:**
 - **Connected**: Pull images directly from quay.io/registry.redhat.io (~55 min)
@@ -245,6 +246,9 @@ Common environment variables used across scripts:
 | `ENCLAVE_SUBNET_ID` | Allocated subnet ID (for parallel CI) |
 | `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`) |
 | `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`) |
+| `ENCLAVE_CERT_TYPE` | TLS certificate type; unset = self-signed, `zerossl-ecdsa` = real cert via DNS-01 |
+| `ENCLAVE_BASE_DOMAIN` | Public DNS domain for SAN generation when `ENCLAVE_CERT_TYPE` is set |
+| `ENCLAVE_IRONIC_HTTPS` | Enable HTTPS on the Ironic ISO server; always `true` in disconnected mode |
 
 ### Error Handling
 
