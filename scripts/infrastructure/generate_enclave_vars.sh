@@ -27,6 +27,7 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
 load_devscripts_config
+require_env_var "BASE_DOMAIN"
 
 # Configuration
 ensure_working_dir
@@ -70,16 +71,6 @@ LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}
 
 # Get master count
 MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
-
-# Get base domain from config or use default.
-# When using real certs, the SAN is api.<cluster>.<ENCLAVE_BASE_DOMAIN>, so
-# baseDomain in global.yaml must match ENCLAVE_BASE_DOMAIN for cert validation to pass.
-if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
-    require_env_var "ENCLAVE_BASE_DOMAIN"
-    BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
-else
-    BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
-fi
 
 # Get first master IP as rendezvous IP (bootstrap) before generating config
 RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")
