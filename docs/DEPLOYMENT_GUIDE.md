@@ -127,6 +127,63 @@ The following dependencies are automatically installed by the setup scripts (`se
 - **Provisioning Network**: For ISO boot and cluster installation
 - **VIPs**: Virtual IPs for API and Ingress (must be in the same subnet)
 
+#### Firewall / Port Requirements
+
+The Landing Zone (deployment host) runs several services that bare metal
+nodes, BMCs, and the cluster itself must be able to reach. If `firewalld`
+(or another host firewall) is enabled on the Landing Zone, open the
+following ports:
+
+| Service | Port | Protocol | Direction | Notes |
+|---------|------|----------|-----------|-------|
+| SSH | 22 | TCP | Inbound to LZ | Administrative access |
+| DNS (`dnsmasq`) | 53 | TCP/UDP | Inbound to LZ from cluster nodes and BMCs | Resolves `api.*`/`apps.*`/mirror hostnames; matches `defaultDNS` |
+| DHCP (`dnsmasq`) | 67, 68 | UDP | Inbound to LZ from the provisioning network | Only if `dnsmasq` provides DHCP on that network |
+| Ironic API | 6385 | TCP | Inbound to LZ from cluster nodes / BMO controller | BareMetalHost provisioning and inspection |
+| Ironic HTTP (ISO/vmedia) | 6180 | TCP | Inbound to LZ from BMCs | Serves the boot ISO for virtual media |
+| Ironic vmedia (TLS) | 6183 | TCP | Inbound to LZ from BMCs | Only when `ironicHTTPSCertificate`/`ironicHTTPSKey` are configured |
+| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from the `redfish` field (`ip` or `ip:port`) per host in `config/cloud_infra.yaml` |
+| Mirror registry (Quay) | 8443 | TCP | Inbound to LZ from cluster nodes | Image pulls/pushes against `quayHostname:8443` |
+| OCP API | 6443 | TCP | Outbound from LZ to the cluster `apiVIP` | Used by the Ansible controller (`oc`/`KUBECONFIG`) and by the BMO/Ironic controllers reconciling `BareMetalHost` objects after install |
+| NTP | 123 | UDP | Inbound to LZ from cluster nodes | Only if `defaultNtpServers` points at the Landing Zone |
+
+**Example `firewalld` configuration**:
+
+```bash
+sudo firewall-cmd --permanent --add-port=22/tcp
+sudo firewall-cmd --permanent --add-port=53/tcp --add-port=53/udp
+sudo firewall-cmd --permanent --add-port=67/udp --add-port=68/udp
+sudo firewall-cmd --permanent --add-port=6385/tcp
+sudo firewall-cmd --permanent --add-port=6180/tcp
+sudo firewall-cmd --permanent --add-port=6183/tcp
+sudo firewall-cmd --permanent --add-port=8443/tcp
+sudo firewall-cmd --reload
+```
+
+Where possible, restrict access to the management/provisioning CIDRs
+instead of opening ports to all sources, for example:
+
+```bash
+sudo firewall-cmd --permanent --zone=internal \
+  --add-rich-rule='rule family=ipv4 source address=100.64.0.0/16 port port=6385 protocol=tcp accept'
+```
+
+**Validating connectivity** after configuring the firewall:
+
+```bash
+# From the Landing Zone: review active firewalld rules
+sudo firewall-cmd --list-all-zones
+
+# From a cluster node: confirm DNS resolution against the Landing Zone
+dig api.<clusterName>.<baseDomain> @<defaultDNS>
+
+# From a cluster node: confirm the mirror registry is reachable
+curl -sk https://<quayHostname>:8443/v2/ -o /dev/null -w '%{http_code}\n'
+
+# From the BMC network: confirm Ironic vmedia is reachable
+curl -sk https://<lzBmcIP>:6183/ -o /dev/null -w '%{http_code}\n'
+```
+
 ## Configuration
 
 Configuration is split across multiple files for better organization:
