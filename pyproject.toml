@@ -32,7 +32,7 @@ enclave = "enclave.cli:cli"
 dev = [
     "ansible-lint ==26.6.0",
     "anymarkup ==0.8.1",
-    "mypy ==2.1.0",
+    "mypy ==2.3.0",
     "pytest ==9.1.1",
     "pytest-cov ==7.1.0",
     "pytest-mock ==3.15.1",
