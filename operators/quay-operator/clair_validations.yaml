@@ -17,6 +17,16 @@
     pod: "{{ clair_pod_name }}"
     command: ls /data/repository-to-cpe.json
   register: cpe_file_check
+  ignore_errors: true
+
+- name: "[debug] k8s_exec result for repository-to-cpe.json"
+  ansible.builtin.debug:
+    var: cpe_file_check
+
+- name: "[debug] k8s_exec traceback for repository-to-cpe.json"
+  ansible.builtin.debug:
+    msg: "{{ cpe_file_check.exception }}"
+  when: cpe_file_check.exception is defined
 
 - name: Check for container-name-repos-map.json in the pod
   kubernetes.core.k8s_exec:
@@ -24,11 +34,25 @@
     pod: "{{ clair_pod_name }}"
     command: ls /data/container-name-repos-map.json
   register: repo_map_check
+  ignore_errors: true
 
-- name: Fail if files are missing
-  fail:
-    msg: "Required CPE mapping files are missing from /data in pod {{ clair_pod_name }}"
-  when: cpe_file_check.rc != 0 or repo_map_check.rc != 0
+- name: "[debug] k8s_exec result for container-name-repos-map.json"
+  ansible.builtin.debug:
+    var: repo_map_check
+
+- name: "[debug] k8s_exec traceback for container-name-repos-map.json"
+  ansible.builtin.debug:
+    msg: "{{ repo_map_check.exception }}"
+  when: repo_map_check.exception is defined
+
+- name: Fail if files are missing or k8s_exec raised an exception
+  ansible.builtin.fail:
+    msg: "CPE file check failed — see [debug] tasks above for traceback or rc"
+  when: >-
+    (cpe_file_check is failed)
+    or (cpe_file_check.rc | default(-1) | int != 0)
+    or (repo_map_check is failed)
+    or (repo_map_check.rc | default(-1) | int != 0)
 
 - name: Get Secrets owned by the Quay registry
   kubernetes.core.k8s_info:
