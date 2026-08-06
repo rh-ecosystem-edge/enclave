@@ -11,7 +11,6 @@ dependencies = [
     "certifi ==2026.6.17",
     "click ==8.4.2",
     "durationpy ==0.10",
-    "google-auth ==2.56.2",
     "jsonschema ==4.26.0",
     "kubernetes ==36.0.3",
     "oauthlib ==3.2.2",
@@ -43,6 +42,11 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.uv]
+constraint-dependencies = [
+    "google-auth >=2.56.2"
+]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
