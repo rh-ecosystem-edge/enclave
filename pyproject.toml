@@ -7,7 +7,7 @@ license = { text = "Apache-2.0" }
 requires-python = "==3.12.*"
 dependencies = [
     "ansible-core ==2.19.11",
-    "cachetools ==7.1.4",
+    "cachetools ==7.1.7",
     "certifi ==2026.6.17",
     "click ==8.4.2",
     "durationpy ==0.10",
