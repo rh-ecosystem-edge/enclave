@@ -79,6 +79,7 @@ jobs:
           tar --exclude='.git' \
               --exclude='.gitignore' \
               --exclude='.github' \
+              --exclude='.tekton' \
               --exclude='scripts' \
               --exclude='Makefile.ci' \
               --exclude='.coderabbit.yaml' \
