@@ -80,7 +80,7 @@ jobs:
               --exclude='.gitignore' \
               --exclude='.github' \
               --exclude='.tekton' \
-              --exclude='.renovate.json' \
+              --exclude='renovate.json' \
               --exclude='scripts' \
               --exclude='Makefile.ci' \
               --exclude='.coderabbit.yaml' \
@@ -144,7 +144,7 @@ jobs:
           EXCLUDED_PATHS=(
             ".git/"
             ".github/"
-            ".renovate.json"
+            "renovate.json"
             "Makefile.ci"
           )
 
