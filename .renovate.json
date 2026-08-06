@@ -4,7 +4,7 @@
     {
       "customType": "regex",
       "description": "quay-operator",
-      "managerFilePatterns": ["(^|/)defaults/operators\\.yaml$"],
+      "managerFilePatterns": ["defaults/operators.yaml"],
       "matchStrings": ["- name: quay-operator\\n\\s+version: (?<currentValue>\\S+)"],
       "datasourceTemplate": "docker",
       "depNameTemplate": "registry.redhat.io/quay/quay-operator-bundle"
