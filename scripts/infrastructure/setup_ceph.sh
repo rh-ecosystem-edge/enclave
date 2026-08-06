@@ -127,6 +127,68 @@ wait_for_rgw() {
     return 1
 }
 
+validate_user_group() {
+    local user="$1"
+    local group="$2"
+
+    # Reject option-like or invalid values
+    if [[ "$user" =~ ^[-/] ]] || [[ "$group" =~ ^[-/] ]]; then
+        error "Invalid user/group: contains option-like prefix"
+        return 1
+    fi
+
+    # Validate user exists
+    if ! getent passwd "$user" >/dev/null 2>&1; then
+        error "User '$user' does not exist"
+        return 1
+    fi
+
+    # Validate group exists
+    if ! getent group "$group" >/dev/null 2>&1; then
+        error "Group '$group' does not exist"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_config_path() {
+    local path="$1"
+
+    # Must be absolute path
+    if [[ "$path" != /* ]]; then
+        error "CEPH_CONFIG_DIR must be an absolute path: $path"
+        return 1
+    fi
+
+    # Check each component for symlinks
+    local current_path=""
+    local component
+    while IFS='/' read -r component; do
+        [[ -n "$component" ]] || continue
+        current_path="$current_path/$component"
+
+        if [[ -L "$current_path" ]]; then
+            error "CEPH_CONFIG_DIR contains symlinked component: $current_path"
+            return 1
+        fi
+    done <<< "$path"
+
+    # Resolve to canonical path to catch any remaining symlinks
+    local resolved_path
+    if resolved_path=$(realpath -m "$path" 2>/dev/null); then
+        if [[ "$resolved_path" != "$path" ]]; then
+            error "CEPH_CONFIG_DIR resolves to different path: $path -> $resolved_path"
+            return 1
+        fi
+    else
+        error "Cannot resolve CEPH_CONFIG_DIR path: $path"
+        return 1
+    fi
+
+    return 0
+}
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -341,7 +403,7 @@ else
     cephadm shell -- radosgw-admin user create \
         --uid="$S3_USER" \
         --display-name="Quay CI" \
-        --system
+        --system >/dev/null
     success "S3 user '$S3_USER' created"
 fi
 
@@ -437,12 +499,12 @@ print(','.join(addrs))
     # but the auth entries must exist in Ceph for the CSI pods to authenticate)
     cephadm shell -- ceph auth get-or-create client.csi-rbd-node \
         mon 'profile rbd' \
-        osd "profile rbd pool=${RBD_POOL}" 2>/dev/null || true
+        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1 || true
 
     cephadm shell -- ceph auth get-or-create client.csi-rbd-provisioner \
         mon 'profile rbd' \
         mgr 'allow rw' \
-        osd "profile rbd pool=${RBD_POOL}" 2>/dev/null || true
+        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1 || true
 
     # Get RGW keys
     RGW_ACCESS_KEY="$S3_ACCESS_KEY"
@@ -536,16 +598,37 @@ CEPH_CONFIG_DIR="${CEPH_CONFIG_DIR:-}"
 if [ -n "$CEPH_CONFIG_DIR" ]; then
     info "Step 13: Writing config files to $CEPH_CONFIG_DIR..."
 
-    mkdir -p "$CEPH_CONFIG_DIR"
-    chown $CEPH_CONFIG_DIR_USER:$CEPH_CONFIG_DIR_GROUP "$CEPH_CONFIG_DIR"
-    chmod 700 "$CEPH_CONFIG_DIR"
-    install -m 600 -o $CEPH_CONFIG_DIR_USER -g $CEPH_CONFIG_DIR_GROUP /dev/null "${CEPH_CONFIG_DIR}/odf_external_config.json"
-    install -m 600 -o $CEPH_CONFIG_DIR_USER -g $CEPH_CONFIG_DIR_GROUP /dev/null "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml"
+    # Validate path security before any operations
+    if ! validate_config_path "$CEPH_CONFIG_DIR"; then
+        error "Invalid CEPH_CONFIG_DIR path configuration"
+        exit 1
+    fi
 
-    echo "$ODF_EXTERNAL_CONFIG" > "${CEPH_CONFIG_DIR}/odf_external_config.json"
-    cat > "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml" <<EOF
+    # Validate user and group before privileged operations
+    if ! validate_user_group "$CEPH_CONFIG_DIR_USER" "$CEPH_CONFIG_DIR_GROUP"; then
+        error "Invalid CEPH_CONFIG_DIR_USER/GROUP configuration"
+        exit 1
+    fi
+
+    # Create directory with restrictive permissions, keep root-owned throughout credential generation
+    mkdir -p "$CEPH_CONFIG_DIR"
+    chmod 700 "$CEPH_CONFIG_DIR"
+
+    # Create credential files as root with secure permissions
+    (
+        umask 077
+        echo "$ODF_EXTERNAL_CONFIG" > "${CEPH_CONFIG_DIR}/odf_external_config.json"
+        cat > "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml" <<EOF
 {access_key: ${S3_ACCESS_KEY}, secret_key: ${S3_SECRET_KEY}, bucket_name: ${S3_BUCKET}, hostname: ${CEPH_HOST_IP}, port: ${RGW_PORT}, is_secure: false}
 EOF
+    )
+
+    # Apply final ownership only after all credential writes complete
+    chown "$CEPH_CONFIG_DIR_USER:$CEPH_CONFIG_DIR_GROUP" "$CEPH_CONFIG_DIR"
+    chown "$CEPH_CONFIG_DIR_USER:$CEPH_CONFIG_DIR_GROUP" "${CEPH_CONFIG_DIR}/odf_external_config.json"
+    chown "$CEPH_CONFIG_DIR_USER:$CEPH_CONFIG_DIR_GROUP" "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml"
+    chmod 600 "${CEPH_CONFIG_DIR}/odf_external_config.json"
+    chmod 600 "${CEPH_CONFIG_DIR}/quay_backend_rgw_config.yaml"
     success "Config files written to $CEPH_CONFIG_DIR"
 else
     info "Step 13: Skipping config file output (CEPH_CONFIG_DIR not set)"
