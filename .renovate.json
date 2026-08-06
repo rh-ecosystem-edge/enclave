@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "quay-operator",
+      "managerFilePatterns": ["(^|/)defaults/operators\\.yaml$"],
+      "matchStrings": ["- name: quay-operator\\n\\s+version: (?<currentValue>\\S+)"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "registry.redhat.io/quay/quay-operator-bundle"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "OLM operators: only allow z-stream (patch) updates",
+      "matchManagers": ["custom.regex"],
+      "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    }
+  ]
+}
