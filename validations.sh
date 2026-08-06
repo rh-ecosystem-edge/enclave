@@ -71,8 +71,9 @@ checkDNS(){
         validation fail $check_name "Failed to resolve $name"
     fi
 
-    if [[ $result != $value ]]; then
-        validation fail $check_name "$name points to $result. It does not match with $value"
+    if ! echo "$result" | grep -Fqx -- "$value"; then
+        validation fail $check_name "$name does not resolve to $value" "Resolved addresses:
+$result"
     fi
     validation pass $check_name "$name points to $value"
 }

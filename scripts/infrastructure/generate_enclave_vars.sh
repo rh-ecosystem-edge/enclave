@@ -27,6 +27,7 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
 # Source dev-scripts configuration
 load_devscripts_config
+require_env_var "BASE_DOMAIN"
 
 # Configuration
 ensure_working_dir
@@ -70,9 +71,6 @@ LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}
 
 # Get master count
 MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
-
-# Get base domain from config or use default
-BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
 
 # Get first master IP as rendezvous IP (bootstrap) before generating config
 RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")
@@ -213,42 +211,57 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
 EOF
 done
 
-# Generate self-signed SSL certificates for CI
+# Generate SSL certificates for CI
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
-CERT_DIR=$(mktemp -d)
-trap 'rm -rf "$CERT_DIR"' EXIT
 
-info "Generating self-signed SSL certificates for ${CLUSTER_FQDN}..."
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
+    CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
+    trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
+    uv run --group cert-gen enclave-cert-gen ingress-api \
+        --san "api.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --san "*.apps.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --type "${ENCLAVE_CERT_TYPE}" \
+        > "${CERTS_VARS_TEMP}"
+    chmod 600 "${CERTS_VARS_TEMP}"
+    mv "${CERTS_VARS_TEMP}" "${CERTS_VARS_OUTPUT}"
+    trap - EXIT
+    info "✓ Real CA certificates written for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+else
+    CERT_DIR=$(mktemp -d)
+    trap 'rm -rf "$CERT_DIR"' EXIT
 
-# Generate CA
-openssl req -x509 -newkey rsa:2048 -keyout "${CERT_DIR}/ca.key" -out "${CERT_DIR}/ca.crt" \
-    -days 365 -nodes -subj "/CN=${CLUSTER_FQDN} CA" 2>/dev/null
+    info "Generating self-signed SSL certificates for ${CLUSTER_FQDN}..."
 
-# Generate API certificate (api.<cluster>.<domain>)
-openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/api.key" -out "${CERT_DIR}/api.csr" \
-    -nodes -subj "/CN=api.${CLUSTER_FQDN}" \
-    -addext "subjectAltName=DNS:api.${CLUSTER_FQDN}" 2>/dev/null
-openssl x509 -req -in "${CERT_DIR}/api.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
-    -CAcreateserial -out "${CERT_DIR}/api.crt" -days 365 \
-    -copy_extensions copyall 2>/dev/null
+    # Generate CA
+    openssl req -x509 -newkey rsa:2048 -keyout "${CERT_DIR}/ca.key" -out "${CERT_DIR}/ca.crt" \
+        -days 365 -nodes -subj "/CN=${CLUSTER_FQDN} CA" 2>/dev/null
 
-# Generate Ingress certificate (*.apps.<cluster>.<domain>)
-openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/ingress.key" -out "${CERT_DIR}/ingress.csr" \
-    -nodes -subj "/CN=*.apps.${CLUSTER_FQDN}" \
-    -addext "subjectAltName=DNS:*.apps.${CLUSTER_FQDN}" 2>/dev/null
-openssl x509 -req -in "${CERT_DIR}/ingress.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
-    -CAcreateserial -out "${CERT_DIR}/ingress.crt" -days 365 \
-    -copy_extensions copyall 2>/dev/null
+    # Generate API certificate (api.<cluster>.<domain>)
+    openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/api.key" -out "${CERT_DIR}/api.csr" \
+        -nodes -subj "/CN=api.${CLUSTER_FQDN}" \
+        -addext "subjectAltName=DNS:api.${CLUSTER_FQDN}" 2>/dev/null
+    openssl x509 -req -in "${CERT_DIR}/api.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
+        -CAcreateserial -out "${CERT_DIR}/api.crt" -days 365 \
+        -copy_extensions copyall 2>/dev/null
 
-# Read cert contents for YAML embedding
-API_KEY=$(cat "${CERT_DIR}/api.key")
-API_CERT=$(cat "${CERT_DIR}/api.crt")
-INGRESS_KEY=$(cat "${CERT_DIR}/ingress.key")
-INGRESS_CERT=$(cat "${CERT_DIR}/ingress.crt")
-CA_CERT=$(cat "${CERT_DIR}/ca.crt")
+    # Generate Ingress certificate (*.apps.<cluster>.<domain>)
+    openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/ingress.key" -out "${CERT_DIR}/ingress.csr" \
+        -nodes -subj "/CN=*.apps.${CLUSTER_FQDN}" \
+        -addext "subjectAltName=DNS:*.apps.${CLUSTER_FQDN}" 2>/dev/null
+    openssl x509 -req -in "${CERT_DIR}/ingress.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
+        -CAcreateserial -out "${CERT_DIR}/ingress.crt" -days 365 \
+        -copy_extensions copyall 2>/dev/null
 
-# Generate config/certificates.yaml file
-cat > "$CERTS_VARS_OUTPUT" <<EOF
+    # Read cert contents for YAML embedding
+    API_KEY=$(cat "${CERT_DIR}/api.key")
+    API_CERT=$(cat "${CERT_DIR}/api.crt")
+    INGRESS_KEY=$(cat "${CERT_DIR}/ingress.key")
+    INGRESS_CERT=$(cat "${CERT_DIR}/ingress.crt")
+    CA_CERT=$(cat "${CERT_DIR}/ca.crt")
+
+    # Generate config/certificates.yaml file
+    cat > "$CERTS_VARS_OUTPUT" <<EOF
 ---
 # SSL Certificates Configuration
 # Auto-generated self-signed certificates for CI/testing
@@ -276,7 +289,8 @@ sslCACertificate: |
 $(echo "$CA_CERT" | sed 's/^/  /')
 EOF
 
-info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+    info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+fi
 
 # Generate config/cloud_infra.yaml file
 cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
@@ -327,7 +341,11 @@ info "  - Worker IPs: ${WORKER_IP_START}-${WORKER_IP_END} (will be assigned duri
 info "  - Storage: ${ACTIVE_STORAGE} with /dev/vda root disk"
 info "  - Registry: ${ACTIVE_REGISTRY}"
 info "  - Pull secret: Embedded in config/global.yaml (written to pullSecretPath at runtime)"
-info "  - SSL certificates: Self-signed (generated for CI/testing)"
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    info "  - SSL certificates: Real CA (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen"
+else
+    info "  - SSL certificates: Self-signed (generated for CI/testing)"
+fi
 echo ""
 info "Review config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml"
 info "and adjust if needed before running Enclave Lab"
