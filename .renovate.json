@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "schedule": ["every weekend"],
+  "schedule": ["* * * * 0,6"],
+  "updateNotScheduled": false,
   "customManagers": [
     {
       "customType": "regex",
