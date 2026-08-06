@@ -155,8 +155,14 @@ sudo firewall-cmd --permanent --add-port=53/tcp --add-port=53/udp
 sudo firewall-cmd --permanent --add-port=67/udp --add-port=68/udp
 sudo firewall-cmd --permanent --add-port=6385/tcp
 sudo firewall-cmd --permanent --add-port=6180/tcp
-sudo firewall-cmd --permanent --add-port=6183/tcp
 sudo firewall-cmd --permanent --add-port=8443/tcp
+
+# Only if ironicHTTPSCertificate/ironicHTTPSKey are configured:
+sudo firewall-cmd --permanent --add-port=6183/tcp
+
+# Only if defaultNtpServers points cluster nodes at the Landing Zone:
+sudo firewall-cmd --permanent --add-port=123/udp
+
 sudo firewall-cmd --reload
 ```
 
