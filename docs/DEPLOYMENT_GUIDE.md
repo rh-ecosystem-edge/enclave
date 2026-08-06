@@ -149,28 +149,37 @@ following ports:
 
 **Example `firewalld` configuration**:
 
+Do not add these ports to the default zone — that opens them on every
+interface, including any uplink/external network. Scope them to the zone
+bound to the provisioning-network interface instead:
+
 ```bash
-sudo firewall-cmd --permanent --add-port=22/tcp
-sudo firewall-cmd --permanent --add-port=53/tcp --add-port=53/udp
-sudo firewall-cmd --permanent --add-port=67/udp --add-port=68/udp
-sudo firewall-cmd --permanent --add-port=6385/tcp
-sudo firewall-cmd --permanent --add-port=6180/tcp
-sudo firewall-cmd --permanent --add-port=8443/tcp
+# Identify the zone already bound to the provisioning-network interface
+# (adjust the interface name for your environment)
+PROVISIONING_ZONE=$(sudo firewall-cmd --get-zone-of-interface=<provisioning-interface>)
+
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=22/tcp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=53/tcp --add-port=53/udp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=67/udp --add-port=68/udp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=6385/tcp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=6180/tcp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=8443/tcp
 
 # Only if ironicHTTPSCertificate/ironicHTTPSKey are configured:
-sudo firewall-cmd --permanent --add-port=6183/tcp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=6183/tcp
 
 # Only if defaultNtpServers points cluster nodes at the Landing Zone:
-sudo firewall-cmd --permanent --add-port=123/udp
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" --add-port=123/udp
 
 sudo firewall-cmd --reload
 ```
 
-Where possible, restrict access to the management/provisioning CIDRs
-instead of opening ports to all sources, for example:
+For tighter scoping than a zone-wide port, restrict by source CIDR with a
+rich rule instead — this is the preferred approach where the provisioning
+and management networks share a zone:
 
 ```bash
-sudo firewall-cmd --permanent --zone=internal \
+sudo firewall-cmd --permanent --zone="${PROVISIONING_ZONE}" \
   --add-rich-rule='rule family=ipv4 source address=100.64.0.0/16 port port=6385 protocol=tcp accept'
 ```
 
