@@ -63,7 +63,7 @@ jobs:
 
       - name: Upload shellcheck log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: shellcheck-log
           path: shellcheck.log
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload yamllint log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: yamllint-log
           path: yamllint.log
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload JSON schema log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: json-schema-log
           path: json-schema.log
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload ansible-lint log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ansible-lint-log
           path: ansible-lint.log
@@ -257,7 +257,7 @@ jobs:
 
       - name: Upload tags log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tags-log
           path: tags.log
@@ -304,7 +304,7 @@ jobs:
 
       - name: Upload template rendering log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: template-rendering-log
           path: template-rendering.log
@@ -352,7 +352,7 @@ jobs:
 
       - name: Upload Makefile log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: makefile-log
           path: makefile.log
@@ -400,7 +400,7 @@ jobs:
 
       - name: Upload plugin validation log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: plugins-log
           path: plugins.log
@@ -448,7 +448,7 @@ jobs:
 
       - name: Upload python validation log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-log
           path: python.log

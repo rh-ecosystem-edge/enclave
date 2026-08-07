@@ -497,7 +497,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         id: upload_artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
           path: artifacts/
@@ -580,7 +580,7 @@ jobs:
 
       - name: Upload post-cleanup artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: post-cleanup-connected-${{ github.run_id }}
           path: |
@@ -963,7 +963,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         id: upload_artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
           path: artifacts/
@@ -1046,7 +1046,7 @@ jobs:
 
       - name: Upload post-cleanup artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: post-cleanup-disconnected-${{ github.run_id }}
           path: |

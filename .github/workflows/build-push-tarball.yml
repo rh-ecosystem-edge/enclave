@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload tarball artifact
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: enclave-tarball-${{ steps.meta.outputs.tag }}
           path: enclave.tar.gz

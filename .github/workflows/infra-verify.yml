@@ -156,7 +156,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: infra-verify-artifacts
           path: |
@@ -238,7 +238,7 @@ jobs:
 
       - name: Upload post-cleanup artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: post-cleanup-state
           path: |

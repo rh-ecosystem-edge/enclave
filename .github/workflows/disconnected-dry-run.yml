@@ -150,7 +150,7 @@ jobs:
       - name: Upload artifacts
         if: always()
         id: upload_artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dry-run-artifacts-${{ github.run_id }}
           path: artifacts/
