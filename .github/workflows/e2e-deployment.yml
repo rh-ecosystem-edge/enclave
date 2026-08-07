@@ -124,7 +124,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check if E2E-relevant files changed
         uses: dorny/paths-filter@v3
@@ -263,7 +263,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
@@ -720,7 +720,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
