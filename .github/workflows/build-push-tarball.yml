@@ -63,7 +63,7 @@ jobs:
           echo -n "${{ steps.meta.outputs.tag }}" > .version
 
       - name: Install ORAS
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@v2
         with:
           version: 1.2.0
 
