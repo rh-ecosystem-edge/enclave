@@ -7,7 +7,9 @@
       "managerFilePatterns": ["defaults/operators.yaml"],
       "matchStrings": ["- name: quay-operator\\n\\s+version: (?<currentValue>\\S+)"],
       "datasourceTemplate": "docker",
-      "depNameTemplate": "registry.redhat.io/quay/quay-operator-bundle"
+      "depNameTemplate": "registry.redhat.io/quay/quay-operator-bundle",
+      "extractVersionTemplate": "^v?(?<version>\\d+\\.\\d+\\.\\d+)",
+      "versioningTemplate": "semver"
     }
   ],
   "packageRules": [
