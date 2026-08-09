@@ -38,14 +38,14 @@ operators:
     global: true
 
   - name: openshift-pipelines-operator-rh
-    version: 1.20.3
+    version: 1.20.5
     channel: pipelines-1.20
     init_version: 1.20.3
     namespace: openshift-pipelines
     global: true
 
   - name: netobserv-operator
-    version: 1.11.0
+    version: 1.11.2
     channel: stable
     init_version: 1.11.0
     namespace: openshift-netobserv-operator
@@ -54,20 +54,20 @@ operators:
       - network-observability-operator
 
   - name: cluster-logging
-    version: 6.4.2
+    version: 6.4.4
     channel: stable-6.4
     init_version: 6.4.2
     namespace: openshift-logging
 
   - name: loki-operator
-    version: 6.4.2
+    version: 6.4.4
     channel: stable-6.4
     init_version: 6.4.2
     namespace: openshift-operators-redhat
     global: true
 
   - name: redhat-oadp-operator
-    version: 1.5.5
+    version: 1.5.7
     channel: stable
     init_version: 1.5.5
     namespace: openshift-oadp
