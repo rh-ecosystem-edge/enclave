@@ -1,22 +1,35 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customDatasources": {
+    "redhat-operator-catalog": {
+      "defaultRegistryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.20",
+      "format": "json",
+      "transformTemplates": [
+        "{ \"releases\": data.[{ \"version\": version, \"releaseTimestamp\": creation_date }] }"
+      ]
+    }
+  },
   "customManagers": [
     {
       "customType": "regex",
-      "description": "quay-operator",
+      "description": "Update OLM operator versions in operators.yaml",
       "managerFilePatterns": ["defaults/operators.yaml"],
-      "matchStrings": ["- name: quay-operator\\n\\s+version: (?<currentValue>\\S+)"],
-      "datasourceTemplate": "docker",
-      "depNameTemplate": "registry.redhat.io/quay/quay-operator-bundle",
-      "extractVersionTemplate": "^v?(?<version>\\d+\\.\\d+\\.\\d+)",
-      "versioningTemplate": "semver"
+      "matchStrings": [
+        "- name: (?<packageName>[a-zA-Z0-9-]+)\\n\\s+version: (?<currentValue>[^\\s]+)\\n\\s+channel: (?<packageChannel>[a-zA-Z0-9.-]+)"
+      ],
+      "datasourceTemplate": "custom.redhat-operator-catalog"
     }
   ],
   "packageRules": [
     {
       "description": "OLM operators: only allow z-stream (patch) updates",
-      "matchManagers": ["custom.regex"],
+      "matchDatasources": ["custom.redhat-operator-catalog"],
       "matchUpdateTypes": ["major", "minor"],
+      "enabled": false
+    },
+    {
+      "description": "Exclude metallb-operator (non-semver version)",
+      "matchPackageNames": ["metallb-operator"],
       "enabled": false
     }
   ]
