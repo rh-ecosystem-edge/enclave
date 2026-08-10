@@ -9,13 +9,16 @@
         deploy-plugin mirror-plugin bootstrap sync
 
 # Configuration
-WORKING_DIR ?= $(HOME)
 DISCONNECTED ?= true
 PLUGIN ?=
 
 # Ansible
 AP = ansible-playbook
-AP_FLAGS = -e workingDir=$(WORKING_DIR) -e disconnected=$(DISCONNECTED)
+ifdef WORKING_DIR
+AP_FLAGS = -e workingDir=$(WORKING_DIR) --extra-vars '{"disconnected":$(DISCONNECTED)}'
+else
+AP_FLAGS = --extra-vars '{"disconnected":$(DISCONNECTED)}'
+endif
 
 # Default target
 help:
@@ -58,12 +61,12 @@ help:
 	@echo "  make python-types-test                - Run mypy type checks"
 	@echo ""
 	@echo "Configuration variables:"
-	@echo "  WORKING_DIR      - Working directory (default: $$HOME)"
+	@echo "  WORKING_DIR      - Working directory (default: from config/global.yaml)"
 	@echo "  DISCONNECTED     - Disconnected mode (default: true)"
 	@echo "  PLUGIN           - Plugin name for deploy-plugin target"
 	@echo ""
 	@echo "Current values:"
-	@echo "  WORKING_DIR=$(WORKING_DIR)"
+	@echo "  WORKING_DIR=$(WORKING_DIR) $(if $(WORKING_DIR),(user override),(from config/global.yaml))"
 	@echo "  DISCONNECTED=$(DISCONNECTED)"
 	@echo ""
 	@echo "Examples:"
