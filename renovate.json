@@ -24,7 +24,13 @@
     {
       "description": "OLM operators: only allow z-stream (patch) updates",
       "matchDatasources": ["custom.redhat-operator-catalog"],
-      "matchUpdateTypes": ["major", "minor"],
+      "separateMinorPatch": true,
+      "minor": {
+        "enabled": false
+      },
+      "major": {
+        "enabled": false
+      },
       "enabled": false
     },
     {
