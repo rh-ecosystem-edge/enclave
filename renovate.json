@@ -2,10 +2,9 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "customDatasources": {
     "redhat-operator-catalog": {
-      "defaultRegistryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.20",
       "format": "json",
       "transformTemplates": [
-        "{ \"releases\": data.[{ \"version\": version, \"releaseTimestamp\": creation_date }] }"
+        "{ \"releases\": data.{ \"version\": version, \"releaseTimestamp\": creation_date } }"
       ]
     }
   },
@@ -17,7 +16,9 @@
       "matchStrings": [
         "- name: (?<packageName>[a-zA-Z0-9-]+)\\n\\s+version: (?<currentValue>[^\\s]+)\\n\\s+channel: (?<packageChannel>[a-zA-Z0-9.-]+)"
       ],
-      "datasourceTemplate": "custom.redhat-operator-catalog"
+      "datasourceTemplate": "custom.redhat-operator-catalog",
+      "versioningTemplate": "semver",
+      "registryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.20"
     }
   ],
   "packageRules": [
@@ -30,8 +31,7 @@
       },
       "major": {
         "enabled": false
-      },
-      "enabled": false
+      }
     },
     {
       "description": "Exclude metallb-operator (non-semver version)",
