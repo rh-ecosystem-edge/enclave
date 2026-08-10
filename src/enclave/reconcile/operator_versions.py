@@ -1,11 +1,11 @@
 import json
 import logging
+import time
 
 from enclave.utils import (
     log_subprocess_output,
     run_oc_command,
     semver_key,
-    wait_for_resource_status,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,6 +165,66 @@ def approve_install_plans(
             )
 
 
+def approve_and_wait_for_csv(
+    dry_run: bool,
+    namespace: str,
+    op_version_map: dict[str, str],
+    csv_name: str,
+    csv_version: str,
+    *,
+    timeout_minutes: int = 30,
+    sleep_interval: int = 10,
+) -> None:
+    """Approve pending InstallPlans and poll until the target CSV reaches Succeeded.
+
+    Calls approve_install_plans on every iteration so that InstallPlans created
+    by OLM after an intermediate version installs are not missed by a single
+    upfront approval pass.
+    """
+    deadline = time.time() + timeout_minutes * 60
+    logger.info(
+        "Waiting for CSV %s.v%s in namespace %s to reach status.phase=Succeeded.",
+        csv_name,
+        csv_version,
+        namespace,
+    )
+    while True:
+        approve_install_plans(dry_run, namespace, op_version_map)
+        result = run_oc_command([
+            "oc",
+            "get",
+            "clusterserviceversion.operators.coreos.com",
+            f"{csv_name}.v{csv_version}",
+            "-n",
+            namespace,
+            "-o",
+            "jsonpath={.status.phase}",
+        ])
+        if result.returncode != 0:
+            log_subprocess_output(
+                f"oc get clusterserviceversion/{csv_name}.v{csv_version} failed"
+                f" (exit {result.returncode})",
+                result.stderr or "",
+            )
+            phase = ""
+        else:
+            phase = (result.stdout or "").strip()
+        if phase == "Succeeded":
+            logger.info(
+                "CSV %s.v%s in namespace %s reached status.phase=Succeeded.",
+                csv_name,
+                csv_version,
+                namespace,
+            )
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(
+                f"CSV {csv_name}.v{csv_version} did not reach phase=Succeeded"
+                f" within {timeout_minutes} minutes (last observed: {phase!r})"
+            )
+        time.sleep(sleep_interval)
+
+
 def reconcile(
     version: str,
     namespace: str,
@@ -174,32 +234,20 @@ def reconcile(
     """Approve pending InstallPlans and wait for each CSV to reach Succeeded.
 
     Normalises the version string ('+' → '-') to match the format OLM uses
-    in CSV names, then delegates approval to approve_install_plans. For each
-    CSV, waits up to 30 minutes (polling every 10 s) for its phase to become
-    Succeeded. The wait is skipped in dry-run mode.
+    in CSV names, then delegates to approve_and_wait_for_csv per CSV.
+
+    Dry-run limitation: only the initial set of InstallPlans visible at call
+    time is inspected and logged; no approval is issued and the CSV wait is
+    skipped entirely. InstallPlans that OLM would create after each
+    intermediate version installs are therefore invisible in dry-run mode,
+    so the output does not reflect the full sequence of approvals a real run
+    would perform.
     """
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
-    approve_install_plans(dry_run, namespace, op_version_map)
+    if dry_run:
+        approve_install_plans(dry_run, namespace, op_version_map)
+        return
     for csv_name, csv_version in op_version_map.items():
-        if not dry_run:
-            logger.info(
-                "Waiting for CSV %s.v%s in namespace %s to reach status.phase=Succeeded.",
-                csv_name,
-                csv_version,
-                namespace,
-            )
-            wait_for_resource_status(
-                "clusterserviceversion.operators.coreos.com",
-                f"{csv_name}.v{csv_version}",
-                "phase",
-                "Succeeded",
-                namespace=namespace,
-                timeout_minutes=30,
-                sleep_interval=10,
-            )
-            logger.info(
-                "CSV %s.v%s in namespace %s reached status.phase=Succeeded.",
-                csv_name,
-                csv_version,
-                namespace,
-            )
+        approve_and_wait_for_csv(
+            dry_run, namespace, op_version_map, csv_name, csv_version
+        )
