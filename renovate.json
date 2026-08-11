@@ -21,6 +21,9 @@
       "registryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.20"
     }
   ],
+  "ansible-galaxy": {
+    "managerFilePatterns": ["ansible_collections.txt"]
+  },
   "packageRules": [
     {
       "description": "OLM operators: only allow z-stream (patch) updates",
@@ -37,6 +40,17 @@
       "description": "Exclude metallb-operator (non-semver version)",
       "matchPackageNames": ["metallb-operator"],
       "enabled": false
+    },
+    {
+      "description": "Refresh ansible_collections.sha256 for the bumped collection",
+      "matchDatasources": ["galaxy-collection"],
+      "postUpgradeTasks": {
+        "commands": [
+          "./scripts/setup/update_ansible_collection_sha256.sh {{{depName}}} {{{newVersion}}}"
+        ],
+        "fileFilters": ["ansible_collections.sha256"],
+        "executionMode": "update"
+      }
     }
   ]
 }
