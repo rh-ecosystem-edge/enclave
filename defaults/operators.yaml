@@ -90,7 +90,7 @@ operators:
     global: true
 
   - name: openshift-external-secrets-operator
-    version: 1.0.0
+    version: 1.0.1
     channel: stable-v1.0
     init_version: 1.0.0
     namespace: external-secrets-operator
