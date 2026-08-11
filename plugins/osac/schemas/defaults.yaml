@@ -124,6 +124,44 @@ properties:
   osac_aap_project_git_branch:
     type: string
     description: Git branch for AAP config-as-code project.
+  osac_images:
+    type: object
+    additionalProperties: false
+    properties:
+      osac_operator:
+        type: string
+        description: Default osac-operator container image.
+      fulfillment_service:
+        type: string
+        description: Default fulfillment-service container image.
+      envoy:
+        type: string
+        description: Default envoy sidecar container image.
+      aap_bootstrap:
+        type: string
+        description: Default AAP bootstrap container image.
+      cli:
+        type: string
+        description: Default OpenShift CLI container image.
+    description: Default container image references.
+  osacBcmEnabled:
+    type: boolean
+    description: Enable NVIDIA Base Command Manager as an additional bare metal inventory source.
+  osacBcmApiUrl:
+    type: string
+    description: BCM head node API endpoint.
+  osacBcmClientCert:
+    type: string
+    description: PEM-encoded client certificate for BCM mTLS authentication.
+  osacBcmClientKey:
+    type: string
+    description: PEM-encoded client private key for BCM mTLS authentication.
+  osacBcmValidateCerts:
+    type: boolean
+    description: Verify BCM server TLS certificates.
+  osacBcmDisableBmcCertVerification:
+    type: boolean
+    description: Skip BMC TLS certificate verification during BCM system discovery.
 required:
   - osacProfilesList
   - osac_aap_name
