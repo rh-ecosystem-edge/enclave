@@ -26,6 +26,111 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
+def plugin_descriptor_path(plugin_name: str) -> Path:
+    """Resolve the plugin.yaml path for a plugin name.
+
+    Plugins are not packaged into the built wheel, so this only resolves
+    against a repo checkout: src/enclave/reconcile/cli.py → src/enclave/ →
+    repo_root/plugins/<plugin_name>/plugin.yaml.
+
+    Raises:
+        click.ClickException: If plugin_name is empty or could escape the
+            plugins directory (contains '..' or a path separator).
+    """
+    if (
+        not plugin_name
+        or "/" in plugin_name
+        or "\\" in plugin_name
+        or ".." in plugin_name
+    ):
+        raise click.ClickException(
+            f"Invalid plugin name: {plugin_name!r}. Plugin name must be a "
+            "simple name without path separators or '..'."
+        )
+    enclave_pkg = Path(__file__).resolve().parent.parent
+    return enclave_pkg.parent.parent / "plugins" / plugin_name / "plugin.yaml"
+
+
+def _reconcile_operators_from_list(
+    operators: list[dict[str, object]], dry_run: bool
+) -> None:
+    """Call operator_versions_reconcile for each operator in a list.
+
+    Each operator dict must have 'name', 'version', 'namespace', and
+    optionally 'csvNames' (defaults to [name] when absent).
+    """
+    for op in operators:
+        op_name = cast("str", op["name"])
+        op_csv_names = cast("list[str] | None", op.get("csvNames")) or [op_name]
+        operator_versions_reconcile(
+            cast("str", op["version"]),
+            cast("str", op["namespace"]),
+            op_csv_names,
+            dry_run,
+        )
+
+
+def _load_defaults_operators() -> list[dict[str, object]]:
+    """Load the operators list from defaults/operators.yaml.
+
+    Raises:
+        click.ClickException: If the file is missing, not valid YAML, or
+            does not contain an 'operators' list.
+    """
+    defaults_file = defaults_path("operators.yaml")
+    try:
+        with defaults_file.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            f"{defaults_file} not found; run from the repo root"
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise click.ClickException(f"Failed to parse {defaults_file}") from exc
+
+    if not isinstance(data, dict) or not isinstance(data.get("operators"), list):
+        raise click.ClickException(
+            f"{defaults_file} does not contain an 'operators' list"
+        )
+    return cast("list[dict[str, object]]", data["operators"])
+
+
+def _load_plugin_operators(plugin_name: str) -> list[dict[str, object]]:
+    """Load the operators list from a plugin's plugin.yaml descriptor.
+
+    Raises:
+        click.ClickException: If the plugin name is invalid, the plugin
+            descriptor is missing or not valid YAML, the plugin has
+            installOperators set to false, or it defines no operators.
+    """
+    plugin_file = plugin_descriptor_path(plugin_name)
+    try:
+        with plugin_file.open(encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            f"Plugin {plugin_name!r} not found; check plugin name or run "
+            "from the repo root"
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise click.ClickException(f"Failed to parse {plugin_file}") from exc
+
+    if not isinstance(data, dict):
+        raise click.ClickException(f"{plugin_file} is empty or not a mapping")
+
+    if data.get("installOperators") is False:
+        raise click.ClickException(
+            f"Plugin {plugin_name!r} has installOperators set to false"
+        )
+
+    operators = data.get("operators")
+    if not isinstance(operators, list) or not operators:
+        raise click.ClickException(
+            f"Plugin {plugin_name!r} has no operators defined in {plugin_file}"
+        )
+    return cast("list[dict[str, object]]", operators)
+
+
 @click.group(cls=KubeconfigGroup)
 @click.option(
     "--log-level",
@@ -53,7 +158,11 @@ def cli(log_level: str) -> None:
     "--use-defaults",
     is_flag=True,
     default=False,
-    help="Load all operators from defaults/operators.yaml (mutually exclusive with --name, --version, --namespace, --csv-name)",
+    help="Load all operators from defaults/operators.yaml (mutually exclusive with --name, --version, --namespace, --csv-name, --plugin)",
+)
+@click.option(
+    "--plugin",
+    help="Load operators from plugins/<name>/plugin.yaml (mutually exclusive with --name, --version, --namespace, --csv-name, --use-defaults)",
 )
 @click.option("--dry-run/--no-dry-run", default=False)
 def operator_versions(
@@ -62,44 +171,35 @@ def operator_versions(
     namespace: str,
     csv_names: tuple[str, ...],
     use_defaults: bool,
+    plugin: str | None,
     dry_run: bool,
 ) -> None:
-    if use_defaults and any([name, version, namespace, csv_names]):
+    if use_defaults and any([name, version, namespace, csv_names, plugin]):
         raise click.UsageError(
-            "--use-defaults is mutually exclusive with --name, --version, --namespace, --csv-name"
+            "--use-defaults is mutually exclusive with --name, --version, --namespace, --csv-name, --plugin"
         )
 
-    if not use_defaults:
-        missing = [
-            f"--{f}"
-            for f, v in [("name", name), ("version", version), ("namespace", namespace)]
-            if not v
-        ]
-        if missing:
-            raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
-        operator_versions_reconcile(
-            version, namespace, list(csv_names) or [name], dry_run
+    if plugin and any([name, version, namespace, csv_names]):
+        raise click.UsageError(
+            "--plugin is mutually exclusive with --name, --version, --namespace, --csv-name"
         )
+
+    if plugin:
+        _reconcile_operators_from_list(_load_plugin_operators(plugin), dry_run)
         return
 
-    defaults_file = defaults_path("operators.yaml")
+    if use_defaults:
+        _reconcile_operators_from_list(_load_defaults_operators(), dry_run)
+        return
 
-    try:
-        with defaults_file.open(encoding="utf-8") as fh:
-            operators = yaml.safe_load(fh)["operators"]
-    except FileNotFoundError as exc:
-        raise click.ClickException(
-            f"{defaults_file} not found; run from the repo root"
-        ) from exc
-    except (yaml.YAMLError, KeyError) as exc:
-        raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
-
-    for op in operators:
-        op_name: str = op["name"]
-        op_csv_names: list[str] = op.get("csvNames") or [op_name]
-        operator_versions_reconcile(
-            op["version"], op["namespace"], op_csv_names, dry_run
-        )
+    missing = [
+        f"--{f}"
+        for f, v in [("name", name), ("version", version), ("namespace", namespace)]
+        if not v
+    ]
+    if missing:
+        raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
+    operator_versions_reconcile(version, namespace, list(csv_names) or [name], dry_run)
 
 
 @cli.command(no_args_is_help=True)
