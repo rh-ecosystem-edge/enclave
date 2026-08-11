@@ -54,7 +54,7 @@ operators:
       - network-observability-operator
 
   - name: cluster-logging
-    version: 6.4.2
+    version: 6.4.6
     channel: stable-6.4
     init_version: 6.4.2
     namespace: openshift-logging
