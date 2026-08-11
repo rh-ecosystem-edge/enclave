@@ -46,11 +46,11 @@ Each Enclave tarball release includes:
     ```sh
     ./sync.sh
     ```
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations followed by `enclave reconcile mgmt-cluster-version --use-defaults`, `enclave reconcile operator-versions --use-defaults`, and `enclave reconcile operator-versions --plugin <name>` for each enabled plugin that installs operators directly on the management cluster (`installOperators: true` and `installOperatorsFleet: false`, e.g. ODF, LVMS):
     ```sh
     ./upgrade.sh
     ```
-8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
+8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades (including plugin operators). To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
     ```sh
     ansible-playbook playbooks/upgrade.yaml -e workingDir=<your global.yaml workingDir variable> -e upgrade_mgmt_cluster=false -e upgrade_operators=false
 
@@ -58,6 +58,8 @@ Each Enclave tarball release includes:
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile operator-versions --use-defaults
+    enclave reconcile operator-versions --plugin odf
+    enclave reconcile operator-versions --plugin lvms
     ```
 
 ---

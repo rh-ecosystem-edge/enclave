@@ -1,0 +1,67 @@
+---
+# Auto-discover plugins whose operators are installed directly on the
+# management cluster and reconcile their operator versions to the
+# versions pinned in each plugin's plugin.yaml.
+#
+# Only plugins listed in enabled_plugins with installOperators: true and
+# installOperatorsFleet: false are reconciled here: those are the ones
+# whose operators are approved/upgraded on the management cluster via
+# InstallPlans. Plugins with installOperatorsFleet: true roll out
+# operators to fleet clusters via ACM policies instead, which this
+# single-cluster reconcile flow does not manage.
+#
+# Called from upgrade.yaml.
+
+- name: Find all plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_plugin_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_plugin_find.files | map(attribute='path') | list }}"
+  register: r_plugin_slurp
+  loop_control:
+    loop_var: plugin_path
+
+- name: Build list of plugins to upgrade operator versions for
+  ansible.builtin.set_fact:
+    _plugin_operator_reconcile_list: >-
+      {{ r_plugin_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins)
+         | selectattr('installOperators', 'equalto', true)
+         | selectattr('installOperatorsFleet', 'equalto', false)
+         | map(attribute='name')
+         | list }}
+
+- name: Display plugins to upgrade operator versions for
+  ansible.builtin.debug:
+    msg: "Plugins to upgrade operator versions for: {{ _plugin_operator_reconcile_list }}"
+
+- name: Upgrade plugin operator versions
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - reconcile
+      - operator-versions
+      - --plugin
+      - "{{ _plugin_name }}"
+  loop: "{{ _plugin_operator_reconcile_list }}"
+  loop_control:
+    loop_var: _plugin_name
+  register: r_plugin_operator_versions_upgrade
+  when: _plugin_operator_reconcile_list | length > 0
+
+- name: Print plugin operator versions upgrade output
+  ansible.builtin.debug:
+    var: item.stderr_lines
+  loop: "{{ r_plugin_operator_versions_upgrade.results | default([]) }}"
+  loop_control:
+    label: "{{ item._plugin_name | default('') }}"
