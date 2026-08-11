@@ -45,7 +45,7 @@ operators:
     global: true
 
   - name: netobserv-operator
-    version: 1.11.0
+    version: 1.11.2
     channel: stable
     init_version: 1.11.0
     namespace: openshift-netobserv-operator
