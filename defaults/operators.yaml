@@ -38,7 +38,7 @@ operators:
     global: true
 
   - name: openshift-pipelines-operator-rh
-    version: 1.20.3
+    version: 1.20.5
     channel: pipelines-1.20
     init_version: 1.20.3
     namespace: openshift-pipelines
