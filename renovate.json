@@ -12,7 +12,7 @@
     {
       "customType": "regex",
       "description": "Update OLM operator versions in operators.yaml",
-      "managerFilePatterns": ["defaults/operators.yaml"],
+      "managerFilePatterns": ["defaults/operators.yaml", "plugins/lvms/plugin.yaml"],
       "matchStrings": [
         "- name: (?<packageName>[a-zA-Z0-9-]+)\\n\\s+version: (?<currentValue>[^\\s]+)\\n\\s+channel: (?<packageChannel>[a-zA-Z0-9.-]+)"
       ],
