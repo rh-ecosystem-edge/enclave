@@ -20,18 +20,35 @@ if [ "$#" -ne 2 ]; then
 fi
 
 FQCN="$1"
-NAMESPACE="${FQCN%%.*}"
-NAME="${FQCN#*.}"
 VERSION="$2"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
-ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+# Reject anything that isn't a plain Galaxy collection name / version before
+# it reaches the API URL, since both values are attacker-influenceable
+# (sourced from Renovate's depName/newVersion templates).
+if [[ ! "$FQCN" =~ ^[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+$ ]]; then
+    echo "ERROR: invalid collection name '${FQCN}' (expected namespace.name)" >&2
+    exit 1
+fi
+if [[ ! "$VERSION" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "ERROR: invalid version '${VERSION}'" >&2
+    exit 1
+fi
+
+NAMESPACE="${FQCN%%.*}"
+NAME="${FQCN#*.}"
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/../lib/common.sh"
+detect_enclave_dir
 SHA256_FILE="${ENCLAVE_DIR}/ansible_collections.sha256"
 
 META_FILE="$(mktemp)"
 trap 'rm -f "$META_FILE"' EXIT
 
 curl -sf \
+    --connect-timeout 10 \
+    --max-time 30 \
+    --retry 3 \
+    --retry-max-time 60 \
     "https://galaxy.ansible.com/api/v3/plugin/ansible/content/published/collections/index/${NAMESPACE}/${NAME}/versions/${VERSION}/" \
     -o "$META_FILE"
 

@@ -46,7 +46,7 @@
       "matchDatasources": ["galaxy-collection"],
       "postUpgradeTasks": {
         "commands": [
-          "./scripts/setup/update_ansible_collection_sha256.sh {{{depName}}} {{{newVersion}}}"
+          "./scripts/setup/update_ansible_collection_sha256.sh '{{{depName}}}' '{{{newVersion}}}'"
         ],
         "fileFilters": ["ansible_collections.sha256"],
         "executionMode": "update"
