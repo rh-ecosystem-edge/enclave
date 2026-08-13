@@ -1,0 +1,26 @@
+---
+# Remove Ironic Persistent Storage Volumes Migration
+#
+# First upgrades Metal3 components (Ironic + BMO) so containers are redeployed
+# without the removed volume mounts, then removes the legacy persistent storage
+# volumes (metal3-ironic-conf, metal3-ironic-data) from both user and root podman.
+
+- name: Upgrade Metal3 components before removing volumes
+  ansible.builtin.include_tasks: ../upgrade/metal3-components.yaml
+
+- name: Remove ironic persistent storage volumes (user)
+  containers.podman.podman_volume:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - metal3-ironic-conf
+    - metal3-ironic-data
+
+- name: Remove ironic persistent storage volumes (root)
+  become: yes
+  containers.podman.podman_volume:
+    name: "{{ item }}"
+    state: absent
+  loop:
+    - metal3-ironic-conf
+    - metal3-ironic-data

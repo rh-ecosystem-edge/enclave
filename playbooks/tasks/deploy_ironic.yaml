@@ -125,18 +125,6 @@
   no_log: true
   register: vmedia_key_secret
 
-- name: Create ironic-conf volume
-  become: "{{ metal3_persistent | default(false) | bool }}"
-  containers.podman.podman_volume:
-    name: metal3-ironic-conf
-    state: present
-
-- name: Create ironic-data volume
-  become: "{{ metal3_persistent | default(false) | bool }}"
-  containers.podman.podman_volume:
-    name: metal3-ironic-data
-    state: present
-
 - name: Create ironic-shared volume
   become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_volume:

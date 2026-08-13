@@ -10,8 +10,6 @@
     name: "{{ item }}"
     state: absent
   loop:
-    - metal3-ironic-conf
-    - metal3-ironic-data
     - metal3-ironic-shared
   when: metal3_cleanup_volumes | default(false) | bool
 

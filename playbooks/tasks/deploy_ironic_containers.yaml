@@ -101,8 +101,6 @@
     cap_drop:
       - ALL
     volume:
-      - metal3-ironic-conf:/conf
-      - metal3-ironic-data:/data
       - metal3-ironic-shared:/shared
       - "{{ workingDir }}/ocp-cluster/abi-iso:/iso:ro"
     secrets: "{{ ironic_secrets }}"

@@ -8,8 +8,6 @@ Pull=never
 Pod=metal3-ironic.pod
 User=1002:1003
 DropCapability=ALL
-Volume=metal3-ironic-conf:/conf
-Volume=metal3-ironic-data:/data
 Volume=metal3-ironic-shared:/shared
 Volume={{ workingDir }}/ocp-cluster/abi-iso:/iso:ro
 Secret=metal3-ironic-htpasswd,type=env,target=IRONIC_HTPASSWD

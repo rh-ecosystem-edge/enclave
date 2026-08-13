@@ -35,7 +35,7 @@ info "Quadlet files removed"
 info "Removing root podman resources..."
 sudo podman pod rm -f metal3-ironic
 sudo podman rm -f ironic httpd baremetal-operator
-sudo podman volume rm -f metal3-ironic-conf metal3-ironic-data metal3-ironic-shared
+sudo podman volume rm -f metal3-ironic-shared
 sudo podman secret rm -i metal3-ironic-htpasswd metal3-ironic-password metal3-kubeconfig metal3-ironic-username metal3-ca-bundle
 info "Root podman resources removed"
 
@@ -43,7 +43,7 @@ info "Root podman resources removed"
 info "Removing user podman resources..."
 podman pod rm -f metal3-ironic
 podman rm -f baremetal-operator
-podman volume rm -f metal3-ironic-conf metal3-ironic-data metal3-ironic-shared quay-storage
+podman volume rm -f metal3-ironic-shared quay-storage
 podman secret rm --ignore metal3-ironic-htpasswd metal3-ironic-username metal3-ca-bundle metal3-ironic-password
 info "User podman resources removed"
 
