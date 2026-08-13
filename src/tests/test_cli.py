@@ -164,6 +164,41 @@ def test_operator_versions_plugin_single_operator(mocker: MockerFixture) -> None
 
 def test_operator_versions_plugin_multiple_operators(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    # Mock a plugin with two separate operator entries
+    plugin_yaml_content = """
+name: test-plugin
+type: foundation
+order: 10
+installOperators: true
+operators:
+  - name: operator-a
+    version: 1.0.0
+    namespace: ns-a
+    csvNames:
+      - operator-a
+      - operator-a-bundle
+  - name: operator-b
+    version: 2.0.0
+    namespace: ns-b
+"""
+    mocker.patch("pathlib.Path.open", mocker.mock_open(read_data=plugin_yaml_content))
+    dry_run = True
+    result = CliRunner().invoke(
+        cli, ["operator-versions", "--plugin", "test-plugin", "--dry-run"], env=_KC
+    )
+    assert result.exit_code == 0, result.output
+    assert mock_reconcile.call_count == 2
+
+    # Verify both operators were reconciled with correct arguments
+    mock_reconcile.assert_any_call(
+        "1.0.0", "ns-a", ["operator-a", "operator-a-bundle"], dry_run
+    )
+    mock_reconcile.assert_any_call("2.0.0", "ns-b", ["operator-b"], dry_run)
+
+
+def test_operator_versions_plugin_real_odf(mocker: MockerFixture) -> None:
+    """Test with real ODF plugin that has one operator with many CSV names."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     dry_run = True
     result = CliRunner().invoke(
         cli, ["operator-versions", "--plugin", "odf", "--dry-run"], env=_KC
@@ -188,6 +223,51 @@ def test_operator_versions_plugin_multiple_operators(mocker: MockerFixture) -> N
         ],
         dry_run,
     )
+
+
+def test_operator_versions_plugin_invalid_operator_not_dict(
+    mocker: MockerFixture,
+) -> None:
+    """Test that non-dict operator entries are rejected."""
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - invalid-string\n"
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
+    assert result.exit_code != 0
+    assert "not a mapping" in result.output
+
+
+def test_operator_versions_plugin_invalid_operator_missing_name(
+    mocker: MockerFixture,
+) -> None:
+    """Test that operator entries missing 'name' are rejected."""
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - version: 1.0.0\n    namespace: ns\n"
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
+    assert result.exit_code != 0
+    assert "invalid or missing 'name'" in result.output
+
+
+def test_operator_versions_plugin_invalid_csvnames_not_list(
+    mocker: MockerFixture,
+) -> None:
+    """Test that csvNames must be a list of strings."""
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - name: op\n    version: 1.0.0\n    namespace: ns\n    csvNames: not-a-list\n"
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
+    assert result.exit_code != 0
+    assert "invalid 'csvNames'" in result.output
 
 
 def test_operator_versions_plugin_mutual_exclusive_name() -> None:

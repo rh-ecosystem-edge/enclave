@@ -34,9 +34,12 @@ def plugin_descriptor_path(plugin_name: str) -> Path:
     repo_root/plugins/<plugin_name>/plugin.yaml.
 
     Raises:
-        click.ClickException: If plugin_name is empty or could escape the
-            plugins directory (contains '..' or a path separator).
+        click.ClickException: If plugin_name is empty, contains path
+            separators or '..', or the resolved descriptor path escapes
+            the plugins directory.
     """
+    # Normalize Unicode and reject traversal/separator patterns
+    plugin_name = plugin_name.strip()
     if (
         not plugin_name
         or "/" in plugin_name
@@ -47,8 +50,20 @@ def plugin_descriptor_path(plugin_name: str) -> Path:
             f"Invalid plugin name: {plugin_name!r}. Plugin name must be a "
             "simple name without path separators or '..'."
         )
+
     enclave_pkg = Path(__file__).resolve().parent.parent
-    return enclave_pkg.parent.parent / "plugins" / plugin_name / "plugin.yaml"
+    plugins_root = (enclave_pkg.parent.parent / "plugins").resolve()
+    descriptor_path = (plugins_root / plugin_name / "plugin.yaml").resolve()
+
+    # Ensure the resolved descriptor is actually under the plugins root
+    try:
+        descriptor_path.relative_to(plugins_root)
+    except ValueError as exc:
+        raise click.ClickException(
+            f"Invalid plugin name: {plugin_name!r} escapes the plugins directory"
+        ) from exc
+
+    return descriptor_path
 
 
 def _reconcile_operators_from_list(
@@ -58,10 +73,36 @@ def _reconcile_operators_from_list(
 
     Each operator dict must have 'name', 'version', 'namespace', and
     optionally 'csvNames' (defaults to [name] when absent).
+
+    Raises:
+        click.ClickException: If any operator entry is missing required
+            fields or has invalid field types.
     """
-    for op in operators:
+    for idx, op in enumerate(operators):
+        # Validate operator entry structure
+        if not isinstance(op, dict):
+            raise click.ClickException(f"Operator entry {idx} is not a mapping: {op!r}")
+
+        # Validate required string fields
+        for field in ("name", "version", "namespace"):
+            value = op.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise click.ClickException(
+                    f"Operator entry {idx} has invalid or missing '{field}': {value!r}"
+                )
+
+        # Validate optional csvNames field
+        csv_names_raw = op.get("csvNames")
+        if csv_names_raw is not None and (
+            not isinstance(csv_names_raw, list)
+            or not all(isinstance(name, str) for name in csv_names_raw)
+        ):
+            raise click.ClickException(
+                f"Operator entry {idx} has invalid 'csvNames': must be a list of strings"
+            )
+
         op_name = cast("str", op["name"])
-        op_csv_names = cast("list[str] | None", op.get("csvNames")) or [op_name]
+        op_csv_names = cast("list[str] | None", csv_names_raw) or [op_name]
         operator_versions_reconcile(
             cast("str", op["version"]),
             cast("str", op["namespace"]),
