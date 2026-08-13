@@ -51,3 +51,8 @@
       ansible.builtin.debug:
         var: r_operator_versions_upgrade.stderr_lines
       when: upgrade_operators | default(true) | bool
+
+    - name: Upgrade plugin operator versions
+      ansible.builtin.include_tasks:
+        file: tasks/upgrade_plugins.yaml
+      when: upgrade_operators | default(true) | bool
