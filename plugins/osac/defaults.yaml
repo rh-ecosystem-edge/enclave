@@ -4,7 +4,7 @@
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
-osacChartVersion: "0.0.6"
+osacChartVersion: "0.0.9-nightly.20260813.72aefaa.11.1"
 
 osacProfilesList:
   - caas
