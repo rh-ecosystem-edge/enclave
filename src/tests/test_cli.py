@@ -232,7 +232,9 @@ def test_operator_versions_plugin_invalid_operator_not_dict(
     mocker.patch(
         "pathlib.Path.open",
         mocker.mock_open(
-            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - invalid-string\n"
+            read_data=(
+                "name: test\ntype: addon\norder: 1\noperators:\n  - invalid-string\n"
+            )
         ),
     )
     result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
@@ -247,7 +249,10 @@ def test_operator_versions_plugin_invalid_operator_missing_name(
     mocker.patch(
         "pathlib.Path.open",
         mocker.mock_open(
-            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - version: 1.0.0\n    namespace: ns\n"
+            read_data=(
+                "name: test\ntype: addon\norder: 1\n"
+                "operators:\n  - version: 1.0.0\n    namespace: ns\n"
+            )
         ),
     )
     result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
@@ -262,12 +267,57 @@ def test_operator_versions_plugin_invalid_csvnames_not_list(
     mocker.patch(
         "pathlib.Path.open",
         mocker.mock_open(
-            read_data="name: test\ntype: addon\norder: 1\noperators:\n  - name: op\n    version: 1.0.0\n    namespace: ns\n    csvNames: not-a-list\n"
+            read_data=(
+                "name: test\ntype: addon\norder: 1\n"
+                "operators:\n  - name: op\n    version: 1.0.0\n"
+                "    namespace: ns\n    csvNames: not-a-list\n"
+            )
         ),
     )
     result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
     assert result.exit_code != 0
     assert "invalid 'csvNames'" in result.output
+
+
+def test_operator_versions_plugin_invalid_csvnames_blank(
+    mocker: MockerFixture,
+) -> None:
+    """Test that blank/whitespace-only CSV names are rejected."""
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data=(
+                "name: test\ntype: addon\norder: 1\n"
+                "operators:\n  - name: op\n    version: 1.0.0\n"
+                "    namespace: ns\n    csvNames: ['valid', '  ', 'also-valid']\n"
+            )
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
+    assert result.exit_code != 0
+    assert "invalid 'csvNames'" in result.output
+
+
+def test_operator_versions_plugin_partial_validation_no_reconcile(
+    mocker: MockerFixture,
+) -> None:
+    """Test that if one operator is invalid, no operators are reconciled."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    mocker.patch(
+        "pathlib.Path.open",
+        mocker.mock_open(
+            read_data=(
+                "name: test\ntype: addon\norder: 1\noperators:\n"
+                "  - name: valid-op\n    version: 1.0.0\n    namespace: ns\n"
+                "  - name: invalid-op\n    namespace: ns\n"  # missing version
+            )
+        ),
+    )
+    result = CliRunner().invoke(cli, ["operator-versions", "--plugin", "test"], env=_KC)
+    assert result.exit_code != 0
+    assert "invalid or missing 'version'" in result.output
+    # Critical: no reconciliation should have occurred
+    mock_reconcile.assert_not_called()
 
 
 def test_operator_versions_plugin_mutual_exclusive_name() -> None:

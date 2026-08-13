@@ -57,6 +57,7 @@
   loop_control:
     loop_var: _plugin_name
   register: r_plugin_operator_versions_upgrade
+  changed_when: "'[UPDATE]' in r_plugin_operator_versions_upgrade.stderr"
   when: _plugin_operator_reconcile_list | length > 0
 
 - name: Print plugin operator versions upgrade output

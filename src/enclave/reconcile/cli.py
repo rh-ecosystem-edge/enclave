@@ -74,10 +74,16 @@ def _reconcile_operators_from_list(
     Each operator dict must have 'name', 'version', 'namespace', and
     optionally 'csvNames' (defaults to [name] when absent).
 
+    Validates all operator entries before reconciling any. If validation
+    fails for any entry, no reconciliation occurs.
+
     Raises:
         click.ClickException: If any operator entry is missing required
             fields or has invalid field types.
     """
+    # Validate all operators first, before reconciling any
+    validated_operators: list[tuple[str, str, list[str]]] = []
+
     for idx, op in enumerate(operators):
         # Validate operator entry structure
         if not isinstance(op, dict):
@@ -95,20 +101,23 @@ def _reconcile_operators_from_list(
         csv_names_raw = op.get("csvNames")
         if csv_names_raw is not None and (
             not isinstance(csv_names_raw, list)
-            or not all(isinstance(name, str) for name in csv_names_raw)
+            or not all(isinstance(name, str) and name.strip() for name in csv_names_raw)
         ):
             raise click.ClickException(
-                f"Operator entry {idx} has invalid 'csvNames': must be a list of strings"
+                f"Operator entry {idx} has invalid 'csvNames': must be a list of non-blank strings"
             )
 
         op_name = cast("str", op["name"])
         op_csv_names = cast("list[str] | None", csv_names_raw) or [op_name]
-        operator_versions_reconcile(
+        validated_operators.append((
             cast("str", op["version"]),
             cast("str", op["namespace"]),
             op_csv_names,
-            dry_run,
-        )
+        ))
+
+    # Reconcile only after all operators pass validation
+    for version, namespace, csv_names in validated_operators:
+        operator_versions_reconcile(version, namespace, csv_names, dry_run)
 
 
 def _load_defaults_operators() -> list[dict[str, object]]:
