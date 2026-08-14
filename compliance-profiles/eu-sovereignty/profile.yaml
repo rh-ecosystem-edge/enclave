@@ -1,0 +1,139 @@
+---
+name: eu-sovereignty
+description: >-
+  EU Digital Sovereignty compliance profile ensuring data residency, GDPR
+  compliance, operational autonomy, and protection from extraterritorial
+  jurisdiction. Enforces EU-based infrastructure, encryption key sovereignty,
+  and supply chain transparency.
+framework:
+  fullName: EU Digital Sovereignty Framework
+  version: "2024"
+  authority: European Commission / Member State Regulations
+  applicability: EU public sector and critical infrastructure
+
+controls:
+  - name: data-residency
+    required: true
+    config:
+      allowed_regions:
+        - eu-west
+        - eu-central
+        - eu-north
+      block_data_egress: true
+      geo_fencing: true
+
+  - name: encryption-at-rest
+    required: true
+    config:
+      per_project_keys: true
+      algorithm: AES-256
+      key_sovereignty: eu-controlled
+      key_escrow_prohibited: true
+
+  - name: encryption-in-transit
+    required: true
+    config:
+      min_tls_version: "1.3"
+      enforce_mtls: true
+      cipher_suites:
+        - TLS_AES_256_GCM_SHA384
+        - TLS_CHACHA20_POLY1305_SHA256
+
+  - name: mfa-enforcement
+    required: true
+    config:
+      methods:
+        - totp
+        - webauthn
+      provider_sovereignty: eu-based
+
+  - name: session-timeout
+    required: true
+    config:
+      timeout_minutes: 30
+      idle_timeout_minutes: 15
+
+  - name: network-isolation
+    required: true
+    config:
+      level: strict
+      default_deny_ingress: true
+      default_deny_egress: true
+      cross_border_traffic_logging: true
+
+  - name: audit-logging
+    required: true
+    config:
+      retention_days: 2190  # 6 years per some EU regulations
+      log_authentication: true
+      log_authorization: true
+      log_data_access: true
+      log_data_transfers: true
+      log_jurisdiction_events: true
+      storage_location: eu-only
+      tamper_protection: true
+
+  - name: gdpr-controls
+    required: true
+    config:
+      right_to_erasure: true
+      right_to_portability: true
+      data_minimization: true
+      purpose_limitation: true
+      consent_management: true
+      breach_notification_hours: 72
+
+  - name: supply-chain-transparency
+    required: true
+    config:
+      sbom_required: true
+      vendor_attestation_required: true
+      third_party_code_audit: true
+      non_eu_dependency_disclosure: true
+
+  - name: operational-autonomy
+    required: true
+    config:
+      no_vendor_backdoors: true
+      source_code_escrow: true
+      open_standards_required: true
+      vendor_lock_in_prevention: true
+
+  - name: access-control-rbac
+    required: true
+    config:
+      principle: least-privilege
+      role_review_interval_days: 90
+      foreign_access_prohibited: true
+
+  - name: compliance-scanning
+    required: true
+    config:
+      frameworks:
+        - eu-sovereignty
+        - gdpr
+      scan_interval: weekly
+      auto_remediate: false
+
+  - name: hardening-profile
+    required: true
+    config:
+      profile: CIS
+      apply_to:
+        - control-plane
+        - worker-nodes
+        - provisioned-instances
+
+plugins:
+  - name: acs
+    required: true
+  - name: compliance-operator
+    required: true
+  - name: rhbk
+    required: true
+
+compatibleWith:
+  - hipaa
+  - nist-800-53
+
+conflicts: []
