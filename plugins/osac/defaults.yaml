@@ -109,5 +109,5 @@ osac_db_user: service
 osac_db_database: service
 
 # AAP bootstrap
-osac_aap_project_git_uri: "https://github.com/osac-project/osac-aap"
+osac_aap_project_git_uri: "https://github.com/osac-project/osac"
 osac_aap_project_git_branch: main
