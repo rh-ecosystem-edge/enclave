@@ -78,7 +78,7 @@ registries:
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
 | `requires` | Declarative requirements validated at load time, before any deployment work begins. See [Load-Time Validation](#load-time-validation). |
-| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts, OCI charts (`oci://`), and remote repos. Each entry specifies `release`, `namespace`, and optional `chart`, `repo`, `version`, values template, and `extractImages`. When `extractImages: true` is set on a chart (local or OCI), `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. |
+| `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts, OCI charts (`oci://`), and remote repos. Each entry specifies `release`, `namespace`, and optional `chart`, `repo`, `version`, `timeout`, `retries`, `wait`, values template, and `extractImages`. When `extractImages: true` is set on a chart (local or OCI), `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. `timeout` defaults to `15m`, `retries` defaults to `2`, and `wait` defaults to `true`. Set `retries: 0` for charts with long timeouts where failures are structural rather than transient. |
 
 The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during `make validate`. The validator (`make validate-plugins`) also checks directory structure.
 
