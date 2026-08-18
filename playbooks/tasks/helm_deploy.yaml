@@ -131,7 +131,7 @@
   args:
     executable: /bin/bash
   register: r_helm_install
-  retries: 2
+  retries: "{{ helm_chart.retries | default(2) }}"
   delay: 30
   until: r_helm_install is success
 

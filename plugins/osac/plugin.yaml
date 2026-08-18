@@ -16,6 +16,7 @@ helm:
     valuesTemplate: templates/values.yaml.j2
     createNamespace: true
     timeout: "45m"
+    retries: 0
     wait: false    # AAP takes 30+ minutes; deploy.yaml handles post-install waits
 
 additionalImages:

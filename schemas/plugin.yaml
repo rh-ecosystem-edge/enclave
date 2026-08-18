@@ -206,6 +206,10 @@ definitions:
       timeout:
         type: string
         description: "Helm timeout (e.g. '15m'). Default: '15m'."
+      retries:
+        type: integer
+        minimum: 0
+        description: "Number of Helm install retries on failure. Default: 2."
       wait:
         type: boolean
         description: "Pass --wait. Default: true."
