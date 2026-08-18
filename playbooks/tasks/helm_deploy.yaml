@@ -115,32 +115,96 @@
   ansible.builtin.set_fact:
     _helm_log: "{{ workingDir }}/logs/helm-{{ plugin_name }}-{{ helm_chart.release }}.{{ lookup('pipe', 'date +%s') }}.log"
 
-- name: "Helm | Install {{ helm_chart.release }}{{ ' ' ~ helm_chart.version if helm_chart.version is defined else '' }}"
-  ansible.builtin.shell: |
-    set -o pipefail
-    {{ workingDir }}/bin/helm upgrade --install \
-      {{ helm_chart.release }} \
-      {{ _helm_chart_ref }} \
-      --namespace {{ helm_chart.namespace }} \
-      {{ '--create-namespace' if (helm_chart.createNamespace | default(true) | bool) else '' }} \
-      {{ '--wait' if (helm_chart.wait | default(true) | bool) else '' }} \
-      --timeout {{ helm_chart.timeout | default('15m') }} \
-      {{ '--version ' ~ helm_chart.version if helm_chart.version is defined else '' }} \
-      {{ _helm_values_arg }} \
-      2>&1 | tee {{ _helm_log }}
-  args:
-    executable: /bin/bash
-  register: r_helm_install
-  retries: 2
-  delay: 30
-  until: r_helm_install is success
-
-- name: "Helm | Verify release status"
-  ansible.builtin.command:
-    cmd: "{{ workingDir }}/bin/helm status {{ helm_chart.release }} --namespace {{ helm_chart.namespace }}"
-  register: r_helm_status
-  changed_when: false
-
-- name: "Helm | Show status"
+- name: "Helm | Log file location"
   ansible.builtin.debug:
-    msg: "{{ r_helm_status.stdout_lines | default([]) }}"
+    msg: "Helm install logs: {{ _helm_log }}"
+
+- name: "Helm | Install {{ helm_chart.release }}{{ ' ' ~ helm_chart.version if helm_chart.version is defined else '' }}"
+  block:
+    - name: "Helm | Run upgrade/install"
+      ansible.builtin.shell: |
+        set -o pipefail
+        {{ workingDir }}/bin/helm upgrade --install \
+          {{ helm_chart.release }} \
+          {{ _helm_chart_ref }} \
+          --namespace {{ helm_chart.namespace }} \
+          {{ '--create-namespace' if (helm_chart.createNamespace | default(true) | bool) else '' }} \
+          {{ '--wait' if (helm_chart.wait | default(true) | bool) else '' }} \
+          --timeout {{ helm_chart.timeout | default('15m') }} \
+          {{ '--version ' ~ helm_chart.version if helm_chart.version is defined else '' }} \
+          {{ _helm_values_arg }} \
+          --debug \
+          2>&1 | tee {{ _helm_log }}
+      args:
+        executable: /bin/bash
+      register: r_helm_install
+      retries: 2
+      delay: 30
+      until: r_helm_install is success
+
+    - name: "Helm | Verify release status"
+      ansible.builtin.command:
+        cmd: "{{ workingDir }}/bin/helm status {{ helm_chart.release }} --namespace {{ helm_chart.namespace }}"
+      register: r_helm_status
+      changed_when: false
+
+    - name: "Helm | Show status"
+      ansible.builtin.debug:
+        msg: "{{ r_helm_status.stdout_lines | default([]) }}"
+
+  rescue:
+    - name: "Helm | Read log file on failure"
+      ansible.builtin.slurp:
+        src: "{{ _helm_log }}"
+      register: _r_helm_log_content
+      ignore_errors: true
+
+    - name: "Helm | Display failure logs"
+      ansible.builtin.debug:
+        msg: |
+          Helm installation failed for {{ helm_chart.release }}
+
+          Log file: {{ _helm_log }}
+
+          --- Last 100 lines of output ---
+          {{ (_r_helm_log_content.content | b64decode).split('\n')[-100:] | join('\n') if _r_helm_log_content is success else 'Log file could not be read' }}
+
+          --- End of logs ---
+
+    - name: "Helm | Get failed release info"
+      ansible.builtin.command:
+        cmd: "{{ workingDir }}/bin/helm list --namespace {{ helm_chart.namespace }} --filter {{ helm_chart.release }}"
+      register: r_helm_list
+      ignore_errors: true
+      changed_when: false
+
+    - name: "Helm | Show release list"
+      ansible.builtin.debug:
+        msg: "{{ r_helm_list.stdout_lines | default([]) }}"
+      when: r_helm_list is success
+
+    - name: "Helm | Get pods status for debugging"
+      ansible.builtin.command:
+        cmd: "{{ workingDir }}/bin/oc get pods -n {{ helm_chart.namespace }}"
+      register: r_pods_status
+      ignore_errors: true
+      changed_when: false
+
+    - name: "Helm | Show pods status"
+      ansible.builtin.debug:
+        msg: "{{ r_pods_status.stdout_lines | default([]) }}"
+      when: r_pods_status is success
+
+    - name: "Helm | Fail with context"
+      ansible.builtin.fail:
+        msg: |
+          Helm installation failed for {{ helm_chart.release }}
+
+          Full logs available at: {{ _helm_log }}
+
+          Review the logs above for details.
+          Common issues:
+          - Image pull errors
+          - Resource conflicts
+          - Timeout waiting for pods
+          - Invalid values configuration
