@@ -173,6 +173,13 @@ fi
 ## IP Validations
 validation_section "ip_address"
 
+actual_network=$(ipcalc --no-decorate --network "$machine_network")
+given_address="${machine_network%%/*}"
+if [[ "$actual_network" != "$given_address" ]]; then
+    validation fail machineNetwork "machineNetwork $machine_network has non-zero host bits (expected ${actual_network}/${machine_network##*/})"
+fi
+validation pass machineNetwork "machineNetwork $machine_network is a valid network address"
+
 if [[ "$api_vip" == "$ingress_vip" ]]; then
     validation fail api_ingress "API VIP ($api_vip) and Ingress VIP ($ingress_vip) are the same"
 fi
