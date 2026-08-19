@@ -1,0 +1,24 @@
+[
+  {
+    "id": "a2868f98-c696-697a-ca65-ad6b44e7aa3b",
+    "infra_env_id": "4c104ffc-8543-4108-9fb7-2e59f86ab126",
+    "requested_hostname": "eci-8dbffc00-master-00",
+    "status": "installing-in-progress",
+    "status_info": "Writing image to disk"
+  },
+  {
+    "id": "d01c8fa4-7bad-8390-2b6e-74b29266b02f",
+    "infra_env_id": "4c104ffc-8543-4108-9fb7-2e59f86ab126",
+    "requested_hostname": "eci-8dbffc00-master-01",
+    "status": "installing-in-progress",
+    "status_info": "Writing image to disk"
+  },
+  {
+    "bootstrap": true,
+    "id": "66479091-1113-7ed1-ca81-bac35a16ef56",
+    "infra_env_id": "4c104ffc-8543-4108-9fb7-2e59f86ab126",
+    "requested_hostname": "eci-8dbffc00-master-02",
+    "status": "installing-in-progress",
+    "status_info": "Starting installation"
+  }
+]

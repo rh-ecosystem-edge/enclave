@@ -14,6 +14,9 @@ diskEncryption: false
 # Default oc-mirror log level. Override in config/global.yaml for more verbosity.
 ocMirrorLogLevel: info
 
+# Default wait-and-detach-vmedia log level. Override in config/global.yaml for more verbosity.
+waitAndDetachVmediaLogLevel: info
+
 # Default storage plugin. Override in config/global.yaml to use odf.
 storage_plugin: lvms
 

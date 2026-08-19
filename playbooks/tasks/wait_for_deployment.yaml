@@ -1,7 +1,70 @@
 ---
-- name: Pause for 3 minutes for the baremetal to be rebooted
-  ansible.builtin.pause:
-    minutes: 3
+# Credentials are normally set by pre_install_validate_plugins.yaml earlier in the play.
+# The guard allows wait_for_deployment to also work when invoked standalone via --tags.
+- name: Get Assisted Service credentials
+  ansible.builtin.include_tasks:
+    file: tasks/get_assisted_service_credentials.yaml
+  when: assisted_cluster_id is not defined
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Get metal3-ironic-username secret
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_username_secret
+  failed_when: r_username_secret.rc != 0 or r_username_secret.stdout | length == 0
+  changed_when: false
+  no_log: true
+
+- name: Get metal3-ironic-password secret
+  ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
+  register: r_password_secret
+  failed_when: r_password_secret.rc != 0 or r_password_secret.stdout | length == 0
+  changed_when: false
+  no_log: true
+
+- name: Set ironic username fact
+  ansible.builtin.set_fact:
+    metal3_ironic_username: "{{ r_username_secret.stdout }}"
+  no_log: true
+
+- name: Set ironic password fact
+  ansible.builtin.set_fact:
+    metal3_ironic_password: "{{ r_password_secret.stdout }}"
+  no_log: true
+
+- name: Async wait for disk write complete and detach vmedia per host
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - --log-level
+      - "{{ waitAndDetachVmediaLogLevel }}"
+      - tools
+      - wait-and-detach-vmedia
+      - --host-name
+      - "{{ agent_host.name }}"
+      - --assisted-service-url
+      - "{{ assisted_service_url }}"
+      - --assisted-cluster-id
+      - "{{ assisted_cluster_id }}"
+      - --ironic-base-url
+      - http://localhost:6385
+      - --ironic-api-version
+      - "{{ ironic_api_version }}"
+      - --ironic-user
+      - "{{ metal3_ironic_username }}"
+  environment:
+    ASSISTED_AUTH_TOKEN: "{{ assisted_auth_token }}"
+    IRONIC_PASSWORD: "{{ metal3_ironic_password }}"
+  async: 7500
+  poll: 0
+  no_log: true
+  loop: "{{ agent_hosts_to_provision | default(agent_hosts) }}"
+  loop_control:
+    loop_var: agent_host
+    label: "{{ agent_host.name }}"
+  register: async_detach_jobs
 
 - name: Wait for bootstrap to be completed
   ansible.builtin.command: |
@@ -11,20 +74,26 @@
   ansible.builtin.command: |
     {{ workingDir }}/bin/openshift-install --dir {{ workingDir }}/ocp-cluster/ agent wait-for install-complete  --log-level=debug
 
-# Virtual media detach must stay here, after install-complete. Moving it earlier
-# (e.g. right after Ironic 'active') breaks hardware where coreos-installer reads
-# the RHCOS disk image directly from the mounted ISO in streaming mode: detaching
-# mid-stream causes an I/O error and aborts the disk write. A future improvement
-# should detach per-node as soon as each host's disk write completes (Assisted
-# Service host status 'rebooting') to also prevent UEFI firmware boot-loops on
-# hardware that ignores the one-shot boot order when virtual media is still attached.
-- name: Detach virtual media from hosts
-  loop: "{{ agent_hosts }}"
-  loop_control:
-    loop_var: agent_host
-    label: "{{ agent_host.name }}"
-  ansible.builtin.include_tasks:
-    file: tasks/configure_hardware_ironic_detach_vmedia.yaml
+- name: Wait for per-host vmedia detach and display logs
+  block:
+    - name: Wait for per-host vmedia detach to complete
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ async_detach_jobs.results }}"
+      loop_control:
+        label: "{{ item.agent_host.name }}"
+      register: detach_job_results
+      until: detach_job_results.finished
+      retries: 375
+      delay: 20
+  always:
+    - name: Display vmedia detach logs
+      ansible.builtin.debug:
+        msg: "{{ item.stderr_lines }}"
+      loop: "{{ detach_job_results.results }}"
+      loop_control:
+        label: "{{ item.item.agent_host.name }}"
+      when: detach_job_results is defined
 
 - name: Cleanup Ironic
   ansible.builtin.include_tasks:

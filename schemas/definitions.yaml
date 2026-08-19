@@ -56,6 +56,10 @@ definitions:
     type: string
     enum: [trace, debug, info, error]
     description: "Log level for oc-mirror. Default: info."
+  pythonLoggingLogLevel:
+    type: string
+    enum: [debug, info, warning, error, critical]
+    description: "Python standard logging level."
   quayBackendRGWIsSecure:
     type: boolean
     description: Whether to use HTTPS for backend storage
