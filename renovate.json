@@ -34,7 +34,9 @@
       },
       "major": {
         "enabled": false
-      }
+      },
+      "automerge": true,
+      "automergeType": "pr"
     },
     {
       "description": "Exclude metallb-operator (non-semver version)",
