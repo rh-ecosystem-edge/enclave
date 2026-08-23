@@ -1,0 +1,66 @@
+name: Update Ansible Collection Checksums
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'ansible_collections.txt'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-checksums:
+    name: Update ansible_collections.sha256
+    runs-on: [self-hosted, pr-validation]
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Update collection checksums
+        run: |
+          chmod +x .github/scripts/update_ansible_checksums.py
+          .github/scripts/update_ansible_checksums.py
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet ansible_collections.sha256; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes to ansible_collections.sha256"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in ansible_collections.sha256"
+          fi
+
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ansible_collections.sha256
+          git commit -m "Update ansible_collections.sha256 for modified collections
+
+          Automated update triggered by changes to ansible_collections.txt
+
+          Assisted-by: GitHub Actions"
+          git push
+
+      - name: Add PR comment
+        if: steps.check_changes.outputs.changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ **Automated Update**: `ansible_collections.sha256` has been updated with checksums for the modified collections.'
+            })
