@@ -30,7 +30,8 @@
         namespace: open-cluster-management
         annotations:
           installer.open-cluster-management.io/mce-subscription-spec: "{{ mce_subscription_spec | to_json }}"
-      spec: {}
+      spec:
+        disableUpdateClusterImageSets: true
   retries: 60
   delay: 10
   register: r_mch
