@@ -313,10 +313,9 @@
       data:
         description: "block acccess to uptream clusterimagesets"
         channel: stable
-        gitRepoBranch: release-2.8
+        gitRepoBranch: backplane-2.8
         gitRepoPath: clusterImageSets
-        gitRepoUrl: 'https://localhost/prevent-cis-reconcile.git'
-        insecureSkipVerify: 'true'
+        gitRepoUrl: https://localhost/bad-acm-hive-openshift-releases.git
 
 - name: Create AgentServiceConfig for disconnected environment
   when: disconnected | default(true) | bool
