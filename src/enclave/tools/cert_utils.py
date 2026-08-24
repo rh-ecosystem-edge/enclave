@@ -37,7 +37,7 @@ OPENSSL_MONTHS = {
 def _parse_openssl_date(date_str: str) -> datetime:
     """Parse an OpenSSL notBefore/notAfter string into a UTC-aware datetime."""
     parts = date_str.strip().split()
-    if len(parts) < 4:  # noqa: PLR2004 — month, day, HH:MM:SS, year
+    if len(parts) < 4:  # ruff: ignore[magic-value-comparison] — month, day, HH:MM:SS, year
         raise ValueError(f"unexpected OpenSSL date string: {date_str!r}")
     month = OPENSSL_MONTHS.get(parts[0])
     if month is None:

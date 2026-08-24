@@ -140,7 +140,7 @@ def check_certificate_chains(
             config, cert_type=cert_type, hostnames=list(hostnames)
         )
     except CertificateValidationError as exc:
-        logger.error("%s", exc)  # noqa: TRY400 — traceback is unwanted for user-facing errors
+        logger.error("%s", exc)  # ruff: ignore[error-instead-of-exception] — traceback is unwanted for user-facing errors
         sys.exit(1)
 
 
