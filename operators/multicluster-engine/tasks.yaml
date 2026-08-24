@@ -300,6 +300,24 @@
   delay: "{{ k8s_delay }}"
   until: r_configmap_assisted_service is success
 
+- name: Create cluster-image-set-git-repo ConfigMap for disconnected to prevent the recreation of clusterimagesets
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: ConfigMap
+      apiVersion: v1
+      metadata:
+        name: cluster-image-set-git-repo
+        namespace: multicluster-engine
+      data:
+        description: "block acccess to uptream clusterimagesets"
+        channel: stable
+        gitRepoBranch: release-2.8
+        gitRepoPath: clusterImageSets
+        gitRepoUrl: 'https://localhost/prevent-cis-reconcile.git'
+        insecureSkipVerify: 'true'
+
 - name: Create AgentServiceConfig for disconnected environment
   when: disconnected | default(true) | bool
   vars:
