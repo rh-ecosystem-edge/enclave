@@ -311,7 +311,7 @@
         name: cluster-image-set-git-repo
         namespace: multicluster-engine
       data:
-        description: "block acccess to uptream clusterimagesets"
+        description: "block access to upstream clusterimagesets"
         channel: stable
         gitRepoBranch: backplane-2.8
         gitRepoPath: clusterImageSets
