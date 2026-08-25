@@ -426,11 +426,6 @@ jobs:
         id: deploy_rhbk
         run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
 
-      - name: Deploy authorino plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
-        id: deploy_authorino
-        run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
-
       - name: Deploy aap plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
         id: deploy_aap
@@ -626,7 +621,6 @@ jobs:
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
-            ["deploy_authorino"]="Deploy authorino plugin"
             ["deploy_aap"]="Deploy aap plugin"
             ["deploy_cnv"]="Deploy cnv plugin"
             ["deploy_osac"]="Deploy osac plugin"
@@ -649,7 +643,6 @@ jobs:
             bootstrap_write_migration_tasks
             deploy_trust_manager
             deploy_rhbk
-            deploy_authorino
             deploy_aap
             deploy_cnv
             deploy_osac
@@ -883,11 +876,6 @@ jobs:
         id: deploy_rhbk
         run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
 
-      - name: Deploy authorino plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',authorino,')
-        id: deploy_authorino
-        run: make -f Makefile.ci deploy-plugin PLUGIN=authorino
-
       - name: Deploy aap plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
         id: deploy_aap
@@ -1092,7 +1080,6 @@ jobs:
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
-            ["deploy_authorino"]="Deploy authorino plugin"
             ["deploy_aap"]="Deploy aap plugin"
             ["deploy_cnv"]="Deploy cnv plugin"
             ["deploy_osac"]="Deploy osac plugin"
@@ -1115,7 +1102,6 @@ jobs:
             bootstrap_write_migration_tasks
             deploy_trust_manager
             deploy_rhbk
-            deploy_authorino
             deploy_aap
             deploy_cnv
             deploy_osac

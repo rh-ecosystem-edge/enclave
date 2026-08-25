@@ -847,7 +847,7 @@ collect_cluster_plugin_diagnostics() {
     for plugin in "${plugins[@]}"; do
         plugin="${plugin// /}"
         case "$plugin" in
-            osac|aap|authorino) namespaces+=("osac") ;;
+            osac|aap) namespaces+=("osac") ;;
             rhbk) namespaces+=("keycloak") ;;
             trust-manager) namespaces+=("cert-manager") ;;
             cnv) namespaces+=("openshift-cnv") ;;

@@ -17,7 +17,7 @@ ingress into air-gapped environments.
 
 ```
 playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
-plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, authorino, vast-csi)
+plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, vast-csi)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
 src/             Python source root (src layout)
   reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
