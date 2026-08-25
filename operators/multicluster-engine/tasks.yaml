@@ -300,6 +300,27 @@
   delay: "{{ k8s_delay }}"
   until: r_configmap_assisted_service is success
 
+- name: Create cluster-image-set-git-repo ConfigMap for disconnected to prevent the recreation of clusterimagesets
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      kind: ConfigMap
+      apiVersion: v1
+      metadata:
+        name: cluster-image-set-git-repo
+        namespace: multicluster-engine
+      data:
+        description: "block access to upstream clusterimagesets"
+        channel: stable
+        gitRepoBranch: backplane-2.8
+        gitRepoPath: clusterImageSets
+        gitRepoUrl: https://localhost/bad-acm-hive-openshift-releases.git
+  register: r_configmap_cis_git_repo
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_configmap_cis_git_repo is success
+
 - name: Create AgentServiceConfig for disconnected environment
   when: disconnected | default(true)
   vars:
