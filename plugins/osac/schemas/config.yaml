@@ -52,6 +52,13 @@ properties:
   osacTestUsers:
     type: boolean
     description: "Create test users in the Keycloak osac realm for initial UI/CLI access"
+  osacDnsClass:
+    type: string
+    description: "Fully-qualified Ansible role name of the DNS driver"
+    enum: ["dns.route53.dns"]
+  osacDnsZone:
+    type: string
+    description: "DNS zone to operate in (defaults to EXTERNAL_ACCESS_BASE_DOMAIN)"
   osacNetrisEnabled:
     type: boolean
     description: "Enable Netris network backend for cluster/network fulfillment"

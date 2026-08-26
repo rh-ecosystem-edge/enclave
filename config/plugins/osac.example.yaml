@@ -47,6 +47,10 @@
 # osacNetrisTenantId: "1"
 # osacNetrisTenantName: "Admin"
 
+# Optional: DNS configuration
+# osacDnsClass: "dns.route53.dns"
+# osacDnsZone: "example.com"
+
 # Optional Netris config:
 # osacNetrisStepsCollection: "netris.steps"
 # osacNetrisMgmtVpcId: "4"

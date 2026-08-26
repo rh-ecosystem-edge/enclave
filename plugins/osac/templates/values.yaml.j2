@@ -130,6 +130,12 @@ aap:
     clusterFulfillment:
       enabled: true
       config:
+{% if osacDnsClass is defined %}
+        DNS_CLASS: "{{ osacDnsClass }}"
+{% endif %}
+{% if osacDnsZone is defined %}
+        DNS_ZONE: "{{ osacDnsZone }}"
+{% endif %}
         NETWORK_CLASS: "netris"
         NETWORK_STEPS_COLLECTION: "{{ osacNetrisStepsCollection | default('netris.steps') }}"
         NETRIS_CONTROLLER_URL: "{{ osacNetrisControllerUrl }}"
