@@ -30,6 +30,16 @@
       "datasourceTemplate": "custom.redhat-operator-catalog",
       "versioningTemplate": "semver",
       "registryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.20"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["plugins/osac/defaults.yaml"],
+      "matchStrings": [
+        "osacChartVersion: \"(?<currentValue>[^\"]+)\""
+      ],
+      "depNameTemplate": "osac-project/charts/osac",
+      "datasourceTemplate": "docker",
+      "registryUrlTemplate": "https://ghcr.io"
     }
   ],
   "ansible-galaxy": {
@@ -53,6 +63,11 @@
       "description": "Exclude metallb-operator (non-semver version)",
       "matchPackageNames": ["metallb-operator"],
       "enabled": false
+    },
+    {
+      "matchPackageNames": ["osac-project/charts/osac"],
+      "ignoreUnstable": false,
+      "respectLatest": false
     }
   ]
 }
