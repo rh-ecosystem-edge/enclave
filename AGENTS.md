@@ -31,6 +31,7 @@ schemas/         JSON schemas for config and plugin descriptor validation
 config/          User-provided cluster configuration (gitignored, examples provided)
 defaults/        Default variable values (catalogs, operators, platforms)
 docs/            Deployment, configuration, and architecture guides
+scripts/docs/    CI-related documentation (runner setup, workflow guides, troubleshooting)
 ```
 
 ## Building and testing

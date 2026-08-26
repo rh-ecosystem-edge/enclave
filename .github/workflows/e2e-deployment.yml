@@ -134,6 +134,7 @@ jobs:
             e2e:
               - 'playbooks/**'
               - 'scripts/**'
+              - '!scripts/docs/**'
               - 'src/**'
               - 'Makefile'
               - 'Makefile.ci'

@@ -156,99 +156,13 @@ df -h /opt/dev-scripts
 free -g
 ```
 
-## Maintenance
+## Maintenance and Troubleshooting
 
-### Update Runner Software
-
-```bash
-# Stop the runner service
-sudo ./svc.sh stop
-
-# Download and extract new version
-curl -o actions-runner-linux-x64-VERSION.tar.gz -L \
-  https://github.com/actions/runner/releases/download/vVERSION/actions-runner-linux-x64-VERSION.tar.gz
-tar xzf ./actions-runner-linux-x64-VERSION.tar.gz
-
-# Start the runner service
-sudo ./svc.sh start
-```
-
-### Check Runner Logs
-
-```bash
-# View runner logs
-sudo journalctl -u actions.runner.*.service -f
-
-# View runner worker logs
-tail -f ~/actions-runner/_diag/Runner_*.log
-```
-
-### Restart Runner
-
-```bash
-# Restart the runner service
-sudo systemctl restart actions.runner.*.service
-
-# Check status
-sudo systemctl status actions.runner.*.service
-```
-
-## Troubleshooting
-
-### Runner Shows Offline
-
-1. Check service status:
-   ```bash
-   sudo systemctl status actions.runner.*.service
-   ```
-
-2. Check logs:
-   ```bash
-   sudo journalctl -u actions.runner.*.service -n 50
-   ```
-
-3. Restart service:
-   ```bash
-   sudo systemctl restart actions.runner.*.service
-   ```
-
-### Permission Denied Errors
-
-1. Verify user groups:
-   ```bash
-   groups github-runner
-   # Should include: libvirt
-   ```
-
-2. Check sudo permissions:
-   ```bash
-   sudo -l -U github-runner
-   ```
-
-3. Test libvirt access:
-   ```bash
-   sudo -u github-runner virsh list --all
-   ```
-
-### Disk Space Issues
-
-1. Check disk usage:
-   ```bash
-   df -h /opt/dev-scripts
-   df -h /home/github-runner
-   ```
-
-2. Clean up old artifacts:
-   ```bash
-   # Run cleanup workflow manually
-   # Or use: make clean
-   ```
-
-3. Clean up old VM images:
-   ```bash
-   sudo virsh pool-list --all
-   # Clean up unused pools
-   ```
+See [CI_RUNNER_MAINTENANCE.md](CI_RUNNER_MAINTENANCE.md) for:
+- Restarting and updating runners
+- Re-registering OOM-killed or expired runners
+- Checking logs and diagnosing offline runners
+- Cleaning up stale VMs and disk space
 
 ## Security Considerations
 
