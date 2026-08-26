@@ -221,6 +221,9 @@ bmf:
   env:
     aapInsecureSkipVerify: "true"
 
+dbInit:
+  host: "{{ osac_db_name }}.osac.svc.cluster.local"
+
 dbMigrate:
   enabled: false
 
