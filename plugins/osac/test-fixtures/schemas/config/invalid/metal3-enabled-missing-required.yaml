@@ -1,0 +1,5 @@
+---
+# Fixture: Metal3 enabled but missing required namespace
+# Expected failure: osacMetal3Namespace required when osacMetal3Enabled is true
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacMetal3Enabled: true

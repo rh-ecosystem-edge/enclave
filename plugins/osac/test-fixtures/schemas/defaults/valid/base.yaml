@@ -22,6 +22,7 @@ osac_keycloak_validate_certs: true
 osacTestUsers: false
 osacNetrisEnabled: false
 osacBcmEnabled: false
+osacMetal3Enabled: false
 
 osacBYODatabase: false
 osac_db_name: postgres

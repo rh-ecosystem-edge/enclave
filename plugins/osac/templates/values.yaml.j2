@@ -233,6 +233,12 @@ bmf:
     insecureSkipVerify: {{ osacBcmInsecureSkipVerify | default(false) | lower }}
     hostClass: "{{ osacBcmHostClass | default('bcm') }}"
     bmhNamespace: "{{ osacBcmBmhNamespace }}"
+{% elif osacMetal3Enabled | default(false) | bool %}
+  enabled: true
+  metal3:
+    enabled: true
+    namespace: "{{ osacMetal3Namespace }}"
+    hostClass: "{{ osacMetal3HostClass | default('metal3') }}"
 {% else %}
   enabled: false
 {% endif %}

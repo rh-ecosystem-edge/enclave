@@ -170,6 +170,17 @@ properties:
     type: string
     minLength: 1
     description: "Namespace where BareMetalHost CRs are created for Metal3 power management"
+  osacMetal3Enabled:
+    type: boolean
+    description: "Enable Metal3 inventory backend for bare metal fulfillment"
+  osacMetal3Namespace:
+    type: string
+    minLength: 1
+    description: "Namespace where BareMetalHost CRs are located"
+  osacMetal3HostClass:
+    type: string
+    minLength: 1
+    description: "Host class identifier for Metal3 inventory (default: metal3)"
 required:
   - osacAapLicenseFile
 dependencies:
@@ -204,3 +215,18 @@ allOf:
         - osacBcmCert
         - osacBcmKey
         - osacBcmBmhNamespace
+      properties:
+        osacMetal3Enabled:
+          const: false
+  - if:
+      required:
+        - osacMetal3Enabled
+      properties:
+        osacMetal3Enabled:
+          const: true
+    then:
+      required:
+        - osacMetal3Namespace
+      properties:
+        osacBcmEnabled:
+          const: false

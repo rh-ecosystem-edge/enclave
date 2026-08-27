@@ -1,0 +1,11 @@
+---
+# Fixture: BCM and Metal3 both enabled (mutually exclusive)
+# Expected failure: osacMetal3Enabled must be false when osacBcmEnabled is true
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacBcmEnabled: true
+osacBcmUrl: "https://bcm-head:8081"
+osacBcmCert: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+osacBcmKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"
+osacBcmBmhNamespace: "openshift-machine-api"
+osacMetal3Enabled: true
+osacMetal3Namespace: "openshift-machine-api"

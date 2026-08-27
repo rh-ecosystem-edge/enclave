@@ -106,3 +106,15 @@
 #   -----END CERTIFICATE-----
 # osacBcmInsecureSkipVerify: false
 # osacBcmHostClass: "bcm"
+
+# --- Metal3 Inventory Backend ---
+# Enable Metal3 (BareMetalHost) integration for bare metal fulfillment.
+# Uses locally-managed BareMetalHost CRs via the metal3.io API.
+# NOTE: BCM and Metal3 are mutually exclusive — only one can be enabled.
+# osacMetal3Enabled: true
+
+# Required when osacMetal3Enabled is true:
+# osacMetal3Namespace: "openshift-machine-api"
+
+# Optional Metal3 config:
+# osacMetal3HostClass: "metal3"
