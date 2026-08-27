@@ -144,24 +144,31 @@ properties:
     description: "Enable BCM inventory backend for bare metal fulfillment"
   osacBcmUrl:
     type: string
+    pattern: "^https://"
+    minLength: 1
     description: "BCM head node API endpoint (e.g. https://bcm-head:8081)"
   osacBcmCert:
     type: string
+    minLength: 1
     description: "PEM-encoded client certificate for BCM mTLS authentication"
   osacBcmKey:
     type: string
+    minLength: 1
     description: "PEM-encoded client private key for BCM mTLS authentication"
   osacBcmCaCert:
     type: string
+    minLength: 1
     description: "PEM-encoded CA certificate for verifying BCM server cert (optional)"
   osacBcmInsecureSkipVerify:
     type: boolean
     description: "Skip TLS verification of BCM server certificate (test environments only)"
   osacBcmHostClass:
     type: string
+    minLength: 1
     description: "Host class identifier for BCM inventory (default: bcm)"
   osacBcmBmhNamespace:
     type: string
+    minLength: 1
     description: "Namespace where BareMetalHost CRs are created for Metal3 power management"
 required:
   - osacAapLicenseFile

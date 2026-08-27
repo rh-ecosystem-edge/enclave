@@ -1,0 +1,9 @@
+---
+# Fixture: BCM enabled with HTTP URL (must be HTTPS)
+# Expected failure: osacBcmUrl pattern requires https://
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacBcmEnabled: true
+osacBcmUrl: "http://bcm-head:8081"
+osacBcmCert: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
+osacBcmKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"
+osacBcmBmhNamespace: "openshift-machine-api"

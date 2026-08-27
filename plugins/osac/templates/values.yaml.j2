@@ -222,10 +222,13 @@ bmf:
   bcm:
     enabled: true
     url: "{{ osacBcmUrl }}"
-    cert: "{{ osacBcmCert }}"
-    key: "{{ osacBcmKey }}"
+    cert: |
+{{ osacBcmCert | indent(6, first=true) }}
+    key: |
+{{ osacBcmKey | indent(6, first=true) }}
 {% if osacBcmCaCert is defined %}
-    caCert: "{{ osacBcmCaCert }}"
+    caCert: |
+{{ osacBcmCaCert | indent(6, first=true) }}
 {% endif %}
     insecureSkipVerify: {{ osacBcmInsecureSkipVerify | default(false) | lower }}
     hostClass: "{{ osacBcmHostClass | default('bcm') }}"
