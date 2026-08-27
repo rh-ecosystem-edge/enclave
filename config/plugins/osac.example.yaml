@@ -81,3 +81,28 @@
 #   -----BEGIN OPENSSH PRIVATE KEY-----
 #   ...
 #   -----END OPENSSH PRIVATE KEY-----
+
+# --- BCM Inventory Backend ---
+# Enable BCM (NVIDIA Base Command Manager) integration for bare metal fulfillment.
+# Requires Metal3 for power management via BareMetalHost CRs.
+# osacBcmEnabled: true
+
+# Required when osacBcmEnabled is true:
+# osacBcmUrl: "https://bcm-head:8081"
+# osacBcmCert: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+#   -----END CERTIFICATE-----
+# osacBcmKey: |
+#   -----BEGIN PRIVATE KEY-----
+#   ...
+#   -----END PRIVATE KEY-----
+# osacBcmBmhNamespace: "openshift-machine-api"
+
+# Optional BCM config:
+# osacBcmCaCert: |
+#   -----BEGIN CERTIFICATE-----
+#   ...
+#   -----END CERTIFICATE-----
+# osacBcmInsecureSkipVerify: false
+# osacBcmHostClass: "bcm"

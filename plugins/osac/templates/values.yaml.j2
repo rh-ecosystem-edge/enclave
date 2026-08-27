@@ -217,7 +217,22 @@ aap:
         OSAC_FULFILLMENT_SERVICE_URI: "https://fulfillment-internal-api:8001"
 
 bmf:
+{% if osacBcmEnabled | default(false) | bool %}
+  enabled: true
+  bcm:
+    enabled: true
+    url: "{{ osacBcmUrl }}"
+    cert: "{{ osacBcmCert }}"
+    key: "{{ osacBcmKey }}"
+{% if osacBcmCaCert is defined %}
+    caCert: "{{ osacBcmCaCert }}"
+{% endif %}
+    insecureSkipVerify: {{ osacBcmInsecureSkipVerify | default(false) | lower }}
+    hostClass: "{{ osacBcmHostClass | default('bcm') }}"
+    bmhNamespace: "{{ osacBcmBmhNamespace }}"
+{% else %}
   enabled: false
+{% endif %}
   env:
     aapInsecureSkipVerify: "true"
 

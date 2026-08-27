@@ -1,0 +1,5 @@
+---
+# Fixture: BCM enabled but missing required fields
+# Expected failure: osacBcmUrl, osacBcmCert, osacBcmKey, osacBcmBmhNamespace required
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacBcmEnabled: true

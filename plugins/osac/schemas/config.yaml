@@ -139,6 +139,30 @@ properties:
   osacNetrisSshBastionKey:
     type: string
     description: "SSH private key for bastion host access"
+  osacBcmEnabled:
+    type: boolean
+    description: "Enable BCM inventory backend for bare metal fulfillment"
+  osacBcmUrl:
+    type: string
+    description: "BCM head node API endpoint (e.g. https://bcm-head:8081)"
+  osacBcmCert:
+    type: string
+    description: "PEM-encoded client certificate for BCM mTLS authentication"
+  osacBcmKey:
+    type: string
+    description: "PEM-encoded client private key for BCM mTLS authentication"
+  osacBcmCaCert:
+    type: string
+    description: "PEM-encoded CA certificate for verifying BCM server cert (optional)"
+  osacBcmInsecureSkipVerify:
+    type: boolean
+    description: "Skip TLS verification of BCM server certificate (test environments only)"
+  osacBcmHostClass:
+    type: string
+    description: "Host class identifier for BCM inventory (default: bcm)"
+  osacBcmBmhNamespace:
+    type: string
+    description: "Namespace where BareMetalHost CRs are created for Metal3 power management"
 required:
   - osacAapLicenseFile
 dependencies:
@@ -146,17 +170,30 @@ dependencies:
     - osacNetrisAwsSecretAccessKey
   osacNetrisAwsSecretAccessKey:
     - osacNetrisAwsAccessKeyId
-if:
-  required:
-    - osacNetrisEnabled
-  properties:
-    osacNetrisEnabled:
-      const: true
-then:
-  required:
-    - osacNetrisControllerUrl
-    - osacNetrisUsername
-    - osacNetrisPassword
-    - osacNetrisSiteId
-    - osacNetrisTenantId
-    - osacNetrisTenantName
+allOf:
+  - if:
+      required:
+        - osacNetrisEnabled
+      properties:
+        osacNetrisEnabled:
+          const: true
+    then:
+      required:
+        - osacNetrisControllerUrl
+        - osacNetrisUsername
+        - osacNetrisPassword
+        - osacNetrisSiteId
+        - osacNetrisTenantId
+        - osacNetrisTenantName
+  - if:
+      required:
+        - osacBcmEnabled
+      properties:
+        osacBcmEnabled:
+          const: true
+    then:
+      required:
+        - osacBcmUrl
+        - osacBcmCert
+        - osacBcmKey
+        - osacBcmBmhNamespace

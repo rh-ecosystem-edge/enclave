@@ -16,6 +16,9 @@ osacTestUsers: false
 # Netris network backend
 osacNetrisEnabled: false
 
+# BCM inventory backend
+osacBcmEnabled: false
+
 # AAP settings (chart manages the instance, these configure it)
 osac_aap_name: osac-aap
 osac_aap_operator_ns: ansible-aap
