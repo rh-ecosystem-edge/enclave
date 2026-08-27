@@ -4,6 +4,6 @@
 osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
 osacBcmEnabled: true
 osacBcmUrl: "http://bcm-head:8081"
-osacBcmCert: "-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----"
-osacBcmKey: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----"
+osacBcmCert: "placeholder-cert-data"
+osacBcmKey: "placeholder-key-data"
 osacBcmBmhNamespace: "openshift-machine-api"
