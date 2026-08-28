@@ -19,14 +19,13 @@ source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 require_command "jq"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 require_env_var "BASE_DOMAIN"
 
 # Configuration
@@ -201,7 +200,7 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
 
     cat >> "$GLOBAL_VARS_OUTPUT" <<EOF
   - name: ${CLUSTER_NAME}-${MASTER_SHORT_NAME}
-    macAddress: ${MASTER_MAC}
+    macAddress: "${MASTER_MAC}"
     ipAddress: ${MASTER_IP}
     redfish: ${BMC_BASEURI}
     bmcSystemId: ${MASTER_UUID}

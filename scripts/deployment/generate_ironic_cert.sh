@@ -16,7 +16,6 @@
 # use by subsequent workflow steps (picked up by deploy_phase.sh).
 #
 # Usage: ./generate_ironic_cert.sh
-# Required env: DEV_SCRIPTS_PATH, WORKING_DIR
 
 set -euo pipefail
 
@@ -31,7 +30,6 @@ source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
-require_env_var "DEV_SCRIPTS_PATH"
 require_env_var "WORKING_DIR"
 
 # Determine cluster name before the real-CA early-exit path below.
@@ -79,8 +77,8 @@ if [ ! -f "$CA_KEY" ] || [ ! -f "$CA_CRT" ]; then
     exit 1
 fi
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 LZ_VM_NAME="${ENCLAVE_CLUSTER_NAME}_landingzone_0"
 

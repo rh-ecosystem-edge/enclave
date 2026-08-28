@@ -20,7 +20,7 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 ensure_working_dir
 
 # Try to load dev-scripts config (non-fatal)
-try_load_devscripts_config
+try_load_cluster_env
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
 OUTPUT_FILE="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
@@ -76,12 +76,23 @@ get_vm_mac() {
     local vm_name=$1
     local network_type=$2  # "cluster" or "bmc"
 
-    # Map network type to actual bridge name
+    # Prefer macs.json written by vm_infra.py (type='network' NICs don't use bridge= attribute)
+    local macs_file="${WORKING_DIR}/macs.json"
+    if [ -f "$macs_file" ]; then
+        local mac
+        mac=$(jq -r --arg vm "$vm_name" --arg net "$network_type" '.[$vm][$net] // empty' "$macs_file" 2>/dev/null)
+        if [ -n "$mac" ]; then
+            echo "$mac"
+            return
+        fi
+    fi
+
+    # Fall back to virsh dumpxml (bridge-type NICs used by older setups)
     local bridge_name
     if [ "$network_type" = "cluster" ]; then
-        bridge_name="${CLUSTER_NAME}-e"  # external/cluster network
+        bridge_name="${CLUSTER_NAME}-e"
     elif [ "$network_type" = "bmc" ]; then
-        bridge_name="${CLUSTER_NAME}-p"  # provisioning/BMC network
+        bridge_name="${CLUSTER_NAME}-p"
     else
         echo "unknown"
         return

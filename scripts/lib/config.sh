@@ -1,68 +1,89 @@
 #!/bin/bash
 # Shared configuration utilities
 #
-# Provides functions for loading dev-scripts configuration files and
+# Provides functions for loading cluster environment files and
 # parsing environment.json files.
 #
 # Usage:
 #   source "${ENCLAVE_DIR}/scripts/lib/config.sh"
-#   load_devscripts_config
+#   load_cluster_env
 #   value=$(get_env_json_value "networks.cluster.cidr")
 #
 # Functions:
-#   load_devscripts_config [CLUSTER_NAME]  - Load dev-scripts config file (required)
-#   try_load_devscripts_config [CLUSTER_NAME] - Load dev-scripts config (optional, no error)
-#   is_enclave_disconnected               - True if ENCLAVE_DEPLOYMENT_MODE=disconnected
-#   get_env_json_value PATH [ENV_FILE]     - Extract value from environment.json using jq
+#   load_cluster_env [CLUSTER_NAME]     - Load cluster-env.sh (required)
+#   try_load_cluster_env [CLUSTER_NAME] - Load cluster-env.sh (optional, no error)
+#   is_enclave_disconnected             - True if ENCLAVE_DEPLOYMENT_MODE=disconnected
+#   get_env_json_value PATH [ENV_FILE]  - Extract value from environment.json using jq
 
-# Load dev-scripts configuration file for a cluster
+# Load cluster-env.sh for a cluster
 # Args: $1 = Cluster name (optional, defaults to ENCLAVE_CLUSTER_NAME or "enclave-test")
-# Exits with error if config file not found
-# Sets: All variables from the config file
-load_devscripts_config() {
+# Exits with error if file not found
+load_cluster_env() {
     local cluster_name="${1:-${ENCLAVE_CLUSTER_NAME:-enclave-test}}"
 
-    if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-        echo "ERROR: DEV_SCRIPTS_PATH environment variable is not set" >&2
-        exit 1
+    local working_dir="${WORKING_DIR:-}"
+    if [ -z "$working_dir" ]; then
+        if [ -n "${BASE_WORKING_DIR:-}" ]; then
+            working_dir="${BASE_WORKING_DIR}/clusters/${cluster_name}"
+        else
+            echo "ERROR: WORKING_DIR not set" >&2
+            exit 1
+        fi
     fi
 
-    local config_file="${DEV_SCRIPTS_PATH}/config_${cluster_name}.sh"
+    local env_file="${working_dir}/cluster-env.sh"
 
-    if [ ! -f "$config_file" ]; then
-        echo "ERROR: dev-scripts configuration not found: $config_file" >&2
-        echo "ERROR: Expected config file for cluster: $cluster_name" >&2
+    if [ ! -f "$env_file" ]; then
+        echo "ERROR: cluster-env.sh not found: $env_file" >&2
+        echo "ERROR: Run 'make -f Makefile.ci environment' first" >&2
         exit 1
     fi
 
     # shellcheck source=/dev/null
-    source "$config_file"
+    source "$env_file"
+    _set_compat_vars
 }
 
-# Try to load dev-scripts configuration file (non-fatal)
-# Args: $1 = Cluster name (optional, defaults to ENCLAVE_CLUSTER_NAME or "enclave-test")
+# Backward-compat alias
+load_devscripts_config() { load_cluster_env "$@"; }
+
+# Try to load cluster-env.sh (non-fatal)
 # Returns: 0 if loaded successfully, 1 if not found
-# Sets: All variables from the config file (if found)
-try_load_devscripts_config() {
+try_load_cluster_env() {
     local cluster_name="${1:-${ENCLAVE_CLUSTER_NAME:-enclave-test}}"
 
-    if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-        return 1
+    local working_dir="${WORKING_DIR:-}"
+    if [ -z "$working_dir" ]; then
+        [ -n "${BASE_WORKING_DIR:-}" ] || return 1
+        working_dir="${BASE_WORKING_DIR}/clusters/${cluster_name}"
     fi
 
-    local config_file="${DEV_SCRIPTS_PATH}/config_${cluster_name}.sh"
-
-    if [ ! -f "$config_file" ]; then
-        return 1
-    fi
+    local env_file="${working_dir}/cluster-env.sh"
+    [ -f "$env_file" ] || return 1
 
     # shellcheck source=/dev/null
-    source "$config_file"
+    source "$env_file"
+    _set_compat_vars
     return 0
 }
 
+# Backward-compat alias
+try_load_devscripts_config() { try_load_cluster_env "$@"; }
+
+# Export compat variable aliases so scripts that reference old dev-scripts
+# variable names continue to work without changes.
+_set_compat_vars() {
+    CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
+    PROVISIONING_NETWORK="${ENCLAVE_BMC_NETWORK}"
+    PROVISIONING_NETWORK_NAME="${ENCLAVE_BMC_BRIDGE}"
+    EXTERNAL_SUBNET_V4="${ENCLAVE_CLUSTER_NETWORK}"
+    BAREMETAL_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE}"
+    BASE_DOMAIN="${BASE_DOMAIN:-${ENCLAVE_BASE_DOMAIN:-${ENCLAVE_CLUSTER_NAME}.lab}}"
+    export CLUSTER_NAME PROVISIONING_NETWORK PROVISIONING_NETWORK_NAME
+    export EXTERNAL_SUBNET_V4 BAREMETAL_NETWORK_NAME BASE_DOMAIN
+}
+
 # Return 0 if Enclave is running in disconnected mode.
-# Uses ENCLAVE_DEPLOYMENT_MODE: "disconnected" (case-insensitive) = true, anything else = false.
 is_enclave_disconnected() {
     local deployment_mode="${ENCLAVE_DEPLOYMENT_MODE:-}"
     [[ "${deployment_mode,,}" == "disconnected" ]]
@@ -71,17 +92,13 @@ is_enclave_disconnected() {
 # Extract a value from environment.json using jq
 # Args: $1 = JSON path (e.g., "networks.cluster.cidr")
 #       $2 = Environment file path (optional, auto-constructed if not provided)
-# Returns: Extracted value or empty string if not found
-# Example: CLUSTER_CIDR=$(get_env_json_value "networks.cluster.cidr")
 get_env_json_value() {
     local json_path="$1"
     local env_file="${2:-}"
 
-    # Auto-construct environment file path if not provided
     if [ -z "$env_file" ]; then
         local cluster_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-        # Try to construct from WORKING_DIR
         if [ -n "${WORKING_DIR:-}" ]; then
             env_file="${WORKING_DIR}/environment-${cluster_name}.json"
         elif [ -n "${BASE_WORKING_DIR:-}" ]; then

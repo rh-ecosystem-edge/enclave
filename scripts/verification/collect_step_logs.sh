@@ -11,7 +11,6 @@
 #   output-directory - Directory to collect logs into (default: step-logs)
 #
 # Environment Variables:
-#   DEV_SCRIPTS_PATH - Path to dev-scripts installation (required)
 #   WORKING_DIR - Cluster working directory (required)
 
 set -euo pipefail
@@ -20,9 +19,6 @@ set -euo pipefail
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
-
-# Required variables
-: "${DEV_SCRIPTS_PATH:?DEV_SCRIPTS_PATH must be set}"
 
 # Auto-construct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
@@ -58,20 +54,6 @@ echo -e "${GREEN}Collecting step logs...${NC}"
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
-
-# Collect dev-scripts logs if they exist
-if [ -d "${DEV_SCRIPTS_PATH}/logs" ]; then
-    echo "Collecting dev-scripts logs..."
-    mkdir -p "${OUTPUT_DIR}/dev-scripts"
-    if cp -r "${DEV_SCRIPTS_PATH}/logs"/* "${OUTPUT_DIR}/dev-scripts/" 2>/dev/null; then
-        echo -e "${GREEN}✅ Collected dev-scripts logs${NC}"
-        output "✅ Collected dev-scripts logs"
-    else
-        echo -e "${YELLOW}⚠️  dev-scripts logs directory exists but is empty${NC}"
-    fi
-else
-    echo "No dev-scripts logs found at ${DEV_SCRIPTS_PATH}/logs"
-fi
 
 # Collect cluster-specific logs if they exist
 if [ -d "${WORKING_DIR}/logs" ]; then

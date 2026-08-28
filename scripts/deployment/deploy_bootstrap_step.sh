@@ -46,13 +46,12 @@ case "$STEP_NAME" in
 esac
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"

@@ -19,13 +19,12 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration to get network and cluster info
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
@@ -317,19 +316,64 @@ rm -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
 
 # Refresh pool so libvirt sees the new volume
 info "Refreshing libvirt pool..."
-sudo virsh pool-refresh "$POOL_NAME"
+_pool_refreshed=false
+for _attempt in 1 2 3; do
+    if sudo virsh pool-refresh "$POOL_NAME" 2>/dev/null; then
+        _pool_refreshed=true
+        break
+    fi
+    warning "Pool refresh failed (attempt $_attempt/3), restarting storage daemon..."
+    sudo systemctl restart virtstoraged 2>/dev/null \
+        || sudo systemctl restart libvirtd 2>/dev/null \
+        || true
+    sleep 5
+    sudo virsh pool-start "$POOL_NAME" 2>/dev/null || true
+done
+if ! $_pool_refreshed; then
+    error "Failed to refresh pool '$POOL_NAME' after 3 attempts"
+    exit 1
+fi
 info "✓ Disk prepared in pool"
 
 # Create VM using virt-install with BIOS boot
 info "Creating Landing Zone VM with virt-install..."
+
+# Read LZ MACs from macs.json (written by vm_infra.py) so that the static
+# DHCP leases and sushy-tools BMC identification remain stable after the
+# placeholder domain created by vm_infra.py is replaced by virt-install.
+BMC_MAC_ARG=""
+CLUSTER_MAC_ARG=""
+UPLINK_NIC_ARG=""
+if [ -f "${WORKING_DIR}/macs.json" ]; then
+    _BMC_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].bmc // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
+    _CLUSTER_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].cluster // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
+    [ -n "$_BMC_MAC" ] && BMC_MAC_ARG=",mac=${_BMC_MAC}"
+    [ -n "$_CLUSTER_MAC" ] && CLUSTER_MAC_ARG=",mac=${_CLUSTER_MAC}"
+fi
+if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
+    UPLINK_NETWORK="${CLUSTER_NAME}-u"
+    UPLINK_MAC=""
+    if [ -f "${WORKING_DIR}/macs.json" ]; then
+        UPLINK_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].uplink // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
+    fi
+    if [ -n "$UPLINK_MAC" ]; then
+        UPLINK_NIC_ARG="--network network=${UPLINK_NETWORK},mac=${UPLINK_MAC}"
+    else
+        UPLINK_NIC_ARG="--network network=${UPLINK_NETWORK}"
+    fi
+    info "Disconnected mode: adding uplink NIC on ${UPLINK_NETWORK}"
+fi
+
+# shellcheck disable=SC2086
 sudo virt-install \
     --name "$LZ_VM_NAME" \
     --memory "${LANDINGZONE_MEMORY:-16384}" \
     --vcpus "${LANDINGZONE_VCPU:-16}" \
     --disk vol=${POOL_NAME}/${LZ_VM_NAME}.qcow2,bus=virtio \
     --disk "${LZ_WORKING_DIR}/cloud-init.iso,device=cdrom,bus=sata" \
-    --network network=${BMC_NETWORK_NAME} \
-    --network network=${CLUSTER_NETWORK_NAME} \
+    --network network=${BMC_NETWORK_NAME}${BMC_MAC_ARG} \
+    --network network=${CLUSTER_NETWORK_NAME}${CLUSTER_MAC_ARG} \
+    ${UPLINK_NIC_ARG} \
     --boot hd,cdrom \
     --os-variant "$OS_VARIANT" \
     --graphics vnc \
@@ -365,11 +409,14 @@ while [ $COUNTER -lt $MAX_WAIT ]; do
         fi
     fi
 
-    # Try to SSH and check for cloud-init completion
+    # Try to SSH and check for cloud-init completion.
+    # Accept "disabled" as success: runcmd self-disables cloud-init after first boot,
+    # so by the time SSH opens, status may already show "disabled" instead of "done".
     if [ -n "$VM_IP" ]; then
-        if ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=3 -o BatchMode=yes -q cloud-user@${VM_IP} \
-               "cloud-init status --wait" 2>/dev/null; then
+        CI_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+               -o ConnectTimeout=3 -o BatchMode=yes -q cloud-user@"${VM_IP}" \
+               "cloud-init status 2>/dev/null" 2>/dev/null || true)
+        if [[ "$CI_STATUS" == "status: done" ]] || [[ "$CI_STATUS" == "status: disabled" ]]; then
             BOOT_COMPLETE=true
             break
         fi
@@ -718,6 +765,21 @@ if [ "$BOOT_COMPLETE" = true ]; then
         warning "Could not add mirror DNS entry (network may not support live update)"
     else
         info "✓ DNS entry added: ${MIRROR_SHORT_HOST}, ${MIRROR_FQDN} -> ${CLUSTER_IP}"
+    fi
+
+    # In disconnected mode the LZ uses the uplink network's dnsmasq (172.16.N.1) as its
+    # primary DNS because NM dns=default mode does not support routing domains. Add mirror
+    # DNS to the uplink network too so the LZ can resolve mirror hostnames.
+    if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
+        UPLINK_NETWORK_NAME="${CLUSTER_NAME}-u"
+        info "Adding mirror DNS to uplink network (${UPLINK_NETWORK_NAME}) for LZ resolution..."
+        if ! sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
+            "<host ip='${CLUSTER_IP}'><hostname>${MIRROR_SHORT_HOST}</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
+            --live --config 2>/dev/null; then
+            warning "Could not add mirror DNS to uplink network"
+        else
+            info "✓ Mirror DNS also added to uplink network"
+        fi
     fi
 
     echo ""

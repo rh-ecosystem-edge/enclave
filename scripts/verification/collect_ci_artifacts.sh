@@ -59,7 +59,7 @@ error() {
 }
 
 # Create base output directories (landing-zone and cluster created on-demand)
-mkdir -p "${OUTPUT_DIR}"/{system,libvirt,network,dev-scripts}
+mkdir -p "${OUTPUT_DIR}"/{system,libvirt,network,bmc}
 
 info "Starting artifact collection (level: $LEVEL)"
 info "Output directory: $OUTPUT_DIR"
@@ -282,65 +282,6 @@ collect_network_dns() {
     } > "${OUTPUT_DIR}/network/dns.txt" 2>&1
 }
 
-#####################################
-# DEV-SCRIPTS COLLECTION FUNCTIONS
-#####################################
-
-collect_devscripts_config() {
-    info "Collecting dev-scripts configuration..."
-
-    if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-        warn "DEV_SCRIPTS_PATH not set, skipping dev-scripts collection"
-        return
-    fi
-
-    if [ ! -d "$DEV_SCRIPTS_PATH" ]; then
-        warn "dev-scripts not found at $DEV_SCRIPTS_PATH"
-        return
-    fi
-
-    # Collect only active cluster config (not all historical configs)
-    if [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
-        local cluster_config="$DEV_SCRIPTS_PATH/config_${ENCLAVE_CLUSTER_NAME}.sh"
-        if [ -f "$cluster_config" ]; then
-            cp "$cluster_config" "${OUTPUT_DIR}/dev-scripts/" 2>&1 || true
-        else
-            warn "Active cluster config not found: $cluster_config"
-        fi
-    fi
-
-    # Also collect config_example.sh for reference
-    if [ -f "$DEV_SCRIPTS_PATH/config_example.sh" ]; then
-        cp "$DEV_SCRIPTS_PATH/config_example.sh" "${OUTPUT_DIR}/dev-scripts/" 2>&1 || true
-    fi
-
-    # Collect only active cluster environment file
-    if [ -n "${WORKING_DIR:-}" ] && [ -d "$WORKING_DIR" ]; then
-        if [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
-            local cluster_env="$WORKING_DIR/environment-${ENCLAVE_CLUSTER_NAME}.json"
-            if [ -f "$cluster_env" ]; then
-                cp "$cluster_env" "${OUTPUT_DIR}/dev-scripts/environment.json" 2>/dev/null || true
-                info "Collected environment file: $cluster_env"
-            else
-                warn "Cluster environment file not found: $cluster_env"
-            fi
-        fi
-        # Fallback: collect most recent environment.json
-        if [ ! -f "${OUTPUT_DIR}/dev-scripts/environment.json" ]; then
-            local latest_env
-            latest_env=$(find "$WORKING_DIR" -maxdepth 1 -name "environment*.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-            if [ -n "$latest_env" ] && [ -f "$latest_env" ]; then
-                cp "$latest_env" "${OUTPUT_DIR}/dev-scripts/environment.json" 2>/dev/null || true
-                info "Collected most recent environment file: $latest_env"
-            else
-                warn "No environment files found in $WORKING_DIR"
-            fi
-        fi
-    else
-        warn "WORKING_DIR not set or does not exist: ${WORKING_DIR:-not set}"
-    fi
-}
-
 collect_bmc_status() {
     info "Collecting BMC emulation status..."
 
@@ -406,7 +347,7 @@ collect_bmc_status() {
         if ! sudo podman ps -a --filter "name=sushy-tools" --format "{{.Names}}" 2>/dev/null | grep -q .; then
             echo "No sushy-tools containers found"
         fi
-    } > "${OUTPUT_DIR}/dev-scripts/bmc-status.txt" 2>&1
+    } > "${OUTPUT_DIR}/bmc/bmc-status.txt" 2>&1
 }
 
 #####################################
@@ -903,7 +844,6 @@ collect_infra() {
     collect_network_bridges
     collect_network_firewall
     collect_network_dns
-    collect_devscripts_config
     collect_bmc_status
     info "✓ Infrastructure collection complete"
 }

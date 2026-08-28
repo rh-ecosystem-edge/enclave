@@ -323,38 +323,12 @@ fi
 
 echo ""
 
-info "Step 15: Installing dev-scripts dependencies (optional)"
-# Check if dev-scripts directory exists
-DEV_SCRIPTS_PATHS=(
-    "/home/github-runner/go/src/github.com/openshift-metal3/dev-scripts"
-    "${HOME}/go/src/github.com/openshift-metal3/dev-scripts"
-)
-
-DEV_SCRIPTS_FOUND=false
-for path in "${DEV_SCRIPTS_PATHS[@]}"; do
-    if [ -d "$path" ]; then
-        DEV_SCRIPTS_FOUND=true
-        break
-    fi
-done
-
-if [ "$DEV_SCRIPTS_FOUND" = true ]; then
-    info "  dev-scripts directory found, installing dependencies..."
-    sudo dnf install -y \
-        golang \
-        libvirt-devel
-    success "dev-scripts dependencies installed (golang, libvirt-devel)"
-else
-    info "  dev-scripts directory not found, skipping optional dependencies"
-fi
-echo ""
-
-info "Step 16: Cleaning up package cache"
+info "Step 15: Cleaning up package cache"
 sudo dnf clean all
 success "Package cache cleaned"
 echo ""
 
-info "Step 17: Verifying installations"
+info "Step 16: Verifying installations"
 echo ""
 
 # Function to check if command exists

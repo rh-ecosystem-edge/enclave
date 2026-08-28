@@ -1,0 +1,53 @@
+<domain type='kvm'>
+  <name>{{ name }}</name>
+  <memory unit='KiB'>{{ memory_kb }}</memory>
+  <vcpu placement='static'>{{ vcpu }}</vcpu>
+  <os firmware='efi'>
+    <type arch='x86_64' machine='q35'>hvm</type>
+    <boot dev='cdrom'/>
+    <boot dev='hd'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none' migratable='on'/>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <controller type='sata' index='0'/>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2' cache='none'/>
+      <source file='{{ pool_path }}/{{ vol_name }}'/>
+      <target dev='vda' bus='virtio'/>
+    </disk>
+    <disk type='file' device='cdrom'>
+      <driver name='qemu' type='raw'/>
+      <target dev='sda' bus='sata'/>
+      <readonly/>
+    </disk>
+{% if extra_disk_path %}
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='raw' cache='none'/>
+      <source file='{{ extra_disk_path }}'/>
+      <target dev='vdb' bus='virtio'/>
+    </disk>
+{% endif %}
+{% for nic in nics %}
+    <interface type='network'>
+      <mac address='{{ nic.mac }}'/>
+      <source network='{{ nic.network }}'/>
+      <model type='virtio'/>
+    </interface>
+{% endfor %}
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <video>
+      <model type='vga'/>
+    </video>
+    <graphics type='vnc' port='-1' autoport='yes'/>
+  </devices>
+</domain>

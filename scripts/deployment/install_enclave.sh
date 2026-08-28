@@ -22,14 +22,11 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
-
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster configuration
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
@@ -211,6 +208,24 @@ fi
 
 success "DNS resolution configured for cluster endpoints"
 
+# In disconnected mode the LZ uses the uplink network's dnsmasq (172.16.N.1) as its
+# primary DNS because NM dns=default mode does not support routing domains. Duplicate
+# the API and ingress DNS entries into the uplink network so the LZ can resolve them.
+if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
+    UPLINK_NETWORK_NAME="${CLUSTER_NAME}-u"
+    info "Adding cluster DNS entries to uplink network (${UPLINK_NETWORK_NAME}) for LZ resolution..."
+    sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
+        "<host ip='${API_VIP}'><hostname>api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname></host>" \
+        --live --config 2>/dev/null \
+        && info "✓ API DNS added to uplink network" \
+        || warning "Could not add API DNS to uplink network (may already exist)"
+    sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
+        "<host ip='${INGRESS_VIP}'>${INGRESS_HOSTNAMES_XML}</host>" \
+        --live --config 2>/dev/null \
+        && info "✓ Ingress DNS added to uplink network" \
+        || warning "Could not add ingress DNS to uplink network (may already exist)"
+fi
+
 # Step 6: Copy pull secret
 info "Step 6: Setting up pull secret..."
 
@@ -220,7 +235,7 @@ PULL_SECRET_SOURCE=""
 
 # Check common pull secret locations in order of preference
 for SECRET_PATH in \
-    "${DEV_SCRIPTS_PATH}/pull_secret.json" \
+    "${WORKING_DIR}/pull_secret.json" \
     "${HOME}/.pull-secret.json" \
     "${WORKING_DIR}/pull-secret.json" \
     "/root/pull-secret.json"; do
@@ -268,7 +283,7 @@ EOPY
 else
     error "Pull secret not found in any common location"
     info "  Searched:"
-    info "    - ${DEV_SCRIPTS_PATH}/pull_secret.json"
+    info "    - ${WORKING_DIR}/pull_secret.json"
     info "    - ${HOME}/.pull-secret.json"
     info "    - ${WORKING_DIR}/pull-secret.json"
     info "    - /root/pull-secret.json"

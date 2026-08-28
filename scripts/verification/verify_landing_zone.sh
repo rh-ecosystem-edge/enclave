@@ -26,13 +26,12 @@ fail() {
 }
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster configuration
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
@@ -159,7 +158,7 @@ if curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 "$SUSHY_ENDPOIN
     fi
 else
     fail "sushy-tools is NOT running on host ($SUSHY_ENDPOINT)"
-    info "  dev-scripts should have started it. Check: sudo podman ps | grep sushy"
+    info "  Check: sudo podman ps | grep sushy"
 fi
 
 # Test 7: Verify required packages are installed

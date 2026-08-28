@@ -25,13 +25,12 @@ fail() {
 }
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
@@ -84,12 +83,12 @@ for i in $(seq 0 $((NUM_MASTERS - 1))); do
         success "Master VM $i exists: $VM_NAME"
         MASTER_COUNT=$((MASTER_COUNT + 1))
 
-        # Check network interfaces
+        # Check network interfaces (BMC + cluster)
         IFACE_COUNT=$(sudo virsh domiflist "$VM_NAME" | grep -c "bridge\|network" || true)
-        if [ "$IFACE_COUNT" -eq 1 ]; then
-            success "  Master VM $i has 1 network interface (cluster only) ✓"
+        if [ "$IFACE_COUNT" -eq 2 ]; then
+            success "  Master VM $i has 2 network interfaces (BMC + cluster) ✓"
         else
-            fail "  Master VM $i has $IFACE_COUNT interfaces (expected: 1)"
+            fail "  Master VM $i has $IFACE_COUNT interfaces (expected: 2)"
             FAILED=1
         fi
     else
@@ -111,12 +110,16 @@ LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
     success "Landing Zone VM exists: $LZ_VM_NAME"
 
-    # Check network interfaces
+    # Check network interfaces: 2 in connected (BMC + cluster), 3 in disconnected (+ uplink)
     IFACE_COUNT=$(sudo virsh domiflist "$LZ_VM_NAME" | grep -c "bridge\|network" || true)
-    if [ "$IFACE_COUNT" -eq 2 ]; then
-        success "  Landing Zone VM has 2 network interfaces (BMC + cluster) ✓"
+    EXPECTED_LZ_IFACES=2
+    if [ "${ENCLAVE_DEPLOYMENT_MODE:-disconnected}" = "disconnected" ]; then
+        EXPECTED_LZ_IFACES=3
+    fi
+    if [ "$IFACE_COUNT" -eq "$EXPECTED_LZ_IFACES" ]; then
+        success "  Landing Zone VM has $IFACE_COUNT network interfaces ✓"
     else
-        fail "  Landing Zone VM has $IFACE_COUNT interfaces (expected: 2)"
+        fail "  Landing Zone VM has $IFACE_COUNT interfaces (expected: $EXPECTED_LZ_IFACES)"
         FAILED=1
     fi
 

@@ -6,7 +6,6 @@
 #
 # Usage: ./verify_ceph_on_lz.sh
 # Environment:
-#   DEV_SCRIPTS_PATH       - Path to dev-scripts (required)
 #   ENCLAVE_CLUSTER_NAME   - Cluster name (default: enclave-test)
 
 set -euo pipefail
@@ -23,13 +22,12 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"

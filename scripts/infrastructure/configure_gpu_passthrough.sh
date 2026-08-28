@@ -24,7 +24,7 @@ source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-load_devscripts_config
+load_cluster_env
 
 # GPU passthrough is opt-in via ENCLAVE_ENABLE_GPU_PASSTHROUGH=true.
 # When disabled (default), the script exits early and no GPU is attached.

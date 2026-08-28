@@ -1,255 +1,88 @@
 #!/usr/bin/env bash
 # Cleanup script for Enclave Lab infrastructure
-# Ensures dev-scripts cleanup works by creating config if needed
 
 set -euo pipefail
 
-# Detect Enclave repository root
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
-# Source shared utilities
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
+source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Get cluster name and paths from environment
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-CONFIG_NAME="config_${CLUSTER_NAME}.sh"
 
 info "=========================================="
 info "Cleaning up infrastructure for: ${CLUSTER_NAME}"
 info "=========================================="
 
-# Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
-require_dir "${DEV_SCRIPTS_PATH}"
-
-CONFIG_FILE="${DEV_SCRIPTS_PATH}/${CONFIG_NAME}"
-
-# Reconstruct WORKING_DIR if not set (needed for cleanup)
-# During setup, WORKING_DIR is exported to environment, but during cleanup it may not be available
+# Reconstruct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ]; then
-        # New structure: BASE_WORKING_DIR/clusters/CLUSTER_NAME
         export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
-        info "Reconstructed WORKING_DIR from BASE_WORKING_DIR: ${WORKING_DIR}"
+        info "Reconstructed WORKING_DIR: ${WORKING_DIR}"
     else
-        error "Neither WORKING_DIR nor BASE_WORKING_DIR is set; cannot safely determine cleanup paths"
+        error "Neither WORKING_DIR nor BASE_WORKING_DIR is set"
         exit 1
     fi
 fi
 
-# Ensure config file exists for cleanup
-if [ ! -f "$CONFIG_FILE" ]; then
-    warning "Config file not found: $CONFIG_FILE"
-    info "Creating minimal config for cleanup..."
+# ─── VM infrastructure teardown via vm_infra.py ───────────────────────────────
+info "Destroying VM infrastructure (VMs, networks, pool)..."
+VM_INFRA="${ENCLAVE_DIR}/scripts/infrastructure/vm_infra.py"
 
-    # Create minimal config file just for cleanup to work
-    cat > "$CONFIG_FILE" <<EOF
-#!/bin/bash
-# Minimal config for cleanup
-export CLUSTER_NAME="${CLUSTER_NAME}"
-export NUM_MASTERS=${ENCLAVE_NUM_MASTERS:-3}
-export NUM_WORKERS=0
-export NUM_EXTRA_WORKERS=${ENCLAVE_NUM_LANDINGZONE:-1}
-export PROVISIONING_NETWORK=${ENCLAVE_BMC_NETWORK:-100.64.1.0/24}
-export EXTERNAL_SUBNET_V4=${ENCLAVE_CLUSTER_NETWORK:-192.168.2.0/24}
-export WORKING_DIR=${WORKING_DIR}
-EOF
-    chmod +x "$CONFIG_FILE"
-    info "Created minimal config at: $CONFIG_FILE"
-fi
-
-# Run dev-scripts cleanup and network teardown under lock to prevent conflicts with parallel runners
-# Must run dev-scripts first - it needs networks to exist for proper VM cleanup
-# Then immediately clean up networks under the same lock to prevent races
-info "Running dev-scripts cleanup and network teardown (under lock)..."
-
-if "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" bash -c "
-    # Run dev-scripts cleanup
-    cd ${DEV_SCRIPTS_PATH} && CONFIG=${CONFIG_NAME} make clean
-    CLEANUP_EXIT=\$?
-
-    # Clean up libvirt networks (after dev-scripts completes, but still under lock)
-    echo 'Cleaning up libvirt networks for cluster: ${CLUSTER_NAME}...'
-    for net in \$(sudo virsh net-list --all --name 2>/dev/null | grep '^${CLUSTER_NAME}-' || true); do
-        echo \"  Found network: \$net\"
-
-        # Disable autostart first
-        if sudo virsh net-info \"\$net\" 2>/dev/null | grep -q 'Autostart:.*yes'; then
-            echo \"    Disabling autostart for: \$net\"
-            sudo virsh net-autostart --disable \"\$net\" 2>/dev/null || echo \"    Failed to disable autostart for \$net\"
-        fi
-
-        # Destroy if active
-        if sudo virsh net-info \"\$net\" 2>/dev/null | grep -q 'Active:.*yes'; then
-            echo \"    Destroying active network: \$net\"
-            sudo virsh net-destroy \"\$net\" 2>/dev/null || echo \"    Failed to destroy \$net\"
-        fi
-
-        # Undefine
-        echo \"    Undefining network: \$net\"
-        sudo virsh net-undefine \"\$net\" 2>/dev/null || echo \"    Failed to undefine \$net\"
-    done
-
-    exit \$CLEANUP_EXIT
-"; then
-    success "dev-scripts cleanup and network teardown completed successfully"
-else
-    warning "dev-scripts cleanup reported failure, but continuing..."
-fi
-
-# Clean up orphaned bridge interfaces
-# Support both old naming (-b, -c) and new naming (-p, -e) during transition
-info "Cleaning up bridge interfaces for cluster: ${CLUSTER_NAME}..."
-for bridge in $(ip link show type bridge 2>/dev/null | grep -oE "${CLUSTER_NAME}-[bcpe]" || true); do
-    info "  Removing bridge: $bridge"
-
-    # Check if NetworkManager is managing this bridge
-    if nmcli con show 2>/dev/null | grep -q "$bridge"; then
-        info "    Removing NetworkManager connection for: $bridge"
-        sudo nmcli con delete "$bridge" 2>/dev/null || true
-    fi
-
-    sudo ip link set "$bridge" down 2>/dev/null || true
-    sudo ip link delete "$bridge" 2>/dev/null || true
-done
-
-# Also check for any orphaned bridges from failed cleanups
-# These bridges have no VMs attached (NO-CARRIER) but still exist
-info "Checking for orphaned cluster bridges from previous runs..."
-ORPHANED_BRIDGES=$(ip link show type bridge 2>/dev/null | grep -E "eci-[a-f0-9]+-[pe]" | grep -oE "eci-[a-f0-9]+-[pe]" || true)
-for bridge in $ORPHANED_BRIDGES; do
-    # Skip if it's the current cluster (already handled above)
-    if [[ "$bridge" =~ ^${CLUSTER_NAME}- ]]; then
-        continue
-    fi
-
-    # Check if bridge has NO-CARRIER (no VMs attached) - safe to remove
-    if ip link show "$bridge" 2>/dev/null | grep -q "NO-CARRIER"; then
-        warning "  Found orphaned bridge from previous cluster: $bridge (removing)"
-
-        # Remove from NetworkManager if managed
-        if nmcli con show 2>/dev/null | grep -q "$bridge"; then
-            sudo nmcli con delete "$bridge" 2>/dev/null || true
-        fi
-
-        sudo ip link set "$bridge" down 2>/dev/null || true
-        sudo ip link delete "$bridge" 2>/dev/null || true
+_DESTROY_OK=false
+if [ -f "${VM_INFRA}" ]; then
+    if ENCLAVE_CLUSTER_NAME="${CLUSTER_NAME}" \
+       ENCLAVE_BMC_NETWORK="${ENCLAVE_BMC_NETWORK:-100.64.1.0/24}" \
+       ENCLAVE_CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK:-192.168.1.0/24}" \
+       ENCLAVE_DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}" \
+       ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}" \
+       WORKING_DIR="${WORKING_DIR}" \
+         sudo -E python3 "${VM_INFRA}" destroy; then
+        _DESTROY_OK=true
     else
-        warning "  Found bridge from other cluster with active VMs: $bridge (skipping)"
+        warning "vm_infra.py destroy reported errors — running manual virsh fallback"
     fi
-done
-
-# Determine cluster directory (will be removed later, after pools are cleaned up)
-# Support both new structure (BASE_WORKING_DIR/clusters/CLUSTER_NAME) and old structure (WORKING_DIR)
-CLUSTER_DIR_TO_REMOVE=""
-if [ -n "${WORKING_DIR:-}" ]; then
-    # Determine the actual cluster directory
-    # If WORKING_DIR ends with /clusters/${CLUSTER_NAME}, use it directly
-    # Otherwise, check if BASE_WORKING_DIR is set and that directory actually exists
-    if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-        CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
-    elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
-        CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
-    fi
-
-    # For old structure, clean up individual files (new structure will remove entire dir later)
-    if [ -z "$CLUSTER_DIR_TO_REMOVE" ]; then
-        # Old structure - clean up individual files
-        # Remove cluster-specific environment file
-        ENV_FILE="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-        if [ -f "$ENV_FILE" ]; then
-            info "Removing environment file: $ENV_FILE"
-            rm -f "$ENV_FILE"
-        fi
-
-        # Always remove environment.json symlink/file
-        if [ -e "${WORKING_DIR}/environment.json" ]; then
-            if [ -L "${WORKING_DIR}/environment.json" ]; then
-                info "Removing environment.json symlink"
-            else
-                info "Removing environment.json file"
-            fi
-            rm -f "${WORKING_DIR}/environment.json"
-        fi
-
-        # Remove cluster-specific private-mirror file (leftover from oc-mirror)
-        PRIVATE_MIRROR_FILE="${WORKING_DIR}/private-mirror-${CLUSTER_NAME}.json"
-        if [ -f "$PRIVATE_MIRROR_FILE" ]; then
-            info "Removing private-mirror file: $PRIVATE_MIRROR_FILE"
-            rm -f "$PRIVATE_MIRROR_FILE"
-        fi
-    fi
-
-    # Also check HOME directory for private-mirror files (oc-mirror creates these in PWD)
-    if [ -n "${HOME:-}" ]; then
-        PRIVATE_MIRROR_HOME="${HOME}/private-mirror-${CLUSTER_NAME}.json"
-        if [ -f "$PRIVATE_MIRROR_HOME" ]; then
-            info "Removing private-mirror file from HOME: $PRIVATE_MIRROR_HOME"
-            rm -f "$PRIVATE_MIRROR_HOME"
-        fi
-
-        # Also remove orphaned private-mirror files from previous clusters
-        # These accumulate in HOME directory from failed CI runs
-        # Only remove files from clusters that no longer have active VMs (to avoid parallel run conflicts)
-        info "Checking for orphaned private-mirror files in HOME..."
-        ORPHANED_MIRRORS=$(find "${HOME}" -maxdepth 1 -name "private-mirror-eci-*.json" 2>/dev/null || true)
-        if [ -n "$ORPHANED_MIRRORS" ]; then
-            ORPHANED_COUNT=0
-            # Use here-string to avoid subshell and preserve ORPHANED_COUNT
-            while IFS= read -r mirror_file; do
-                if [ -z "$mirror_file" ] || [ ! -f "$mirror_file" ]; then
-                    continue
-                fi
-
-                # Extract cluster ID from filename: private-mirror-eci-XXXXXXXX.json -> eci-XXXXXXXX
-                ORPHAN_CLUSTER=$(basename "$mirror_file" | sed 's/private-mirror-\(eci-[^.]*\)\.json/\1/')
-
-                # Check if this cluster has any active VMs
-                if sudo virsh list --all 2>/dev/null | grep -q "$ORPHAN_CLUSTER"; then
-                    # Cluster still has VMs - skip (might be from parallel run)
-                    continue
-                fi
-
-                # No VMs found - safe to remove
-                info "  Removing orphaned file from completed cluster: $(basename "$mirror_file")"
-                rm -f "$mirror_file"
-                ORPHANED_COUNT=$((ORPHANED_COUNT + 1))
-            done <<< "$ORPHANED_MIRRORS"
-
-            if [ $ORPHANED_COUNT -gt 0 ]; then
-                success "Removed $ORPHANED_COUNT orphaned private-mirror files"
-            fi
-        fi
-    fi
+else
+    warning "vm_infra.py not found — falling back to manual virsh teardown"
 fi
 
-# Remove config file after successful cleanup
-if [ -f "$CONFIG_FILE" ]; then
-    info "Removing config file: $CONFIG_FILE"
-    rm -f "$CONFIG_FILE"
+if [ "${_DESTROY_OK}" = "false" ]; then
+    # Force-destroy any leftover VMs
+    for dom in $(sudo virsh list --all --name 2>/dev/null | grep "^${CLUSTER_NAME}_" || true); do
+        [ -z "$dom" ] && continue
+        info "  Destroying: $dom"
+        sudo virsh destroy "$dom" 2>/dev/null || true
+        sudo virsh undefine "$dom" --nvram --remove-all-storage 2>/dev/null \
+            || sudo virsh undefine "$dom" --remove-all-storage 2>/dev/null \
+            || warning "  Failed to undefine $dom"
+    done
+    # Destroy leftover networks
+    for net in $(sudo virsh net-list --all --name 2>/dev/null | grep "^${CLUSTER_NAME}-" || true); do
+        [ -z "$net" ] && continue
+        sudo virsh net-destroy "$net" 2>/dev/null || true
+        sudo virsh net-undefine "$net" 2>/dev/null || true
+        info "  Removed network: $net"
+    done
 fi
 
-# Stop and remove cluster-specific sushy-tools container
+# ─── sushy-tools container ────────────────────────────────────────────────────
 SUSHY_CONTAINER="sushy-tools-${CLUSTER_NAME}"
 if sudo podman ps -a --format '{{.Names}}' | grep -q "^${SUSHY_CONTAINER}$"; then
-    info "Stopping and removing sushy-tools container for cluster: ${CLUSTER_NAME}"
+    info "Stopping sushy-tools container: ${SUSHY_CONTAINER}"
     sudo podman stop "$SUSHY_CONTAINER" 2>/dev/null || warning "Failed to stop $SUSHY_CONTAINER"
     sudo podman rm "$SUSHY_CONTAINER" 2>/dev/null || warning "Failed to remove $SUSHY_CONTAINER"
 else
-    info "No sushy-tools container found for cluster ${CLUSTER_NAME}"
+    info "No sushy-tools container for cluster ${CLUSTER_NAME}"
 fi
 
-# Remove firewall rule for cluster-specific sushy-tools port
+# ─── Firewall rules ───────────────────────────────────────────────────────────
 if sudo firewall-cmd --state >/dev/null 2>&1; then
-    # Calculate the BMC port for this cluster
-    if [ -n "${PROVISIONING_NETWORK:-}" ]; then
-        SUBNET_ID=$(echo "$PROVISIONING_NETWORK" | awk -F. '{print $3}')
+    if [ -n "${ENCLAVE_BMC_NETWORK:-}" ]; then
+        SUBNET_ID=$(echo "$ENCLAVE_BMC_NETWORK" | awk -F. '{print $3}')
         BMC_PORT="$((8000 + SUBNET_ID))"
-
-        info "Removing firewall port ${BMC_PORT}/tcp for cluster ${CLUSTER_NAME}"
-        # Remove from all zones (we don't know which zone it was added to)
+        info "Removing firewall port ${BMC_PORT}/tcp"
         for zone in $(sudo firewall-cmd --get-active-zones | grep -v "^\s" | grep -v "^$"); do
             sudo firewall-cmd --zone="$zone" --remove-port="${BMC_PORT}/tcp" 2>/dev/null || true
             sudo firewall-cmd --zone="$zone" --remove-port="${BMC_PORT}/tcp" --permanent 2>/dev/null || true
@@ -257,313 +90,94 @@ if sudo firewall-cmd --state >/dev/null 2>&1; then
     fi
 fi
 
-# Clean up volume files for this cluster
-# Volume files are in cluster-specific pool: /opt/dev-scripts/clusters/eci-XXXXXXXX/pool/
-# Determine the pool directory based on cluster structure
-if [ -n "${WORKING_DIR:-}" ]; then
-    # Use cluster-specific pool path for new structure
-    if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-        POOL_DIR="${WORKING_DIR}/pool"
-    elif [ -n "${BASE_WORKING_DIR:-}" ]; then
-        POOL_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}/pool"
-    else
-        # Fallback to old shared pool structure
-        POOL_DIR="${WORKING_DIR}/pool"
+# ─── Orphaned bridge interfaces ───────────────────────────────────────────────
+info "Cleaning up orphaned bridge interfaces for: ${CLUSTER_NAME}..."
+for bridge in $(ip link show type bridge 2>/dev/null | grep -oE "${CLUSTER_NAME}-[a-z]" || true); do
+    info "  Removing bridge: $bridge"
+    if nmcli con show 2>/dev/null | grep -q "$bridge"; then
+        sudo nmcli con delete "$bridge" 2>/dev/null || true
     fi
-
-    if [ -d "$POOL_DIR" ]; then
-        info "Cleaning up volume files for cluster: ${CLUSTER_NAME}"
-
-        # Find and remove all volume files for this cluster
-        # Support both underscore and hyphen patterns (e.g., nc-20260308_master_0.qcow2 and nc-20260308-master-0.qcow2)
-        VOLUME_FILES=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}-*.img" -o -name "${CLUSTER_NAME}_*.qcow2" -o -name "${CLUSTER_NAME}-*.qcow2" \) 2>/dev/null || true)
-
-        if [ -n "$VOLUME_FILES" ]; then
-            VOLUME_COUNT=$(echo "$VOLUME_FILES" | wc -l)
-            info "  Found $VOLUME_COUNT volume files to remove"
-
-            while IFS= read -r vol_file; do
-                [ -z "$vol_file" ] && continue
-                info "    Removing: $(basename "$vol_file")"
-                sudo rm -f "$vol_file" || warning "    Failed to remove $vol_file"
-            done <<< "$VOLUME_FILES"
-
-            # Refresh the storage pools to update libvirt's volume list
-            # The pool might be cluster-specific or shared (oooq_pool)
-            info "  Refreshing libvirt storage pools..."
-            sudo virsh pool-refresh "${CLUSTER_NAME}" &>/dev/null || true
-            sudo virsh pool-refresh "${CLUSTER_NAME}-lz" &>/dev/null || true
-            sudo virsh pool-refresh "${CLUSTER_NAME}_pool" &>/dev/null || true
-            sudo virsh pool-refresh "oooq_pool" &>/dev/null || true
-        else
-            info "  No volume files found for cleanup"
-        fi
-    fi
-fi
-
-# Clean up cluster-specific libvirt storage pools
-# Find all pools that point to our cluster directory, regardless of name
-# Dev-scripts may create pools with various names (oooq_pool, ${CLUSTER_NAME}, etc.)
-# and various paths (pool/, landing-zone/, etc.)
-CLUSTER_POOL_PATHS=()
-if [ -n "${WORKING_DIR:-}" ]; then
-    if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-        CLUSTER_POOL_PATHS+=("${WORKING_DIR}/pool")
-        CLUSTER_POOL_PATHS+=("${WORKING_DIR}/landing-zone/${CLUSTER_NAME}")
-    elif [ -n "${BASE_WORKING_DIR:-}" ]; then
-        CLUSTER_POOL_PATHS+=("${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}/pool")
-        CLUSTER_POOL_PATHS+=("${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}/landing-zone/${CLUSTER_NAME}")
-    fi
-fi
-
-# Build list of pools to clean up
-POOLS_TO_CLEAN=()
-
-# Add standard pool names we might have created
-# Dev-scripts may append -1, -lz, or _pool suffixes
-# Note: Shared pools like oooq_pool are only added after path verification below
-for POOL_NAME in "${CLUSTER_NAME}" "${CLUSTER_NAME}-1" "${CLUSTER_NAME}-lz" "${CLUSTER_NAME}_pool"; do
-    if sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
-        POOLS_TO_CLEAN+=("$POOL_NAME")
-    fi
+    sudo ip link set "$bridge" down 2>/dev/null || true
+    sudo ip link delete "$bridge" 2>/dev/null || true
 done
 
-# Also find any pool pointing to our cluster-specific paths (handles oooq_pool, eci-XXXX-1, etc.)
-if [ ${#CLUSTER_POOL_PATHS[@]} -gt 0 ]; then
-    while IFS= read -r pool; do
-        if [ -n "$pool" ]; then
-            POOL_PATH_CHECK=$(sudo virsh pool-dumpxml "$pool" 2>/dev/null | grep -oP '(?<=<path>).*(?=</path>)' || echo "")
-            for cluster_path in "${CLUSTER_POOL_PATHS[@]}"; do
-                if [ "$POOL_PATH_CHECK" = "$cluster_path" ]; then
-                    # Check if not already in the list
-                    if [[ ! " ${POOLS_TO_CLEAN[*]} " =~ \ $pool\  ]]; then
-                        info "Found pool '$pool' pointing to cluster path: $cluster_path"
-                        POOLS_TO_CLEAN+=("$pool")
-                    fi
-                    break
-                fi
-            done
-        fi
-    done < <(sudo virsh pool-list --all --name)
+# ─── Working directory cleanup ────────────────────────────────────────────────
+CLUSTER_DIR_TO_REMOVE=""
+if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
+    CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
+elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
+    CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
 fi
 
-for POOL_NAME in "${POOLS_TO_CLEAN[@]}"; do
-    if sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
-        info "Removing libvirt storage pool: $POOL_NAME"
-
-        # Disable autostart first
-        if sudo virsh pool-info "$POOL_NAME" 2>/dev/null | grep -q "Autostart:.*yes"; then
-            info "  Disabling autostart for: $POOL_NAME"
-            sudo virsh pool-autostart --disable "$POOL_NAME" 2>/dev/null || warning "  Failed to disable autostart for $POOL_NAME"
-        fi
-
-        # Delete all volumes in the pool before destroying it
-        while IFS= read -r vol; do
-            [ -z "$vol" ] && continue
-            info "  Deleting volume: $vol"
-            sudo virsh vol-delete --pool "$POOL_NAME" "$vol" 2>/dev/null || warning "  Failed to delete volume $vol"
-        done < <(sudo virsh vol-list "$POOL_NAME" 2>/dev/null | awk 'NR>2 && NF {print $1}')
-
-        # Destroy if running
-        if sudo virsh pool-info "$POOL_NAME" 2>/dev/null | grep -qE "State:[[:space:]]+running$"; then
-            info "  Destroying running pool: $POOL_NAME"
-            sudo virsh pool-destroy "$POOL_NAME" 2>/dev/null || warning "  Failed to destroy $POOL_NAME"
-        fi
-
-        # Undefine
-        info "  Undefining pool: $POOL_NAME"
-        sudo virsh pool-undefine "$POOL_NAME" 2>/dev/null || warning "  Failed to undefine $POOL_NAME"
-    fi
-done
-
-# Clean up cluster-specific landing-zone directory (in shared BASE_WORKING_DIR)
-# Must happen AFTER storage pools are cleaned up, as pools may reference files in this directory
-BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
-if [ -n "${BASE_DIR}" ]; then
-    LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
-    if [ -d "$LZ_DIR" ]; then
-        info "Removing landing-zone directory: $LZ_DIR"
-        sudo rm -rf "$LZ_DIR" || warning "Failed to remove landing-zone directory"
-    fi
-fi
-
-# Remove cluster-specific working directory (deferred until after pools are cleaned up)
-# This must happen AFTER storage pools are undefined, otherwise the directory removal may fail
 if [ -n "${CLUSTER_DIR_TO_REMOVE:-}" ] && [ -d "$CLUSTER_DIR_TO_REMOVE" ]; then
-    info "Removing cluster-specific working directory: $CLUSTER_DIR_TO_REMOVE"
+    info "Removing cluster working directory: $CLUSTER_DIR_TO_REMOVE"
     sudo rm -rf "$CLUSTER_DIR_TO_REMOVE" || warning "Failed to remove cluster directory"
 fi
 
-# Release allocated subnet
+# ─── Landing-zone directory ───────────────────────────────────────────────────
+BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/clusters/${CLUSTER_NAME}}}"
+LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
+if [ -d "$LZ_DIR" ]; then
+    info "Removing landing-zone directory: $LZ_DIR"
+    sudo rm -rf "$LZ_DIR" || warning "Failed to remove landing-zone directory"
+fi
+
+# ─── Orphaned private-mirror files ───────────────────────────────────────────
+if [ -n "${HOME:-}" ]; then
+    PRIVATE_MIRROR_HOME="${HOME}/private-mirror-${CLUSTER_NAME}.json"
+    if [ -f "$PRIVATE_MIRROR_HOME" ]; then
+        info "Removing private-mirror file: $PRIVATE_MIRROR_HOME"
+        rm -f "$PRIVATE_MIRROR_HOME"
+    fi
+    # Remove orphaned private-mirror files from clusters with no active VMs
+    if VIRSH_ALL=$(sudo virsh list --all 2>/dev/null); then
+        while IFS= read -r mirror_file; do
+            [ -z "$mirror_file" ] || [ ! -f "$mirror_file" ] && continue
+            ORPHAN_CLUSTER=$(basename "$mirror_file" | sed 's/private-mirror-\(eci-[^.]*\)\.json/\1/')
+            echo "${VIRSH_ALL}" | grep -qF "$ORPHAN_CLUSTER" && continue
+            info "  Removing orphaned: $(basename "$mirror_file")"
+            rm -f "$mirror_file"
+        done < <(find "${HOME}" -maxdepth 1 -name "private-mirror-eci-*.json" 2>/dev/null || true)
+    else
+        warning "Could not query libvirt — skipping orphaned mirror file cleanup"
+    fi
+fi
+
+# ─── Subnet release ───────────────────────────────────────────────────────────
 if [ -f "${SCRIPT_DIR}/../setup/allocate_subnet.sh" ]; then
     info "Releasing allocated subnet for cluster: ${CLUSTER_NAME}"
-
-    # Export variables for subprocess
     export ENCLAVE_CLUSTER_NAME="${CLUSTER_NAME}"
-    BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
+    BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/clusters/${CLUSTER_NAME}}}"
     export WORKING_DIR="${BASE_DIR}"
-
-    "${SCRIPT_DIR}/../setup/allocate_subnet.sh" release || warning "Failed to release subnet (may not have been allocated)"
+    "${SCRIPT_DIR}/../setup/allocate_subnet.sh" release || warning "Failed to release subnet"
 fi
 
 success "=========================================="
 success "Cleanup complete for cluster: ${CLUSTER_NAME}"
 success "=========================================="
 
-# Verify cleanup
+# ─── Verification ─────────────────────────────────────────────────────────────
 info ""
 info "Verifying cleanup..."
 
-# Check for leftover VMs — force-destroy if found (safety net for failed dev-scripts cleanup)
-LEFTOVER_VMS=$(sudo virsh list --all --name 2>/dev/null | grep -E "^${CLUSTER_NAME}" || true)
+LEFTOVER_VMS=$(sudo virsh list --all --name 2>/dev/null | grep -E "^${CLUSTER_NAME}_" || true)
 if [ -n "$LEFTOVER_VMS" ]; then
-    warning "Found leftover VMs after cleanup — force-destroying..."
-    "${SCRIPT_DIR}/../utils/with_libvirt_lock.sh" bash -c "
-        while IFS= read -r vm; do
-            [ -z \"\$vm\" ] && continue
-            echo \"  Destroying: \$vm\"
-            sudo virsh destroy \"\$vm\" 2>/dev/null || true
-            sudo virsh undefine \"\$vm\" --nvram --remove-all-storage 2>/dev/null \\
-                || sudo virsh undefine \"\$vm\" --remove-all-storage 2>/dev/null \\
-                || echo \"  Failed to undefine \$vm\"
-        done <<< \"${LEFTOVER_VMS}\"
-    "
+    warning "Found leftover VMs after cleanup:"
+    echo "$LEFTOVER_VMS"
 else
-    success "No leftover VMs found"
+    success "No leftover VMs"
 fi
 
-# Check for leftover networks
 LEFTOVER_NETS=$(sudo virsh net-list --all 2>/dev/null | grep -E "${CLUSTER_NAME}" || true)
 if [ -n "$LEFTOVER_NETS" ]; then
-    warning "Found leftover networks for cluster ${CLUSTER_NAME}:"
+    warning "Found leftover networks:"
     echo "$LEFTOVER_NETS"
 else
-    success "No leftover networks found"
+    success "No leftover networks"
 fi
 
-# Check for leftover cluster-specific working directory
-BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR}}"
-if [ -n "${BASE_DIR}" ]; then
-    CLUSTER_WORKING_DIR="${BASE_DIR}/clusters/${CLUSTER_NAME}"
-    if [ -d "$CLUSTER_WORKING_DIR" ]; then
-        warning "Found leftover cluster working directory: $CLUSTER_WORKING_DIR"
-    else
-        success "No leftover cluster working directory found"
-    fi
-fi
-
-# Check for leftover environment files (old structure)
-if [ -n "${WORKING_DIR:-}" ]; then
-    LEFTOVER_ENVS=$(ls -1 "${WORKING_DIR}"/environment*-${CLUSTER_NAME}.json 2>/dev/null || true)
-    if [ -n "$LEFTOVER_ENVS" ]; then
-        warning "Found leftover environment files (old structure):"
-        echo "$LEFTOVER_ENVS"
-    else
-        success "No leftover environment files found (old structure)"
-    fi
-fi
-
-# Check for leftover landing-zone directory
-if [ -n "${BASE_DIR}" ]; then
-    LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
-    if [ -d "$LZ_DIR" ]; then
-        warning "Found leftover landing-zone directory: $LZ_DIR"
-    else
-        success "No leftover landing-zone directory found"
-    fi
-fi
-
-# Check for leftover volume files in cluster-specific pool directory
-if [ -n "${WORKING_DIR:-}" ]; then
-    # Use cluster-specific pool path
-    if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-        POOL_DIR="${WORKING_DIR}/pool"
-    elif [ -n "${BASE_WORKING_DIR:-}" ]; then
-        POOL_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}/pool"
-    else
-        POOL_DIR="${WORKING_DIR}/pool"
-    fi
-
-    if [ -d "$POOL_DIR" ]; then
-        LEFTOVER_VOLS=$(find "$POOL_DIR" -maxdepth 1 -type f \( -name "${CLUSTER_NAME}_*.img" -o -name "${CLUSTER_NAME}-*.img" -o -name "${CLUSTER_NAME}_*.qcow2" -o -name "${CLUSTER_NAME}-*.qcow2" \) 2>/dev/null || true)
-        if [ -n "$LEFTOVER_VOLS" ]; then
-            warning "Found leftover volume files in pool:"
-            echo "$LEFTOVER_VOLS" | while read -r vol; do
-                [ -n "$vol" ] && echo "    $(basename "$vol")"
-            done
-        else
-            success "No leftover volume files found"
-        fi
-    else
-        success "Pool directory does not exist"
-    fi
-fi
-
-# Check for leftover pool definitions (by name or by path)
-LEFTOVER_POOLS=""
-
-# Check standard pool names (including -1 suffix from dev-scripts)
-for POOL_NAME in "${CLUSTER_NAME}" "${CLUSTER_NAME}-1" "${CLUSTER_NAME}-lz" "${CLUSTER_NAME}_pool"; do
-    if sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
-        LEFTOVER_POOLS="${LEFTOVER_POOLS}${POOL_NAME} "
-    fi
-done
-
-# Check for any pool pointing to cluster paths (handles oooq_pool, eci-XXXX-1, etc.)
-if [ ${#CLUSTER_POOL_PATHS[@]} -gt 0 ]; then
-    while IFS= read -r pool; do
-        if [ -n "$pool" ]; then
-            POOL_PATH_CHECK=$(sudo virsh pool-dumpxml "$pool" 2>/dev/null | grep -oP '(?<=<path>).*(?=</path>)' || echo "")
-            for cluster_path in "${CLUSTER_POOL_PATHS[@]}"; do
-                if [ "$POOL_PATH_CHECK" = "$cluster_path" ]; then
-                    # Add if not already in list
-                    if [[ ! "$LEFTOVER_POOLS" =~ $pool ]]; then
-                        LEFTOVER_POOLS="${LEFTOVER_POOLS}${pool} "
-                    fi
-                    break
-                fi
-            done
-        fi
-    done < <(sudo virsh pool-list --all --name)
-fi
-
-if [ -n "$LEFTOVER_POOLS" ]; then
-    warning "Found leftover pool definition(s): $LEFTOVER_POOLS"
+if [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
+    warning "Leftover cluster working directory: ${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
 else
-    success "No leftover pool definitions found"
-fi
-
-# Check for leftover private-mirror files (current cluster and any orphans)
-LEFTOVER_MIRROR_FILES=""
-if [ -n "${BASE_DIR}" ]; then
-    CLUSTER_WORKING_DIR="${BASE_DIR}/clusters/${CLUSTER_NAME}"
-    if [ -f "${CLUSTER_WORKING_DIR}/private-mirror-${CLUSTER_NAME}.json" ]; then
-        LEFTOVER_MIRROR_FILES="${CLUSTER_WORKING_DIR}/private-mirror-${CLUSTER_NAME}.json "
-    fi
-fi
-if [ -n "${WORKING_DIR:-}" ] && [ -f "${WORKING_DIR}/private-mirror-${CLUSTER_NAME}.json" ]; then
-    LEFTOVER_MIRROR_FILES="${LEFTOVER_MIRROR_FILES}${WORKING_DIR}/private-mirror-${CLUSTER_NAME}.json "
-fi
-if [ -n "${HOME:-}" ]; then
-    # Check for current cluster's file
-    if [ -f "${HOME}/private-mirror-${CLUSTER_NAME}.json" ]; then
-        LEFTOVER_MIRROR_FILES="${LEFTOVER_MIRROR_FILES}${HOME}/private-mirror-${CLUSTER_NAME}.json "
-    fi
-
-    # Check for any orphaned private-mirror files from other clusters
-    ORPHANED_HOME_MIRRORS=$(find "${HOME}" -maxdepth 1 -name "private-mirror-eci-*.json" 2>/dev/null || true)
-    if [ -n "$ORPHANED_HOME_MIRRORS" ]; then
-        LEFTOVER_MIRROR_FILES="${LEFTOVER_MIRROR_FILES}${ORPHANED_HOME_MIRRORS}"
-    fi
-fi
-
-if [ -n "$LEFTOVER_MIRROR_FILES" ]; then
-    warning "Found leftover private-mirror files:"
-    echo "$LEFTOVER_MIRROR_FILES" | tr ' ' '\n' | while IFS= read -r file; do
-        if [ -n "$file" ] && [ -f "$file" ]; then
-            warning "  $file"
-        fi
-    done
-else
-    success "No leftover private-mirror files found"
+    success "No leftover cluster working directory"
 fi

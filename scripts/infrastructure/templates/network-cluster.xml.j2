@@ -1,0 +1,20 @@
+<network>
+  <name>{{ name }}</name>
+  <bridge name="{{ name }}"/>
+{% if forward_mode != 'none' %}
+  <forward mode='{{ forward_mode }}'/>
+{% endif %}
+{% if dns_forwarder is defined %}
+  <dns>
+    <forwarder addr='{{ dns_forwarder }}'/>
+  </dns>
+{% endif %}
+  <ip address="{{ address }}" prefix="{{ prefix }}">
+    <dhcp>
+      <range start="{{ dhcp_start }}" end="{{ dhcp_end }}"/>
+{% for host in static_hosts %}
+      <host mac="{{ host.mac }}" name="{{ host.name }}" ip="{{ host.ip }}"/>
+{% endfor %}
+    </dhcp>
+  </ip>
+</network>

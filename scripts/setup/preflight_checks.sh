@@ -15,7 +15,6 @@
 #   --deployment-mode MODE      - Display deployment mode in output
 #
 # Environment Variables:
-#   DEV_SCRIPTS_PATH - Path to dev-scripts installation (required)
 #   WORKING_DIR - Cluster working directory (required)
 #   PULL_SECRET - OpenShift pull secret (required if --check-pull-secret)
 
@@ -81,13 +80,6 @@ output ""
 
 # Check required environment variables
 output "### Environment Variables"
-
-if [ -z "${DEV_SCRIPTS_PATH:-}" ]; then
-    output "${RED}❌ DEV_SCRIPTS_PATH not set${NC}"
-    FAILED=1
-else
-    output "${GREEN}✅ DEV_SCRIPTS_PATH: $DEV_SCRIPTS_PATH${NC}"
-fi
 
 # Check for BASE_WORKING_DIR or WORKING_DIR
 # BASE_WORKING_DIR is used for initial setup, WORKING_DIR is set later by setup-working-dir
