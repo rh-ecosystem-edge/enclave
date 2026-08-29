@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "The Red Hat Sovereign Enclave (RHSE)"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = "==3.12.*"
+requires-python = "==3.14.*"
 dependencies = [
     "ansible-core ==2.21.3",
     "cachetools ==7.1.7",
