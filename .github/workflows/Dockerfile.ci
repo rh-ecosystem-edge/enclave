@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/ubi@sha256:145a2d6e7e224d34fbe601832e3f133c11560e15b4074fad75c449387bb105a0
+FROM registry.access.redhat.com/ubi10/ubi@sha256:bc5a42833e4c84dbf7a29bcd4a0be414addad69e16210c2f0eb73986b356793c
 
 # Configure DNS
 RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf && \
