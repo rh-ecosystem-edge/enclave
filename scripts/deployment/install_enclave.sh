@@ -124,7 +124,7 @@ info "Step 5: Generating Enclave Lab configuration (config/global.yaml, config/c
 # setup_ansible.sh installs uv on the Landing Zone VM; here we ensure the
 # runner also has uv so generate_enclave_vars.sh and generate_ironic_cert.sh
 # can call 'uv run --group cert-gen enclave-cert-gen' without SSH.
-UV_VERSION="0.12.6"
+UV_VERSION="0.12.7"
 current_uv_version=$(uv --version 2>/dev/null | awk '{print $2}' || true)
 if [ "${current_uv_version}" != "${UV_VERSION}" ]; then
     info "Installing uv ${UV_VERSION} locally..."
