@@ -39,7 +39,8 @@
       ],
       "depNameTemplate": "osac-project/charts/osac",
       "datasourceTemplate": "docker",
-      "registryUrlTemplate": "https://ghcr.io"
+      "registryUrlTemplate": "https://ghcr.io",
+      "versioningTemplate": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(-nightly\\.(?<build>\\d+)\\.[a-f0-9]+\\.(?<revision>\\d+)\\.\\d+)?$"
     }
   ],
   "ansible-galaxy": {
