@@ -166,7 +166,7 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
         cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.29", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with("4.20.32", dry_run, 180, 60)
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
