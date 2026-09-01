@@ -14,6 +14,8 @@ PEM_BLOCK_RE = re.compile(
     r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
     re.DOTALL,
 )
+# END line immediately followed by another PEM block without a newline between them.
+PEM_GLUED_BOUNDARY_RE = re.compile(r"-----END [A-Z0-9 ]+-----(?!\r?\n|$)")
 
 # OpenSSL always outputs English month abbreviations in notBefore/notAfter regardless
 # of the system locale. Python's %b in strptime follows LC_TIME, so it would reject
@@ -87,6 +89,18 @@ def openssl_verify(ca_pem: str, cert_pem: str) -> bool:
 def pem_blocks(pem_text: str) -> list[str]:
     """Return all PEM certificate blocks found in pem_text, in order."""
     return PEM_BLOCK_RE.findall(pem_text or "")
+
+
+def pem_glued_boundary_issue(field: str, pem: str) -> str | None:
+    """Return an issue string when PEM blocks in pem are glued without a newline."""
+    if not pem:
+        return None
+    if PEM_GLUED_BOUNDARY_RE.search(pem):
+        return (
+            f"{field}: PEM blocks must be separated by a newline "
+            f"(found -----END...----- immediately followed by -----BEGIN...-----)"
+        )
+    return None
 
 
 def is_self_signed(cert_pem: str) -> bool:

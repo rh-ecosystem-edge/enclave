@@ -321,6 +321,24 @@ def test_check_raises_when_chain_has_content_but_no_pem_blocks(
         check_certificate_chains(str(path), "api", ["api.cluster.example.com"])
 
 
+def test_check_raises_when_pem_blocks_are_glued(tmp_path: Path) -> None:
+    """Raise before chain checks when PEM blocks lack a separating newline."""
+    glued_chain = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----\n"
+    )
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=glued_chain,
+        sslAPICertificateKey="fake-key\n",
+    )
+    with pytest.raises(
+        CertificateValidationError,
+        match="sslAPICertificateFullChain: PEM blocks must be separated by a newline",
+    ):
+        check_certificate_chains(str(path), "api", ["api.cluster.example.com"])
+
+
 def test_check_raises_on_missing_file() -> None:
     """Raise when the config file does not exist."""
     with pytest.raises(CertificateValidationError, match="cannot read"):

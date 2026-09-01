@@ -18,6 +18,7 @@ from enclave.tools.cert_utils import (
     is_self_signed,
     openssl_verify,
     pem_blocks,
+    pem_glued_boundary_issue,
 )
 from tests.cert_helpers import (
     generate_ca,
@@ -198,3 +199,39 @@ def test_cert_covers_hostname_mismatch(tmp_path: Path) -> None:
         tmp_path, ca_cert_path, ca_key_path, "Leaf", sans=["bar.example.com"]
     )
     assert cert_covers_hostname(leaf_pem, "foo.example.com") is False
+
+
+def test_pem_glued_boundary_issue_empty() -> None:
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", "") is None
+
+
+def test_pem_glued_boundary_issue_allows_missing_eof_newline() -> None:
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", pem) is None
+
+
+def test_pem_glued_boundary_issue_allows_properly_separated_blocks() -> None:
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----\n"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----"
+    )
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", pem) is None
+
+
+def test_pem_glued_boundary_issue_detects_internal_glue() -> None:
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----\n"
+    )
+    issue = pem_glued_boundary_issue("sslAPICertificateFullChain", pem)
+    assert issue is not None
+    assert "PEM blocks must be separated by a newline" in issue
+
+
+def test_pem_glued_boundary_issue_detects_cert_to_key_glue() -> None:
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+        "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n"
+    )
+    issue = pem_glued_boundary_issue("sslIngressCertificateFullChain", pem)
+    assert issue is not None

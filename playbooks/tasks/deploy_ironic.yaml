@@ -90,9 +90,16 @@
   become: "{{ metal3_persistent | default(false) | bool }}"
   containers.podman.podman_secret:
     name: metal3-ca-bundle
-    data: "{{ sslIngressCertificateFullChain + sslCACertificate | default('') }}"
+    data: "{{ ironic_ca_bundle }}"
     state: present
     force: false
+  vars:
+    ironic_ca_bundle: >-
+      {{ sslIngressCertificateFullChain
+         ~ ('\n' if sslIngressCertificateFullChain | length > 0
+                    and sslCACertificate | default('') | length > 0
+                    and sslIngressCertificateFullChain[-1:] != '\n' else '')
+         ~ (sslCACertificate | default('')) }}
   no_log: true
 
 
