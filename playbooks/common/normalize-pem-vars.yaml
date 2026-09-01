@@ -1,0 +1,16 @@
+---
+# Ensure PEM blobs end with exactly one trailing newline before secret writes
+# and PEM concatenation (tls.crt + tls.key, fullchain + CA).
+
+- name: Normalize PEM trailing newlines
+  ansible.builtin.set_fact:
+    "{{ item }}": "{{ lookup('ansible.builtin.vars', item).rstrip('\n') + '\n' }}"
+  when: lookup('ansible.builtin.vars', item, default='') | length > 0
+  loop:
+    - sslAPICertificateFullChain
+    - sslAPICertificateKey
+    - sslIngressCertificateFullChain
+    - sslIngressCertificateKey
+    - sslCACertificate
+    - ironicHTTPSCertificate
+    - ironicHTTPSKey

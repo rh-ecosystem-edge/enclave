@@ -15,6 +15,7 @@ from enclave.tools.cert_utils import (
     cert_covers_hostname,
     cert_key_pair_matches,
     cert_validity_window_ok,
+    ensure_pem_trailing_newline,
     is_self_signed,
     openssl_verify,
     pem_blocks,
@@ -198,3 +199,29 @@ def test_cert_covers_hostname_mismatch(tmp_path: Path) -> None:
         tmp_path, ca_cert_path, ca_key_path, "Leaf", sans=["bar.example.com"]
     )
     assert cert_covers_hostname(leaf_pem, "foo.example.com") is False
+
+
+def test_ensure_pem_trailing_newline_empty() -> None:
+    assert ensure_pem_trailing_newline("") == ""
+
+
+def test_ensure_pem_trailing_newline_adds_missing() -> None:
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    assert ensure_pem_trailing_newline(pem) == pem + "\n"
+
+
+def test_ensure_pem_trailing_newline_preserves_single() -> None:
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+    assert ensure_pem_trailing_newline(pem) == pem
+
+
+def test_ensure_pem_trailing_newline_strips_extra() -> None:
+    pem = "-----END CERTIFICATE-----\n\n"
+    assert ensure_pem_trailing_newline(pem) == "-----END CERTIFICATE-----\n"
+
+
+def test_ensure_pem_trailing_newline_concat_does_not_glue_cert_and_key() -> None:
+    fullchain = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    key = "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----"
+    joined = ensure_pem_trailing_newline(fullchain) + ensure_pem_trailing_newline(key)
+    assert "-----END CERTIFICATE----------BEGIN" not in joined

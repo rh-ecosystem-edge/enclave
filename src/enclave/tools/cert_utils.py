@@ -89,6 +89,17 @@ def pem_blocks(pem_text: str) -> list[str]:
     return PEM_BLOCK_RE.findall(pem_text or "")
 
 
+def ensure_pem_trailing_newline(pem: str) -> str:
+    """Return pem with exactly one trailing newline.
+
+    Empty input stays empty. Extra trailing newlines are collapsed to one so
+    concatenated PEM blobs do not glue END/BEGIN headers.
+    """
+    if not pem:
+        return pem
+    return pem.rstrip("\n") + "\n"
+
+
 def is_self_signed(cert_pem: str) -> bool:
     """Return True if cert_pem is self-signed.
 

@@ -36,6 +36,9 @@
         sslCACertificate: "{{ r_root_ca.stdout | trim }}"
       when: r_root_ca.rc == 0 and r_root_ca.stdout | trim | length > 0
 
+- name: Normalize PEM certificate fields
+  ansible.builtin.include_tasks: normalize-pem-vars.yaml
+
 - name: Write SSH public key to file if content provided
   when: sshPubKey is defined and sshPubKey | length > 0
   block:
