@@ -9,6 +9,23 @@
     kind: ClusterImageSet
   register: r_cluster_image_set
 
+- name: Validate ClusterImageSet in disconnected mode
+  when: disconnected | default(false) | bool
+  block:
+    - name: Validate ClusterImageSet count
+      ansible.builtin.assert:
+        that:
+          - r_cluster_image_set.resources | length == 1
+        fail_msg: "Expected exactly 1 ClusterImageSet, found {{ r_cluster_image_set.resources | length }}"
+        success_msg: "Validated: exactly 1 ClusterImageSet exists"
+
+    - name: Validate ClusterImageSet name
+      ansible.builtin.assert:
+        that:
+          - r_cluster_image_set.resources[0].metadata.name == "local-cluster-image-set"
+        fail_msg: "Expected ClusterImageSet name 'local-cluster-image-set', found '{{ r_cluster_image_set.resources[0].metadata.name }}'"
+        success_msg: "Validated: ClusterImageSet name is 'local-cluster-image-set'"
+
 - name: Set desired ClusterImageSet names
   ansible.builtin.set_fact:
     r_desired_image_set: "{{ openshift_versions | map(attribute='version') | map('regex_replace', '^(.*)$', 'openshift-v\\1-disconnected') | list }}"
