@@ -14,8 +14,10 @@ PEM_BLOCK_RE = re.compile(
     r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
     re.DOTALL,
 )
-# END line immediately followed by another PEM block without a newline between them.
-PEM_GLUED_BOUNDARY_RE = re.compile(r"-----END [A-Z0-9 ]+-----(?!\r?\n|$)")
+# END line immediately followed by -----BEGIN without a newline between them.
+PEM_GLUED_BOUNDARY_RE = re.compile(
+    r"-----END [A-Z0-9 ]+-----(?=-----BEGIN [A-Z0-9 ]+-----)"
+)
 
 # OpenSSL always outputs English month abbreviations in notBefore/notAfter regardless
 # of the system locale. Python's %b in strptime follows LC_TIME, so it would reject
@@ -92,7 +94,12 @@ def pem_blocks(pem_text: str) -> list[str]:
 
 
 def pem_glued_boundary_issue(field: str, pem: str) -> str | None:
-    """Return an issue string when PEM blocks in pem are glued without a newline."""
+    """Return an issue when PEM blocks in pem are glued without a newline.
+
+    Detects ``-----END ...-----`` immediately followed by ``-----BEGIN ...-----``
+    with no line break between them. Trailing whitespace or other non-PEM text
+    after the final END marker is allowed.
+    """
     if not pem:
         return None
     if PEM_GLUED_BOUNDARY_RE.search(pem):

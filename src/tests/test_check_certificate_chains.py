@@ -20,6 +20,7 @@ from tests.cert_helpers import (
 
 
 def _write_certs(tmp_path: Path, **kwargs: str) -> str:
+    """Write a minimal certificates.yaml for chain-validation tests."""
     content = "\n".join(
         f"{k}: |\n  " + v.replace("\n", "\n  ") for k, v in kwargs.items()
     )
