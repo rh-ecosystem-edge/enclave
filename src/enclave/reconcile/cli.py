@@ -26,6 +26,22 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
+def load_openshift_versions() -> list[dict[str, object]]:
+    """Load the openshift_versions list from defaults/platforms.yaml."""
+    defaults_file = defaults_path("platforms.yaml")
+    try:
+        with defaults_file.open(encoding="utf-8") as fh:
+            platforms = yaml.safe_load(fh)
+    except FileNotFoundError as exc:
+        raise click.ClickException(
+            f"{defaults_file} not found; run from the repo root"
+        ) from exc
+    except yaml.YAMLError as exc:
+        raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
+
+    return platforms.get("openshift_versions", [])
+
+
 @click.group(cls=KubeconfigGroup)
 @click.option(
     "--log-level",
@@ -138,23 +154,9 @@ def mgmt_cluster_version(
     if not use_defaults and not version:
         raise click.UsageError("Either --version or --use-defaults must be provided")
 
-    if use_defaults:
-        defaults_file = defaults_path("platforms.yaml")
-        try:
-            with defaults_file.open(encoding="utf-8") as fh:
-                platforms = yaml.safe_load(fh)
-        except FileNotFoundError as exc:
-            raise click.ClickException(
-                f"{defaults_file} not found; run from the repo root"
-            ) from exc
-        except yaml.YAMLError as exc:
-            raise click.ClickException(
-                f"Failed to parse {defaults_file}: {exc}"
-            ) from exc
+    openshift_versions = load_openshift_versions()
 
-        openshift_versions: list[dict[str, object]] = platforms.get(
-            "openshift_versions", []
-        )
+    if use_defaults:
         default_entry = next(
             (v for v in openshift_versions if v.get("default") is True), None
         )
@@ -166,6 +168,12 @@ def mgmt_cluster_version(
         resolved_version: str = str(default_entry["version"])
     else:
         resolved_version = cast("str", version)
+        allowed_versions = {str(v["version"]) for v in openshift_versions}
+        if resolved_version not in allowed_versions:
+            raise click.UsageError(
+                f"Version '{resolved_version}' is not in defaults/platforms.yaml. "
+                f"Allowed: {', '.join(sorted(allowed_versions))}"
+            )
 
     try:
         cluster_upgrade_reconcile(

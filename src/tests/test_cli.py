@@ -159,6 +159,16 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
     mock_reconcile.assert_called_once_with("4.20.21", dry_run, 180, 60)
 
 
+def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--version", "4.99.0", "--dry-run"], env=_KC
+    )
+    assert result.exit_code != 0
+    assert "not in defaults/platforms.yaml" in result.output
+    mock_reconcile.assert_not_called()
+
+
 def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
