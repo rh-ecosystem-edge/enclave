@@ -39,7 +39,17 @@ def load_openshift_versions() -> list[dict[str, object]]:
     except yaml.YAMLError as exc:
         raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
 
-    return platforms.get("openshift_versions", [])
+    if not isinstance(platforms, dict):
+        raise click.ClickException(
+            f"{defaults_file} must be a mapping with an 'openshift_versions' list"
+        )
+    openshift_versions = platforms.get("openshift_versions")
+    if not isinstance(openshift_versions, list) or not openshift_versions:
+        raise click.ClickException(
+            f"{defaults_file} must define a non-empty 'openshift_versions' list"
+        )
+
+    return openshift_versions
 
 
 @click.group(cls=KubeconfigGroup)
