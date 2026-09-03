@@ -190,6 +190,32 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
     assert "mutually exclusive" in result.output
 
 
+def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+    dry_run = True
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--latest", "--dry-run"], env=_KC
+    )
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with("4.20.32", dry_run, 180, 60)
+
+
+def test_mgmt_cluster_version_latest_mutual_exclusive_version() -> None:
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--latest", "--version", "4.20.21"], env=_KC
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
+def test_mgmt_cluster_version_latest_mutual_exclusive_use_defaults() -> None:
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--latest", "--use-defaults"], env=_KC
+    )
+    assert result.exit_code != 0
+    assert "mutually exclusive" in result.output
+
+
 def test_mgmt_cluster_version_no_args_shows_help() -> None:
     result = CliRunner().invoke(cli, ["mgmt-cluster-version"])
     assert result.exit_code == 2

@@ -13,6 +13,7 @@ from enclave.utils import (
     LOG_LEVELS,
     KubeconfigGroup,
     configure_logging,
+    semver_key,
 )
 
 
@@ -136,7 +137,14 @@ def operator_versions(
     "--use-defaults",
     is_flag=True,
     default=False,
-    help="Load the default version from defaults/platforms.yaml (mutually exclusive with --version)",
+    help="Load the default version from defaults/platforms.yaml (mutually exclusive with --version, --latest)",
+)
+@click.option(
+    "--latest",
+    "use_latest",
+    is_flag=True,
+    default=False,
+    help="Upgrade to the highest semver version in defaults/platforms.yaml (mutually exclusive with --version, --use-defaults)",
 )
 @click.option("--dry-run/--no-dry-run", default=False)
 @click.option(
@@ -154,15 +162,20 @@ def operator_versions(
 def mgmt_cluster_version(
     version: str | None,
     use_defaults: bool,
+    use_latest: bool,
     dry_run: bool,
     timeout_minutes: int,
     sleep_interval: int,
 ) -> None:
-    if use_defaults and version:
-        raise click.UsageError("--use-defaults is mutually exclusive with --version")
+    if sum([version is not None, use_defaults, use_latest]) > 1:
+        raise click.UsageError(
+            "--version, --use-defaults, and --latest are mutually exclusive"
+        )
 
-    if not use_defaults and not version:
-        raise click.UsageError("Either --version or --use-defaults must be provided")
+    if not use_defaults and not use_latest and not version:
+        raise click.UsageError(
+            "One of --version, --use-defaults, or --latest must be provided"
+        )
 
     openshift_versions = load_openshift_versions()
 
@@ -176,6 +189,12 @@ def mgmt_cluster_version(
                 "set 'default: true' on one entry"
             )
         resolved_version: str = str(default_entry["version"])
+    elif use_latest:
+        resolved_version = str(
+            max(openshift_versions, key=lambda v: semver_key(str(v["version"])))[
+                "version"
+            ]
+        )
     else:
         resolved_version = cast("str", version)
         allowed_versions = {str(v["version"]) for v in openshift_versions}
