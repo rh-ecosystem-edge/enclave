@@ -22,6 +22,15 @@
     },
     {
       "customType": "regex",
+      "description": "Update AWS CLI version in setup_env.sh",
+      "managerFilePatterns": ["setup_env.sh"],
+      "matchStrings": ["AWS_CLI_VERSION=(?<currentValue>[^\\s\"]+)"],
+      "depNameTemplate": "aws/aws-cli",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^(?<version>.+)$"
+    },
+    {
+      "customType": "regex",
       "description": "Update OLM operator versions in operators.yaml",
       "managerFilePatterns": ["defaults/operators.yaml", "plugins/lvms/plugin.yaml"],
       "matchStrings": [
@@ -64,6 +73,11 @@
       "description": "Exclude metallb-operator (non-semver version)",
       "matchPackageNames": ["metallb-operator"],
       "enabled": false
+    },
+    {
+      "description": "AWS CLI: only allow v2 updates (installer URL is hardcoded to v2)",
+      "matchPackageNames": ["aws/aws-cli"],
+      "allowedVersions": "<3"
     },
     {
       "matchPackageNames": ["osac-project/charts/osac"],
