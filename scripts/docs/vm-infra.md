@@ -123,13 +123,13 @@ that references them.
 | `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
 | `ENCLAVE_NUM_MASTERS` | no | `3` | Number of master VMs |
 | `STORAGE_PLUGIN` | no | `lvms` | `lvms` or `odf` — affects VM sizing defaults |
-| `MASTER_MEMORY` | no | 32768 / 49152 (odf) | Master RAM in MiB |
+| `MASTER_MEMORY` | no | 32768 / 49152 (odf) | Master RAM in MiB. ODF masters get 48 GB for the ODF/ACM/MCE control plane and Ceph consumers; more does not help (the operators-phase Quay CrashLoop is a Quay-backend health-probe issue, not master memory) |
 | `MASTER_VCPU` | no | 12 / 16 (odf) | Master vCPU count |
 | `MASTER_DISK` | no | 120 | Master primary disk in GiB |
 | `MASTER_EXTRA_DISK` | derived | 1200 (disconnected+lvms) / 60 | Master extra disk in GiB; not directly overridable — derived from `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE` |
-| `LANDINGZONE_MEMORY` | no | 8192 | Landing Zone RAM in MiB |
-| `LANDINGZONE_DISK` | no | 60 / 500 (odf) | Landing Zone disk in GiB |
-| `LANDINGZONE_VCPU` | no | 4 | Landing Zone vCPU count |
+| `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB. The running LZ is sized by `provision_landing_zone.sh` (it destroys the placeholder domain vm_infra.py defines and recreates it via `virt-install`); the odf default gives Ceph-on-LZ headroom |
+| `LANDINGZONE_DISK` | no | 60 / 500 (odf) | Landing Zone disk in GiB for the vm_infra.py **placeholder only**. The running LZ disk is sized by `provision_landing_zone.sh` (which recreates the LZ): 600 (connected) / 1000 (disconnected) / 1500 (disconnected + odf, for the Ceph loopback OSD files) |
+| `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count. The running LZ is sized by `provision_landing_zone.sh` (`--vcpus "${LANDINGZONE_VCPU:-16}"`); the 4 vCPU in `vm_infra.py` only applies to the throwaway placeholder domain |
 
 ### XML templates
 
