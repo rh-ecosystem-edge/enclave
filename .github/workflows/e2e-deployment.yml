@@ -313,6 +313,15 @@ jobs:
       - name: Allocate unique subnet for cluster
         uses: ./.github/actions/allocate-subnet
 
+      # Start in-flight resource sampling before infrastructure creation so it
+      # covers the whole run. Post-mortem artifact collection runs only after
+      # the host has recovered and misses the transient stalls that cause
+      # failures; this records host/LZ/cluster state and API latency every 15s
+      # into artifacts/inflight for later analysis.
+      - name: Start resource sampler
+        id: start_resource_sampler
+        run: ./scripts/verification/sample_resources.sh start artifacts/inflight 15
+
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -461,6 +470,12 @@ jobs:
         if: success()
         id: verify_cluster
         run: make -f Makefile.ci verify-cluster
+
+      # Stop the in-flight sampler before post-mortem collection so its logs
+      # under artifacts/inflight are flushed and shipped by Upload artifacts.
+      - name: Stop resource sampler
+        if: always()
+        run: ./scripts/verification/sample_resources.sh stop artifacts/inflight || true
 
       - name: Collect artifacts
         if: always()
@@ -790,6 +805,15 @@ jobs:
       - name: Allocate unique subnet for cluster
         uses: ./.github/actions/allocate-subnet
 
+      # Start in-flight resource sampling before infrastructure creation so it
+      # covers the whole run. Post-mortem artifact collection runs only after
+      # the host has recovered and misses the transient stalls that cause
+      # failures; this records host/LZ/cluster state and API latency every 15s
+      # into artifacts/inflight for later analysis.
+      - name: Start resource sampler
+        id: start_resource_sampler
+        run: ./scripts/verification/sample_resources.sh start artifacts/inflight 15
+
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -957,6 +981,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
           ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+
+      # Stop the in-flight sampler before post-mortem collection so its logs
+      # under artifacts/inflight are flushed and shipped by Upload artifacts.
+      - name: Stop resource sampler
+        if: always()
+        run: ./scripts/verification/sample_resources.sh stop artifacts/inflight || true
 
       - name: Collect artifacts
         if: always()
