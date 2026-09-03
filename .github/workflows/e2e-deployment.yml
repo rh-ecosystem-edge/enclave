@@ -310,9 +310,6 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Allocate unique subnet for cluster
-        uses: ./.github/actions/allocate-subnet
-
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -320,12 +317,17 @@ jobs:
           echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
+          # vm_infra.py selects the subnet from libvirt and writes cluster-env.sh
           make -f Makefile.ci environment
+
+          # cluster-env.sh always exists once create succeeds (else the step
+          # already failed above); report the subnet vm_infra.py selected.
+          # shellcheck disable=SC1091
+          source "${WORKING_DIR}/cluster-env.sh"
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
@@ -787,9 +789,6 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Allocate unique subnet for cluster
-        uses: ./.github/actions/allocate-subnet
-
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -797,12 +796,17 @@ jobs:
           echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-          echo "Using subnet: ${ENCLAVE_SUBNET_ID:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
+          # vm_infra.py selects the subnet from libvirt and writes cluster-env.sh
           make -f Makefile.ci environment
+
+          # cluster-env.sh always exists once create succeeds (else the step
+          # already failed above); report the subnet vm_infra.py selected.
+          # shellcheck disable=SC1091
+          source "${WORKING_DIR}/cluster-env.sh"
+          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
+          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone

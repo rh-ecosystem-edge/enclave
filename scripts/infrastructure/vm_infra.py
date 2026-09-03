@@ -39,6 +39,13 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 BRIDGE_CONF = "/etc/qemu-kvm/bridge.conf"
 BRIDGE_LOCK = "/run/lock/enclave-bridge-conf.lock"
 
+# Host-wide lock serializing subnet selection + network creation across all
+# concurrent CI runs on the same hypervisor (libvirt is the source of truth).
+SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
+# Usable subnet third-octet range (avoids 0, 1, and 255).
+MIN_SUBNET = 2
+MAX_SUBNET = 254
+
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -58,14 +65,15 @@ class Config:
     """All infrastructure configuration for one cluster, sourced from environment variables."""
 
     cluster_name: str
-    bmc_network: str
-    cluster_network: str
     deployment_mode: str
     num_masters: int
     working_dir: Path
     master: VMSpec
     lz: VMSpec
     storage_plugin: str
+    # Third octet shared by all per-cluster subnets. None until selected at
+    # create time (or supplied via ENCLAVE_SUBNET_ID / ENCLAVE_BMC_NETWORK).
+    subnet_id: Optional[int] = None
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -94,11 +102,29 @@ class Config:
                 sys.exit(f"ERROR: {name}={value!r} does not match expected pattern {pattern!r}")
             return value
 
-        def validate_cidr(name: str, value: str) -> str:
-            """Validate a CIDR like 100.64.5.0/24; empty string is allowed (optional nets)."""
-            if value and not re.fullmatch(r"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/\d{1,2}", value):
-                sys.exit(f"ERROR: {name}={value!r} is not a valid CIDR")
-            return value
+        def subnet_override() -> Optional[int]:
+            """Optional manual subnet: ENCLAVE_SUBNET_ID, else the third octet of
+            ENCLAVE_BMC_NETWORK. None means auto-select from libvirt at create time."""
+            raw_id = os.environ.get("ENCLAVE_SUBNET_ID", "")
+            if raw_id:
+                try:
+                    sid = int(raw_id)
+                except ValueError:
+                    sys.exit(f"ERROR: ENCLAVE_SUBNET_ID must be an integer, got {raw_id!r}")
+            else:
+                raw_bmc = os.environ.get("ENCLAVE_BMC_NETWORK", "")
+                if not raw_bmc:
+                    return None
+                m = re.fullmatch(r"\d{1,3}\.\d{1,3}\.(\d{1,3})\.\d{1,3}/\d{1,2}", raw_bmc)
+                if not m:
+                    sys.exit(f"ERROR: ENCLAVE_BMC_NETWORK={raw_bmc!r} is not a valid CIDR")
+                sid = int(m.group(1))
+            if not MIN_SUBNET <= sid <= MAX_SUBNET:
+                sys.exit(
+                    f"ERROR: subnet id {sid} is out of range "
+                    f"[{MIN_SUBNET}, {MAX_SUBNET}]"
+                )
+            return sid
 
         deployment_mode = os.environ.get("ENCLAVE_DEPLOYMENT_MODE", "disconnected")
         if deployment_mode not in ("connected", "disconnected"):
@@ -130,8 +156,6 @@ class Config:
 
         return cls(
             cluster_name=cluster_name,
-            bmc_network=validate_cidr("ENCLAVE_BMC_NETWORK", os.environ.get("ENCLAVE_BMC_NETWORK", "")),
-            cluster_network=validate_cidr("ENCLAVE_CLUSTER_NETWORK", os.environ.get("ENCLAVE_CLUSTER_NETWORK", "")),
             deployment_mode=deployment_mode,
             num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
             working_dir=Path(working_dir_str),
@@ -148,12 +172,25 @@ class Config:
                 extra_disk_gb=0,
             ),
             storage_plugin=storage_plugin,
+            subnet_id=subnet_override(),
         )
 
     @property
-    def subnet_id(self) -> int:
-        """Third octet of the BMC CIDR; shared across all per-cluster subnets for alignment."""
-        return int(self.bmc_network.split(".")[2])
+    def _subnet(self) -> int:
+        """Selected subnet id; raises if accessed before selection."""
+        if self.subnet_id is None:
+            raise RuntimeError("subnet_id has not been selected yet")
+        return self.subnet_id
+
+    @property
+    def bmc_network(self) -> str:
+        """{cluster}-p CIDR: isolated BMC/provisioning subnet 100.64.N.0/24."""
+        return f"100.64.{self._subnet}.0/24"
+
+    @property
+    def cluster_network(self) -> str:
+        """{cluster}-e CIDR: cluster subnet 192.168.N.0/24."""
+        return f"192.168.{self._subnet}.0/24"
 
     @property
     def bmc_bridge(self) -> str:
@@ -173,23 +210,22 @@ class Config:
     @property
     def lz_network(self) -> Optional[str]:
         """172.16.N.0/24 LZ uplink CIDR in disconnected mode; empty string written to cluster-env.sh when None."""
-        n = self.subnet_id
-        return f"172.16.{n}.0/24" if self.deployment_mode == "disconnected" else None
+        return f"172.16.{self._subnet}.0/24" if self.deployment_mode == "disconnected" else None
 
     @property
     def bmc_gateway(self) -> str:
         """Host IP assigned to the BMC isolated bridge by libvirt (100.64.N.1)."""
-        return f"100.64.{self.subnet_id}.1"
+        return f"100.64.{self._subnet}.1"
 
     @property
     def cluster_gateway(self) -> str:
         """Host IP assigned to the cluster bridge by libvirt (192.168.N.1)."""
-        return f"192.168.{self.subnet_id}.1"
+        return f"192.168.{self._subnet}.1"
 
     @property
     def uplink_gateway(self) -> Optional[str]:
         """Host IP assigned to the LZ uplink NAT bridge (172.16.N.1); None in connected mode."""
-        return f"172.16.{self.subnet_id}.1" if self.deployment_mode == "disconnected" else None
+        return f"172.16.{self._subnet}.1" if self.deployment_mode == "disconnected" else None
 
     @property
     def pool_dir(self) -> Path:
@@ -391,6 +427,118 @@ def _pool_exists(conn: libvirt.virConnect, name: str) -> bool:
         return False
 
 
+# ─── Subnet selection ─────────────────────────────────────────────────────────
+#
+# All per-cluster subnets share one third octet N: BMC 100.64.N.0/24,
+# cluster 192.168.N.0/24, LZ uplink 172.16.N.0/24. libvirt is the source of
+# truth for which N values are taken; the JSON allocation ledger this replaces
+# could drift from reality and hand out an N a leftover network still used.
+
+_SUBNET_PREFIXES = ("100.64.", "192.168.", "172.16.")
+_XML_IP_RE = re.compile(r"<ip[^>]*\baddress=['\"]([0-9.]+)['\"]")
+
+
+def _subnet_of_address(address: str) -> Optional[int]:
+    """Return the third octet of an IPv4 address in an Enclave subnet range, else None."""
+    for prefix in _SUBNET_PREFIXES:
+        if address.startswith(prefix):
+            octet = address[len(prefix) :].split(".", 1)[0]
+            try:
+                return int(octet)
+            except ValueError:
+                return None
+    return None
+
+
+def _network_subnets(conn: libvirt.virConnect) -> set:
+    """Third octets used by any defined libvirt network (active or inactive)."""
+    used: set = set()
+    for net in conn.listAllNetworks():
+        try:
+            xml = net.XMLDesc(0)
+        except libvirt.libvirtError:
+            continue
+        for m in _XML_IP_RE.finditer(xml):
+            sid = _subnet_of_address(m.group(1))
+            if sid is not None:
+                used.add(sid)
+    return used
+
+
+def _host_subnets() -> set:
+    """Third octets already present on host interfaces (leftover/non-libvirt bridges)."""
+    try:
+        out = subprocess.run(
+            ["ip", "-o", "-4", "addr", "show"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        # Fail closed: an empty set here would let selection pick a subnet already
+        # on a host interface, creating overlapping libvirt networks.
+        sys.exit(f"ERROR: failed to enumerate host interfaces via 'ip': {exc}")
+    used: set = set()
+    for m in re.finditer(r"\binet (\d+\.\d+\.\d+\.\d+)/", out):
+        sid = _subnet_of_address(m.group(1))
+        if sid is not None:
+            used.add(sid)
+    return used
+
+
+def _existing_cluster_subnet(conn: libvirt.virConnect, cfg: Config) -> Optional[int]:
+    """Return the cluster's own subnet if its BMC network already exists (idempotent re-run)."""
+    if not _net_exists(conn, cfg.bmc_bridge):
+        return None
+    try:
+        xml = conn.networkLookupByName(cfg.bmc_bridge).XMLDesc(0)
+    except libvirt.libvirtError:
+        return None
+    m = _XML_IP_RE.search(xml)
+    return _subnet_of_address(m.group(1)) if m else None
+
+
+def _resolve_subnet(conn: libvirt.virConnect, cfg: Config) -> int:
+    """Determine the subnet third octet for this cluster; caller must hold SUBNET_LOCK.
+
+    An existing cluster's own subnet always wins: on an idempotent re-run the
+    networks are kept by name, so honoring a conflicting override would write a
+    mismatched value to cluster-env.sh while the VMs stay on the old subnet.
+    Resolution order: reuse the existing subnet (erroring if a manual override
+    conflicts with it), else honor a manual override (erroring if it is already
+    in use), else pick the lowest free id in [MIN_SUBNET, MAX_SUBNET]. Both the
+    override and automatic paths validate against the same set of subnets already
+    used by any libvirt network or host interface.
+    """
+    existing = _existing_cluster_subnet(conn, cfg)
+    if existing is not None:
+        if cfg.subnet_id is not None and cfg.subnet_id != existing:
+            sys.exit(
+                f"ERROR: cluster {cfg.cluster_name} already uses subnet {existing}, "
+                f"but subnet {cfg.subnet_id} was requested; "
+                f"destroy it first to change subnets"
+            )
+        LOG.info("Reusing existing subnet %d for cluster %s", existing, cfg.cluster_name)
+        return existing
+
+    used = _network_subnets(conn) | _host_subnets()
+
+    if cfg.subnet_id is not None:
+        if cfg.subnet_id in used:
+            sys.exit(
+                f"ERROR: requested subnet {cfg.subnet_id} for cluster "
+                f"{cfg.cluster_name} is already in use by another libvirt "
+                f"network or host interface"
+            )
+        return cfg.subnet_id
+
+    for sid in range(MIN_SUBNET, MAX_SUBNET + 1):
+        if sid not in used:
+            LOG.info("Selected subnet %d for cluster %s", sid, cfg.cluster_name)
+            return sid
+    sys.exit(f"ERROR: no free subnet in [{MIN_SUBNET}, {MAX_SUBNET}] (all in use)")
+
+
 # ─── Create ───────────────────────────────────────────────────────────────────
 
 
@@ -479,18 +627,8 @@ def _write_cluster_env(cfg: Config) -> None:
     LOG.info("Wrote cluster-env.sh: %s", cfg.cluster_env_file)
 
 
-def create(cfg: Config) -> None:
-    """Create all networks, storage, and VM definitions for the cluster; idempotent on re-run."""
-    if not cfg.bmc_network:
-        sys.exit("ERROR: ENCLAVE_BMC_NETWORK environment variable is required")
-    if not cfg.cluster_network:
-        sys.exit("ERROR: ENCLAVE_CLUSTER_NETWORK environment variable is required")
-    LOG.info("=== Creating infrastructure for cluster: %s ===", cfg.cluster_name)
-
-    macs = load_or_generate_macs(cfg)
-    save_macs(cfg, macs)
-
-    conn = _connect()
+def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
+    """Create the BMC/cluster/uplink networks; caller must hold SUBNET_LOCK and have set cfg.subnet_id."""
     n = cfg.subnet_id
 
     # BMC network: isolated, host IP, no DHCP (masters are L2 only; LZ gets static IP via nmcli)
@@ -546,6 +684,27 @@ def create(cfg: Config) -> None:
             ),
             cfg.uplink_bridge,
         )
+
+
+def create(cfg: Config) -> None:
+    """Create all networks, storage, and VM definitions for the cluster; idempotent on re-run."""
+    LOG.info("=== Creating infrastructure for cluster: %s ===", cfg.cluster_name)
+
+    macs = load_or_generate_macs(cfg)
+    save_macs(cfg, macs)
+
+    conn = _connect()
+
+    # Select the subnet and create the networks atomically under a host-wide lock so
+    # concurrent CI runs on the same hypervisor never race onto the same subnet. Holding
+    # the lock across select→create closes the TOCTOU gap the old separate allocator had.
+    with open(SUBNET_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            cfg.subnet_id = _resolve_subnet(conn, cfg)
+            _create_networks(conn, cfg, macs)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
     _update_bridge_conf(cfg.all_bridges)
     _create_pool(conn, cfg)
@@ -692,6 +851,26 @@ def destroy(cfg: Config) -> None:
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 
+def print_subnet(cfg: Config) -> None:
+    """Select (or honor the override for) the subnet create would use and print it, creating nothing.
+
+    Runs the exact selection logic of create() under SUBNET_LOCK but defines no
+    networks/VMs, so it is a safe dry-run for verifying subnet allocation.
+    """
+    conn = _connect()
+    with open(SUBNET_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            cfg.subnet_id = _resolve_subnet(conn, cfg)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+    print(f"subnet_id={cfg.subnet_id}")
+    print(f"bmc_network={cfg.bmc_network}")
+    print(f"cluster_network={cfg.cluster_network}")
+    print(f"lz_network={cfg.lz_network or ''}")
+
+
 def main() -> None:
     """Parse CLI args, configure logging, and dispatch to create or destroy."""
     parser = argparse.ArgumentParser(
@@ -699,6 +878,12 @@ def main() -> None:
     )
     parser.add_argument("command", choices=["create", "destroy"])
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--print-subnet",
+        action="store_true",
+        help="Dry-run: print the subnet create would use (creating nothing), then exit. "
+        "Only valid with the create command.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -707,9 +892,14 @@ def main() -> None:
         datefmt="%H:%M:%S",
     )
 
+    if args.print_subnet and args.command != "create":
+        parser.error("--print-subnet is only valid with the create command")
+
     cfg = Config.from_env()
 
-    if args.command == "create":
+    if args.print_subnet:
+        print_subnet(cfg)
+    elif args.command == "create":
         create(cfg)
     else:
         destroy(cfg)

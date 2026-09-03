@@ -9,6 +9,7 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
@@ -27,19 +28,25 @@ if [ -z "${WORKING_DIR:-}" ]; then
     fi
 fi
 
+# Load the cluster's own network settings (subnet, bridges) from cluster-env.sh,
+# written by vm_infra.py at create time. Non-fatal: the file may be gone already.
+try_load_cluster_env "${CLUSTER_NAME}" || true
+
 # ─── VM infrastructure teardown via vm_infra.py ───────────────────────────────
 info "Destroying VM infrastructure (VMs, networks, pool)..."
 VM_INFRA="${ENCLAVE_DIR}/scripts/infrastructure/vm_infra.py"
 
 _DESTROY_OK=false
 if [ -f "${VM_INFRA}" ]; then
-    if ENCLAVE_CLUSTER_NAME="${CLUSTER_NAME}" \
-       ENCLAVE_BMC_NETWORK="${ENCLAVE_BMC_NETWORK:-100.64.1.0/24}" \
-       ENCLAVE_CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK:-192.168.1.0/24}" \
+    # Pass env explicitly via `sudo env`: inline VAR=... prefixes are dropped by
+    # sudo's env_reset, and `sudo -E` only preserves them when sudoers allows it.
+    # destroy selects no subnet, so it needs only the cluster name and working dir.
+    if sudo env \
+       ENCLAVE_CLUSTER_NAME="${CLUSTER_NAME}" \
        ENCLAVE_DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}" \
        ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}" \
        WORKING_DIR="${WORKING_DIR}" \
-         sudo -E python3 "${VM_INFRA}" destroy; then
+         python3 "${VM_INFRA}" destroy; then
         _DESTROY_OK=true
     else
         warning "vm_infra.py destroy reported errors — running manual virsh fallback"
@@ -143,14 +150,9 @@ if [ -n "${HOME:-}" ]; then
     fi
 fi
 
-# ─── Subnet release ───────────────────────────────────────────────────────────
-if [ -f "${SCRIPT_DIR}/../setup/allocate_subnet.sh" ]; then
-    info "Releasing allocated subnet for cluster: ${CLUSTER_NAME}"
-    export ENCLAVE_CLUSTER_NAME="${CLUSTER_NAME}"
-    BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/clusters/${CLUSTER_NAME}}}"
-    export WORKING_DIR="${BASE_DIR}"
-    "${SCRIPT_DIR}/../setup/allocate_subnet.sh" release || warning "Failed to release subnet"
-fi
+# Subnets are no longer tracked in a ledger — vm_infra.py selects them from
+# libvirt at create time, so there is nothing to release here. Removing the
+# networks above (via vm_infra.py destroy) frees the subnet for reuse.
 
 success "=========================================="
 success "Cleanup complete for cluster: ${CLUSTER_NAME}"
