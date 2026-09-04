@@ -1,0 +1,96 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+definitions:
+  control:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Control identifier (e.g., mfa-enforcement, session-timeout)
+      required:
+        type: boolean
+        description: Whether this control is mandatory for the profile
+        default: false
+      config:
+        type: object
+        description: Control-specific configuration parameters
+        additionalProperties: true
+    required:
+      - name
+
+  plugin:
+    type: object
+    additionalProperties: false
+    properties:
+      name:
+        type: string
+        description: Plugin name required by this compliance profile
+      required:
+        type: boolean
+        description: Whether this plugin is mandatory for the profile
+        default: true
+    required:
+      - name
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    description: >-
+      Unique identifier for the compliance profile (e.g., hipaa, nist-800-53, eu-sovereignty).
+  description:
+    type: string
+    description: >-
+      Human-readable description of the compliance framework and its requirements.
+  framework:
+    type: object
+    description: Compliance framework metadata
+    additionalProperties: false
+    properties:
+      fullName:
+        type: string
+        description: Full name of the compliance framework
+      version:
+        type: string
+        description: Framework version or publication date
+      authority:
+        type: string
+        description: Governing body or regulatory authority
+      applicability:
+        type: string
+        description: When this framework applies (e.g., "Healthcare with PHI")
+    required:
+      - fullName
+  controls:
+    type: array
+    items:
+      "$ref": "#/definitions/control"
+    description: >-
+      List of security controls activated by this compliance profile.
+    minItems: 1
+  plugins:
+    type: array
+    items:
+      "$ref": "#/definitions/plugin"
+    description: >-
+      Plugins required to implement compliance controls (e.g., acs, compliance-operator, rhbk).
+  compatibleWith:
+    type: array
+    items:
+      type: string
+    description: >-
+      Other compliance profiles that can be layered with this one without conflicts.
+  conflicts:
+    type: array
+    items:
+      type: string
+    description: >-
+      Compliance profiles that cannot be used simultaneously with this one.
+required:
+  - name
+  - description
+  - controls
