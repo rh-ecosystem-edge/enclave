@@ -62,7 +62,6 @@ Scripts for initial environment setup, prerequisite validation, and configuratio
 | `validate_prerequisites.sh` | Check all required tools are installed (jq, ansible, virsh, etc.) |
 | `setup_working_dir.sh` | Create and initialize cluster working directory structure |
 | `configure_devscripts.sh` | Generate dev-scripts configuration file with network settings |
-| `allocate_subnet.sh` | Atomic subnet allocation for parallel CI runs (file locking) |
 | `generate_cluster_name.sh` | Generate unique cluster name based on environment |
 
 **Typical Workflow:**
@@ -243,9 +242,9 @@ Common environment variables used across scripts:
 | `WORKING_DIR` | Cluster working directory |
 | `BASE_WORKING_DIR` | Base directory for all clusters |
 | `ENCLAVE_DEPLOYMENT_MODE` | Deployment mode: `connected` or `disconnected` |
-| `ENCLAVE_SUBNET_ID` | Allocated subnet ID (for parallel CI) |
-| `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`) |
-| `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`) |
+| `ENCLAVE_SUBNET_ID` | Optionally pin the subnet third octet N (auto-selected by `vm_infra.py` from libvirt when unset) |
+| `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`); written to `cluster-env.sh` by `vm_infra.py` |
+| `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`); written to `cluster-env.sh` by `vm_infra.py` |
 | `ENCLAVE_CERT_TYPE` | TLS certificate type; unset = self-signed, `zerossl-ecdsa` = real cert via DNS-01 |
 | `ENCLAVE_BASE_DOMAIN` | Public DNS domain for SAN generation when `ENCLAVE_CERT_TYPE` is set |
 | `ENCLAVE_IRONIC_HTTPS` | Enable HTTPS on the Ironic ISO server; always `true` in disconnected mode |
@@ -266,7 +265,6 @@ Scripts are used by GitHub Actions workflows:
 - `.github/workflows/e2e-deployment.yml` - End-to-end deployment workflow (connected and disconnected modes)
 
 Custom GitHub Actions in `.github/actions/`:
-- `allocate-subnet` - Allocate unique subnet for parallel runs
 - `preflight-checks` - Run pre-flight validation
 - `collect-artifacts` - Collect logs and artifacts
 

@@ -78,15 +78,6 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Allocate unique subnet for cluster
-        id: allocate_subnet
-        uses: ./.github/actions/allocate-subnet
-
-      - name: Save allocation log
-        if: always() && steps.allocate_subnet.outcome != 'skipped'
-        run: |
-          echo "Subnet allocation completed with status: ${{ steps.allocate_subnet.outcome }}" > step-logs/01-allocate-subnet.log
-
       - name: Create infrastructure
         id: create_infra
         env:

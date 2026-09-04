@@ -77,9 +77,6 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
-      - name: Allocate unique subnet for cluster
-        uses: ./.github/actions/allocate-subnet
-
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
