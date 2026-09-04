@@ -13,6 +13,7 @@ from enclave.tools.cert_utils import (
     is_self_signed,
     openssl_verify,
     pem_blocks,
+    pem_glued_boundary_issue,
 )
 from enclave.tools.system_ca import find_system_ca_for_chain
 
@@ -35,6 +36,21 @@ CERT_TYPE_TO_KEY_FIELD: dict[str, str] = {
 # Types that carry a full chain and require completeness + CA consistency checks.
 # "ironic" is excluded: ironicHTTPSCertificate is a single cert with no CA counterpart.
 CHAIN_CERT_TYPES: frozenset[str] = frozenset({"api", "ingress"})
+
+# PEM fields checked for glued block boundaries when non-empty (raw YAML values).
+PEM_FIELDS_BY_CERT_TYPE: dict[str, list[str]] = {
+    "api": [
+        "sslAPICertificateFullChain",
+        "sslAPICertificateKey",
+        "sslCACertificate",
+    ],
+    "ingress": [
+        "sslIngressCertificateFullChain",
+        "sslIngressCertificateKey",
+        "sslCACertificate",
+    ],
+    "ironic": ["ironicHTTPSCertificate", "ironicHTTPSKey"],
+}
 
 
 class CertificateValidationError(Exception):
@@ -115,6 +131,23 @@ def _check_chain(field: str, chain_pem: str, ca_pem: str) -> str | None:
     )
 
 
+def _check_pem_boundaries(raw: dict[str, Any], fields: list[str]) -> list[str]:
+    """Return issue strings for PEM fields with glued block boundaries."""
+    issues: list[str] = []
+    for field in fields:
+        value = raw.get(field)
+        if not value:
+            continue
+        if not isinstance(value, str):
+            raise CertificateValidationError(
+                f"{field}: expected a string value, got {type(value).__name__}"
+            )
+        issue = pem_glued_boundary_issue(field, value)
+        if issue:
+            issues.append(issue)
+    return issues
+
+
 def _check_leaf(
     field: str,
     leaf_pem: str,
@@ -177,6 +210,10 @@ def check_certificate_chains(
     if not hostnames:
         msg = f"{cert_type}: at least one hostname is required"
         raise CertificateValidationError(msg)
+
+    pem_boundary_issues = _check_pem_boundaries(raw, PEM_FIELDS_BY_CERT_TYPE[cert_type])
+    if pem_boundary_issues:
+        raise CertificateValidationError("\n".join(pem_boundary_issues))
 
     key_pem: str = _get_config_str(raw, key_field)
     if not key_pem:

@@ -18,6 +18,7 @@ from enclave.tools.cert_utils import (
     is_self_signed,
     openssl_verify,
     pem_blocks,
+    pem_glued_boundary_issue,
 )
 from tests.cert_helpers import (
     generate_ca,
@@ -198,3 +199,50 @@ def test_cert_covers_hostname_mismatch(tmp_path: Path) -> None:
         tmp_path, ca_cert_path, ca_key_path, "Leaf", sans=["bar.example.com"]
     )
     assert cert_covers_hostname(leaf_pem, "foo.example.com") is False
+
+
+def test_pem_glued_boundary_issue_empty() -> None:
+    """Empty PEM input is valid and returns no issue."""
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", "") is None
+
+
+def test_pem_glued_boundary_issue_allows_missing_eof_newline() -> None:
+    """Missing EOF newline alone is not treated as glued blocks."""
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", pem) is None
+
+
+def test_pem_glued_boundary_issue_allows_trailing_whitespace() -> None:
+    """Trailing non-PEM text after END must not be reported as glued blocks."""
+    pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE----- "
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", pem) is None
+
+
+def test_pem_glued_boundary_issue_allows_properly_separated_blocks() -> None:
+    """Newline-separated PEM blocks in one field are accepted."""
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----\n"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----"
+    )
+    assert pem_glued_boundary_issue("sslAPICertificateFullChain", pem) is None
+
+
+def test_pem_glued_boundary_issue_detects_internal_glue() -> None:
+    """Adjacent certificate blocks without a separator are rejected."""
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----\n"
+    )
+    issue = pem_glued_boundary_issue("sslAPICertificateFullChain", pem)
+    assert issue is not None
+    assert "PEM blocks must be separated by a newline" in issue
+
+
+def test_pem_glued_boundary_issue_detects_cert_to_key_glue() -> None:
+    """Certificate immediately followed by private key block is rejected."""
+    pem = (
+        "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
+        "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n"
+    )
+    issue = pem_glued_boundary_issue("sslIngressCertificateFullChain", pem)
+    assert issue is not None

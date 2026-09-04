@@ -20,6 +20,7 @@ from tests.cert_helpers import (
 
 
 def _write_certs(tmp_path: Path, **kwargs: str) -> str:
+    """Write a minimal certificates.yaml for chain-validation tests."""
     content = "\n".join(
         f"{k}: |\n  " + v.replace("\n", "\n  ") for k, v in kwargs.items()
     )
@@ -318,6 +319,24 @@ def test_check_raises_when_chain_has_content_but_no_pem_blocks(
         sslAPICertificateKey="fake-key",
     )
     with pytest.raises(CertificateValidationError, match="no PEM certificate blocks"):
+        check_certificate_chains(str(path), "api", ["api.cluster.example.com"])
+
+
+def test_check_raises_when_pem_blocks_are_glued(tmp_path: Path) -> None:
+    """Raise before chain checks when PEM blocks lack a separating newline."""
+    glued_chain = (
+        "-----BEGIN CERTIFICATE-----\nleaf\n-----END CERTIFICATE-----"
+        "-----BEGIN CERTIFICATE-----\ninter\n-----END CERTIFICATE-----\n"
+    )
+    path = _write_certs(
+        tmp_path,
+        sslAPICertificateFullChain=glued_chain,
+        sslAPICertificateKey="fake-key\n",
+    )
+    with pytest.raises(
+        CertificateValidationError,
+        match="sslAPICertificateFullChain: PEM blocks must be separated by a newline",
+    ):
         check_certificate_chains(str(path), "api", ["api.cluster.example.com"])
 
 

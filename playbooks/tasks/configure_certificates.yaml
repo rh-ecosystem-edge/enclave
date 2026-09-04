@@ -100,4 +100,11 @@
   ansible.builtin.replace:
     path: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
     regexp: "^( +certificate-authority-data):.*"
-    replace: "    certificate-authority-data: {{ (sslAPICertificateFullChain + sslCACertificate | default('')) |  ansible.builtin.b64encode }}"
+    replace: "    certificate-authority-data: {{ api_ca_bundle | b64encode }}"
+  vars:
+    api_ca_bundle: >-
+      {{ sslAPICertificateFullChain
+         ~ ('\n' if sslAPICertificateFullChain | length > 0
+                    and sslCACertificate | default('') | length > 0
+                    and sslAPICertificateFullChain[-1:] != '\n' else '')
+         ~ (sslCACertificate | default('')) }}
