@@ -351,6 +351,30 @@ collect_bmc_status() {
 }
 
 #####################################
+# LANDING ZONE SSH HELPERS
+#####################################
+
+# Shared SSH options for every Landing Zone connection. ConnectTimeout only
+# bounds connection setup, so the wrappers below add a runner-side execution
+# deadline via `timeout` to ensure a stalled remote command or transfer can
+# never block collection indefinitely.
+LZ_SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q)
+
+# ssh_lz <lz_ip> <remote-command...>
+# Override the default per-call deadline with LZ_CMD_TIMEOUT (seconds), e.g.
+#   LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "..."
+ssh_lz() {
+    local lz_ip="$1"
+    shift
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-120}" ssh "${LZ_SSH_OPTS[@]}" cloud-user@"$lz_ip" "$@"
+}
+
+# scp_lz <scp-args...> -- callers pass cloud-user@<ip>:<remote> and a local dest.
+scp_lz() {
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-300}" scp "${LZ_SSH_OPTS[@]}" "$@"
+}
+
+#####################################
 # LANDING ZONE COLLECTION FUNCTIONS
 #####################################
 
@@ -415,18 +439,16 @@ get_landing_zone_ip() {
 
 test_lz_ssh() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
-    ssh $ssh_opts cloud-user@"$lz_ip" "echo connected" >/dev/null 2>&1
+    ssh_lz "$lz_ip" "echo connected" >/dev/null 2>&1
 }
 
 collect_lz_system_info() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     mkdir -p "${OUTPUT_DIR}/landing-zone"
     info "Collecting Landing Zone system information..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         echo '=== OS Info ==='
         cat /etc/os-release
         echo ''
@@ -452,10 +474,9 @@ collect_lz_system_info() {
 
 collect_lz_dns_config() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting Landing Zone DNS configuration..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         echo '=== /etc/resolv.conf ==='
         cat /etc/resolv.conf
         echo ''
@@ -469,30 +490,28 @@ collect_lz_dns_config() {
 
 collect_lz_deployment_logs() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     mkdir -p "${OUTPUT_DIR}/landing-zone"
     info "Collecting deployment logs from Landing Zone..."
 
     # Tar all deployment logs on remote
-    ssh $ssh_opts cloud-user@"$lz_ip" "cd /home/cloud-user/enclave && tar czf /tmp/deployment-logs-${TIMESTAMP}.tar.gz deployment_*.log 2>/dev/null" || warn "No deployment logs found"
+    ssh_lz "$lz_ip" "cd /home/cloud-user/enclave && tar czf /tmp/deployment-logs-${TIMESTAMP}.tar.gz deployment_*.log 2>/dev/null" || warn "No deployment logs found"
 
     # Copy and extract
-    if scp $ssh_opts cloud-user@"$lz_ip":/tmp/deployment-logs-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/landing-zone/" 2>/dev/null; then
+    if scp_lz cloud-user@"$lz_ip":/tmp/deployment-logs-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/landing-zone/" 2>/dev/null; then
         (cd "${OUTPUT_DIR}/landing-zone" && tar xzf deployment-logs-${TIMESTAMP}.tar.gz && rm deployment-logs-${TIMESTAMP}.tar.gz) || true
     fi
 }
 
 collect_lz_pipeline_logs() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     mkdir -p "${OUTPUT_DIR}/landing-zone/pipeline-logs"
     info "Collecting pipeline logs from Landing Zone..."
 
     local remote_tar="/tmp/pipeline-logs-${TIMESTAMP}.tar.gz"
 
-    if ! ssh $ssh_opts cloud-user@"$lz_ip" "
+    if ! ssh_lz "$lz_ip" "
         cd ~ || exit 2
         shopt -s nullglob
         files=(
@@ -509,7 +528,7 @@ collect_lz_pipeline_logs() {
         return
     fi
 
-    if scp $ssh_opts cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/pipeline-logs/"; then
+    if scp_lz cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/pipeline-logs/"; then
         (
             cd "${OUTPUT_DIR}/landing-zone/pipeline-logs" && \
             tar xzf "pipeline-logs-${TIMESTAMP}.tar.gz" && \
@@ -519,12 +538,11 @@ collect_lz_pipeline_logs() {
         warn "Failed to download pipeline logs"
     fi
 
-    ssh $ssh_opts cloud-user@"$lz_ip" "rm -f ${remote_tar}" >/dev/null 2>&1 || true
+    ssh_lz "$lz_ip" "rm -f ${remote_tar}" >/dev/null 2>&1 || true
 }
 
 collect_lz_config_files() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting configuration files from Landing Zone..."
 
@@ -533,15 +551,14 @@ collect_lz_config_files() {
     # For debugging, check cluster logs or use must-gather script which sanitizes it
 
     # OpenShift install log
-    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/.openshift_install.log "${OUTPUT_DIR}/landing-zone/" 2>/dev/null || warn "Could not collect .openshift_install.log"
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/.openshift_install.log "${OUTPUT_DIR}/landing-zone/" 2>/dev/null || warn "Could not collect .openshift_install.log"
 
     # agent-based installer log
-    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
 }
 
 collect_lz_enclave_config() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
     local config_dir="${OUTPUT_DIR}/landing-zone/config"
 
     mkdir -p "$config_dir"
@@ -570,7 +587,7 @@ print(yaml.dump(redact(data), default_flow_style=False))
     for cfg in global.yaml certificates.yaml cloud_infra.yaml; do
         local remote_path="/home/cloud-user/enclave/config/${cfg}"
         local out
-        out=$(ssh $ssh_opts cloud-user@"$lz_ip" \
+        out=$(ssh_lz "$lz_ip" \
             "[ -f ${remote_path} ] && python3 -c '${redact_py}' ${remote_path}" 2>/dev/null) \
             && [ -n "$out" ] \
             && echo "$out" > "${config_dir}/${cfg}" \
@@ -580,10 +597,9 @@ print(yaml.dump(redact(data), default_flow_style=False))
 
 collect_lz_services() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting service status from Landing Zone..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         echo '=== Failed Services ==='
         systemctl list-units --type=service --state=failed
         echo ''
@@ -603,10 +619,9 @@ collect_lz_services() {
 
 collect_lz_registry() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting registry information from Landing Zone..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         echo '=== Quay Registry Container ==='
         podman ps -a | grep -i quay || echo 'No Quay containers found'
         echo ''
@@ -620,10 +635,9 @@ collect_lz_registry() {
 
 collect_lz_cloud_init() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting cloud-init logs from Landing Zone..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         echo '=== cloud-init Status ==='
         cloud-init status --long 2>&1 || echo 'cloud-init not available'
         echo ''
@@ -641,28 +655,26 @@ collect_lz_cloud_init() {
 
 check_kubeconfig_exists() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
-    ssh $ssh_opts cloud-user@"$lz_ip" "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig" 2>/dev/null
+    ssh_lz "$lz_ip" "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig" 2>/dev/null
 }
 
 collect_cluster_kubeconfig() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     mkdir -p "${OUTPUT_DIR}/cluster"
     info "Collecting kubeconfig..."
-    scp $ssh_opts cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
 }
 
 collect_cluster_status() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting cluster status..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
         export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
 
         echo '=== Cluster Version ==='
         oc get clusterversion -o yaml
@@ -686,12 +698,12 @@ collect_cluster_status() {
 
 collect_cluster_events() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting cluster events..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
         export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
 
         echo '=== Recent Events (last 100) ==='
         oc get events --all-namespaces --sort-by='.lastTimestamp' | tail -100
@@ -703,12 +715,12 @@ collect_cluster_events() {
 
 collect_cluster_pods() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting pod information..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    ssh_lz "$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
         export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
 
         echo '=== All Pods ==='
         oc get pods --all-namespaces -o wide
@@ -726,12 +738,12 @@ collect_cluster_pods() {
 
 collect_cluster_problem_pod_logs() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     info "Collecting logs from problem pods..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "
         export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
         export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
         mkdir -p /tmp/problem-pods-${TIMESTAMP}
 
         # Get pods that are not Running/Succeeded
@@ -766,14 +778,13 @@ collect_cluster_problem_pod_logs() {
     " 2>&1 || warn "Could not collect problem pod logs"
 
     # Copy and extract
-    if scp $ssh_opts cloud-user@"$lz_ip":/tmp/problem-pods-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
+    if scp_lz cloud-user@"$lz_ip":/tmp/problem-pods-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
         (cd "${OUTPUT_DIR}/cluster" && tar xzf problem-pods-${TIMESTAMP}.tar.gz && rm problem-pods-${TIMESTAMP}.tar.gz) || true
     fi
 }
 
 collect_cluster_plugin_diagnostics() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     if [ -z "${ENABLED_PLUGINS:-}" ]; then
         return
@@ -804,9 +815,10 @@ collect_cluster_plugin_diagnostics() {
 
     for ns in $unique_ns; do
         info "Collecting diagnostics for namespace: $ns"
-        ssh $ssh_opts cloud-user@"$lz_ip" "
+        ssh_lz "$lz_ip" "
             export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
             export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+            oc() { command oc --request-timeout=30s \"\$@\"; }
 
             echo '=== Deployments ==='
             oc get deployments -n $ns -o wide 2>&1
