@@ -109,15 +109,29 @@ class Config:
             sys.exit(f"ERROR: STORAGE_PLUGIN must be 'lvms' or 'odf', got {storage_plugin!r}")
 
         if storage_plugin == "odf":
+            # ODF runs solo per host. Masters need more than the lvms 32 GB for
+            # the ODF/ACM/MCE control plane and Ceph consumers, but the Quay
+            # CrashLoop during the operators phase is NOT a master-memory
+            # problem: at 64 GB the masters showed no OOM/eviction and every
+            # cluster operator stayed healthy, yet Quay still failed identically.
+            # The real cause is Quay's health probe timing out on its external
+            # RadosGW/Postgres backend, so keep masters at 48 GB.
             default_master_mem = 49152
             default_master_vcpu = 16
             default_master_extra = 60
             default_lz_disk = 500
+            # ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the
+            # LZ alongside Quay and oc-mirror; 8 GB (and even 16 GB) is not enough
+            # and the guest OOM-kills Quay during the operators phase, so give ODF
+            # runs extra headroom.
+            default_lz_mem = 24576
         else:
             default_master_mem = 32768
             default_master_vcpu = 12
             default_master_extra = 1200 if deployment_mode == "disconnected" else 60
             default_lz_disk = 60
+            # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
+            default_lz_mem = 16384
 
         cluster_name = validate(
             "ENCLAVE_CLUSTER_NAME",
@@ -142,7 +156,7 @@ class Config:
                 extra_disk_gb=default_master_extra,
             ),
             lz=VMSpec(
-                memory_mb=optint("LANDINGZONE_MEMORY", 8192),
+                memory_mb=optint("LANDINGZONE_MEMORY", default_lz_mem),
                 vcpu=optint("LANDINGZONE_VCPU", 4),
                 disk_gb=optint("LANDINGZONE_DISK", default_lz_disk),
                 extra_disk_gb=0,

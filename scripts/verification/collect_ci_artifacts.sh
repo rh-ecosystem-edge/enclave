@@ -771,6 +771,99 @@ collect_cluster_problem_pod_logs() {
     fi
 }
 
+collect_cluster_quay_diagnostics() {
+    local lz_ip="$1"
+    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
+
+    # The generic problem-pod capture only grabs non-Running pods at tail=500,
+    # so it misses Quay's Postgres/Redis (Running), the QuayRegistry CR status,
+    # the config-bundle secret rotation, and the /health/instance body that
+    # names the failing subsystem (database vs storage vs redis). This captures
+    # the full quay-enterprise picture in one shot. Runs for both lvms and odf.
+    local kube_env="export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig; export PATH=/home/cloud-user/sessions/1/bin:\$PATH"
+
+    # Only a confirmed NotFound means "nothing to collect" -- skip cleanly then.
+    # SSH/API/auth/RBAC failures must NOT masquerade as an absent namespace (that
+    # would drop Quay diagnostics exactly when they are most needed), so warn and
+    # attempt collection anyway; the per-command `|| true` below captures the errors.
+    local ns_check
+    if ns_check=$(ssh $ssh_opts cloud-user@"$lz_ip" "$kube_env; oc get namespace quay-enterprise" 2>&1); then
+        : # namespace exists, proceed with collection
+    elif printf '%s' "$ns_check" | grep -q 'NotFound'; then
+        info "quay-enterprise namespace not present; skipping Quay diagnostics"
+        return
+    else
+        warn "Quay namespace check failed (not a clean NotFound), collecting anyway"
+    fi
+
+    info "Collecting Quay diagnostics..."
+    ssh $ssh_opts cloud-user@"$lz_ip" "
+        $kube_env
+        ns=quay-enterprise
+        out=/tmp/quay-diagnostics-${TIMESTAMP}
+        mkdir -p \$out
+
+        # QuayRegistry CR - .status.conditions is the operator's own view of why
+        # the registry is not healthy. Spec holds only secret references, not values.
+        oc get quayregistry -n \$ns -o yaml > \$out/quayregistry.yaml 2>&1 || true
+
+        {
+            echo '=== Pods ==='
+            oc get pods -n \$ns -o wide
+            echo ''
+            echo '=== Deployments ==='
+            oc get deployments -n \$ns -o wide
+            echo ''
+            echo '=== HPA (replica count / scaling) ==='
+            oc get hpa -n \$ns -o wide
+            echo ''
+            echo '=== Events (by time) ==='
+            oc get events -n \$ns --sort-by=.lastTimestamp
+            echo ''
+            echo '=== PVCs (registry/db backend binding) ==='
+            oc get pvc -n \$ns
+            echo ''
+            # Names/types only - never dump secret VALUES. The config-bundle
+            # rotation churn (registry-quay-config-secret-*) is visible here.
+            echo '=== Secrets (names only) ==='
+            oc get secrets -n \$ns
+        } > \$out/overview.txt 2>&1 || true
+
+        # Per-pod: describe + current and previous logs, all containers. Larger
+        # tail than the generic capture - Quay /health failures and DB errors
+        # scroll fast and got truncated to startup noise last time.
+        for pod in \$(oc get pods -n \$ns --no-headers -o custom-columns=:.metadata.name 2>/dev/null); do
+            oc describe pod -n \$ns \$pod > \$out/\${pod}_describe.txt 2>&1 || true
+            oc logs -n \$ns \$pod --all-containers --prefix --tail=2000 > \$out/\${pod}.log 2>&1 || true
+            oc logs -n \$ns \$pod --all-containers --prefix --tail=2000 --previous > \$out/\${pod}_previous.log 2>&1 || true
+        done
+
+        # /health/instance body names the failing subsystem. Best-effort: works
+        # only while a quay-app pod is briefly up between crashloop restarts.
+        {
+            echo '=== /health/instance ==='
+            oc exec -n \$ns deploy/registry-quay-app -c quay-app -- \
+                curl -sS -m 10 http://localhost:8080/health/instance 2>&1 \
+                || echo '(quay-app not execable - likely crashlooping)'
+        } > \$out/health-instance.txt 2>&1 || true
+
+        cd /tmp && tar czf quay-diagnostics-${TIMESTAMP}.tar.gz quay-diagnostics-${TIMESTAMP}/ 2>/dev/null
+    " 2>&1 || warn "Could not collect Quay diagnostics"
+
+    if scp $ssh_opts cloud-user@"$lz_ip":/tmp/quay-diagnostics-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
+        # Only remove the remote copies once the transfer succeeded. Cleanup
+        # normally destroys the LZ, but skip-cleanup (or a failed cleanup) leaves
+        # it running, where repeated full collections would otherwise accumulate
+        # the timestamped dir and archive under /tmp.
+        ssh $ssh_opts cloud-user@"$lz_ip" \
+            "rm -rf /tmp/quay-diagnostics-${TIMESTAMP} /tmp/quay-diagnostics-${TIMESTAMP}.tar.gz" 2>/dev/null || true
+        (cd "${OUTPUT_DIR}/cluster" && tar xzf quay-diagnostics-${TIMESTAMP}.tar.gz && rm quay-diagnostics-${TIMESTAMP}.tar.gz) \
+            || warn "Could not extract Quay diagnostics archive"
+    else
+        warn "Could not transfer Quay diagnostics archive from LZ"
+    fi
+}
+
 collect_cluster_plugin_diagnostics() {
     local lz_ip="$1"
     local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
@@ -942,6 +1035,7 @@ collect_full() {
     collect_cluster_events "$lz_ip"
     collect_cluster_pods "$lz_ip"
     collect_cluster_problem_pod_logs "$lz_ip"
+    collect_cluster_quay_diagnostics "$lz_ip"
     collect_cluster_plugin_diagnostics "$lz_ip"
 
     info "✓ Full collection complete"

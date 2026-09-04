@@ -51,7 +51,12 @@ fi
 # Setup SSH configuration
 setup_ssh_config "$CLUSTER_IP"
 
-OSD_SIZE_GB="${OSD_SIZE_GB:-200}"
+# 3 loopback OSDs of this size back the LZ Ceph (RadosGW object store + RBD).
+# 200GB (600GB raw) overflowed: the disconnected mirror pushes ~512GB of blobs
+# into RadosGW, one OSD crossed the 0.95 full_ratio, Ceph froze all writes and
+# Quay's boot.py hung on its Postgres RBD commit. 300GB (900GB raw, ~855 usable)
+# keeps the hottest OSD near 63% for the current imageset.
+OSD_SIZE_GB="${OSD_SIZE_GB:-300}"
 
 info "========================================="
 info "Ceph Setup on Landing Zone"
