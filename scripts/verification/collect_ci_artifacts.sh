@@ -785,21 +785,22 @@ collect_cluster_problem_pod_logs() {
 
 collect_cluster_quay_diagnostics() {
     local lz_ip="$1"
-    local ssh_opts="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q"
 
     # The generic problem-pod capture only grabs non-Running pods at tail=500,
     # so it misses Quay's Postgres/Redis (Running), the QuayRegistry CR status,
     # the config-bundle secret rotation, and the /health/instance body that
     # names the failing subsystem (database vs storage vs redis). This captures
     # the full quay-enterprise picture in one shot. Runs for both lvms and odf.
-    local kube_env="export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig; export PATH=/home/cloud-user/sessions/1/bin:\$PATH"
+    # The oc() wrapper adds --request-timeout=30s so a stalled apiserver fails
+    # fast instead of consuming the whole SSH budget.
+    local kube_env="export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig; export PATH=/home/cloud-user/sessions/1/bin:\$PATH; oc() { command oc --request-timeout=30s \"\$@\"; }"
 
     # Only a confirmed NotFound means "nothing to collect" -- skip cleanly then.
     # SSH/API/auth/RBAC failures must NOT masquerade as an absent namespace (that
     # would drop Quay diagnostics exactly when they are most needed), so warn and
     # attempt collection anyway; the per-command `|| true` below captures the errors.
     local ns_check
-    if ns_check=$(ssh $ssh_opts cloud-user@"$lz_ip" "$kube_env; oc get namespace quay-enterprise" 2>&1); then
+    if ns_check=$(ssh_lz "$lz_ip" "$kube_env; oc get namespace quay-enterprise" 2>&1); then
         : # namespace exists, proceed with collection
     elif printf '%s' "$ns_check" | grep -q 'NotFound'; then
         info "quay-enterprise namespace not present; skipping Quay diagnostics"
@@ -809,7 +810,7 @@ collect_cluster_quay_diagnostics() {
     fi
 
     info "Collecting Quay diagnostics..."
-    ssh $ssh_opts cloud-user@"$lz_ip" "
+    LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "
         $kube_env
         ns=quay-enterprise
         out=/tmp/quay-diagnostics-${TIMESTAMP}
@@ -862,12 +863,12 @@ collect_cluster_quay_diagnostics() {
         cd /tmp && tar czf quay-diagnostics-${TIMESTAMP}.tar.gz quay-diagnostics-${TIMESTAMP}/ 2>/dev/null
     " 2>&1 || warn "Could not collect Quay diagnostics"
 
-    if scp $ssh_opts cloud-user@"$lz_ip":/tmp/quay-diagnostics-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
+    if scp_lz cloud-user@"$lz_ip":/tmp/quay-diagnostics-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
         # Only remove the remote copies once the transfer succeeded. Cleanup
         # normally destroys the LZ, but skip-cleanup (or a failed cleanup) leaves
         # it running, where repeated full collections would otherwise accumulate
         # the timestamped dir and archive under /tmp.
-        ssh $ssh_opts cloud-user@"$lz_ip" \
+        ssh_lz "$lz_ip" \
             "rm -rf /tmp/quay-diagnostics-${TIMESTAMP} /tmp/quay-diagnostics-${TIMESTAMP}.tar.gz" 2>/dev/null || true
         (cd "${OUTPUT_DIR}/cluster" && tar xzf quay-diagnostics-${TIMESTAMP}.tar.gz && rm quay-diagnostics-${TIMESTAMP}.tar.gz) \
             || warn "Could not extract Quay diagnostics archive"
