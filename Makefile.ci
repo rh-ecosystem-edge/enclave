@@ -341,7 +341,7 @@ clean-infra:
 
 # Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs
 reap-stale-vms:
-	@./scripts/cleanup/reap_stale_vms.sh
+	@sudo -E python3 ./scripts/infrastructure/vm_infra.py reap
 
 # --- CI Infrastructure targets ---
 

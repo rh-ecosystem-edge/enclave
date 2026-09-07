@@ -207,8 +207,8 @@ Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
 directory when its storage pool is already gone.
 
 In CI, the `environment` Makefile target calls `create`, `clean-infra` calls
-`destroy` (via `cleanup.sh`), and `reap-stale-vms` calls `reap` (via
-`reap_stale_vms.sh`). The
+`destroy` (via `cleanup.sh`), and `reap-stale-vms` invokes `vm_infra.py reap`
+directly. The
 scheduled `cleanup.yml` workflow reaps at every level, and the e2e / dry-run
 workflows reap before each run. Two **repository variables** control the pre-job
 reap, with distinct effects:
