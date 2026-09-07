@@ -383,11 +383,11 @@ wheels = [
 
 [[package]]
 name = "configargparse"
-version = "1.7.5"
+version = "1.7.7"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/3f/0b/30328302903c55218ffc5199646d0e9d28348ff26c02ba77b2ffc58d294a/configargparse-1.7.5.tar.gz", hash = "sha256:e3f9a7bb6be34d66b2e3c4a2f58e3045f8dfae47b0dc039f87bcfaa0f193fb0f", size = 53548, upload-time = "2026-03-11T02:19:38.144Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/b4/7065677004d4ec8728da15a70580f431f1a4a079e0e8e8b7aa4ffee4e972/configargparse-1.7.7.tar.gz", hash = "sha256:607bea276a219912158afa1e5a716c3f8f88d542f9997dfd43bbd0b492a9f5a6", size = 73397, upload-time = "2026-09-06T20:58:06.387Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/19/3ba5e1b0bcc7b91aeab6c258afd70e4907d220fed3972febe38feb40db30/configargparse-1.7.5-py3-none-any.whl", hash = "sha256:1e63fdffedf94da9cd435fc13a1cd24777e76879dd2343912c1f871d4ac8c592", size = 27692, upload-time = "2026-03-11T02:19:36.442Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/e6/cf29a5b21528779fa335c860c66a915d2254bbf77c1fb2c67160c56c3b58/configargparse-1.7.7-py3-none-any.whl", hash = "sha256:61107bb1de0b53c4eb7a475a12de6783b0dc6c51bc9859f5accbe97d66f8a4b7", size = 34277, upload-time = "2026-09-06T20:58:05.125Z" },
 ]
 
 [[package]]
