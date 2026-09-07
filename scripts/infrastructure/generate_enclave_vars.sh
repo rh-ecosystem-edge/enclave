@@ -323,12 +323,18 @@ fi
 if [ "${OPENSHIFT_CI:-}" = "true" ] && [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
     LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
     mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
-    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -q '^lvmsQuayAppResources:' "$LVMS_PLUGIN_CONFIG"; then
+    # Tolerate quoted keys and whitespace before the colon (all valid YAML forms).
+    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*"?lvmsQuayAppResources"?[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
         info "LVMS plugin config already defines lvmsQuayAppResources; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
     else
         # Append as a new top-level key so any existing lvmsConfig (e.g.
         # deviceSelector.optionalPaths) is preserved rather than overwritten.
-        [ -f "$LVMS_PLUGIN_CONFIG" ] || printf -- '---\n' > "$LVMS_PLUGIN_CONFIG"
+        if [ ! -f "$LVMS_PLUGIN_CONFIG" ]; then
+            printf -- '---\n' > "$LVMS_PLUGIN_CONFIG"
+        elif [ -s "$LVMS_PLUGIN_CONFIG" ]; then
+            # Ensure a terminal newline so the appended key starts on its own line.
+            printf '\n' >> "$LVMS_PLUGIN_CONFIG"
+        fi
         cat >> "$LVMS_PLUGIN_CONFIG" <<EOF
 # Auto-generated CI override (OSAC-4957): lower the Quay app memory request so the
 # rolling-update surge pod fits on the node-pinned LVMS RWO PV.
