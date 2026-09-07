@@ -2,7 +2,8 @@
 ##############################################################################
 # LVMS PLUGIN CONFIGURATION TEMPLATE
 # Instructions: Copy this file to 'config/plugins/lvms.yaml' and set values.
-# Only needed to restrict which disks LVMS manages; omit to use all disks.
+# Only needed to override LVMS settings, such as managed disks or Quay app
+# resources; omit to use all defaults.
 ##############################################################################
 
 # lvmsConfig:

@@ -51,10 +51,16 @@ properties:
     type: object
     description: Resource requests/limits for the managed Quay app container.
     additionalProperties: false
+    required:
+      - requests
+      - limits
     properties:
       requests:
         type: object
         additionalProperties: false
+        required:
+          - cpu
+          - memory
         properties:
           cpu:
             "$ref": "#/definitions/nonEmptyString"
@@ -65,6 +71,9 @@ properties:
       limits:
         type: object
         additionalProperties: false
+        required:
+          - cpu
+          - memory
         properties:
           cpu:
             "$ref": "#/definitions/nonEmptyString"

@@ -314,15 +314,22 @@ if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
     info "Storage plugin overridden to ODF with RadosGWStorage backend"
 fi
 
-# Tune Quay app resources for the LVMS backend in CI (OSAC-4957). The node-local
-# RWO PV pins the Quay app to a single node, so a rolling update must briefly run a
-# second pod there; on constrained CI masters the default 6Gi request leaves the
-# surge pod unschedulable. Lower the memory request so the rollout can complete.
-if [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
+# Tune Quay app resources for the LVMS backend in CI only (OSAC-4957). The
+# node-local RWO PV pins the Quay app to a single node, so a rolling update must
+# briefly run a second pod there; on constrained CI masters the default 6Gi
+# request leaves the surge pod unschedulable. Lower the memory request so the
+# rollout can complete. Gated on OPENSHIFT_CI so documented local deployments
+# (make install-enclave) keep the production defaults.
+if [ "${OPENSHIFT_CI:-}" = "true" ] && [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
     LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
     mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
-    cat > "$LVMS_PLUGIN_CONFIG" <<EOF
----
+    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -q '^lvmsQuayAppResources:' "$LVMS_PLUGIN_CONFIG"; then
+        info "LVMS plugin config already defines lvmsQuayAppResources; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
+    else
+        # Append as a new top-level key so any existing lvmsConfig (e.g.
+        # deviceSelector.optionalPaths) is preserved rather than overwritten.
+        [ -f "$LVMS_PLUGIN_CONFIG" ] || printf -- '---\n' > "$LVMS_PLUGIN_CONFIG"
+        cat >> "$LVMS_PLUGIN_CONFIG" <<EOF
 # Auto-generated CI override (OSAC-4957): lower the Quay app memory request so the
 # rolling-update surge pod fits on the node-pinned LVMS RWO PV.
 lvmsQuayAppResources:
@@ -333,7 +340,8 @@ lvmsQuayAppResources:
     cpu: "4"
     memory: "12Gi"
 EOF
-    info "Generated LVMS plugin config with tuned Quay app resources: $LVMS_PLUGIN_CONFIG"
+        info "Added tuned Quay app resources to LVMS plugin config: $LVMS_PLUGIN_CONFIG"
+    fi
 fi
 
 info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"

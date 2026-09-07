@@ -20,12 +20,22 @@ properties:
               type: string
   lvmsQuayAppResources:
     type: object
-    description: Override resource requests/limits for the managed Quay app container.
+    description: >-
+      Override resource requests/limits for the managed Quay app container.
+      This mapping replaces the default wholesale (Ansible hash_behaviour is
+      "replace"), so a complete requests/limits set is required to avoid
+      silently dropping default values.
     additionalProperties: false
+    required:
+      - requests
+      - limits
     properties:
       requests:
         type: object
         additionalProperties: false
+        required:
+          - cpu
+          - memory
         properties:
           cpu:
             "$ref": "#/definitions/k8sQuantity"
@@ -36,6 +46,9 @@ properties:
       limits:
         type: object
         additionalProperties: false
+        required:
+          - cpu
+          - memory
         properties:
           cpu:
             "$ref": "#/definitions/k8sQuantity"
