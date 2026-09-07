@@ -172,14 +172,50 @@ sudo python3 scripts/infrastructure/vm_infra.py create -v
 
 # Dry-run: print the subnet create would select (creating nothing)
 sudo python3 scripts/infrastructure/vm_infra.py create --print-subnet
+
+# Reap: tear down ALL CI clusters older than a threshold (cross-run GC)
+sudo REAP_AGE_HOURS=12 python3 scripts/infrastructure/vm_infra.py reap
+sudo python3 scripts/infrastructure/vm_infra.py reap --age-hours 12
 ```
 
 `--print-subnet` runs the same locked selection logic as `create` and prints
 `subnet_id=`, `bmc_network=`, `cluster_network=` and `lz_network=` without
 defining any networks or VMs — useful for verifying allocation on a host.
 
-Both commands are idempotent: `create` skips resources that already exist;
-`destroy` skips resources already gone.
+`create` and `destroy` are idempotent: `create` skips resources that already
+exist; `destroy` skips resources already gone.
 
-In CI, the `environment` Makefile target calls `create`, and `clean-infra` calls
-`destroy` (via `cleanup.sh`).
+### Reaping leaked clusters
+
+`destroy` only tears down the one cluster named by `ENCLAVE_CLUSTER_NAME`, so VMs
+left behind by a cancelled, timed-out or killed job are never reclaimed by any
+later run (each run has a different `<prefix>-<hash>` name). `reap` closes that
+gap: it discovers **every** CI cluster on the host (`eci-`/`ecd-`/`nc-`/`nd-`)
+and calls `destroy` on each one whose libvirt definition is older than the
+threshold. Age is taken from the domain-definition XML mtime (the cluster's
+create time), never the qcow2 disk mtime — a leaked-but-running VM keeps writing
+to disk and would otherwise never age out. Only clusters matching the CI naming
+pattern are ever touched, and each cluster is best-effort (a failure on one does
+not abort the sweep).
+
+The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, safely above
+the longest e2e job timeout of 600 minutes). A destructive reap refuses a
+threshold below the safety floor (`11h`, just above that timeout) unless `--force`
+is given, so a misconfigured value cannot tear down an in-flight run sharing the
+host; `--dry-run` is exempt. Non-numeric or non-finite thresholds are rejected.
+Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
+directory when its storage pool is already gone.
+
+In CI, the `environment` Makefile target calls `create`, `clean-infra` calls
+`destroy` (via `cleanup.sh`), and `reap-stale-vms` invokes `vm_infra.py reap`
+directly. The
+scheduled `cleanup.yml` workflow reaps at every level, and the e2e / dry-run
+workflows reap before each run. Two **repository variables** control the pre-job
+reap, with distinct effects:
+
+- `ENABLE_PREJOB_REAP` — the on/off switch. Set it to `false` to disable pre-job
+  reaping entirely; any other value (or unset) leaves it enabled.
+- `REAP_AGE_HOURS` — the numeric age threshold in hours (default `12`). This
+  **tunes** the threshold; it never disables reaping. Do **not** set it to
+  `false` — it is forwarded to `vm_infra.py`, which rejects a non-numeric value
+  and fails the step. Use `ENABLE_PREJOB_REAP=false` to turn reaping off.

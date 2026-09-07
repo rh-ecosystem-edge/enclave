@@ -13,6 +13,7 @@ This script currently needs to be run in a RHEL9 Hypervisor with Python 3.9.
 Usage:
     sudo python3 vm_infra.py create
     sudo python3 vm_infra.py destroy
+    sudo REAP_AGE_HOURS=12 python3 vm_infra.py reap   # GC stale cross-run VMs
 """
 
 from __future__ import annotations
@@ -21,11 +22,13 @@ import argparse
 import fcntl
 import json
 import logging
+import math
 import os
 import re
 import secrets
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -833,12 +836,18 @@ def destroy(cfg: Config) -> None:
         except libvirt.libvirtError as exc:
             LOG.warning("Failed to remove pool: %s", exc)
 
-    # Remove sparse extra disk files not tracked by the pool (run even if pool is already gone)
-    for i in range(cfg.num_masters):
-        extra = cfg.pool_dir / f"{cfg.master_vm_name(i)}-extra.img"
-        if extra.exists():
-            extra.unlink()
-            LOG.info("Removed extra disk: %s", extra)
+    # Remove sparse extra disk files not tracked by the pool (run even if pool is
+    # already gone). Enumerate them from the pool dir rather than deriving names
+    # from num_masters: create() writes master_N-extra.img before defining the
+    # master domain, so a cancelled/failed create can leave an orphan whose domain
+    # never existed — and reap() counts domains, not files, to size the cluster.
+    if cfg.pool_dir.is_dir():
+        for extra in sorted(cfg.pool_dir.glob("*-extra.img")):
+            try:
+                extra.unlink()
+                LOG.info("Removed extra disk: %s", extra)
+            except OSError as exc:
+                LOG.warning("Failed to remove extra disk %s: %s", extra, exc)
 
     # Destroy/undefine all networks matching the cluster prefix (cluster_name + "-" to avoid partial matches)
     for net in conn.listAllNetworks():
@@ -860,6 +869,174 @@ def destroy(cfg: Config) -> None:
         LOG.info("Removed cluster-env.sh")
 
     LOG.info("=== Destroy complete for cluster: %s ===", cfg.cluster_name)
+
+
+# ─── Reap (cross-run garbage collection) ──────────────────────────────────────
+#
+# Per-job cleanup only ever matches its own run's cluster name (grep
+# "^${CLUSTER_NAME}_"), so VMs left by a cancelled/timed-out/killed job are never
+# reclaimed by any later run and accumulate forever. reap sweeps ALL CI clusters
+# on the host and tears down every one whose definition is older than a threshold
+# (default 12h, safely above the longest e2e job timeout of 600 minutes).
+
+# CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
+# 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is
+# the dev-scripts VM naming convention (landingzone_0 / master_N).
+_CI_DOMAIN_RE = re.compile(
+    r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))_(?:landingzone_0|master_\d+)$"
+)
+
+DEFAULT_REAP_AGE_HOURS = 12.0
+# A cluster's define-age exceeding the longest possible job runtime is what proves
+# it is leaked rather than in-flight: the e2e jobs cap out at 600 minutes (10h) via
+# timeout-minutes, so any cluster older than that cannot belong to a running job.
+# Destructive reaps refuse thresholds below this floor (use --force to override on
+# a host you know is idle); --dry-run is always allowed for inspection.
+MIN_REAP_AGE_HOURS = 11.0
+# Persistent domain definitions; their mtime is the cluster's create time and is
+# untouched by start/stop, unlike the qcow2 disks (which a running VM keeps
+# writing to, so a leaked-but-running VM would never age out by disk mtime).
+LIBVIRT_QEMU_CONFIG_DIR = Path("/etc/libvirt/qemu")
+
+
+def _cluster_of_domain(name: str) -> Optional[str]:
+    """Return the CI cluster a domain belongs to, or None if it is not a CI domain."""
+    m = _CI_DOMAIN_RE.match(name)
+    return m.group(1) if m else None
+
+
+def _domain_define_mtime(name: str) -> Optional[float]:
+    """mtime of a domain's persistent definition XML (its create time), or None if unreadable."""
+    try:
+        return (LIBVIRT_QEMU_CONFIG_DIR / f"{name}.xml").stat().st_mtime
+    except OSError:
+        return None
+
+
+def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
+    """Backing directory of a cluster's storage pool (== working_dir/pool), or None."""
+    try:
+        xml = conn.storagePoolLookupByName(name).XMLDesc(0)
+    except libvirt.libvirtError:
+        return None
+    m = re.search(r"<path>([^<]+)</path>", xml)
+    return Path(m.group(1)) if m else None
+
+
+def _reap_working_dir(
+    conn: libvirt.virConnect, cluster: str, base_working_dir: Optional[Path]
+) -> Path:
+    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/clusters/<cluster>."""
+    pool_path = _pool_target_path(conn, cluster)
+    if pool_path is not None:
+        return pool_path.parent  # _create_pool backs the pool at working_dir/pool
+    if base_working_dir is not None:
+        return base_working_dir / "clusters" / cluster
+    # No pool and no base dir: return a path whose file-removals are all no-ops;
+    # the libvirt teardown (domains/networks/pool) in destroy() still runs.
+    return Path("/nonexistent") / cluster
+
+
+def _cluster_age_seconds(
+    conn: libvirt.virConnect,
+    cluster: str,
+    domains: List[str],
+    base_working_dir: Optional[Path],
+    now: float,
+) -> Optional[float]:
+    """Age of the most recently defined domain in the cluster, in seconds; None if undeterminable.
+
+    Uses the newest domain define-time so a cluster is only reaped once even its
+    most recent evidence of activity is stale — never while a run is in flight.
+    """
+    mtimes = [m for d in domains if (m := _domain_define_mtime(d)) is not None]
+    if not mtimes:
+        try:
+            mtimes = [_reap_working_dir(conn, cluster, base_working_dir).stat().st_mtime]
+        except OSError:
+            return None
+    return now - max(mtimes)
+
+
+def _reap_config(
+    conn: libvirt.virConnect,
+    cluster: str,
+    domains: List[str],
+    base_working_dir: Optional[Path],
+) -> Config:
+    """Reconstruct the minimal Config destroy() needs for a discovered cluster.
+
+    VMSpec sizing is irrelevant to teardown, so placeholders are used; num_masters
+    is counted from the live domains and deployment_mode is inferred from whether
+    the disconnected-only uplink network still exists.
+    """
+    master_re = re.compile(rf"^{re.escape(cluster)}_master_\d+$")
+    num_masters = sum(1 for d in domains if master_re.match(d))
+    mode = "disconnected" if _net_exists(conn, f"{cluster}-u") else "connected"
+    placeholder = VMSpec(memory_mb=0, vcpu=0, disk_gb=0, extra_disk_gb=0)
+    return Config(
+        cluster_name=cluster,
+        deployment_mode=mode,
+        num_masters=num_masters,
+        working_dir=_reap_working_dir(conn, cluster, base_working_dir),
+        master=placeholder,
+        lz=placeholder,
+        storage_plugin="lvms",
+    )
+
+
+def reap(age_hours: float, base_working_dir: Optional[Path], dry_run: bool = False) -> None:
+    """Tear down every CI cluster on the host older than age_hours; best-effort per cluster.
+
+    With dry_run=True nothing is destroyed: the sweep only reports which clusters
+    would be reaped or kept, for safe verification on a live host.
+    """
+    threshold = age_hours * 3600
+    now = time.time()
+    prefix = "[dry-run] " if dry_run else ""
+    LOG.info("=== %sReaping CI clusters older than %.1fh ===", prefix, age_hours)
+
+    conn = _connect()
+    clusters: Dict[str, List[str]] = {}
+    for dom in conn.listAllDomains():
+        cluster = _cluster_of_domain(dom.name())
+        if cluster is not None:
+            clusters.setdefault(cluster, []).append(dom.name())
+
+    if not clusters:
+        LOG.info("No CI clusters found; nothing to reap")
+        return
+
+    reaped = kept = 0
+    for cluster, domains in sorted(clusters.items()):
+        age = _cluster_age_seconds(conn, cluster, domains, base_working_dir, now)
+        if age is None:
+            LOG.warning("Cannot determine age of %s; skipping to be safe", cluster)
+            kept += 1
+            continue
+        if age < threshold:
+            LOG.info("Keeping %s (age %.1fh < %.1fh)", cluster, age / 3600, age_hours)
+            kept += 1
+            continue
+        if dry_run:
+            LOG.info(
+                "%sWould reap stale cluster %s (age %.1fh, %d domains)",
+                prefix, cluster, age / 3600, len(domains),
+            )
+            reaped += 1
+            continue
+        LOG.info("Reaping stale cluster %s (age %.1fh)", cluster, age / 3600)
+        try:
+            destroy(_reap_config(conn, cluster, domains, base_working_dir))
+            reaped += 1
+        except Exception as exc:  # noqa: BLE001 — one bad cluster must not abort the sweep
+            LOG.warning("Failed to reap %s: %s", cluster, exc)
+            kept += 1
+
+    LOG.info(
+        "=== %sReap complete: %d %s, %d kept ===",
+        prefix, reaped, "would be reaped" if dry_run else "reaped", kept,
+    )
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
@@ -890,13 +1067,33 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Manage libvirt VM infrastructure for Enclave CI runs"
     )
-    parser.add_argument("command", choices=["create", "destroy"])
+    parser.add_argument("command", choices=["create", "destroy", "reap"])
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
         "--print-subnet",
         action="store_true",
         help="Dry-run: print the subnet create would use (creating nothing), then exit. "
         "Only valid with the create command.",
+    )
+    parser.add_argument(
+        "--age-hours",
+        type=float,
+        default=None,
+        help="reap: only tear down CI clusters older than this many hours "
+        f"(default: $REAP_AGE_HOURS or {DEFAULT_REAP_AGE_HOURS:g}). Only valid with reap.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="reap: report which clusters would be reaped without destroying "
+        "anything. Only valid with reap.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"reap: allow a threshold below the {MIN_REAP_AGE_HOURS:g}h safety "
+        "floor for a destructive run (only on a host known to be idle). Only "
+        "valid with reap.",
     )
     args = parser.parse_args()
 
@@ -908,6 +1105,29 @@ def main() -> None:
 
     if args.print_subnet and args.command != "create":
         parser.error("--print-subnet is only valid with the create command")
+    for flag in ("age_hours", "dry_run", "force"):
+        if getattr(args, flag) not in (None, False) and args.command != "reap":
+            parser.error(f"--{flag.replace('_', '-')} is only valid with the reap command")
+
+    # reap discovers clusters from libvirt; it needs neither a cluster name nor a
+    # working dir, so it must not go through Config.from_env().
+    if args.command == "reap":
+        age_hours = args.age_hours if args.age_hours is not None else _reap_age_from_env()
+        # Allow-list the threshold: it must be a finite positive number. NaN would
+        # slip past a bare `<= 0` check and make `age < threshold` always false, so
+        # every discovered cluster — including active ones — would be reaped.
+        if not math.isfinite(age_hours) or age_hours <= 0:
+            parser.error("reap age must be a finite positive number of hours")
+        # Below the safety floor a destructive sweep could tear down an in-flight
+        # run sharing the host; only --dry-run or an explicit --force may go lower.
+        if age_hours < MIN_REAP_AGE_HOURS and not args.dry_run and not args.force:
+            parser.error(
+                f"reap age {age_hours:g}h is below the {MIN_REAP_AGE_HOURS:g}h safety "
+                f"floor (longest job timeout); pass --force to override on an idle host"
+            )
+        base_raw = os.environ.get("BASE_WORKING_DIR", "")
+        reap(age_hours, Path(base_raw) if base_raw else None, dry_run=args.dry_run)
+        return
 
     cfg = Config.from_env()
 
@@ -917,6 +1137,17 @@ def main() -> None:
         create(cfg)
     else:
         destroy(cfg)
+
+
+def _reap_age_from_env() -> float:
+    """Reap threshold in hours from REAP_AGE_HOURS, falling back to the default."""
+    raw = os.environ.get("REAP_AGE_HOURS", "")
+    if not raw:
+        return DEFAULT_REAP_AGE_HOURS
+    try:
+        return float(raw)
+    except ValueError:
+        sys.exit(f"ERROR: REAP_AGE_HOURS must be a number, got {raw!r}")
 
 
 if __name__ == "__main__":
