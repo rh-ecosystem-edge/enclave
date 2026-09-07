@@ -300,14 +300,24 @@ sudo qemu-img convert -f qcow2 -O qcow2 \
     "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" \
     "${POOL_PATH}/${LZ_VM_NAME}.qcow2"
 
-# Resize disk: 1000GB for disconnected deployment, 600GB otherwise
-if is_enclave_disconnected; then
+# Resize disk. Disconnected mirrors the full release + OLM catalogs locally, so
+# it needs far more than connected. ODF additionally keeps a SECOND copy of the
+# mirror on the LZ: oc-mirror's local container cache (~/.local) plus the Ceph
+# loopback OSD files under /var/lib/ceph-loops that back RadosGW/RBD. ODF needs
+# that Ceph headroom regardless of connectivity, so it is sized first (the CI
+# decision logic only ever pairs odf with disconnected, but keep this correct
+# by construction for manual/standalone connected+odf runs).
+if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
+    LZ_DISK_SIZE="1500G"
+elif is_enclave_disconnected; then
     LZ_DISK_SIZE="1000G"
 else
     LZ_DISK_SIZE="600G"
 fi
 # 600GB: Quay ~130GB, oc-mirror ~7GB, ISO ~3GB, binaries ~3GB, OS and buffer
 # 1000GB: extra headroom for full release mirror and OLM catalogs in disconnected env
+# 1500GB (odf): ~900GB raw for the Ceph loopback OSD files (3x OSD_SIZE_GB) plus
+#               ~600GB for the mirror, OS, and buffer
 info "Resizing disk to ${LZ_DISK_SIZE}..."
 sudo qemu-img resize "${POOL_PATH}/${LZ_VM_NAME}.qcow2" "$LZ_DISK_SIZE"
 
@@ -364,10 +374,21 @@ if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
     info "Disconnected mode: adding uplink NIC on ${UPLINK_NETWORK}"
 fi
 
+# ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the LZ alongside
+# Quay and oc-mirror; 16 GB is not enough and the guest OOM-kills Quay during the
+# operators phase, so give ODF runs extra headroom. This is where the LZ VM is
+# actually sized: vm_infra.py only defines a placeholder domain that the teardown
+# above destroys and this virt-install recreates.
+if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
+    LZ_MEM_DEFAULT=24576
+else
+    LZ_MEM_DEFAULT=16384
+fi
+
 # shellcheck disable=SC2086
 sudo virt-install \
     --name "$LZ_VM_NAME" \
-    --memory "${LANDINGZONE_MEMORY:-16384}" \
+    --memory "${LANDINGZONE_MEMORY:-${LZ_MEM_DEFAULT}}" \
     --vcpus "${LANDINGZONE_VCPU:-16}" \
     --disk vol=${POOL_NAME}/${LZ_VM_NAME}.qcow2,bus=virtio \
     --disk "${LZ_WORKING_DIR}/cloud-init.iso,device=cdrom,bus=sata" \

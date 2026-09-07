@@ -13,7 +13,7 @@ CI Runner Machine (runs: [self-hosted, enclave-large])
 │   │   ├── Ceph cluster (cephadm, podman containers)
 │   │   │   ├── MON  – port 3300/6789
 │   │   │   ├── MGR  – prometheus metrics port 9283
-│   │   │   ├── OSDs – 3x loopback files (/var/lib/ceph-loops/osd-{0,1,2}.img)
+│   │   │   ├── OSDs – 3x 300GB loopback files (/var/lib/ceph-loops/osd-{0,1,2}.img)
 │   │   │   └── RGW  – S3-compatible, port 7480
 │   │   ├── Enclave Lab (Ansible playbooks)
 │   │   └── ~/ceph-config/  (generated config files)
@@ -33,15 +33,18 @@ CI Runner Machine (runs: [self-hosted, enclave-large])
 Cephadm filters out raw loop devices, so each OSD uses an LVM stack:
 
 ```text
-Sparse file (20GB)          Loop device          LVM
+Sparse file (300GB)         Loop device          LVM
 osd-0.img  ──────────>  /dev/loop0  ──────>  ceph-vg0/ceph-lv0  ──> OSD.0
 osd-1.img  ──────────>  /dev/loop1  ──────>  ceph-vg1/ceph-lv1  ──> OSD.1
 osd-2.img  ──────────>  /dev/loop2  ──────>  ceph-vg2/ceph-lv2  ──> OSD.2
 ```
 
-- Files are **sparse** (`truncate -s 20G`) -- only consume disk as data is written
+- Files are **sparse** (`truncate -s 300G`) -- only consume disk as data is written
 - LZ is ephemeral (destroyed after each CI run), so no systemd loopback service is needed
 - Single-node replication: `osd_pool_default_size=1` (no redundancy, CI-only)
+- CI uses **300GB** OSDs (set by `setup_ceph_on_lz.sh`); the `setup_ceph.sh`
+  standalone default is 50GB. See [Capacity and sizing](#capacity-and-sizing)
+  for why 300GB.
 
 ### Ceph Services
 
@@ -56,14 +59,78 @@ osd-2.img  ──────────>  /dev/loop2  ──────>  cep
 
 | Pool | Purpose |
 |------|---------|
-| `ceph-rbd` | RBD block storage for ODF StorageCluster |
-| Default pools | Internal Ceph pools (`.mgr`, `.rgw.root`, etc.) |
+| `ceph-rbd` | RBD block storage for ODF StorageCluster (backs all cluster PVCs, incl. Quay/Clair Postgres) |
+| `default.rgw.buckets.data` | RGW object data -- holds the mirrored image blobs; **fills first** and drives OSD sizing |
+| Default pools | Internal Ceph pools (`.mgr`, `.rgw.root`, `default.rgw.*` metadata, etc.) |
 
 ### S3 / RGW
 
 - User: `quay-ci` (system user with full access)
 - Bucket: `quay-storage` (pre-created for Quay mirror registry)
 - Used as Quay's `RadosGWStorage` backend instead of `LocalStorage`
+
+## Capacity and sizing
+
+The single biggest operational failure mode of this setup is **Ceph running out
+of disk**. Sizing exists to keep the OSDs comfortably below the `full_ratio`
+wall throughout a disconnected mirror.
+
+### OSD sizing
+
+CI runs **3 x 300GB** loopback OSDs = 900GB raw, ~855GB usable at
+`osd_pool_default_size=1`. This is set in `setup_ceph_on_lz.sh`
+(`OSD_SIZE_GB=300`), overriding the `setup_ceph.sh` standalone default of 50GB.
+
+Why 300GB: a disconnected mirror pushes **~512GB** of image blobs into RadosGW's
+`default.rgw.buckets.data`. The earlier 200GB OSDs (600GB raw) overflowed --
+one OSD crossed `full_ratio` and froze the whole cluster (see below). 300GB
+keeps the hottest OSD near ~63% for the current imageset, leaving headroom for
+imageset growth.
+
+### The full-ratio failure mode (read this before touching sizing)
+
+Ceph enforces three usage thresholds:
+
+| Threshold | Default | Effect |
+|-----------|---------|--------|
+| `nearfull_ratio` | 0.85 | HEALTH_WARN, still writable |
+| `backfillfull_ratio` | 0.90 | blocks backfill/rebalance |
+| `full_ratio` | 0.95 | **blocks ALL writes cluster-wide** |
+
+When *any single* OSD crosses `full_ratio`, Ceph enters `HEALTH_ERR` and stops
+accepting writes across the **entire** cluster (all pools report full). Because
+every cluster PVC -- including Quay's and Clair's Postgres -- lives on
+`ceph-rbd`, their commits hang indefinitely.
+
+The observed symptom is misleading: Quay's `boot.py` runs synchronously before
+the web server starts, blocks on its first Postgres **commit** (an RBD write),
+never binds `:8080`, and is then killed by its startup/liveness probes -- a
+permanent crashloop that looks like a Quay/app bug. Reads still work
+(`select 1` returns in milliseconds); only **writes** freeze. If ODF Quay is
+crashlooping during the operators/mirror phase, check Ceph health first.
+
+### Landing Zone disk sizing
+
+The **running** LZ disk is sized by `provision_landing_zone.sh` (which recreates
+the LZ via `virt-install`), **not** by `vm_infra.py` (whose value only sizes the
+throwaway placeholder domain). For disconnected+odf it is **1500GB**.
+
+It must be that large because the mirror lands on the LZ **twice**:
+
+- oc-mirror's `~/.local` container cache (~315GB), and
+- the Ceph loopback OSD files under `/var/lib/ceph-loops` (~575GB actual for the
+  ~512GB of RadosGW data)
+
+plus the OS and per-run session data. See the `LANDINGZONE_DISK` row in
+[`vm-infra.md`](vm-infra.md) for the connected / disconnected / disconnected+odf
+values.
+
+### Why grow rather than shrink the mirror
+
+ODF runs solo on its runner (~251 GiB RAM, nvme with multiple TiB free), so
+there is ample room to grow the OSDs and LZ disk. Trimming the imageset would
+also relieve pressure but cuts operator coverage (e.g. cnv/aap), so growing
+capacity is preferred while the host has headroom.
 
 ## Networking
 
@@ -149,7 +216,7 @@ The script is idempotent. Environment variables for customization:
 | `CEPH_HOST_IP` | auto-detected | Host IP for Ceph to bind to |
 | `CEPH_RELEASE` | `reef` | Ceph release to install |
 | `OSD_COUNT` | `3` | Number of loopback OSDs |
-| `OSD_SIZE_GB` | `50` | Size per OSD (sparse) |
+| `OSD_SIZE_GB` | `50` | Size per OSD (sparse). CI overrides this to **300** via `setup_ceph_on_lz.sh` -- see [Capacity and sizing](#capacity-and-sizing) |
 | `RGW_PORT` | `7480` | RadosGW port |
 | `LOOP_DIR` | `/var/lib/ceph-loops` | Directory for loopback image files |
 | `SKIP_LOOPBACK_SERVICE` | `false` | Skip systemd loopback service |
@@ -162,6 +229,11 @@ The script is idempotent. Environment variables for customization:
 # Cluster health
 sudo cephadm shell -- ceph health        # expect HEALTH_OK
 sudo cephadm shell -- ceph osd tree      # expect 3 OSDs up
+
+# Disk pressure (see "Capacity and sizing" -- a full OSD freezes all writes)
+sudo cephadm shell -- ceph -s            # watch for HEALTH_ERR / "full osd(s)" / "pool(s) full"
+sudo cephadm shell -- ceph df            # raw vs per-pool usage; watch default.rgw.buckets.data
+sudo cephadm shell -- ceph osd df        # per-OSD %USE vs the 0.95 full_ratio wall
 
 # RGW / S3
 curl http://localhost:7480/
