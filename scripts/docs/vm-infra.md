@@ -7,9 +7,21 @@ by Enclave CI e2e runs, replacing the previous dependency on
 
 ## Network topology
 
-All subnets share the same N, taken from the third octet of `ENCLAVE_BMC_NETWORK`
-(e.g. N=5 from `100.64.5.0/24`). Subnet N is assigned atomically per cluster by
-`scripts/setup/allocate_subnet.sh`.
+All subnets share the same third octet N (e.g. N=5 → BMC `100.64.5.0/24`,
+cluster `192.168.5.0/24`, LZ uplink `172.16.5.0/24`).
+
+`vm_infra.py` selects N itself at create time, using **libvirt as the source of
+truth**: under a host-wide lock (`/run/lock/enclave-subnet.lock`) it enumerates
+the subnets already in use by any defined libvirt network (active or inactive)
+and by any host interface, then picks the lowest free N in `[2, 254]`. Holding
+the lock across select→create means concurrent CI runs on the same hypervisor
+can never race onto the same subnet, and a re-run of the same cluster reuses its
+existing subnet (read back from the `{cluster}-p` network). This replaces the old
+`allocate_subnet.sh` JSON allocation ledger, which could drift from reality and
+hand out a subnet a leftover network still used.
+
+N can be pinned manually with `ENCLAVE_SUBNET_ID` (or the third octet of
+`ENCLAVE_BMC_NETWORK`); when neither is set, N is auto-selected.
 
 ### Connected mode — 2 bridges
 
@@ -82,6 +94,10 @@ embed the cluster name, so multiple CI runs on the same host never conflict.
 The libvirt API is safe for concurrent operations on distinct resources; the old
 `with_libvirt_lock.sh` wrapper is no longer needed.
 
+The one shared resource is the subnet third octet N. `create` serializes subnet
+selection and network creation across all concurrent runs on the host with an
+exclusive `flock` on `/run/lock/enclave-subnet.lock` (see *Network topology*).
+
 ## State files
 
 `create` writes two files to `$WORKING_DIR`:
@@ -117,9 +133,9 @@ that references them.
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `ENCLAVE_CLUSTER_NAME` | yes | — | Unique cluster identifier (e.g. `eci-abc123`) |
-| `ENCLAVE_BMC_NETWORK` | yes | — | BMC network CIDR (e.g. `100.64.5.0/24`) |
-| `ENCLAVE_CLUSTER_NETWORK` | yes | — | Cluster network CIDR (e.g. `192.168.5.0/24`) |
 | `WORKING_DIR` | yes | — | Per-cluster working directory |
+| `ENCLAVE_SUBNET_ID` | no | auto | Pin the shared third octet N (2–254); auto-selected from libvirt when unset |
+| `ENCLAVE_BMC_NETWORK` | no | derived | Alternative way to pin N via its third octet (e.g. `100.64.5.0/24`); ignored if `ENCLAVE_SUBNET_ID` is set |
 | `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
 | `ENCLAVE_NUM_MASTERS` | no | `3` | Number of master VMs |
 | `STORAGE_PLUGIN` | no | `lvms` | `lvms` or `odf` — affects VM sizing defaults |
@@ -153,7 +169,14 @@ sudo python3 scripts/infrastructure/vm_infra.py destroy
 
 # Verbose output
 sudo python3 scripts/infrastructure/vm_infra.py create -v
+
+# Dry-run: print the subnet create would select (creating nothing)
+sudo python3 scripts/infrastructure/vm_infra.py create --print-subnet
 ```
+
+`--print-subnet` runs the same locked selection logic as `create` and prints
+`subnet_id=`, `bmc_network=`, `cluster_network=` and `lz_network=` without
+defining any networks or VMs — useful for verifying allocation on a host.
 
 Both commands are idempotent: `create` skips resources that already exist;
 `destroy` skips resources already gone.
