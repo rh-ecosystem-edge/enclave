@@ -13,12 +13,12 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update uv version in setup_ansible.sh",
+      "description": "Update uv version in setup_ansible.sh and install_enclave.sh (kept in sync with ghcr.io/astral-sh/uv in Dockerfile.ci via a shared datasource)",
       "managerFilePatterns": ["setup_ansible.sh", "scripts/deployment/install_enclave.sh"],
       "matchStrings": ["UV_VERSION=\"(?<currentValue>[^\"]+)\""],
-      "depNameTemplate": "astral-sh/uv",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^(?<version>.+)$"
+      "depNameTemplate": "ghcr.io/astral-sh/uv",
+      "datasourceTemplate": "docker",
+      "registryUrlTemplate": "https://ghcr.io"
     },
     {
       "customType": "regex",
