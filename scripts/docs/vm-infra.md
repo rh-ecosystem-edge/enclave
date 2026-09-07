@@ -199,12 +199,22 @@ pattern are ever touched, and each cluster is best-effort (a failure on one does
 not abort the sweep).
 
 The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, safely above
-the longest e2e job timeout of 600 minutes). Optional `$BASE_WORKING_DIR` is a
-fallback for locating a cluster's working directory when its storage pool is
-already gone.
+the longest e2e job timeout of 600 minutes). A destructive reap refuses a
+threshold below the safety floor (`11h`, just above that timeout) unless `--force`
+is given, so a misconfigured value cannot tear down an in-flight run sharing the
+host; `--dry-run` is exempt. Non-numeric or non-finite thresholds are rejected.
+Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
+directory when its storage pool is already gone.
 
 In CI, the `environment` Makefile target calls `create`, `clean-infra` calls
 `destroy` (via `cleanup.sh`), and `reap` calls `reap` (via `reap.sh`). The
 scheduled `cleanup.yml` workflow reaps at every level, and the e2e / dry-run
-workflows reap before each run (toggle with the `ENABLE_PREJOB_REAP` /
-`REAP_AGE_HOURS` repository variables).
+workflows reap before each run. Two **repository variables** control the pre-job
+reap, with distinct effects:
+
+- `ENABLE_PREJOB_REAP` — the on/off switch. Set it to `false` to disable pre-job
+  reaping entirely; any other value (or unset) leaves it enabled.
+- `REAP_AGE_HOURS` — the numeric age threshold in hours (default `12`). This
+  **tunes** the threshold; it never disables reaping. Do **not** set it to
+  `false` — it is forwarded to `vm_infra.py`, which rejects a non-numeric value
+  and fails the step. Use `ENABLE_PREJOB_REAP=false` to turn reaping off.

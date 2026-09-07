@@ -22,6 +22,7 @@ import argparse
 import fcntl
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -835,12 +836,18 @@ def destroy(cfg: Config) -> None:
         except libvirt.libvirtError as exc:
             LOG.warning("Failed to remove pool: %s", exc)
 
-    # Remove sparse extra disk files not tracked by the pool (run even if pool is already gone)
-    for i in range(cfg.num_masters):
-        extra = cfg.pool_dir / f"{cfg.master_vm_name(i)}-extra.img"
-        if extra.exists():
-            extra.unlink()
-            LOG.info("Removed extra disk: %s", extra)
+    # Remove sparse extra disk files not tracked by the pool (run even if pool is
+    # already gone). Enumerate them from the pool dir rather than deriving names
+    # from num_masters: create() writes master_N-extra.img before defining the
+    # master domain, so a cancelled/failed create can leave an orphan whose domain
+    # never existed — and reap() counts domains, not files, to size the cluster.
+    if cfg.pool_dir.is_dir():
+        for extra in sorted(cfg.pool_dir.glob("*-extra.img")):
+            try:
+                extra.unlink()
+                LOG.info("Removed extra disk: %s", extra)
+            except OSError as exc:
+                LOG.warning("Failed to remove extra disk %s: %s", extra, exc)
 
     # Destroy/undefine all networks matching the cluster prefix (cluster_name + "-" to avoid partial matches)
     for net in conn.listAllNetworks():
@@ -880,6 +887,12 @@ _CI_DOMAIN_RE = re.compile(
 )
 
 DEFAULT_REAP_AGE_HOURS = 12.0
+# A cluster's define-age exceeding the longest possible job runtime is what proves
+# it is leaked rather than in-flight: the e2e jobs cap out at 600 minutes (10h) via
+# timeout-minutes, so any cluster older than that cannot belong to a running job.
+# Destructive reaps refuse thresholds below this floor (use --force to override on
+# a host you know is idle); --dry-run is always allowed for inspection.
+MIN_REAP_AGE_HOURS = 11.0
 # Persistent domain definitions; their mtime is the cluster's create time and is
 # untouched by start/stop, unlike the qcow2 disks (which a running VM keeps
 # writing to, so a leaked-but-running VM would never age out by disk mtime).
@@ -1075,6 +1088,13 @@ def main() -> None:
         help="reap: report which clusters would be reaped without destroying "
         "anything. Only valid with reap.",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"reap: allow a threshold below the {MIN_REAP_AGE_HOURS:g}h safety "
+        "floor for a destructive run (only on a host known to be idle). Only "
+        "valid with reap.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -1085,17 +1105,26 @@ def main() -> None:
 
     if args.print_subnet and args.command != "create":
         parser.error("--print-subnet is only valid with the create command")
-    if args.age_hours is not None and args.command != "reap":
-        parser.error("--age-hours is only valid with the reap command")
-    if args.dry_run and args.command != "reap":
-        parser.error("--dry-run is only valid with the reap command")
+    for flag in ("age_hours", "dry_run", "force"):
+        if getattr(args, flag) not in (None, False) and args.command != "reap":
+            parser.error(f"--{flag.replace('_', '-')} is only valid with the reap command")
 
     # reap discovers clusters from libvirt; it needs neither a cluster name nor a
     # working dir, so it must not go through Config.from_env().
     if args.command == "reap":
         age_hours = args.age_hours if args.age_hours is not None else _reap_age_from_env()
-        if age_hours <= 0:
-            parser.error("reap age must be positive")
+        # Allow-list the threshold: it must be a finite positive number. NaN would
+        # slip past a bare `<= 0` check and make `age < threshold` always false, so
+        # every discovered cluster — including active ones — would be reaped.
+        if not math.isfinite(age_hours) or age_hours <= 0:
+            parser.error("reap age must be a finite positive number of hours")
+        # Below the safety floor a destructive sweep could tear down an in-flight
+        # run sharing the host; only --dry-run or an explicit --force may go lower.
+        if age_hours < MIN_REAP_AGE_HOURS and not args.dry_run and not args.force:
+            parser.error(
+                f"reap age {age_hours:g}h is below the {MIN_REAP_AGE_HOURS:g}h safety "
+                f"floor (longest job timeout); pass --force to override on an idle host"
+            )
         base_raw = os.environ.get("BASE_WORKING_DIR", "")
         reap(age_hours, Path(base_raw) if base_raw else None, dry_run=args.dry_run)
         return
