@@ -51,6 +51,40 @@ make -f Makefile.ci validate-ansible     # ansible-lint
 make -f Makefile.ci validate-plugins     # plugin descriptor validation
 ```
 
+## Debugging CI failures
+
+Prefer the `gh` CLI over the web UI — it works headless and is scriptable.
+
+```bash
+# List checks for a PR and spot which failed
+gh pr checks <pr>
+
+# Inspect a run and jump straight to the failing step logs
+gh run view <run-id>
+gh run view <run-id> --log-failed
+gh run view --job <job-id> --log        # full log for a single job
+
+# Watch a run until it settles
+gh pr checks <pr> --watch --interval 60
+```
+
+Every e2e run uploads a diagnostics bundle produced by
+`scripts/verification/collect_ci_artifacts.sh` (artifact name
+`e2e-{connected,disconnected}-<cluster>-<run_id>`, 7-day retention). Pull it before
+reasoning about a deploy failure — the step log alone is usually not enough:
+
+```bash
+gh run download <run-id> -n e2e-disconnected-<cluster>-<run_id> -D ./artifacts
+```
+
+The bundle captures cluster state at failure time: `cluster/events.txt`
+(`FailedScheduling`, `Insufficient memory`, …), `cluster/pods.txt` (Pending/Failed
+pods), per-pod describe and logs (including `--previous`), and
+`cluster/quay-diagnostics-*/` (QuayRegistry `.status.conditions`, deployment/PVC
+overview, health probes). See
+[scripts/docs/CI_TROUBLESHOOTING.md](scripts/docs/CI_TROUBLESHOOTING.md) for the full
+artifact map and step-by-step recipes.
+
 ## Code conventions
 
 ### Python (`src/`)
