@@ -12,6 +12,11 @@ on:
           - standard
           - deep
           - full
+      reap_age_hours:
+        description: 'Reap CI VMs (eci-/ecd-/nc-/nd-) older than this many hours'
+        required: false
+        default: '12'
+        type: string
   schedule:
     # Weekly scheduled cleanup - Sunday at 4 AM UTC
     - cron: '0 4 * * 0'
@@ -34,6 +39,9 @@ jobs:
     env:
       WORKING_DIR: ${{ vars.WORKING_DIR }}
       CLEANUP_LEVEL: ${{ inputs.cleanup_level || 'standard' }}
+      # Scheduled runs pass no inputs, so age-based reaping runs at every level
+      # (including the weekly 'standard' cron) with this default.
+      REAP_AGE_HOURS: ${{ inputs.reap_age_hours || '12' }}
 
     steps:
       - name: Checkout code
@@ -73,6 +81,23 @@ jobs:
             echo "✅ Standard cleanup complete" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Standard cleanup encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Reap stale cross-run CI VMs (age-based)
+        if: always()
+        env:
+          BASE_WORKING_DIR: ${{ vars.WORKING_DIR }}
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Reaping stale CI VMs (older than ${REAP_AGE_HOURS}h)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          # Reclaims eci-/ecd-/nc-/nd- clusters left behind by cancelled, timed-out
+          # or killed jobs — orphans that per-run cleanup can never match. Runs at
+          # every level, including the weekly scheduled 'standard' run.
+          if make -f Makefile.ci reap; then
+            echo "✅ Reap complete" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Reap encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Deep cleanup

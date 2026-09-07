@@ -77,6 +77,16 @@ jobs:
           check-system-resources: 'true'
           check-libvirt: 'true'
 
+      # Self-heal the runner: reap CI VMs left by earlier cancelled/timed-out/killed
+      # runs (which per-run cleanup can never match). Configurable via repo variables;
+      # set ENABLE_PREJOB_REAP=false to disable, REAP_AGE_HOURS to change the threshold.
+      - name: Reap stale cross-run CI VMs
+        if: vars.ENABLE_PREJOB_REAP != 'false'
+        env:
+          REAP_AGE_HOURS: ${{ vars.REAP_AGE_HOURS || '12' }}
+          BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
+        run: make -f Makefile.ci reap
+
       - name: Create infrastructure
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
