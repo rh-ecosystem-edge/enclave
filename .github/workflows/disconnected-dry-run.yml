@@ -85,7 +85,7 @@ jobs:
         env:
           REAP_AGE_HOURS: ${{ vars.REAP_AGE_HOURS || '12' }}
           BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
-        run: make -f Makefile.ci reap
+        run: make -f Makefile.ci reap-stale-vms
 
       - name: Create infrastructure
         env:

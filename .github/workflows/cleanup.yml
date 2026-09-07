@@ -94,7 +94,7 @@ jobs:
           # Reclaims eci-/ecd-/nc-/nd- clusters left behind by cancelled, timed-out
           # or killed jobs — orphans that per-run cleanup can never match. Runs at
           # every level, including the weekly scheduled 'standard' run.
-          if make -f Makefile.ci reap; then
+          if make -f Makefile.ci reap-stale-vms; then
             echo "✅ Reap complete" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️ Reap encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY

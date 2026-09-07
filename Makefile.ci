@@ -31,7 +31,7 @@ include Makefile
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
-	generate-ironic-cert clean-infra reap \
+	generate-ironic-cert clean-infra reap-stale-vms \
 
 # Override default help to show both LZ and CI targets
 help:
@@ -83,7 +83,7 @@ help:
 	@echo ""
 	@echo "CI Helper targets:"
 	@echo "  make -f Makefile.ci clean-infra                      - Tear down infrastructure"
-	@echo "  make -f Makefile.ci reap                             - Reap leaked CI VMs older than REAP_AGE_HOURS (default 12h)"
+	@echo "  make -f Makefile.ci reap-stale-vms                   - Reap leaked CI VMs older than REAP_AGE_HOURS (default 12h)"
 	@echo "  make -f Makefile.ci generate-cluster-name            - Generate unique cluster name"
 	@echo "  make -f Makefile.ci setup-working-dir                - Setup cluster-specific working directory"
 	@echo "  make -f Makefile.ci collect-step-logs                - Collect logs from cluster"
@@ -340,8 +340,8 @@ clean-infra:
 	@./scripts/cleanup/cleanup.sh
 
 # Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs
-reap:
-	@./scripts/cleanup/reap.sh
+reap-stale-vms:
+	@./scripts/cleanup/reap_stale_vms.sh
 
 # --- CI Infrastructure targets ---
 
