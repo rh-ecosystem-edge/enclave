@@ -323,8 +323,9 @@ fi
 if [ "${OPENSHIFT_CI:-}" = "true" ] && [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
     LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
     mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
-    # Tolerate quoted keys and whitespace before the colon (all valid YAML forms).
-    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*"?lvmsQuayAppResources"?[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
+    # Tolerate unquoted, double-quoted and single-quoted keys (matching
+    # delimiters) plus whitespace before the colon (all valid YAML forms).
+    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*("lvmsQuayAppResources"|'\''lvmsQuayAppResources'\''|lvmsQuayAppResources)[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
         info "LVMS plugin config already defines lvmsQuayAppResources; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
     else
         # Append as a new top-level key so any existing lvmsConfig (e.g.
