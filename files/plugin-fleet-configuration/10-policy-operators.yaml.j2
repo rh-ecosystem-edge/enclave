@@ -35,6 +35,7 @@ spec:
         # Subscription configuration
         subscription:
           name: {{ operator.name }}
+          namespace: {{ operator.namespace }}
 {% if operator.init_version is defined %}
           # Install initial version
           startingCSV: {{ operator.csvNames | default([operator.name]) | first }}.v{{ operator.init_version | replace('+', '-') }}
