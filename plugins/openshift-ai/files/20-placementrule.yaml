@@ -6,7 +6,7 @@ metadata:
 spec:
   clusterSelector:
     matchExpressions:
-    - key: sovcloud.open-cluster-management.io/nvidia-gpu
+    - key: sovcloud.open-cluster-management.io/openshift-ai
       operator: In
       values:
       - "true"
