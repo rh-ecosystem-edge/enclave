@@ -94,12 +94,16 @@
     state: present
     force: false
   vars:
-    ironic_ca_bundle: >-
-      {{ sslIngressCertificateFullChain
-         ~ ('\n' if sslIngressCertificateFullChain | length > 0
-                    and sslCACertificate | default('') | length > 0
-                    and sslIngressCertificateFullChain[-1:] != '\n' else '')
-         ~ (sslCACertificate | default('')) }}
+    # Must be a double-quoted scalar, not a folded (>-) block scalar: YAML only
+    # processes the \n escape inside double-quoted scalars, so the '\n'
+    # separator (and the [-1:] != '\n' guard) resolve to a real newline. In a
+    # folded scalar '\n' stays a literal backslash-n, which glues a corrupt
+    # boundary before sslCACertificate and drops the root from the bundle.
+    ironic_ca_bundle: "{{ sslIngressCertificateFullChain
+      ~ ('\n' if sslIngressCertificateFullChain | length > 0
+                 and sslCACertificate | default('') | length > 0
+                 and sslIngressCertificateFullChain[-1:] != '\n' else '')
+      ~ (sslCACertificate | default('')) }}"
   no_log: true
 
 
