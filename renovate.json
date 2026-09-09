@@ -84,5 +84,9 @@
       "ignoreUnstable": false,
       "respectLatest": false
     }
-  ]
+  ],
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  }
 }
