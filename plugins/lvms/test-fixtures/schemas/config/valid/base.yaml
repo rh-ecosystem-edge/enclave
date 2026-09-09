@@ -1,7 +1,14 @@
 ---
-# Fixture: valid lvmsConfig with device selector
+# Fixture: valid lvmsConfig with device selector and Quay app resource override
 lvmsConfig:
   deviceSelector:
     optionalPaths:
       - /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
       - /dev/disk/by-path/pci-0000:00:11.4-ata-2.0
+lvmsQuayAppResources:
+  requests:
+    cpu: "2"
+    memory: "2Gi"
+  limits:
+    cpu: "4"
+    memory: "12Gi"

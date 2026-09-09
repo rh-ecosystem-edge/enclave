@@ -47,3 +47,37 @@ properties:
           - name
           - sizePercent
           - overprovisionRatio
+  lvmsQuayAppResources:
+    type: object
+    description: Resource requests/limits for the managed Quay app container.
+    additionalProperties: false
+    required:
+      - requests
+      - limits
+    properties:
+      requests:
+        type: object
+        additionalProperties: false
+        required:
+          - cpu
+          - memory
+        properties:
+          cpu:
+            "$ref": "#/definitions/nonEmptyString"
+            description: CPU request for the Quay app container (may be templated).
+          memory:
+            "$ref": "#/definitions/nonEmptyString"
+            description: Memory request for the Quay app container (may be templated).
+      limits:
+        type: object
+        additionalProperties: false
+        required:
+          - cpu
+          - memory
+        properties:
+          cpu:
+            "$ref": "#/definitions/nonEmptyString"
+            description: CPU limit for the Quay app container (may be templated).
+          memory:
+            "$ref": "#/definitions/nonEmptyString"
+            description: Memory limit for the Quay app container (may be templated).

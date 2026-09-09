@@ -2,7 +2,8 @@
 ##############################################################################
 # LVMS PLUGIN CONFIGURATION TEMPLATE
 # Instructions: Copy this file to 'config/plugins/lvms.yaml' and set values.
-# Only needed to restrict which disks LVMS manages; omit to use all disks.
+# Only needed to override LVMS settings, such as managed disks or Quay app
+# resources; omit to use all defaults.
 ##############################################################################
 
 # lvmsConfig:
@@ -11,3 +12,15 @@
 #       - /dev/disk/by-path/YOUR_DISK_PATH_1
 #       - /dev/disk/by-path/YOUR_DISK_PATH_2
 #       - /dev/disk/by-path/YOUR_DISK_PATH_3
+
+# Override Quay app container resources (LocalStorage backend). With a node-local
+# RWO PV the Quay app is pinned to one node, so a rolling update must briefly run a
+# second pod there; lower the memory request on constrained nodes so it can schedule.
+# Defaults live in plugins/lvms/defaults.yaml (lvmsQuayAppResources).
+# lvmsQuayAppResources:
+#   requests:
+#     cpu: "2"
+#     memory: "2Gi"
+#   limits:
+#     cpu: "4"
+#     memory: "12Gi"

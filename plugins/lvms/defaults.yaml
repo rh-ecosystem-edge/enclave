@@ -9,3 +9,14 @@ lvmsDefaults:
     name: vg1-pool-1
     sizePercent: 90
     overprovisionRatio: 10
+# Resource requests/limits for the managed Quay app container (LocalStorage backend).
+# Override in config/plugins/lvms.yaml to fit constrained nodes: with a node-local
+# RWO PV the Quay app is pinned to a single node, so a rolling update must briefly
+# schedule a second pod there. Lowering the memory request lets that surge pod fit.
+lvmsQuayAppResources:
+  requests:
+    cpu: "{{ '2' if (disconnected | default(true)) else '1' }}"
+    memory: "{{ '6Gi' if (disconnected | default(true)) else '4Gi' }}"
+  limits:
+    cpu: "4"
+    memory: "12Gi"

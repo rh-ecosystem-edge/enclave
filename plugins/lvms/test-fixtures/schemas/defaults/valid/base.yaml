@@ -10,3 +10,10 @@ lvmsDefaults:
     name: vg1-pool-1
     sizePercent: 90
     overprovisionRatio: 10
+lvmsQuayAppResources:
+  requests:
+    cpu: "2"
+    memory: "6Gi"
+  limits:
+    cpu: "4"
+    memory: "12Gi"

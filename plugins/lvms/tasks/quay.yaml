@@ -22,13 +22,7 @@
           managed: true
           overrides:
             replicas: null
-            resources:
-              limits:
-                cpu: "4"
-                memory: 12Gi
-              requests:
-                cpu: "{{ '2' if (disconnected | default(true)) else '1' }}"
-                memory: "{{ '6Gi' if (disconnected | default(true)) else '4Gi' }}"
+            resources: "{{ lvmsQuayAppResources }}"
         - kind: postgres
           managed: true
           overrides:

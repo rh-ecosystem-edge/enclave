@@ -1,0 +1,10 @@
+---
+# Fixture: lvmsQuayAppResources must be a complete mapping
+# Expected failure: limits is missing. requests is complete (cpu + memory) so
+# this fixture isolates the missing-limits case: under replace semantics a
+# partial override would silently drop the default limits, so the schema
+# requires both requests and limits.
+lvmsQuayAppResources:
+  requests:
+    cpu: "2"
+    memory: "2Gi"
