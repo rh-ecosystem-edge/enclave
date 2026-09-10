@@ -363,10 +363,12 @@ LZ_SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o Conn
 # ssh_lz <lz_ip> <remote-command...>
 # Override the default per-call deadline with LZ_CMD_TIMEOUT (seconds), e.g.
 #   LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "..."
+# ssh -n keeps calls from consuming the caller's stdin (e.g. a loop reading a
+# file list), which would otherwise stop the loop after the first iteration.
 ssh_lz() {
     local lz_ip="$1"
     shift
-    timeout -k 10 "${LZ_CMD_TIMEOUT:-120}" ssh "${LZ_SSH_OPTS[@]}" cloud-user@"$lz_ip" "$@"
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-120}" ssh -n "${LZ_SSH_OPTS[@]}" cloud-user@"$lz_ip" "$@"
 }
 
 # scp_lz <scp-args...> -- callers pass cloud-user@<ip>:<remote> and a local dest.
@@ -557,18 +559,17 @@ collect_lz_config_files() {
     scp_lz cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
 }
 
-collect_lz_enclave_config() {
-    local lz_ip="$1"
-    local config_dir="${OUTPUT_DIR}/landing-zone/config"
-
-    mkdir -p "$config_dir"
-    info "Collecting enclave configuration files from Landing Zone..."
-
-    # Redact any key matching /password|secret|key|cert/i at all nesting levels before collecting.
-    # String values that are valid JSON are parsed and redacted recursively (e.g. odfExternalConfig).
-    local redact_py='
+# Redact sensitive data before collecting, at all nesting levels:
+#   - any key matching /password|secret|key|cert|token|credential|auth/i
+#   - credentials embedded in URL userinfo (scheme://user:pass@host), which
+#     catches connection strings whose key does not match, e.g. osacDatabaseUrl
+# String values that are valid JSON are parsed and redacted recursively
+# (e.g. odfExternalConfig). Shared by enclave-config and rendered Helm-values
+# collection.
+REDACT_PY='
 import yaml, sys, re, json
-PATTERN = re.compile(r"password|secret|key|cert", re.IGNORECASE)
+PATTERN = re.compile(r"password|secret|key|cert|token|credential|auth", re.IGNORECASE)
+URL_CRED = re.compile(r"://[^/@\s]+@")
 def redact(obj):
     if isinstance(obj, dict):
         return {k: "REDACTED" if PATTERN.search(k) else redact(v) for k, v in obj.items()}
@@ -579,20 +580,88 @@ def redact(obj):
             return json.dumps(redact(json.loads(obj)))
         except (json.JSONDecodeError, ValueError):
             pass
+        return URL_CRED.sub("://REDACTED@", obj)
     return obj
 data = yaml.safe_load(open(sys.argv[1]))
 print(yaml.dump(redact(data), default_flow_style=False))
 '
 
-    for cfg in global.yaml certificates.yaml cloud_infra.yaml; do
-        local remote_path="/home/cloud-user/enclave/config/${cfg}"
-        local out
-        out=$(ssh_lz "$lz_ip" \
-            "[ -f ${remote_path} ] && python3 -c '${redact_py}' ${remote_path}" 2>/dev/null) \
+collect_lz_enclave_config() {
+    local lz_ip="$1"
+    local config_dir="${OUTPUT_DIR}/landing-zone/config"
+    local remote_config_dir="/home/cloud-user/enclave/config"
+
+    mkdir -p "$config_dir"
+    info "Collecting enclave configuration files from Landing Zone..."
+
+    # Discover every real YAML config on the LZ, recursing into config/plugins/
+    # so any enabled plugin's config (osac, lvms, odf, ...) is picked up without
+    # enumerating them here. Example templates ship with the repo and hold no
+    # deployment state, so they are skipped.
+    local remote_files
+    if ! remote_files=$(ssh_lz "$lz_ip" \
+        "find ${remote_config_dir} -type f \( -name '*.yaml' -o -name '*.yml' \) ! -name '*.example.*' 2>/dev/null"); then
+        warn "Could not list enclave config files on Landing Zone"
+        return
+    fi
+
+    if [ -z "$remote_files" ]; then
+        info "No enclave config files found on Landing Zone"
+        return
+    fi
+
+    local remote_path remote_path_q cfg out
+    while IFS= read -r remote_path; do
+        [ -n "$remote_path" ] || continue
+        # Path relative to config/ so config/plugins/osac.yaml keeps its subdir.
+        cfg="${remote_path#"$remote_config_dir"/}"
+        # Shell-quote the discovered path so a filename with metacharacters
+        # cannot inject commands into the remote shell.
+        remote_path_q=$(printf '%q' "$remote_path")
+        out=$(ssh_lz "$lz_ip" "python3 -c '${REDACT_PY}' ${remote_path_q}" 2>/dev/null) \
             && [ -n "$out" ] \
+            && mkdir -p "$(dirname "${config_dir}/${cfg}")" \
             && echo "$out" > "${config_dir}/${cfg}" \
             || warn "Could not collect ${cfg}"
-    done
+    done <<< "$remote_files"
+}
+
+collect_lz_helm_values() {
+    local lz_ip="$1"
+    local values_dir="${OUTPUT_DIR}/landing-zone/helm-values"
+    # Rendered plugin values are written to workingDir as helm-values-<plugin>-<release>.yaml
+    # (e.g. helm-values-osac-osac.yaml). In CI workingDir is sessions/1.
+    local remote_working_dir="/home/cloud-user/sessions/1"
+
+    info "Collecting rendered Helm values from Landing Zone..."
+
+    # Discover every rendered plugin values file so any enabled plugin (osac,
+    # lvms, odf, ...) is captured without enumerating releases here.
+    local remote_files
+    if ! remote_files=$(ssh_lz "$lz_ip" \
+        "find ${remote_working_dir} -maxdepth 1 -type f -name 'helm-values-*.yaml' 2>/dev/null"); then
+        warn "Could not list rendered Helm values on Landing Zone"
+        return
+    fi
+
+    if [ -z "$remote_files" ]; then
+        info "No rendered Helm values found on Landing Zone"
+        return
+    fi
+
+    mkdir -p "$values_dir"
+    local remote_path remote_path_q name out
+    while IFS= read -r remote_path; do
+        [ -n "$remote_path" ] || continue
+        name=$(basename "$remote_path")
+        # Shell-quote the discovered path so a filename with metacharacters
+        # cannot inject commands into the remote shell.
+        remote_path_q=$(printf '%q' "$remote_path")
+        out=$(ssh_lz "$lz_ip" "python3 -c '${REDACT_PY}' ${remote_path_q}" 2>/dev/null) \
+            && [ -n "$out" ] \
+            && echo "$out" > "${values_dir}/${name}" \
+            || warn "Could not collect ${name}"
+    done <<< "$remote_files"
 }
 
 collect_lz_services() {
@@ -1016,6 +1085,7 @@ collect_deployment() {
     collect_lz_pipeline_logs "$lz_ip"
     collect_lz_config_files "$lz_ip"
     collect_lz_enclave_config "$lz_ip"
+    collect_lz_helm_values "$lz_ip"
     collect_lz_services "$lz_ip"
     collect_lz_registry "$lz_ip"
 
