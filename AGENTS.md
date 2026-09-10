@@ -81,7 +81,9 @@ The bundle captures cluster state at failure time: `cluster/events.txt`
 (`FailedScheduling`, `Insufficient memory`, …), `cluster/pods.txt` (Pending/Failed
 pods), per-pod describe and logs (including `--previous`), and
 `cluster/quay-diagnostics-*/` (QuayRegistry `.status.conditions`, deployment/PVC
-overview, health probes). See
+overview, health probes). It also captures the redacted enclave config and rendered
+plugin Helm values under `landing-zone/config/` and `landing-zone/helm-values/` — check
+these when a plugin deploys with unexpected values. See
 [scripts/docs/CI_TROUBLESHOOTING.md](scripts/docs/CI_TROUBLESHOOTING.md) for the full
 artifact map and step-by-step recipes.
 

@@ -62,7 +62,7 @@ on e2e jobs; lighter jobs use `basic`/`infra`.
 | --- | --- |
 | `basic` | System info and process list of the runner. |
 | `infra` | Runner performance/logs, libvirt VMs/networks/storage, host network, BMC. |
-| `deployment` | Landing Zone: system info, DNS, cloud-init, deployment + pipeline logs, services, mirror registry. |
+| `deployment` | Landing Zone: system info, DNS, cloud-init, deployment + pipeline logs, services, mirror registry, redacted enclave config files, redacted rendered plugin Helm values. |
 | `full` | Cluster diagnostics via the kubeconfig (see the map below). Runs on failure. |
 
 ## 4. Artifact map
@@ -77,6 +77,8 @@ artifacts/
 │   ├── .openshift_install.log            OpenShift/agent installer log
 │   ├── openshift_install_agent.log
 │   ├── serial-console.log / qemu-domain.log   (SSH-less fallback only)
+│   ├── config/                 Redacted enclave config: every *.yaml/*.yml under config/ (recurses into config/plugins/), examples excluded
+│   ├── helm-values/            Redacted rendered plugin Helm values (helm-values-<plugin>-<release>.yaml)
 │   └── pipeline-logs/          oc-mirror progress, helm logs, mirroring_errors_*
 └── cluster/                    Only present when the cluster came up (level: full)
     ├── cluster-status.txt      clusterversion, nodes, ClusterOperators, MCPs, degraded COs
@@ -93,7 +95,10 @@ artifacts/
 ```
 
 Security note: `vars.yaml` (pull secrets, Quay admin password) is intentionally **not**
-collected. Secrets appear by name only. Do not add raw secret dumps to the bundle.
+collected. Secrets appear by name only. The `config/` and `helm-values/` files are passed
+through a redactor before upload — values under secret-like keys (password, secret, key,
+token, credential, auth, cert) are replaced with `REDACTED`, and credentials embedded in
+URLs are stripped — but treat them as best-effort: do not add raw secret dumps to the bundle.
 
 ## 5. Reading the bundle by failure signature
 
@@ -105,6 +110,7 @@ collected. Secrets appear by name only. Do not add raw secret dumps to the bundl
 | PVC unbound / storage | `cluster/quay-diagnostics-*/overview.txt` (PVCs), `cluster/events.txt`, `libvirt/` storage |
 | Mirroring / disconnected image pull | `landing-zone/pipeline-logs/` (`oc-mirror*`, `mirroring_errors_*`) |
 | Install never reaches a cluster (no `cluster/` dir) | `landing-zone/.openshift_install.log`, `landing-zone/pipeline-logs/`, `landing-zone/serial-console.log` |
+| Plugin deploys wrong values / misconfiguration (e.g. a service enabled/disabled unexpectedly, bad hostname) | `landing-zone/config/` (input config, incl. `config/plugins/<plugin>.yaml`), `landing-zone/helm-values/` (what was actually rendered and applied) |
 
 Worked example: an LVMS Quay rollout hang (OSAC-4957) showed only
 `ProgressDeadlineExceeded` in the step log. `cluster/events.txt` had
