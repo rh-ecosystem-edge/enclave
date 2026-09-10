@@ -7,6 +7,17 @@
 cliImage: "{{ osac_images.cli }}"
 {% endif %}
 
+global:
+  services:
+    caas:
+      enabled: {{ ('caas' in osacProfilesList) | lower }}
+    vmaas:
+      enabled: {{ ('vmaas' in osacProfilesList) | lower }}
+    bmaas:
+      enabled: {{ ('bmaas' in osacProfilesList) | lower }}
+    maas:
+      enabled: false
+
 operator:
   image:
     pullPolicy: Always
