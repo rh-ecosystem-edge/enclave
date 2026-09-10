@@ -33,6 +33,27 @@ RUN dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.rep
     dnf install -y gh && \
     dnf clean all
 
+# Install Helm (pinned) — used by validate-osac-values to render + schema-check
+# the OSAC values overlay against the pinned chart via `helm template`.
+ARG HELM_VERSION=v3.16.3
+# Official SHA-256 digests for the pinned version (https://get.helm.sh/*.sha256sum).
+# Bump both when HELM_VERSION changes; the build fails on any mismatch.
+ARG HELM_SHA256_AMD64=f5355c79190951eed23c5432a3b920e071f4c00a64f75e077de0dd4cb7b294ea
+ARG HELM_SHA256_ARM64=5bd34ed774df6914b323ff84a0a156ea6ff2ba1eaf0113962fa773f3f9def798
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "${arch}" in \
+        x86_64) helm_arch=amd64; helm_sha256="${HELM_SHA256_AMD64}" ;; \
+        aarch64) helm_arch=arm64; helm_sha256="${HELM_SHA256_ARM64}" ;; \
+        *) echo "unsupported arch: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${helm_arch}.tar.gz" -o /tmp/helm.tar.gz; \
+    echo "${helm_sha256}  /tmp/helm.tar.gz" | sha256sum -c -; \
+    tar -xzf /tmp/helm.tar.gz -C /tmp; \
+    install -m 0755 "/tmp/linux-${helm_arch}/helm" /usr/local/bin/helm; \
+    rm -rf /tmp/helm.tar.gz "/tmp/linux-${helm_arch}"; \
+    helm version
+
 # Install uv (pinned version)
 COPY --from=ghcr.io/astral-sh/uv:0.12.10 /uv /usr/local/bin/uv
 

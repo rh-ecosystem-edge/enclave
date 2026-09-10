@@ -1,0 +1,13 @@
+---
+# Profile: disconnected image overrides (osac_images)
+#
+# Exercises every osac_images branch in values.yaml.j2, including the
+# operator repository/tag rsplit on osac_operator. Config toggles only; see
+# profile-default.yaml.
+osac_profile_name: images
+osac_images:
+  cli: "registry.placeholder.example.com/origin-cli:4.20.0"
+  osac_operator: "registry.placeholder.example.com/osac-operator:sha-deadbeef"
+  fulfillment_service: "registry.placeholder.example.com/fulfillment-service:sha-deadbeef"
+  envoy: "registry.placeholder.example.com/envoy:v1.33.0"
+  aap_bootstrap: "registry.placeholder.example.com/osac-aap:sha-deadbeef"

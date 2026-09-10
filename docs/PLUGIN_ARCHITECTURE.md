@@ -107,6 +107,16 @@ Steps 3-4 are the load-time validation gate. If any declared requirement is miss
 
 Step 6 runs `helm template` on charts that have `extractImages: true`. Both local charts and OCI charts (`oci://`) are supported. When a `valuesTemplate` is defined on the chart entry, it is rendered (Jinja2) and passed to `helm template` to satisfy required values. A `valuesFile` is copied unchanged and passed with `-f`. Since extraction runs before operators and post-operators, some runtime variables may not exist yet. Use `extractPlaceholders` in the helm entry to provide stub values for variables that are only set at deploy time — the actual values don't matter for image discovery. The discovered image references are merged into `additionalImages` before mirroring. This is opt-in because `helm template` can fail if sub-chart dependencies aren't populated or required values are missing. Remote charts (with `repo` set) are skipped.
 
+### PR-time values overlay schema validation (OSAC)
+
+The OSAC plugin also runs a **PR-time** check that renders its values overlay (`plugins/osac/templates/values.yaml.j2`) and validates it against the pinned chart's `values.schema.json` via `helm template`, without a cluster. This catches a chart bump that renames or retypes a key the overlay sets before it reaches E2E. It is driven by `make -f Makefile.ci validate-osac-values` (→ `scripts/verification/validate_osac_values.sh` + `playbooks/validation/validate-osac-values.yaml`), which:
+
+- pins the chart via `osacChartVersion` in `plugins/osac/defaults.yaml` (override with `OSAC_CHART_VERSION`);
+- reuses the same `extractPlaceholders` from `plugin.yaml` for deploy-time-only stubs (single source of truth with the extract path above);
+- renders and schema-checks **every** profile permutation under `plugins/osac/test-fixtures/values/profile-*.yaml` (default, bmaas+metal3, netris, bcm, byodb, images).
+
+It runs as the `osac-values` job in `pr-validation.yml` (path-filtered to `plugins/osac/**`) and as the `osac-values-preflight` gate in `e2e-osac.yml`, which blocks the OSAC E2E jobs when the overlay fails to template against the chart that run would deploy (the latest nightly for scheduled/dispatch runs).
+
 Step 9 (`post-operators.yaml`) is useful for plugins that need to set up infrastructure after operators are installed but before Helm charts or deploy tasks run. For example, a plugin might use this hook to create a CR instance and extract credentials that the Helm values template depends on. Facts set in `post-operators.yaml` are available to later steps because all hooks run in the same Ansible play via `include_tasks`.
 
 Separately, during Quay operator setup:
