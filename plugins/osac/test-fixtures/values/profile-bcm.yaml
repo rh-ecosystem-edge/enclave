@@ -1,0 +1,16 @@
+---
+# Profile: BCM inventory backend
+#
+# Exercises the bmf.bcm block (cert/key indent filters, insecureSkipVerify,
+# hostClass/bmhNamespace defaults). Config toggles only; see profile-default.yaml.
+osac_profile_name: bcm
+osacProfilesList:
+  - caas
+osacBcmEnabled: true
+osacBcmUrl: "https://bcm.placeholder.example.com:8443"
+osacBcmCert: "placeholder-cert-data"
+osacBcmKey: "placeholder-key-data"
+osacBcmCaCert: "placeholder-ca-cert-data"
+osacBcmInsecureSkipVerify: true
+osacBcmHostClass: bcm
+osacBcmBmhNamespace: openshift-machine-api

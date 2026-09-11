@@ -1,0 +1,11 @@
+---
+# Profile: bmaas + Metal3 inventory backend
+#
+# Exercises the clusterOrder/computeInstance branches for a bmaas-only profile
+# and the bmf.metal3 block. Config toggles only; see profile-default.yaml.
+osac_profile_name: bmaas-metal3
+osacProfilesList:
+  - bmaas
+osacMetal3Enabled: true
+osacMetal3Namespace: openshift-machine-api
+osacMetal3HostClass: metal3

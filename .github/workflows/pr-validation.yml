@@ -453,3 +453,82 @@ jobs:
           name: python-log
           path: python.log
           retention-days: 7
+
+  # Job 9: OSAC values overlay schema validation
+  # Renders the OSAC values overlay for every profile and validates it against
+  # the pinned OSAC chart's values.schema.json via `helm template`. The job
+  # always runs (so it is safe as a required check) but only does work when
+  # OSAC-relevant files change; otherwise the validation step is skipped and the
+  # job passes trivially. Requires network egress to the chart registry.
+  osac-values:
+    name: OSAC Values Schema Validation
+    needs: resolve-image
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      options: --user root
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Detect OSAC-relevant changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            osac:
+              - 'plugins/osac/**'
+              - 'playbooks/validation/validate-osac-values.yaml'
+              - 'scripts/verification/validate_osac_values.sh'
+              - 'scripts/verification/validate.sh'
+              - 'Makefile.ci'
+              - '.github/workflows/pr-validation.yml'
+
+      - name: Run OSAC values overlay validation
+        if: >-
+          steps.filter.outputs.osac == 'true' ||
+          github.event_name == 'merge_group'
+        run: |
+          set -o pipefail
+          echo "## OSAC Values Overlay Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if make -f Makefile.ci validate-osac-values 2>&1 | tee osac-values.log; then
+            echo "### ✅ OSAC values overlay validated against the pinned chart schema!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -20 osac-values.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ OSAC values overlay validation failed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The rendered overlay failed to template against the pinned OSAC chart." >> $GITHUB_STEP_SUMMARY
+            echo "This usually means a chart bump renamed/retyped a key the overlay sets." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 osac-values.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Skipped (no OSAC-relevant changes)
+        if: >-
+          steps.filter.outputs.osac != 'true' &&
+          github.event_name != 'merge_group'
+        run: |
+          echo "## OSAC Values Overlay Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No OSAC-relevant files changed — skipping overlay validation." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload OSAC values validation log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: osac-values-log
+          path: osac-values.log
+          retention-days: 7

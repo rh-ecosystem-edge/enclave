@@ -240,6 +240,18 @@ validate_migrations() {
     fi
 }
 
+validate_osac_values() {
+    print_header "Validating OSAC values overlay against pinned chart schema"
+
+    if "${ENCLAVE_DIR}/scripts/verification/validate_osac_values.sh"; then
+        print_success "OSAC values overlay validation passed"
+        return 0
+    else
+        print_error "OSAC values overlay validation failed"
+        return 1
+    fi
+}
+
 validate_mirror() {
     print_header "Validating mirror artifacts on Landing Zone"
 
@@ -369,11 +381,14 @@ case "${1:-all}" in
     mirror)
         validate_mirror
         ;;
+    osac-values)
+        validate_osac_values
+        ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|migrations|python}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|migrations|python|osac-values}"
         exit 1
         ;;
 esac
