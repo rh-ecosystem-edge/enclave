@@ -63,10 +63,10 @@ Edit `config/plugins/osac.yaml`:
 # Required: path to AAP license file on the Landing Zone
 osacAapLicenseFile: "/home/<user>/aap-license.zip"
 
-# Optional: enabled service profiles (default: [caas, vmaas])
+# Optional: enabled service profiles (default: [caas, bmaas])
 # osacProfilesList:
 #   - caas
-#   - vmaas
+#   - bmaas
 
 # Optional: bring your own database
 # osacBYODatabase: true
@@ -78,8 +78,8 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `osacAapLicenseFile` | string | Yes | — | Path to AAP license manifest.zip on the Landing Zone |
-| `osacChartVersion` | string | No | `0.0.6` | OSAC Helm chart version to deploy |
-| `osacProfilesList` | list | No | `[caas, vmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
+| `osacChartVersion` | string | No | `0.0.9-nightly.20260911.6d92ac5.82.1` | OSAC Helm chart version to deploy |
+| `osacProfilesList` | list | No | `[caas, bmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
 
@@ -195,14 +195,26 @@ When BYO database is enabled:
 
 The `osacProfilesList` config value controls which OSAC operator controllers are enabled. Multiple profiles can be combined:
 
-| Profile | Controllers | Extra Prerequisites |
-|---------|------------|---------------------|
-| `vmaas` | computeInstance, tenant, networking | Dedicated CNV-enabled workload cluster |
-| `caas` | clusterOrder, tenant, networking | MCE |
-| `bmaas` | clusterOrder, tenant, networking | MCE |
+The tenant, networking and storage controllers are always enabled. The
+service-mapped controllers below are derived by the chart from
+`global.services.*` (set from `osacProfilesList`):
+
+| Profile | Service-mapped controller | Extra Prerequisites |
+|---------|---------------------------|---------------------|
+| `caas`  | clusterOrder | MCE; must be paired with `vmaas` or `bmaas` (chart requirement) |
+| `vmaas` | computeInstance | Dedicated CNV-enabled workload cluster (the `cnv` plugin) |
+| `bmaas` | bareMetalInstance | MCE; optionally a bare-metal inventory backend (BCM or Metal3) |
 
 - **MCE** (Multicluster Engine) is part of Enclave core infrastructure (ACM-based platform) and is always available.
+- **CaaS** cannot run alone: the chart requires it to be paired with a compute
+  service (`vmaas` or `bmaas`). The default `[caas, bmaas]` satisfies this
+  without OpenShift Virtualization.
 - **VMaaS** requires a separate OpenShift cluster with CNV (OpenShift Virtualization) — VM workloads run on dedicated clusters, not on the management cluster.
+- **BMaaS** enables the Bare Metal Fulfillment (BMF) subchart. When no inventory
+  backend (`osacBcmEnabled` or `osacMetal3Enabled`) is configured, BMF is scaled
+  to zero replicas — the service is registered for the caas pairing but does not
+  run against absent bare-metal infrastructure (mirrors upstream caas-ci).
+  Configure a backend to run a functional BMF.
 
 ## Post-Install Steps
 

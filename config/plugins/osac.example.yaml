@@ -10,13 +10,25 @@
 # osacAapLicenseFile: "/path/to/aap-license.zip"
 
 # Optional: override OSAC Helm chart version (default from plugin defaults.yaml)
-# osacChartVersion: "0.0.6"
+# osacChartVersion: "0.0.9-nightly.20260911.6d92ac5.82.1"
 
-# Optional: enabled service profiles (default: [caas, vmaas])
+# Optional: enabled service profiles (default: [caas, bmaas])
 # See docs/OSAC_DEPLOYMENT.md for valid profiles and prerequisites.
+# The default pairs caas with bmaas (BMF scaled to zero, see note below) so it
+# works without OpenShift Virtualization. Add 'vmaas' (with the cnv plugin) for
+# VM-based compute.
+#
+# NOTE on 'bmaas' and bare-metal inventory backends (osacBcmEnabled /
+# osacMetal3Enabled):
+#   - A backend without 'bmaas' is rejected: BMF would not be deployed and the
+#     backend config would be silently ignored.
+#   - 'bmaas' without a backend IS allowed: BMF is scaled to zero replicas
+#     (mirrors upstream caas-ci). Use this to satisfy the chart's
+#     caas -> (vmaas|bmaas) requirement without real Metal3/BCM infrastructure.
+#   - 'bmaas' with a backend deploys a functional BMF against that backend.
 # osacProfilesList:
 #   - caas
-#   - vmaas
+#   - bmaas
 #   - ...
 
 # Optional: create test users for initial UI/CLI access (default: false)
@@ -85,6 +97,7 @@
 # --- BCM Inventory Backend ---
 # Enable BCM (NVIDIA Base Command Manager) integration for bare metal fulfillment.
 # Requires Metal3 for power management via BareMetalHost CRs.
+# Enabling a backend also requires 'bmaas' in osacProfilesList (see note above).
 # osacBcmEnabled: true
 
 # Required when osacBcmEnabled is true:
@@ -111,6 +124,7 @@
 # Enable Metal3 (BareMetalHost) integration for bare metal fulfillment.
 # Uses locally-managed BareMetalHost CRs via the metal3.io API.
 # NOTE: BCM and Metal3 are mutually exclusive — only one can be enabled.
+# Enabling a backend also requires 'bmaas' in osacProfilesList (see note above).
 # osacMetal3Enabled: true
 
 # Required when osacMetal3Enabled is true:

@@ -230,3 +230,32 @@ allOf:
       properties:
         osacBcmEnabled:
           const: false
+  # A bare-metal inventory backend (BCM or Metal3) requires bmaas in
+  # osacProfilesList. This is an enclave-level constraint on enclave config vars
+  # only (no coupling to the upstream chart schema, which enforces neither):
+  #   - a backend without bmaas => BMF is not deployed and the backend config is
+  #     silently ignored.
+  # The reverse is NOT required: bmaas may be enabled without a backend. In that
+  # case the template scales BMF to zero replicas (mirroring upstream caas-ci),
+  # so it registers its API without crash-looping against absent BM infra. This
+  # lets caas be satisfied via the chart's caas -> (vmaas|bmaas) requirement
+  # without provisioning real Metal3/BCM infrastructure.
+  - if:
+      anyOf:
+        - required:
+            - osacBcmEnabled
+          properties:
+            osacBcmEnabled:
+              const: true
+        - required:
+            - osacMetal3Enabled
+          properties:
+            osacMetal3Enabled:
+              const: true
+    then:
+      required:
+        - osacProfilesList
+      properties:
+        osacProfilesList:
+          contains:
+            const: bmaas
