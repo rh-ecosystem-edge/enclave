@@ -2,10 +2,8 @@
 # Chart-managed AAP architecture: the OSAC Helm chart deploys its own
 # AAP instance. deploy.yaml handles post-install AAP token creation
 # and operator patching.
-
-{% if osac_images is defined and osac_images.cli is defined %}
-cliImage: "{{ osac_images.cli }}"
-{% endif %}
+#
+# Section order mirrors the upstream chart values.yaml to keep diffs reviewable.
 
 global:
   services:
@@ -18,38 +16,38 @@ global:
     maas:
       enabled: false
 
+{% if osac_images is defined and osac_images.cli is defined %}
+cliImage: "{{ osac_images.cli }}"
+{% endif %}
+
+dbInit:
+  host: "{{ osac_db_name }}.osac.svc.cluster.local"
+
 operator:
   image:
-    pullPolicy: Always
 {% if osac_images is defined and osac_images.osac_operator is defined %}
     repository: "{{ osac_images.osac_operator.rsplit(':', 1)[0] }}"
     tag: "{{ osac_images.osac_operator.rsplit(':', 1)[1] }}"
 {% endif %}
+    pullPolicy: Always
   aap:
+    url: ""               # Set post-install by deploy.yaml
     insecureSkipVerify: "true"
     statusPollInterval: 30s
     templatePrefix: osac
-    url: ""               # Set post-install by deploy.yaml
-  controllers:
-{% if 'caas' in osacProfilesList or 'bmaas' in osacProfilesList %}
-    clusterOrder: true
-{% else %}
-    clusterOrder: false
-{% endif %}
-{% if 'vmaas' in osacProfilesList %}
-    computeInstance: true
-{% else %}
-    computeInstance: false
-{% endif %}
-    networking: true
-    tenant: true
-    bareMetalInstance: true
-    storage: true
   fulfillment:
     serverAddress: fulfillment-api:8000
     tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
-  provisioning:
-    provider: aap
+  controllers:
+    # clusterOrder (caas), computeInstance (vmaas) and bareMetalInstance (bmaas)
+    # are intentionally omitted: the chart derives them from global.services.*
+    # (set above from osacProfilesList). Setting them here would override that
+    # gating -- e.g. bareMetalInstance would force the BM controller on even
+    # when bmaas is disabled. Only the controllers without a service mapping
+    # are set explicitly below.
+    tenant: true
+    networking: true
+    storage: true
   hubAccess:
     enabled: false
 
@@ -67,11 +65,11 @@ service:
 {% endif %}
 {% endif %}
   certs:
-    caBundle:
-      configMap: ca-bundle
     issuerRef:
       kind: ClusterIssuer
       name: default-ca
+    caBundle:
+      configMap: ca-bundle
   auth:
     issuerUrl: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
     emergencyServiceAccounts:
@@ -124,18 +122,18 @@ aap:
       enabled: true
       name: "{{ osac_aap_name }}"
   bootstrap:
-    backoffLimit: 15
-    readinessConsecutiveSuccesses: 3
     enabled: true
 {% if osac_images is defined and osac_images.aap_bootstrap is defined %}
     image: "{{ osac_images.aap_bootstrap }}"
 {% endif %}
+    backoffLimit: 15
+    readinessConsecutiveSuccesses: 3
   configAsCode:
-    projectGitUri: "{{ osac_aap_project_git_uri }}"
-    projectGitBranch: "{{ osac_aap_project_git_branch }}"
 {% if osac_images is defined and osac_images.aap_bootstrap is defined %}
     eeImage: "{{ osac_images.aap_bootstrap }}"
 {% endif %}
+    projectGitUri: "{{ osac_aap_project_git_uri }}"
+    projectGitBranch: "{{ osac_aap_project_git_branch }}"
   instanceGroups:
 {% if osacNetrisEnabled | default(false) | bool %}
     clusterFulfillment:
@@ -227,9 +225,23 @@ aap:
         OSAC_TEMPLATE_COLLECTIONS: "osac.templates"
         OSAC_FULFILLMENT_SERVICE_URI: "https://fulfillment-internal-api:8001"
 
+# The BMF operator is gated by global.services.bmaas.enabled (chart Chart.yaml
+# condition); there is no top-level bmf.enabled anymore. The bcm/metal3 config
+# below only takes effect when bmaas is enabled via osacProfilesList.
+{% set _osac_bmaas_enabled = 'bmaas' in osacProfilesList %}
+{% set _osac_bm_backend = (osacBcmEnabled | default(false) | bool) or (osacMetal3Enabled | default(false) | bool) %}
 bmf:
+{% if _osac_bmaas_enabled and not _osac_bm_backend %}
+  # bmaas is enabled only to satisfy the chart's caas -> (vmaas|bmaas) schema
+  # requirement, but no bare-metal inventory backend (BCM or Metal3) is
+  # configured. Scale BMF to zero replicas so it registers its API without
+  # crash-looping against absent Metal3/BCM infrastructure. Mirrors upstream
+  # osac-installer caas-ci, which pairs caas with bmaas at replicaCount 0.
+  replicaCount: 0
+{% endif %}
+  env:
+    aapInsecureSkipVerify: "true"
 {% if osacBcmEnabled | default(false) | bool %}
-  enabled: true
   bcm:
     enabled: true
     url: "{{ osacBcmUrl }}"
@@ -245,31 +257,14 @@ bmf:
     hostClass: "{{ osacBcmHostClass | default('bcm') }}"
     bmhNamespace: "{{ osacBcmBmhNamespace }}"
 {% elif osacMetal3Enabled | default(false) | bool %}
-  enabled: true
   metal3:
     enabled: true
     namespace: "{{ osacMetal3Namespace }}"
     hostClass: "{{ osacMetal3HostClass | default('metal3') }}"
-{% else %}
-  enabled: false
 {% endif %}
-  env:
-    aapInsecureSkipVerify: "true"
-
-dbInit:
-  host: "{{ osac_db_name }}.osac.svc.cluster.local"
-
-dbMigrate:
-  enabled: false
 
 validation:
   enabled: true
 
 hubAccess:
   enabled: false
-
-bundledPostgres:
-  enabled: false
-  database:
-    name: service
-    user: service

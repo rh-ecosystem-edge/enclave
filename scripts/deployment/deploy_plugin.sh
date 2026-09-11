@@ -160,8 +160,6 @@ if [ -n "${AAP_LICENSE_FILE:-}" ] && { [ "$PLUGIN_NAME" = "aap" ] || [ "$PLUGIN_
 ---
 osacAapLicenseFile: "${LZ_AAP_LICENSE}"
 ${OSAC_CHART_VERSION:+osacChartVersion: "${OSAC_CHART_VERSION}"}
-osacProfilesList:
-  - caas
 osacTestUsers: true
 OSAC_EOF
     fi

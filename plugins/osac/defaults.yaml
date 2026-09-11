@@ -4,11 +4,17 @@
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
-osacChartVersion: "0.0.9-nightly.20260905.3a511a6.70.1"
+osacChartVersion: "0.0.9-nightly.20260911.6d92ac5.82.1"
 
+# Default profile pairs caas with bmaas (not vmaas): the chart requires caas to
+# be paired with a compute backend (vmaas or bmaas), and bmaas needs no cluster
+# add-on, whereas vmaas requires OpenShift Virtualization/KubeVirt. With no
+# bare-metal inventory backend configured, the values template scales BMF to
+# zero replicas (mirrors upstream osac-installer caas-ci). Enable vmaas
+# explicitly (with the cnv plugin) or a bmaas backend for functional compute.
 osacProfilesList:
   - caas
-  - vmaas
+  - bmaas
 
 # Test users (opt-in for dev/test environments)
 osacTestUsers: false
