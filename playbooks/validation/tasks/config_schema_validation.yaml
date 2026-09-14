@@ -27,6 +27,14 @@
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
 
+- name: Validate platforms.yaml against platforms schema (if present)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', platforms_vars_file | default('../../config/platforms.yaml', true)) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+  when: lookup('ansible.builtin.fileglob', platforms_vars_file | default('../../config/platforms.yaml', true)) | length > 0
+
 - name: Validate plugin config against schemas/config.yaml (if present and config file exists)
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', playbook_dir + '/../../config/plugins/' + item.path | basename + '.yaml') | from_yaml | to_json }}"

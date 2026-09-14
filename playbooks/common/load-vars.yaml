@@ -6,6 +6,7 @@
       - "{{ vars_file | default('../../config/global.yaml', true) }}"
       - "{{ certs_vars_file | default('../../config/certificates.yaml', true) }}"
       - "{{ cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true) }}"
+      - "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
 
 - name: Include deployment defaults
   ansible.builtin.include_vars: ../../defaults/deployment.yaml
@@ -69,6 +70,11 @@
     - oc_mirror.yaml
   loop_control:
     loop_var: config_file
+
+- name: Override openshift_versions if overrideOpenshiftVersions is defined in config
+  ansible.builtin.set_fact:
+    openshift_versions: "{{ overrideOpenshiftVersions }}"
+  when: overrideOpenshiftVersions is defined
 
 - name: Ensure storage plugin is in enabled_plugins
   ansible.builtin.set_fact:
