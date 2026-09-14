@@ -71,6 +71,16 @@
   loop_control:
     loop_var: config_file
 
+- name: Check for optional OpenShift platforms override
+  ansible.builtin.stat:
+    path: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
+  register: r_platforms_override
+
+- name: Load optional OpenShift platforms override
+  ansible.builtin.include_vars:
+    file: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
+  when: r_platforms_override.stat.exists
+
 - name: Override openshift_versions if overrideOpenshiftVersions is defined in config
   ansible.builtin.set_fact:
     openshift_versions: "{{ overrideOpenshiftVersions }}"
