@@ -43,17 +43,35 @@
   register: r_storagecluster
   until: r_storagecluster is succeeded
 
-- name: Wait for StorageCluster to be available
-  kubernetes.core.k8s_info:
-    api_version: ocs.openshift.io/v1
-    kind: StorageCluster
-    name: ocs-external-storagecluster
-    namespace: openshift-storage
-    wait: true
-    wait_sleep: 10
-    wait_timeout: 600
-    wait_condition:
-      reason: ReconcileCompleted
-      status: "True"
-      type: Available
-  register: r_storage_cluster_info
+- name: Wait for external ODF storage to be ready
+  block:
+    - name: Wait for StorageCluster to be available
+      kubernetes.core.k8s_info:
+        api_version: ocs.openshift.io/v1
+        kind: StorageCluster
+        name: ocs-external-storagecluster
+        namespace: openshift-storage
+        wait: true
+        wait_sleep: 10
+        wait_timeout: 600
+        wait_condition:
+          reason: ReconcileCompleted
+          status: "True"
+          type: Available
+      register: r_storage_cluster_info
+
+  rescue:
+    - name: External ODF storage failed to initialize
+      ansible.builtin.fail:
+        msg: |
+          External storage configuration failed: the external Ceph cluster configured in
+          config/plugins/odf.yaml did not become available.
+
+          Error: {{ ansible_failed_result.msg }}
+
+          Check external Ceph cluster health and verify the connection details in config/plugins/odf.yaml.
+
+          Diagnostics:
+            oc describe storagecluster ocs-external-storagecluster -n openshift-storage
+            oc get pods -n openshift-storage
+            oc logs -n openshift-storage <failing-pod>
