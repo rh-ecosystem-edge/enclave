@@ -217,7 +217,8 @@ Configuration is split across multiple files for better organization:
 
 **Default configuration files** (in `defaults/` directory):
 - `defaults/operators.yaml` - General cluster operators
-- `defaults/platforms.yaml` - Available OpenShift versions
+- `defaults/platforms.yaml` - Available OpenShift versions (tested y-stream range)
+- `config/platforms.yaml` - **Recommended** OpenShift versions override for fleet management ([version management guide](OPENSHIFT_VERSION_MANAGEMENT.md))
 - `defaults/deployment.yaml` - Deployment behavior defaults
 - `defaults/k8s.yaml` - Kubernetes resource defaults
 - `defaults/control_binaries.yaml` - Binary URLs and checksums (oc, helm, etc.)
