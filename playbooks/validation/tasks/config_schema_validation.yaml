@@ -2,9 +2,13 @@
   ansible.builtin.set_fact:
     schema_definitions: "{{ lookup('ansible.builtin.file', '../../schemas/definitions.yaml') | from_yaml }}"
 
-- name: Include load-vars to resolve user config file paths
-  ansible.builtin.include_tasks:
-    file: ../../common/load-vars.yaml
+- name: Set user config file paths (before loading)
+  ansible.builtin.set_fact:
+    user_config_files:
+      - "{{ vars_file | default('../../config/global.yaml', true) }}"
+      - "{{ certs_vars_file | default('../../config/certificates.yaml', true) }}"
+      - "{{ cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true) }}"
+    platforms_config_path: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
 
 - name: Validate global.yaml against global schema
   ansible.utils.validate:
@@ -26,6 +30,27 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/cloud_infra.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
+
+- name: Validate platforms.yaml against platforms schema (if present)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
+
+- name: Validate exactly one default version in platforms.yaml (if present)
+  ansible.builtin.assert:
+    that:
+      - platforms_data.overrideOpenshiftVersions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | list | length == 1
+    fail_msg: "{{ platforms_config_path }} must have exactly one version with 'default: true'"
+  vars:
+    platforms_data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml }}"
+  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
+
+- name: Include load-vars to resolve and merge configurations
+  ansible.builtin.include_tasks:
+    file: ../../common/load-vars.yaml
 
 - name: Validate plugin config against schemas/config.yaml (if present and config file exists)
   ansible.utils.validate:
