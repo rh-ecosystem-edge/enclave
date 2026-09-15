@@ -18,8 +18,10 @@ on:
         default: '12'
         type: string
   schedule:
-    # Weekly scheduled cleanup - Sunday at 4 AM UTC
-    - cron: '0 4 * * 0'
+    # Hourly scheduled cleanup (standard level: make clean + age-based reap).
+    # Scheduled runs pass no inputs, so cleanup_level defaults to 'standard',
+    # which is safe against in-flight CI runs (deep/full are age-blind).
+    - cron: '0 * * * *'
 
 permissions:
   contents: read
@@ -162,6 +164,20 @@ jobs:
           done
 
           echo "✅ Full cleanup complete" >> $GITHUB_STEP_SUMMARY
+
+      - name: Restart stopped runners on this host
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Restarting stopped runners on this host" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          # Runners get OOM-killed by dangling VMs; revive any that are down now
+          # that reaping has freed memory. Best-effort, only touches this host.
+          if make -f Makefile.ci start-stopped-runners; then
+            echo "✅ Runner restart pass complete" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Runner restart encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Post-cleanup status
         if: always()
