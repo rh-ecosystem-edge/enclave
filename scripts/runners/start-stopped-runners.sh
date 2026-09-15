@@ -64,7 +64,10 @@ main() {
 
     output "Runner restart summary: started=${started} skipped=${skipped} failed=${failed}"
 
-    # Best-effort: report failures but do not fail the caller.
+    # Best-effort: continue checking services, then report failures to the caller.
+    if (( failed > 0 )); then
+        return 1
+    fi
     return 0
 }
 
