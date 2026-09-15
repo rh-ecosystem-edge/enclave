@@ -1,4 +1,3 @@
-# PR Validation workflow
 name: PR Validation
 
 on:
