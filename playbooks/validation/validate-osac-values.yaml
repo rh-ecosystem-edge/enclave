@@ -1,0 +1,72 @@
+---
+# OSAC values overlay render (for schema validation).
+#
+# Renders plugins/osac/templates/values.yaml.j2 for a single profile so it can
+# be validated against the pinned OSAC chart's values.schema.json via
+# `helm template`. Variables are layered exactly as at deploy time:
+#   - plugins/osac/defaults.yaml            static defaults (include_vars)
+#   - a profile override file               permutation under test (-e@ ...)
+#   - extractPlaceholders from plugin.yaml  deploy-time-only runtime stubs
+#                                           (__r_ingress_config,
+#                                           _osac_keycloak_hostname), applied
+#                                           only if not already defined — the
+#                                           same contract as the mirror
+#                                           image-extraction path
+#                                           (playbooks/tasks/helm_extract_single.yaml)
+#
+# Run once per profile (fresh scope) by
+# scripts/verification/validate_osac_values.sh.
+#
+# Required extra-vars:
+#   osac_values_out : absolute path to write the rendered values file
+# Optional:
+#   -e@plugins/osac/test-fixtures/values/profile-*.yaml  profile overrides
+
+- name: Render OSAC values overlay for schema validation
+  hosts: localhost
+  gather_facts: false
+  vars:
+    osac_plugin_dir: "{{ playbook_dir }}/../../plugins/osac"
+  tasks:
+    - name: Assert output path was provided
+      ansible.builtin.assert:
+        that:
+          - osac_values_out is defined
+          - osac_values_out | length > 0
+        fail_msg: "osac_values_out must be provided (-e osac_values_out=/path/to/values.yaml)"
+
+    - name: Load OSAC plugin defaults
+      ansible.builtin.include_vars: "{{ osac_plugin_dir }}/defaults.yaml"
+
+    - name: Load OSAC plugin descriptor
+      ansible.builtin.set_fact:
+        _osac_plugin: "{{ lookup('ansible.builtin.file', osac_plugin_dir ~ '/plugin.yaml') | from_yaml }}"
+
+    - name: Collect deploy-time placeholder stubs from the OSAC helm entry
+      ansible.builtin.set_fact:
+        _osac_placeholders: "{{ (_osac_plugin.helm | first).extractPlaceholders | default({}) }}"
+
+    - name: Apply placeholder stubs (only if not already defined)
+      ansible.builtin.set_fact:
+        "{{ item.key }}": "{{ item.value }}"
+      loop: "{{ _osac_placeholders | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      when: item.key not in vars
+
+    - name: Render values overlay
+      ansible.builtin.template:
+        src: "{{ osac_plugin_dir }}/templates/values.yaml.j2"
+        dest: "{{ osac_values_out }}"
+
+    - name: Read rendered values overlay
+      ansible.builtin.slurp:
+        src: "{{ osac_values_out }}"
+      register: _osac_values_raw
+
+    - name: Assert rendered overlay is a valid YAML mapping
+      ansible.builtin.assert:
+        that:
+          - _osac_values_raw.content | b64decode | from_yaml is mapping
+        fail_msg: "Rendered OSAC values overlay is not a valid YAML mapping: {{ osac_values_out }}"
+        success_msg: "Rendered OSAC values overlay parsed successfully ({{ osac_profile_name | default('unnamed') }})"

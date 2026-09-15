@@ -18,6 +18,18 @@ helm:
     timeout: "45m"
     retries: 0
     wait: false    # AAP takes 30+ minutes; deploy.yaml handles post-install waits
+    # Stub values for Ansible variables that values.yaml.j2 references but are
+    # only set at deploy time (ingress reconciliation, Keycloak discovery).
+    # Consumed by the PR-time overlay schema check (validate-osac-values) and,
+    # when extractImages is enabled, by the mirror image-extraction path
+    # (see playbooks/tasks/helm_extract_single.yaml). The actual values do not
+    # matter; they only need to let the template render.
+    extractPlaceholders:
+      __r_ingress_config:
+        resources:
+          - spec:
+              domain: "apps.placeholder.example.com"
+      _osac_keycloak_hostname: "keycloak.placeholder.example.com"
 
 additionalImages:
   - ghcr.io/osac-project/osac-operator:latest

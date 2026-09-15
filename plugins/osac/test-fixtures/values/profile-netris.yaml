@@ -1,0 +1,35 @@
+---
+# Profile: Netris network backend
+#
+# Exercises the aap.instanceGroups.clusterFulfillment / networkFulfillment
+# blocks. Config toggles only; see profile-default.yaml. Includes the optional
+# Netris keys so their template branches are rendered too.
+osac_profile_name: netris
+osacNetrisEnabled: true
+osacNetrisControllerUrl: "https://netris.placeholder.example.com"
+osacNetrisUsername: admin
+osacNetrisPassword: placeholder
+osacNetrisSiteId: "1"
+osacNetrisTenantId: "1"
+osacNetrisTenantName: default
+osacDnsClass: dns.route53.dns
+osacDnsZone: placeholder.example.com
+osacNetrisStepsCollection: netris.steps
+osacNetrisMgmtVpcId: "1"
+osacNetrisMgmtVpcName: mgmt
+osacNetrisResourceClassMap: '{"default": "default"}'
+osacNetrisSshBastionHost: bastion.placeholder.example.com
+osacNetrisSshBastionUser: bastion
+osacNetrisSshUser: netris
+osacNetrisMgmtRouteDestination: 0.0.0.0/0
+osacNetrisMgmtRouteGateway: 10.0.0.1
+osacNetrisExternalAccessBaseDomain: ext.placeholder.example.com
+osacNetrisExternalAccessSupportedBaseDomains: ext.placeholder.example.com
+osacNetrisExternalAccessApiInternalNetwork: 10.0.0.0/24
+osacNetrisHostedClusterBaseDomain: hc.placeholder.example.com
+osacNetrisHostedClusterControllerAvailabilityPolicy: SingleReplica
+osacNetrisHostedClusterInfrastructureAvailabilityPolicy: SingleReplica
+osacNetrisAwsAccessKeyId: placeholder
+osacNetrisAwsSecretAccessKey: placeholder
+osacNetrisSshKey: placeholder-ssh-key
+osacNetrisSshBastionKey: placeholder-bastion-key
