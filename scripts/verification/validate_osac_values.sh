@@ -83,6 +83,14 @@ if [ ! -f "${CHART_DIR}/Chart.yaml" ]; then
     exit 1
 fi
 
+# `helm template` only enforces values.schema.json when the chart ships one, so
+# without this guard an upstream chart that drops the schema would make every
+# profile pass while validating nothing. Fail loudly instead.
+if [ ! -f "${CHART_DIR}/values.schema.json" ]; then
+    error "Chart ${CHART_REF} ${CHART_VERSION} has no values.schema.json — nothing to validate against"
+    exit 1
+fi
+
 # --- Validate each profile ---------------------------------------------------
 
 shopt -s nullglob
