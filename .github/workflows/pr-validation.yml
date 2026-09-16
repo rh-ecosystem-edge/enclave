@@ -487,6 +487,9 @@ jobs:
               - 'scripts/verification/validate_osac_values.sh'
               - 'scripts/verification/validate.sh'
               - 'Makefile.ci'
+              # A helm bump here changes the version used to schema-check the
+              # overlay (CI image installs helm from this file), so re-validate.
+              - 'defaults/control_binaries.yaml'
               - '.github/workflows/pr-validation.yml'
 
       - name: Run OSAC values overlay validation
