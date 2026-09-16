@@ -3,9 +3,13 @@
 #
 # Exercises the bmf.bcm block (cert/key indent filters, insecureSkipVerify,
 # hostClass/bmhNamespace defaults). Config toggles only; see profile-default.yaml.
+#
+# BCM is a bare-metal inventory backend, so bmaas must be enabled (the bmf.bcm
+# block only takes effect when bmaas is in osacProfilesList). bmaas alone is a
+# valid profile under the chart's caas -> (vmaas|bmaas) schema rule.
 osac_profile_name: bcm
 osacProfilesList:
-  - caas
+  - bmaas
 osacBcmEnabled: true
 osacBcmUrl: "https://bcm.placeholder.example.com:8443"
 osacBcmCert: "placeholder-cert-data"
