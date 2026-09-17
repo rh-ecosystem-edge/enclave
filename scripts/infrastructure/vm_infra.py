@@ -1075,24 +1075,31 @@ def _delete_pool(pool: libvirt.virStoragePool) -> bool:
         try:
             pool.create(0)
         except libvirt.libvirtError as exc:
-            # Could not start it. Only treat this as "safe to undefine" when the
-            # backing directory is confirmed gone (nothing to reclaim); otherwise
-            # keep the definition so a later sweep can retry.
+            # Could not start it. Only undefine when the backing directory is *confirmed*
+            # gone (nothing to reclaim); if we cannot prove that, keep the definition so
+            # a later sweep retries rather than orphaning any data.
             target = _pool_target_path_from_xml(pool)
-            if target is not None:
-                try:
-                    backing_present = target.exists()
-                except OSError as os_exc:
-                    # Cannot confirm the dir is gone — do not undefine (would orphan
-                    # any data); keep the definition and let a later sweep retry.
-                    LOG.warning(
-                        "Failed to start pool %s and cannot stat %s (%s); keeping definition",
-                        name, target, os_exc,
-                    )
-                    return False
-                if backing_present:
-                    LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
-                    return False
+            if target is None:
+                # Target path unreadable — cannot confirm the backing dir is gone.
+                LOG.warning(
+                    "Failed to start pool %s and cannot read its target path; "
+                    "keeping definition: %s", name, exc,
+                )
+                return False
+            try:
+                target.stat()
+            except FileNotFoundError:
+                pass  # backing dir genuinely gone; safe to undefine below
+            except OSError as os_exc:
+                # e.g. PermissionError — cannot prove the dir is gone; keep and retry.
+                LOG.warning(
+                    "Failed to start pool %s and cannot stat %s (%s); keeping definition",
+                    name, target, os_exc,
+                )
+                return False
+            else:
+                LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
+                return False
     if pool.isActive():
         try:
             for vol_name in pool.listVolumes():

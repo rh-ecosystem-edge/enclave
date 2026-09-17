@@ -151,7 +151,16 @@ private temp dir and `exit` on error):
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Validate the age threshold up front: it must be a positive, finite number (fractional
+# hours such as 12.5 are allowed). awk parses it — avoiding Bash integer-only arithmetic
+# and octal interpretation of a leading zero — and emits the equivalent whole minutes.
 AGE_HOURS=${REAP_AGE_HOURS:-12}
+AGE_MIN=$(awk -v h="$AGE_HOURS" 'BEGIN{
+  if (h !~ /^[0-9]+(\.[0-9]+)?$/ || h+0 <= 0) exit 1
+  printf "%d", h*60
+}') || { echo "REAP_AGE_HOURS must be a positive, finite number (got: $AGE_HOURS)" >&2; exit 1; }
+
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 
 # Discover defined domains; abort if the enumeration itself fails (an empty result
@@ -163,6 +172,7 @@ fi
 # Build the keep-list fail-closed: if any domain cannot be inspected the keep-list is
 # incomplete, so an in-use ISO could be mistaken for an orphan — abort rather than
 # delete from a partial list (the same safety rule the automated sweep enforces).
+: > "$work/keep.raw"   # ensure it exists so sort -u succeeds even with no domains
 partial=0
 while IFS= read -r d; do
   [ -n "$d" ] || continue
@@ -182,13 +192,13 @@ virsh vol-list default | awk \
   | grep -vxF -f "$work/keep.txt" > "$work/unref.txt" || true
 : > "$work/del.txt"
 while IFS= read -r f; do
-  [ -n "$f" ] && find "$f" -mmin "+$((AGE_HOURS * 60))" 2>/dev/null
+  [ -n "$f" ] && find "$f" -mmin "+$AGE_MIN" 2>/dev/null
 done < "$work/unref.txt" >> "$work/del.txt"
 
-echo "candidates: $(wc -l < "$work/del.txt")"; xargs -a "$work/del.txt" du -ch 2>/dev/null | tail -1
+echo "candidates: $(wc -l < "$work/del.txt")"; xargs -r -a "$work/del.txt" du -ch 2>/dev/null | tail -1
 # after reviewing the candidate list:
 cat "$work/del.txt"
-xargs -a "$work/del.txt" -I{} virsh vol-delete {}
+xargs -r -a "$work/del.txt" -I{} virsh vol-delete {}
 ```
 
 **2. Stale CI podman images** (every build tags `enclave-lab-ci:<sha>`; thousands
