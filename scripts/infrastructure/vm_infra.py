@@ -1076,12 +1076,23 @@ def _delete_pool(pool: libvirt.virStoragePool) -> bool:
             pool.create(0)
         except libvirt.libvirtError as exc:
             # Could not start it. Only treat this as "safe to undefine" when the
-            # backing directory is genuinely gone (nothing to reclaim); otherwise
+            # backing directory is confirmed gone (nothing to reclaim); otherwise
             # keep the definition so a later sweep can retry.
             target = _pool_target_path_from_xml(pool)
-            if target is not None and target.exists():
-                LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
-                return False
+            if target is not None:
+                try:
+                    backing_present = target.exists()
+                except OSError as os_exc:
+                    # Cannot confirm the dir is gone — do not undefine (would orphan
+                    # any data); keep the definition and let a later sweep retry.
+                    LOG.warning(
+                        "Failed to start pool %s and cannot stat %s (%s); keeping definition",
+                        name, target, os_exc,
+                    )
+                    return False
+                if backing_present:
+                    LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
+                    return False
     if pool.isActive():
         try:
             for vol_name in pool.listVolumes():

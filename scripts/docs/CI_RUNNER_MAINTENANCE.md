@@ -142,31 +142,53 @@ The three recurring leaks, largest first, and how to reclaim each:
 never owned by a cluster pool). Delete only volumes not referenced by any defined
 domain:
 
-Build the keep-list fail-closed: if any domain cannot be inspected the keep-list is
-incomplete, so an in-use ISO could be mistaken for an orphan — abort rather than
-delete from a partial list (the same safety rule the automated sweep enforces).
+This is an **emergency/manual override** for when the automated reaper cannot keep up
+(e.g. root is already full and blocking CI). It mirrors the reaper's safety rules — a
+fail-closed keep-list *and* the same `REAP_AGE_HOURS` age gate — but always review the
+candidate list before deleting. Save it as a script and run it as `root` (it uses a
+private temp dir and `exit` on error):
 
 ```bash
-: > /tmp/keep.raw
+#!/usr/bin/env bash
+set -euo pipefail
+AGE_HOURS=${REAP_AGE_HOURS:-12}
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+
+# Discover defined domains; abort if the enumeration itself fails (an empty result
+# from a failed call would make every ISO look orphaned).
+if ! domains=$(virsh list --all --name); then
+  echo "Cannot list domains — aborting" >&2; exit 1
+fi
+
+# Build the keep-list fail-closed: if any domain cannot be inspected the keep-list is
+# incomplete, so an in-use ISO could be mistaken for an orphan — abort rather than
+# delete from a partial list (the same safety rule the automated sweep enforces).
 partial=0
-for d in $(virsh list --all --name); do
+while IFS= read -r d; do
   [ -n "$d" ] || continue
   if ! blk=$(virsh domblklist "$d" 2>/dev/null); then
     echo "WARN: cannot inspect domain $d — aborting to avoid a partial keep list" >&2
     partial=1; break
   fi
-  printf '%s\n' "$blk" | awk '/\/var\/lib\/libvirt\/images\//{print $2}' >> /tmp/keep.raw
-done
-sort -u /tmp/keep.raw > /tmp/keep.txt; rm -f /tmp/keep.raw
-if [ "$partial" -ne 0 ]; then
-  echo "Partial keep list — do NOT proceed to deletion"; return 2>/dev/null || exit 1
-fi
+  printf '%s\n' "$blk" | awk '/\/var\/lib\/libvirt\/images\//{print $2}' >> "$work/keep.raw"
+done <<< "$domains"
+[ "$partial" -eq 0 ] || { echo "Partial keep list — do NOT proceed to deletion" >&2; exit 1; }
+sort -u "$work/keep.raw" > "$work/keep.txt" || { echo "sort failed — aborting" >&2; exit 1; }
+
+# Candidates: CI-generated names, unreferenced, AND older than the age gate — a newly
+# created but momentarily unreferenced ISO must never be reaped.
 virsh vol-list default | awk \
   'NR>2 && $1 ~ /^(boot-|agent-x86_64-iso-)/ && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
-  | grep -vxF -f /tmp/keep.txt > /tmp/del.txt
-echo "candidates: $(wc -l < /tmp/del.txt)"; xargs -a /tmp/del.txt du -ch 2>/dev/null | tail -1
-# after reviewing /tmp/del.txt:
-xargs -a /tmp/del.txt -I{} virsh vol-delete {}
+  | grep -vxF -f "$work/keep.txt" > "$work/unref.txt" || true
+: > "$work/del.txt"
+while IFS= read -r f; do
+  [ -n "$f" ] && find "$f" -mmin "+$((AGE_HOURS * 60))" 2>/dev/null
+done < "$work/unref.txt" >> "$work/del.txt"
+
+echo "candidates: $(wc -l < "$work/del.txt")"; xargs -a "$work/del.txt" du -ch 2>/dev/null | tail -1
+# after reviewing the candidate list:
+cat "$work/del.txt"
+xargs -a "$work/del.txt" -I{} virsh vol-delete {}
 ```
 
 **2. Stale CI podman images** (every build tags `enclave-lab-ci:<sha>`; thousands
