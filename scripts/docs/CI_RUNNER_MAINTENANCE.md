@@ -120,15 +120,107 @@ sudo -u github-runner virsh list --all
 
 ### Disk space issues
 
-Check usage:
+**Symptom:** VM creation fails with `No space left on device` writing
+`/etc/libvirt/qemu/*.xml.new` — that file is on the root filesystem, so the root FS
+is full, not necessarily the VM pool.
+
+**Host layout (important):** `/` is a small (~445 GiB) root disk holding
+`/var/lib/libvirt/images` (the default pool) and `/home`. `/opt/dev-scripts/clusters`
+is a bind mount onto the large `/disk1` (~3 TiB), so cluster working dirs do *not*
+fill root — but the default pool and `/home` do.
+
+First, find which filesystem is full (check bytes **and** inodes):
 
 ```bash
-df -h /opt/dev-scripts
-df -h /home/github-runner
-df -h /var/lib/libvirt/images
+df -h
+df -i
 ```
 
-If stale VM images are consuming space, follow the [Stale VM and Storage Cleanup](#stale-vm-and-storage-cleanup) section below.
+The three recurring leaks, largest first, and how to reclaim each:
+
+**1. Orphaned boot/agent ISOs in the default pool** (biggest — ~1.3 GiB per node,
+never owned by a cluster pool). Delete only volumes not referenced by any defined
+domain:
+
+This is an **emergency/manual override** for when the automated reaper cannot keep up
+(e.g. root is already full and blocking CI). It mirrors the reaper's safety rules — a
+fail-closed keep-list *and* the same `REAP_AGE_HOURS` age gate — but always review the
+candidate list before deleting. Save it as a script and run it as `root` (it uses a
+private temp dir and `exit` on error):
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Validate the age threshold up front: it must be a positive, finite number (fractional
+# hours such as 12.5 are allowed). awk parses it — avoiding Bash integer-only arithmetic
+# and octal interpretation of a leading zero — and emits the equivalent minutes, rounded
+# UP so a fractional threshold never truncates to a smaller (or zero) age gate.
+AGE_HOURS=${REAP_AGE_HOURS:-12}
+AGE_MIN=$(awk -v h="$AGE_HOURS" 'BEGIN{
+  if (h !~ /^[0-9]+(\.[0-9]+)?$/ || h+0 <= 0) exit 1
+  m = h*60; r = int(m); if (m > r) r++   # ceil: never under-shoot the threshold
+  printf "%d", r
+}') || { echo "REAP_AGE_HOURS must be a positive, finite number (got: $AGE_HOURS)" >&2; exit 1; }
+
+work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
+
+# Discover defined domains; abort if the enumeration itself fails (an empty result
+# from a failed call would make every ISO look orphaned).
+if ! domains=$(virsh list --all --name); then
+  echo "Cannot list domains — aborting" >&2; exit 1
+fi
+
+# Build the keep-list fail-closed: if any domain cannot be inspected the keep-list is
+# incomplete, so an in-use ISO could be mistaken for an orphan — abort rather than
+# delete from a partial list (the same safety rule the automated sweep enforces).
+: > "$work/keep.raw"   # ensure it exists so sort -u succeeds even with no domains
+partial=0
+while IFS= read -r d; do
+  [ -n "$d" ] || continue
+  if ! blk=$(virsh domblklist "$d" 2>/dev/null); then
+    echo "WARN: cannot inspect domain $d — aborting to avoid a partial keep list" >&2
+    partial=1; break
+  fi
+  printf '%s\n' "$blk" | awk '/\/var\/lib\/libvirt\/images\//{print $2}' >> "$work/keep.raw"
+done <<< "$domains"
+[ "$partial" -eq 0 ] || { echo "Partial keep list — do NOT proceed to deletion" >&2; exit 1; }
+sort -u "$work/keep.raw" > "$work/keep.txt" || { echo "sort failed — aborting" >&2; exit 1; }
+
+# Candidates: CI-generated names, unreferenced, AND older than the age gate — a newly
+# created but momentarily unreferenced ISO must never be reaped.
+virsh vol-list default | awk \
+  'NR>2 && $1 ~ /^(boot-|agent-x86_64-iso-)/ && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
+  | grep -vxF -f "$work/keep.txt" > "$work/unref.txt" || true
+: > "$work/del.txt"
+while IFS= read -r f; do
+  [ -n "$f" ] && find "$f" -mmin "+$AGE_MIN" 2>/dev/null
+done < "$work/unref.txt" >> "$work/del.txt"
+
+echo "candidates: $(wc -l < "$work/del.txt")"; xargs -r -a "$work/del.txt" du -ch 2>/dev/null | tail -1
+# after reviewing the candidate list:
+cat "$work/del.txt"
+xargs -r -a "$work/del.txt" -I{} virsh vol-delete {}
+```
+
+**2. Stale CI podman images** (every build tags `enclave-lab-ci:<sha>`; thousands
+accumulate in the runner's rootless store under `~/.local/share/containers`). Prune
+images no container references (keeps the in-flight job's `:latest`):
+
+```bash
+sudo -iu github-runner podman system df          # confirm reclaimable
+sudo -iu github-runner podman image prune -a -f
+sudo podman image prune -a -f                     # root store too
+```
+
+**3. Orphaned libvirt pool definitions** (domains gone, pool definition lingers;
+includes landing-zone `<cluster>-1` pools). See
+[Delete cluster-specific pools](#delete-cluster-specific-pools) below.
+
+All three are now swept automatically by the age-based reaper (`make -f Makefile.ci
+reap-stale-vms`) and the hourly `cleanup.yml` workflow; run those first before
+manual surgery. If images are consuming space, also see the
+[Stale VM and Storage Cleanup](#stale-vm-and-storage-cleanup) section below.
 
 ## Stale VM and Storage Cleanup
 
@@ -218,17 +310,13 @@ done
 
 ### Delete orphaned ISOs from the default pool
 
-Review the volume list first, then delete only the known CI-generated ISO patterns
-(`agent-x86_64-iso-*` and `boot-*`):
-
-```bash
-# Review what is present before deleting
-virsh vol-list --pool default --details | awk 'NR>2'
-
-# Delete only orphaned agent installer and boot ISO files
-virsh vol-list --pool default | awk 'NR>2 && $1~/^(agent-x86_64-iso-.*\.img|boot-.*\.img)$/ {print $1}' | \
-  xargs -I{} virsh vol-delete --pool default {}
-```
+Use the guarded procedure under [Disk space issues](#disk-space-issues) (leak **1**).
+It is the only supported way to delete default-pool ISOs by hand: it builds a
+fail-closed keep-list from every defined domain (so a referenced ISO is never
+touched), applies the same `REAP_AGE_HOURS` age gate as the automated reaper (so a
+freshly created ISO is never reaped), and requires you to review the candidate list
+before `virsh vol-delete`. Do not delete default-pool ISOs by pattern alone — a
+name match does not prove a volume is orphaned or old enough to remove.
 
 ### Remove stale VM XML definitions
 
