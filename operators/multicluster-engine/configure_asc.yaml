@@ -1,0 +1,92 @@
+---
+# Configure AgentServiceConfig with updated osImages.
+# This ensures MCE AgentServiceConfig references the correct RHCOS ISO versions.
+# Can be used for both initial creation and patching existing ASC during upgrades.
+
+- name: Get RHCOS ISO labels for osImages
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -s
+      - LABEL
+      - -o
+      - value
+      - "/var/www/html/rhcos-{{ item.version }}-x86_64-live-iso.x86_64.iso"
+  loop: "{{ openshift_versions }}"
+  register: r_iso_labels
+  changed_when: false
+  no_log: true
+
+- name: Build osImages list for AgentServiceConfig
+  ansible.builtin.set_fact:
+    _osimages: |
+      {% for v in openshift_versions %}
+      {% set idx = loop.index0 %}
+      - cpuArchitecture: x86_64
+        openshiftVersion: "{{ v.version }}"
+        url: "http://{{ quayHostname }}/rhcos-{{ v.version }}-x86_64-live-iso.x86_64.iso"
+        version: "{{ r_iso_labels.results[idx].stdout | trim }}"
+      {% endfor %}
+  no_log: true
+
+- name: Get current AgentServiceConfig generation before update
+  kubernetes.core.k8s_info:
+    api_version: agent-install.openshift.io/v1beta1
+    kind: AgentServiceConfig
+    name: agent
+  register: r_asc_before
+  no_log: true
+
+- name: Ensure MCE AgentServiceConfig is present with updated osImages
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: agent-install.openshift.io/v1beta1
+      kind: AgentServiceConfig
+      metadata:
+        annotations:
+          agent-install.openshift.io/enable-local-cluster-import: "true"
+          unsupported.agent-install.openshift.io/assisted-service-configmap: assisted-service-user-config
+        name: agent
+      spec:
+        mirrorRegistryRef:
+          name: custom-registries
+        databaseStorage:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 40Gi
+        filesystemStorage:
+          accessModes:
+          - ReadWriteOnce
+          resources:
+            requests:
+              storage: 40Gi
+        osImages: "{{ _osimages | from_yaml }}"
+  retries: 60
+  delay: 10
+  register: r_asc
+  until: r_asc is succeeded
+  no_log: true
+
+- name: Wait until MCE AgentServiceConfig reconciles the new configuration
+  when: r_asc.changed | bool
+  kubernetes.core.k8s_info:
+    api_version: agent-install.openshift.io/v1beta1
+    kind: AgentServiceConfig
+    name: agent
+  register: r_asc_status
+  retries: 120
+  delay: 30
+  until:
+    - r_asc_status is defined
+    - r_asc_status.resources is defined
+    - r_asc_status.resources | length > 0
+    - r_asc_status.resources[0].metadata is defined
+    - r_asc_status.resources[0].metadata.generation is defined
+    - r_asc_status.resources[0].status is defined
+    - r_asc_status.resources[0].status.conditions is defined
+    - r_asc_status.resources[0].status.conditions | selectattr('type', 'equalto', 'ReconcileCompleted') | selectattr('status', 'equalto', 'True') | list | length > 0
+    - r_asc_status.resources[0].metadata.generation > ((((r_asc_before.resources | default([])) | first | default({})).metadata | default({})).generation | default(0))
+  no_log: true
