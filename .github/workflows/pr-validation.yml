@@ -12,7 +12,7 @@ permissions:
 
 # Prevent concurrent runs for the same PR (use run_id as fallback for merge_group)
 concurrency:
-  group: pr-validation-aws-${{ github.event.pull_request.number || github.run_id }}
+  group: pr-validation-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +25,7 @@ jobs:
   shellcheck:
     name: Shell Script Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -73,7 +73,7 @@ jobs:
   yamllint:
     name: YAML Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -121,7 +121,7 @@ jobs:
   json-schema:
     name: JSON Schema Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -169,7 +169,7 @@ jobs:
   ansible-lint:
     name: Ansible Playbook Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -217,7 +217,7 @@ jobs:
   ansible-tags:
     name: Ansible Tags Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -266,7 +266,7 @@ jobs:
   # Job 6: Template rendering validation
   template-rendering:
     name: Template Rendering Validation
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     permissions:
       contents: read
     container:
@@ -314,7 +314,7 @@ jobs:
   makefile:
     name: Makefile Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -362,7 +362,7 @@ jobs:
   plugins:
     name: Plugin Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
@@ -410,7 +410,7 @@ jobs:
   python:
     name: Python Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root

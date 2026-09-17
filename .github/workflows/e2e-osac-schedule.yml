@@ -11,7 +11,7 @@ on:
 jobs:
   dispatch-osac:
     name: Dispatch OSAC E2E
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     timeout-minutes: 5
     permissions:
       actions: write  # required by gh workflow run to dispatch e2e-osac.yml
