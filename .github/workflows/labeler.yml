@@ -12,7 +12,7 @@ concurrency:
 jobs:
   label:
     name: 🏷️ Label PR
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     permissions:
       contents: read
       pull-requests: write
