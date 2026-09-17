@@ -120,15 +120,58 @@ sudo -u github-runner virsh list --all
 
 ### Disk space issues
 
-Check usage:
+**Symptom:** VM creation fails with `No space left on device` writing
+`/etc/libvirt/qemu/*.xml.new` — that file is on the root filesystem, so the root FS
+is full, not necessarily the VM pool.
+
+**Host layout (important):** `/` is a small (~445 GiB) root disk holding
+`/var/lib/libvirt/images` (the default pool) and `/home`. `/opt/dev-scripts/clusters`
+is a bind mount onto the large `/disk1` (~3 TiB), so cluster working dirs do *not*
+fill root — but the default pool and `/home` do.
+
+First, find which filesystem is full (check bytes **and** inodes):
 
 ```bash
-df -h /opt/dev-scripts
-df -h /home/github-runner
-df -h /var/lib/libvirt/images
+df -h
+df -i
 ```
 
-If stale VM images are consuming space, follow the [Stale VM and Storage Cleanup](#stale-vm-and-storage-cleanup) section below.
+The three recurring leaks, largest first, and how to reclaim each:
+
+**1. Orphaned boot/agent ISOs in the default pool** (biggest — ~1.3 GiB per node,
+never owned by a cluster pool). Delete only volumes not referenced by any defined
+domain:
+
+```bash
+: > /tmp/keep.txt
+for d in $(virsh list --all --name); do
+  [ -n "$d" ] && virsh domblklist "$d" 2>/dev/null | awk '/\/var\/lib\/libvirt\/images\//{print $2}'
+done | sort -u > /tmp/keep.txt
+virsh vol-list default | awk 'NR>2 && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
+  | grep -vxF -f /tmp/keep.txt > /tmp/del.txt
+echo "candidates: $(wc -l < /tmp/del.txt)"; xargs -a /tmp/del.txt du -ch 2>/dev/null | tail -1
+# after reviewing /tmp/del.txt:
+xargs -a /tmp/del.txt -I{} virsh vol-delete {}
+```
+
+**2. Stale CI podman images** (every build tags `enclave-lab-ci:<sha>`; thousands
+accumulate in the runner's rootless store under `~/.local/share/containers`). Prune
+images no container references (keeps the in-flight job's `:latest`):
+
+```bash
+sudo -iu github-runner podman system df          # confirm reclaimable
+sudo -iu github-runner podman image prune -a -f
+sudo podman image prune -a -f                     # root store too
+```
+
+**3. Orphaned libvirt pool definitions** (domains gone, pool definition lingers;
+includes landing-zone `<cluster>-1` pools). See
+[Delete cluster-specific pools](#delete-cluster-specific-pools) below.
+
+All three are now swept automatically by the age-based reaper (`make -f Makefile.ci
+reap-stale-vms`) and the hourly `cleanup.yml` workflow; run those first before
+manual surgery. If images are consuming space, also see the
+[Stale VM and Storage Cleanup](#stale-vm-and-storage-cleanup) section below.
 
 ## Stale VM and Storage Cleanup
 

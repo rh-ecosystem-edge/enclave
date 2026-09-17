@@ -198,6 +198,19 @@ to disk and would otherwise never age out. Only clusters matching the CI naming
 pattern are ever touched, and each cluster is best-effort (a failure on one does
 not abort the sweep).
 
+Beyond clusters that still have domains, `reap` also sweeps two leaks the
+per-cluster teardown never reclaims, using the same age threshold and in-flight
+safety:
+
+- **Orphan storage pools** — `destroy` only removes the pool named exactly
+  `cluster_name`, so landing-zone `<cluster>-1` pools and any pool whose domains
+  were already undefined survive forever. `reap` removes every CI-named pool that
+  has no defined domain and whose definition XML is older than the threshold.
+- **Unreferenced default-pool ISOs** — each run drops per-node `boot-*` and an
+  `agent-x86_64-iso-*` volume into the shared `default` pool (~1.3 GiB each), which
+  no cluster pool owns. `reap` deletes those not referenced by any defined domain
+  and older than the threshold.
+
 The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, safely above
 the longest e2e job timeout of 600 minutes). A destructive reap refuses a
 threshold below the safety floor (`11h`, just above that timeout) unless `--force`

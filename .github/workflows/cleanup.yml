@@ -102,6 +102,23 @@ jobs:
             echo "⚠️ Reap encountered errors (see logs)" >> $GITHUB_STEP_SUMMARY
           fi
 
+      - name: Prune stale CI podman images (age-based)
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Pruning stale podman images" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          # Every CI build tags quay.io/edge-infrastructure/enclave-lab-ci:<sha>;
+          # nothing prunes old tags, so thousands accumulate (~160 GiB observed).
+          # 'image prune -a' only removes images no container references, so the
+          # in-flight job's :latest is preserved. --filter until= keeps anything
+          # from the last day as an extra guard against a concurrent run. Prune
+          # both the runner's rootless store and root's store; best-effort.
+          echo "### Rootless store (github-runner)" >> $GITHUB_STEP_SUMMARY
+          podman image prune -a -f --filter "until=24h" 2>&1 | tail -3 >> $GITHUB_STEP_SUMMARY || true
+          echo "### Root store" >> $GITHUB_STEP_SUMMARY
+          sudo podman image prune -a -f --filter "until=24h" 2>&1 | tail -3 >> $GITHUB_STEP_SUMMARY || true
+
       - name: Deep cleanup
         if: env.CLEANUP_LEVEL == 'deep' || env.CLEANUP_LEVEL == 'full'
         run: |
