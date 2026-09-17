@@ -129,7 +129,7 @@ permissions:
 jobs:
   check-e2e-needed:
     name: Check if E2E should run
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
