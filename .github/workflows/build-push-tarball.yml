@@ -29,7 +29,7 @@ jobs:
 
   build-push-tarball:
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       volumes:

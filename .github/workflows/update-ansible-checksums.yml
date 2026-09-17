@@ -13,7 +13,7 @@ permissions:
 jobs:
   update-checksums:
     name: Update ansible_collections.sha256
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
 
     steps:
       - name: Checkout PR branch

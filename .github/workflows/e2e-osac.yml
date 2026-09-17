@@ -35,7 +35,7 @@ jobs:
   get-latest-chart-version:
     name: Get latest OSAC nightly chart version
     if: github.event_name != 'pull_request'
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     timeout-minutes: 5
     permissions: {}
     outputs:

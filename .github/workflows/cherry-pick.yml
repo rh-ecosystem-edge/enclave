@@ -17,7 +17,7 @@ jobs:
     concurrency:
       group: cherry-pick-${{ github.repository }}-${{ github.event.issue.number }}
       cancel-in-progress: false
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO: ${{ github.repository }}

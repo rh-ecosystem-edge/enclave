@@ -14,7 +14,7 @@ permissions:
 jobs:
   dispatch-odf:
     name: Dispatch ODF E2E
-    runs-on: [self-hosted, pr-validation-aws]
+    runs-on: [self-hosted, pr-validation]
     timeout-minutes: 5
     steps:
       - name: Trigger E2E Deployment with ODF
