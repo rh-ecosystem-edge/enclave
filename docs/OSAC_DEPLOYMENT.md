@@ -153,6 +153,53 @@ oc get ansibleautomationplatform osac-aap -n osac
 oc get deployments -n osac
 ```
 
+### CLI smoke test
+
+The checks above (and the plugin's `post-validate`) confirm pod/replica health via
+the Kubernetes API. For an end-to-end check that the fulfillment API is actually
+reachable through its route and that OAuth authz works, run the OSAC CLI smoke
+test:
+
+```bash
+make -f Makefile.ci osac-smoke
+```
+
+The E2E OSAC job runs this automatically after the osac plugin deploys. The test
+runs the following checks in order:
+
+1. **Debug info** — dumps cluster and OSAC namespace state up front to aid triage.
+2. **Deployment health** — gates on the core fulfillment/operator deployments
+   being fully rolled out and on the AAP gateway being reachable as admin (per the
+   osac-installer "Accessing AAP" flow: resolve the route, read the admin
+   password, and make an authenticated request).
+3. **Setup & login** — resolves the fulfillment-api route, extracts the `osac` CLI
+   from the deployed image, and logs in with the controller credentials
+   (`fulfillment-controller-credentials`, OAuth credentials flow).
+4. **API read checks** — confirms identity (`whoami` maps to the controller
+   service account with a role set) and performs read calls (`get clusters`, …)
+   end-to-end.
+5. **Tenant provisioning** — creates a Tenant CR (`tenants.osac.openshift.io`),
+   waits for the osac-operator to mark it `Ready`, then tears it down. This creates
+   and deletes cluster-scoped resources, so it is meant for the ephemeral e2e
+   cluster, not a shared one.
+
+Credentials (controller client secret, AAP/Keycloak admin passwords) are read and
+used with shell tracing disabled so they never appear in the CI log.
+
+The CLI is **extracted from the deployed `fulfillment-service` image** and needs
+no external download. The image reference is the immutable digest a running pod
+actually pulled (`containerStatuses[].imageID`), not the deployment's mutable
+image tag, and `oc image extract` pulls the baked-in `osac` binary out of that
+digest — so the CLI is always version-matched to the running service (the test
+fails if no running pod exposes a digest). This requires a `fulfillment-service`
+image that bakes in the CLI; images that predate that change will fail the
+extraction step.
+
+In connected/libvirt deployments the fulfillment-api route is not resolvable by
+default (dnsmasq only resolves a fixed set of app hostnames); the smoke test adds
+a temporary `/etc/hosts` entry pointing the route at the ingress VIP, mirroring
+how the plugin registers its AAP and Keycloak routes.
+
 ## BYO Database
 
 For production environments with an external PostgreSQL database:
