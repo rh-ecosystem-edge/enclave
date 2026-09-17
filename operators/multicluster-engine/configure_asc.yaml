@@ -71,6 +71,7 @@
   no_log: true
 
 - name: Wait until MCE AgentServiceConfig reconciles the new configuration
+  when: r_asc.changed | bool
   kubernetes.core.k8s_info:
     api_version: agent-install.openshift.io/v1beta1
     kind: AgentServiceConfig
@@ -87,5 +88,5 @@
     - r_asc_status.resources[0].status is defined
     - r_asc_status.resources[0].status.conditions is defined
     - r_asc_status.resources[0].status.conditions | selectattr('type', 'equalto', 'ReconcileCompleted') | selectattr('status', 'equalto', 'True') | list | length > 0
-    - r_asc_status.resources[0].metadata.generation > (r_asc_before.resources[0].metadata.generation | default(0))
+    - r_asc_status.resources[0].metadata.generation > ((((r_asc_before.resources | default([])) | first | default({})).metadata | default({})).generation | default(0))
   no_log: true
