@@ -885,12 +885,15 @@ def destroy(cfg: Config) -> None:
 _CI_DOMAIN_RE = re.compile(
     r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))_(?:landingzone_0|master_\d+)$"
 )
-# A CI storage pool: the same cluster token, optionally followed by a suffix such
-# as the landing-zone pool's "-1"/"-lz" or the legacy "_pool". destroy() only ever
-# removes the pool named exactly cluster_name, so these suffixed pools — and any
-# pool whose domains were already undefined — leak past the domain-based reap.
+# A CI storage pool: the exact cluster token, optionally followed by a numeric
+# suffix (virt-install appends "-1", "-2", … when it auto-creates a pool for the
+# landing-zone disk and the cluster-named pool already exists). destroy() only ever
+# removes the pool named exactly cluster_name, so these numbered pools — and any
+# pool whose domains were already undefined — leak past the domain-based reap. The
+# suffix is deliberately restricted to digits so an unrelated, deliberately named
+# pool (e.g. "eci-12345678-backup") is never a reap candidate.
 _CI_POOL_RE = re.compile(
-    r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))(?:[-_].*)?$"
+    r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))(?:-\d+)?$"
 )
 # Volumes CI drops into the shared "default" pool (agent installer + node boot
 # ISOs). They are never owned by a cluster pool, so cluster teardown never removes
@@ -928,14 +931,23 @@ def _domain_define_mtime(name: str) -> Optional[float]:
         return None
 
 
-def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
-    """Backing directory of a cluster's storage pool (== working_dir/pool), or None."""
+def _pool_target_path_from_xml(pool: libvirt.virStoragePool) -> Optional[Path]:
+    """Backing directory declared in a pool's <target><path>, or None if unreadable."""
     try:
-        xml = conn.storagePoolLookupByName(name).XMLDesc(0)
+        xml = pool.XMLDesc(0)
     except libvirt.libvirtError:
         return None
     m = re.search(r"<path>([^<]+)</path>", xml)
     return Path(m.group(1)) if m else None
+
+
+def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
+    """Backing directory of a cluster's storage pool (== working_dir/pool), or None."""
+    try:
+        pool = conn.storagePoolLookupByName(name)
+    except libvirt.libvirtError:
+        return None
+    return _pool_target_path_from_xml(pool)
 
 
 def _reap_working_dir(
@@ -1028,33 +1040,48 @@ def _referenced_volume_paths(conn: libvirt.virConnect) -> tuple:
             all_readable = False  # may reference an ISO we would otherwise reap
             continue
         referenced.update(re.findall(r"<source file=[\"']([^\"']+)[\"']", xml))
-        for pool_name, vol_name in re.findall(
-            r"<source\b[^>]*\bpool=[\"']([^\"']+)[\"'][^>]*\bvolume=[\"']([^\"']+)[\"']",
-            xml,
-        ):
+        # Parse each <source> element and read pool/volume by attribute name, so the
+        # pool-backed form is matched regardless of attribute order (volume= may
+        # precede pool=).
+        for source in re.findall(r"<source\b[^>]*>", xml):
+            pool_m = re.search(r"\bpool=[\"']([^\"']+)[\"']", source)
+            vol_m = re.search(r"\bvolume=[\"']([^\"']+)[\"']", source)
+            if pool_m is None or vol_m is None:
+                continue
             try:
-                pool = conn.storagePoolLookupByName(pool_name)
-                referenced.add(pool.storageVolLookupByName(vol_name).path())
+                pool = conn.storagePoolLookupByName(pool_m.group(1))
+                referenced.add(pool.storageVolLookupByName(vol_m.group(1)).path())
             except libvirt.libvirtError:
                 all_readable = False
     return referenced, all_readable
 
 
-def _delete_pool(pool: libvirt.virStoragePool) -> None:
+def _delete_pool(pool: libvirt.virStoragePool) -> bool:
     """Delete every volume in a pool, then stop and undefine it; best-effort throughout.
 
     Inactive pools are started first so their volumes can be enumerated and their
-    backing bytes reclaimed; a pool whose backing dir is already gone simply fails
-    to start and is undefined without volume deletion.
+    backing bytes reclaimed. A pool whose backing directory is already gone has
+    nothing to reclaim, so it is undefined to clear the stale definition; but a pool
+    that fails to start while its backing directory still exists is left defined (the
+    failure is transient or unexplained, and undefining would orphan the data).
+
+    Returns True only when the pool was fully removed (all volumes deleted, stopped,
+    and undefined — or a backing-gone pool was undefined); False if any step failed
+    and the definition or its bytes may remain, so the caller must not count it.
     """
     name = pool.name()
-    was_inactive = not pool.isActive()
-    if was_inactive:
+    failed = False
+    if not pool.isActive():
         try:
             pool.create(0)
-        except libvirt.libvirtError:
-            pass  # backing dir gone; nothing to delete, just drop the definition
-    failed = False
+        except libvirt.libvirtError as exc:
+            # Could not start it. Only treat this as "safe to undefine" when the
+            # backing directory is genuinely gone (nothing to reclaim); otherwise
+            # keep the definition so a later sweep can retry.
+            target = _pool_target_path_from_xml(pool)
+            if target is not None and target.exists():
+                LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
+                return False
     if pool.isActive():
         try:
             for vol_name in pool.listVolumes():
@@ -1071,18 +1098,18 @@ def _delete_pool(pool: libvirt.virStoragePool) -> None:
         except libvirt.libvirtError as exc:
             failed = True
             LOG.warning("Failed to stop pool %s: %s", name, exc)
-    # Only drop the definition once the backing bytes are gone. A pool that could not
-    # start (backing dir already gone) has nothing to reclaim, so undefining it is
-    # safe and clears the stale definition; but an active pool whose volumes or
-    # destroy() failed still owns bytes — keep its definition so a later sweep retries
-    # instead of orphaning the volumes with no pool to reach them through.
+    # An active pool whose volumes or destroy() failed still owns bytes — keep its
+    # definition so a later sweep retries instead of orphaning the volumes with no
+    # pool to reach them through.
     if failed:
         LOG.warning("Not undefining pool %s: volume reclamation incomplete", name)
-        return
+        return False
     try:
         pool.undefine()
     except libvirt.libvirtError as exc:
         LOG.warning("Failed to undefine pool %s: %s", name, exc)
+        return False
+    return True
 
 
 def _reap_orphan_pools(
@@ -1118,9 +1145,10 @@ def _reap_orphan_pools(
             LOG.info("Keeping pool %s (age %.1fh < %.1fh)", name, age / 3600, threshold / 3600)
             continue
         LOG.info("%sReaping orphan pool %s (age %.1fh)", prefix, name, age / 3600)
-        if not dry_run:
-            _delete_pool(pool)
-        reaped += 1
+        if dry_run:
+            reaped += 1
+        elif _delete_pool(pool):
+            reaped += 1
     return reaped
 
 
@@ -1240,6 +1268,19 @@ def reap(age_hours: float, base_working_dir: Optional[Path], dry_run: bool = Fal
             LOG.warning("Failed to reap %s: %s", cluster, exc)
             kept += 1
 
+    # Re-derive the protected set from libvirt ground truth before sweeping pools.
+    # destroy() is best-effort and can return without having undefined every domain
+    # (it logs and swallows teardown errors), so a cluster discarded above may still
+    # have a live domain; trusting the bookkeeping alone could delete a pool still in
+    # use. A fresh scan protects any cluster that still has a defined domain. In
+    # dry_run nothing was destroyed, so the simulated set above is what shows which
+    # pools would become candidates once the stale clusters are reaped.
+    if not dry_run:
+        defined_clusters = {
+            c
+            for c in (_cluster_of_domain(d.name()) for d in conn.listAllDomains())
+            if c is not None
+        }
     # Sweep leaks the per-cluster teardown never reclaims. These run even when no CI
     # domains exist (the classic leak: domains already undefined, pools/ISOs remain).
     pools_reaped = _reap_orphan_pools(conn, threshold, now, defined_clusters, dry_run)

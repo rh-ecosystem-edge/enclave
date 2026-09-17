@@ -142,11 +142,25 @@ The three recurring leaks, largest first, and how to reclaim each:
 never owned by a cluster pool). Delete only volumes not referenced by any defined
 domain:
 
+Build the keep-list fail-closed: if any domain cannot be inspected the keep-list is
+incomplete, so an in-use ISO could be mistaken for an orphan — abort rather than
+delete from a partial list (the same safety rule the automated sweep enforces).
+
 ```bash
-: > /tmp/keep.txt
+: > /tmp/keep.raw
+partial=0
 for d in $(virsh list --all --name); do
-  [ -n "$d" ] && virsh domblklist "$d" 2>/dev/null | awk '/\/var\/lib\/libvirt\/images\//{print $2}'
-done | sort -u > /tmp/keep.txt
+  [ -n "$d" ] || continue
+  if ! blk=$(virsh domblklist "$d" 2>/dev/null); then
+    echo "WARN: cannot inspect domain $d — aborting to avoid a partial keep list" >&2
+    partial=1; break
+  fi
+  printf '%s\n' "$blk" | awk '/\/var\/lib\/libvirt\/images\//{print $2}' >> /tmp/keep.raw
+done
+sort -u /tmp/keep.raw > /tmp/keep.txt; rm -f /tmp/keep.raw
+if [ "$partial" -ne 0 ]; then
+  echo "Partial keep list — do NOT proceed to deletion"; return 2>/dev/null || exit 1
+fi
 virsh vol-list default | awk \
   'NR>2 && $1 ~ /^(boot-|agent-x86_64-iso-)/ && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
   | grep -vxF -f /tmp/keep.txt > /tmp/del.txt
