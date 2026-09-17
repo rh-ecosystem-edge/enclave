@@ -1008,20 +1008,36 @@ def _pool_define_mtime(name: str) -> Optional[float]:
         return None
 
 
-def _referenced_volume_paths(conn: libvirt.virConnect) -> set:
-    """Every disk/cdrom source path referenced by any defined domain.
+def _referenced_volume_paths(conn: libvirt.virConnect) -> tuple:
+    """Every disk/cdrom source path referenced by any defined domain, and a
+    "fully readable" flag.
 
     Used to protect in-use default-pool ISOs: a volume attached to a domain (even a
     shut-off one) is off-limits, so only genuinely orphaned ISOs are reclaimed.
+    Both the file form (<source file='...'/>) and the pool-backed form
+    (<source pool='...' volume='...'/>) are resolved to a path. If any domain's XML
+    cannot be read — or a pool-backed source cannot be resolved — the set is
+    incomplete, so the flag is False and the caller must not delete anything.
     """
     referenced: set = set()
+    all_readable = True
     for dom in conn.listAllDomains():
         try:
             xml = dom.XMLDesc(0)
         except libvirt.libvirtError:
+            all_readable = False  # may reference an ISO we would otherwise reap
             continue
         referenced.update(re.findall(r"<source file=[\"']([^\"']+)[\"']", xml))
-    return referenced
+        for pool_name, vol_name in re.findall(
+            r"<source\b[^>]*\bpool=[\"']([^\"']+)[\"'][^>]*\bvolume=[\"']([^\"']+)[\"']",
+            xml,
+        ):
+            try:
+                pool = conn.storagePoolLookupByName(pool_name)
+                referenced.add(pool.storageVolLookupByName(vol_name).path())
+            except libvirt.libvirtError:
+                all_readable = False
+    return referenced, all_readable
 
 
 def _delete_pool(pool: libvirt.virStoragePool) -> None:
@@ -1032,24 +1048,37 @@ def _delete_pool(pool: libvirt.virStoragePool) -> None:
     to start and is undefined without volume deletion.
     """
     name = pool.name()
-    if not pool.isActive():
+    was_inactive = not pool.isActive()
+    if was_inactive:
         try:
             pool.create(0)
         except libvirt.libvirtError:
             pass  # backing dir gone; nothing to delete, just drop the definition
+    failed = False
     if pool.isActive():
         try:
             for vol_name in pool.listVolumes():
                 try:
                     pool.storageVolLookupByName(vol_name).delete(0)
                 except libvirt.libvirtError as exc:
+                    failed = True
                     LOG.warning("Failed to delete volume %s in pool %s: %s", vol_name, name, exc)
         except libvirt.libvirtError as exc:
+            failed = True
             LOG.warning("Failed to list volumes in pool %s: %s", name, exc)
         try:
             pool.destroy()
         except libvirt.libvirtError as exc:
+            failed = True
             LOG.warning("Failed to stop pool %s: %s", name, exc)
+    # Only drop the definition once the backing bytes are gone. A pool that could not
+    # start (backing dir already gone) has nothing to reclaim, so undefining it is
+    # safe and clears the stale definition; but an active pool whose volumes or
+    # destroy() failed still owns bytes — keep its definition so a later sweep retries
+    # instead of orphaning the volumes with no pool to reach them through.
+    if failed:
+        LOG.warning("Not undefining pool %s: volume reclamation incomplete", name)
+        return
     try:
         pool.undefine()
     except libvirt.libvirtError as exc:
@@ -1111,7 +1140,17 @@ def _reap_default_pool_isos(
     except libvirt.libvirtError:
         return 0  # no default pool on this host; nothing to sweep
 
-    referenced = _referenced_volume_paths(conn)
+    referenced, all_readable = _referenced_volume_paths(conn)
+    if not all_readable:
+        # An unreadable domain (or unresolvable pool-backed source) may reference an
+        # ISO we would otherwise treat as orphaned. Deleting on a partial reference
+        # set risks pulling a volume out from under a live VM, so sweep nothing.
+        LOG.warning(
+            "Skipping default-pool ISO sweep: could not resolve all domain volume "
+            "references (a domain XML or pool-backed volume was unreadable)"
+        )
+        return 0
+
     reaped = 0
     try:
         vol_names = pool.listVolumes()

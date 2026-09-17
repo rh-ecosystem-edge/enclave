@@ -147,7 +147,8 @@ domain:
 for d in $(virsh list --all --name); do
   [ -n "$d" ] && virsh domblklist "$d" 2>/dev/null | awk '/\/var\/lib\/libvirt\/images\//{print $2}'
 done | sort -u > /tmp/keep.txt
-virsh vol-list default | awk 'NR>2 && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
+virsh vol-list default | awk \
+  'NR>2 && $1 ~ /^(boot-|agent-x86_64-iso-)/ && $2 ~ /\/var\/lib\/libvirt\/images\//{print $2}' \
   | grep -vxF -f /tmp/keep.txt > /tmp/del.txt
 echo "candidates: $(wc -l < /tmp/del.txt)"; xargs -a /tmp/del.txt du -ch 2>/dev/null | tail -1
 # after reviewing /tmp/del.txt:
