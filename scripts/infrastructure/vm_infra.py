@@ -1039,11 +1039,13 @@ def _referenced_volume_paths(conn: libvirt.virConnect) -> tuple:
         except libvirt.libvirtError:
             all_readable = False  # may reference an ISO we would otherwise reap
             continue
-        referenced.update(re.findall(r"<source file=[\"']([^\"']+)[\"']", xml))
-        # Parse each <source> element and read pool/volume by attribute name, so the
-        # pool-backed form is matched regardless of attribute order (volume= may
-        # precede pool=).
+        # Parse each <source> element and read its attributes by name, so both the
+        # file form and the pool-backed form are matched regardless of attribute
+        # order (e.g. <source index='1' file='...'/> or volume= before pool=).
         for source in re.findall(r"<source\b[^>]*>", xml):
+            file_m = re.search(r"\bfile=[\"']([^\"']+)[\"']", source)
+            if file_m is not None:
+                referenced.add(file_m.group(1))
             pool_m = re.search(r"\bpool=[\"']([^\"']+)[\"']", source)
             vol_m = re.search(r"\bvolume=[\"']([^\"']+)[\"']", source)
             if pool_m is None or vol_m is None:
@@ -1054,6 +1056,20 @@ def _referenced_volume_paths(conn: libvirt.virConnect) -> tuple:
             except libvirt.libvirtError:
                 all_readable = False
     return referenced, all_readable
+
+
+def _pool_is_active(pool: libvirt.virStoragePool) -> Optional[bool]:
+    """The pool's running state, or None if libvirt cannot report it.
+
+    isActive() can raise on a stale handle or a transient libvirt failure. A caller
+    that gets None cannot know whether the pool is running, so it must not act on it
+    (keep the definition, retry on a later sweep) rather than abort the whole reap.
+    """
+    try:
+        return bool(pool.isActive())
+    except libvirt.libvirtError as exc:
+        LOG.warning("Cannot query state of pool %s: %s", pool.name(), exc)
+        return None
 
 
 def _delete_pool(pool: libvirt.virStoragePool) -> bool:
@@ -1071,7 +1087,10 @@ def _delete_pool(pool: libvirt.virStoragePool) -> bool:
     """
     name = pool.name()
     failed = False
-    if not pool.isActive():
+    active = _pool_is_active(pool)
+    if active is None:
+        return False  # cannot determine state; keep the definition and retry later
+    if not active:
         try:
             pool.create(0)
         except libvirt.libvirtError as exc:
@@ -1100,7 +1119,10 @@ def _delete_pool(pool: libvirt.virStoragePool) -> bool:
             else:
                 LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
                 return False
-    if pool.isActive():
+        active = _pool_is_active(pool)
+        if active is None:
+            return False  # started but cannot confirm; keep the definition
+    if active:
         try:
             for vol_name in pool.listVolumes():
                 try:

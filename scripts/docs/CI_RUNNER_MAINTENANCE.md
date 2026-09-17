@@ -154,11 +154,13 @@ set -euo pipefail
 
 # Validate the age threshold up front: it must be a positive, finite number (fractional
 # hours such as 12.5 are allowed). awk parses it — avoiding Bash integer-only arithmetic
-# and octal interpretation of a leading zero — and emits the equivalent whole minutes.
+# and octal interpretation of a leading zero — and emits the equivalent minutes, rounded
+# UP so a fractional threshold never truncates to a smaller (or zero) age gate.
 AGE_HOURS=${REAP_AGE_HOURS:-12}
 AGE_MIN=$(awk -v h="$AGE_HOURS" 'BEGIN{
   if (h !~ /^[0-9]+(\.[0-9]+)?$/ || h+0 <= 0) exit 1
-  printf "%d", h*60
+  m = h*60; r = int(m); if (m > r) r++   # ceil: never under-shoot the threshold
+  printf "%d", r
 }') || { echo "REAP_AGE_HOURS must be a positive, finite number (got: $AGE_HOURS)" >&2; exit 1; }
 
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
@@ -308,17 +310,13 @@ done
 
 ### Delete orphaned ISOs from the default pool
 
-Review the volume list first, then delete only the known CI-generated ISO patterns
-(`agent-x86_64-iso-*` and `boot-*`):
-
-```bash
-# Review what is present before deleting
-virsh vol-list --pool default --details | awk 'NR>2'
-
-# Delete only orphaned agent installer and boot ISO files
-virsh vol-list --pool default | awk 'NR>2 && $1~/^(agent-x86_64-iso-.*\.img|boot-.*\.img)$/ {print $1}' | \
-  xargs -I{} virsh vol-delete --pool default {}
-```
+Use the guarded procedure under [Disk space issues](#disk-space-issues) (leak **1**).
+It is the only supported way to delete default-pool ISOs by hand: it builds a
+fail-closed keep-list from every defined domain (so a referenced ISO is never
+touched), applies the same `REAP_AGE_HOURS` age gate as the automated reaper (so a
+freshly created ISO is never reaped), and requires you to review the candidate list
+before `virsh vol-delete`. Do not delete default-pool ISOs by pattern alone — a
+name match does not prove a volume is orphaned or old enough to remove.
 
 ### Remove stale VM XML definitions
 
