@@ -1,0 +1,25 @@
+---
+# OpenShift Versions Configuration Override
+#
+# This file allows consumers to override the default OpenShift versions
+# provided in defaults/platforms.yaml.
+#
+# IMPORTANT: defaults/platforms.yaml defines the tested y-stream release range.
+# This file enables consumers to manage their fleet independently of enclave releases,
+# including:
+# - Adding urgent CVE z-stream fixes
+# - Removing deprecated versions no longer in the OpenShift graph
+# - Managing version availability for multi-cluster deployments
+#
+# See docs/OPENSHIFT_VERSION_MANAGEMENT.md for the complete version management contract.
+#
+# When overrideOpenshiftVersions is defined in this file, it completely replaces
+# openshift_versions from defaults/platforms.yaml. You must define at least one
+# version, and exactly one must be marked as default: true.
+
+overrideOpenshiftVersions:
+  # Example: Define available OpenShift versions for your deployment
+  - version: 4.20.21
+  - version: 4.20.32
+    default: true  # Exactly one version must be marked as default
+  # - version: 4.20.35  # Example: Add a z-stream CVE fix

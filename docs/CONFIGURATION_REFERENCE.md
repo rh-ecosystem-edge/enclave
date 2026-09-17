@@ -11,8 +11,9 @@ Configuration is split across multiple files for better organization and maintai
 | `config/global.yaml` | Main configuration file with cluster, network, hardware, registry, and pull secret settings |
 | `config/certificates.yaml` | SSL certificates for the API server and Ingress |
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
+| `config/platforms.yaml` | **Recommended** OpenShift versions override for fleet management. When present, replaces `defaults/platforms.yaml`. See [OpenShift Version Management](#openshift-version-management) |
 | `defaults/operators.yaml` | General cluster operators configuration |
-| `defaults/platforms.yaml` | Available OpenShift versions |
+| `defaults/platforms.yaml` | Available OpenShift versions (tested y-stream range) |
 | `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
@@ -27,6 +28,8 @@ Copy the example files to get started:
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
 cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+# Recommended: Override OpenShift versions for fleet management
+cp config/platforms.example.yaml config/platforms.yaml
 # For plugin-specific config (e.g. restrict which disks LVMS manages):
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
@@ -51,12 +54,14 @@ All configuration files in the `defaults/` directory are automatically loaded by
    - [Ironic HTTPS Certificate](#ironic-https-certificate-optional)
 3. [`config/cloud_infra.yaml`](#configcloud_infrayaml)
    - [Discovery Hosts Configuration](#discovery-hosts-configuration)
-4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
+4. [OpenShift Version Management](#openshift-version-management)
+   - [`config/platforms.yaml` (Optional Override)](#configplatformsyaml-optional-override)
+5. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
    - [LVMS Configuration](#lvms-configuration)
-5. [System Defaults (read-only)](#system-defaults-read-only)
-6. [Complete Example](#complete-example)
-7. [Security Best Practices](#security-best-practices)
-8. [Validation](#validation)
+6. [System Defaults (read-only)](#system-defaults-read-only)
+7. [Complete Example](#complete-example)
+8. [Security Best Practices](#security-best-practices)
+9. [Validation](#validation)
 
 ## `config/global.yaml`
 
@@ -1254,6 +1259,74 @@ These are used to configure the network interface on each discovered node.
 3. Creates NMStateConfig, BareMetalHost, and BMC credential secret for new hosts
 4. Waits for BareMetalHost to report "provisioned" state
 5. Waits for agents to register
+
+## OpenShift Version Management
+
+Enclave supports flexible OpenShift version management to balance tested stability with fleet-specific needs.
+
+### Version Management Strategy
+
+**defaults/platforms.yaml** — Enclave's tested range  
+Defines the y-stream release tested and supported by the current enclave version. This file is maintained by the enclave team and updated with each release.
+
+**config/platforms.yaml** — Consumer override (recommended for fleet management)  
+Enables consumers to manage OpenShift versions independently of enclave releases. When present, this file **completely replaces** the versions from `defaults/platforms.yaml`.
+
+**Why override?**
+- **Urgent CVE z-stream fixes**: Apply security patches between enclave releases
+- **Version deprecation**: Remove versions no longer in the OpenShift upgrade graph
+- **Fleet management**: Control version availability across multiple clusters
+- **Faster response**: Update versions without waiting for the next enclave release
+
+See [docs/OPENSHIFT_VERSION_MANAGEMENT.md](OPENSHIFT_VERSION_MANAGEMENT.md) for the complete version management contract between enclave and consumers.
+
+### `config/platforms.yaml` (Optional Override)
+
+**File location**: `config/platforms.yaml`  
+**Example**: `config/platforms.example.yaml`  
+**Schema**: `schemas/platforms.yaml`
+
+When this file exists, enclave uses `overrideOpenshiftVersions` from the config instead of `openshift_versions` from defaults.
+
+#### `overrideOpenshiftVersions`
+
+**Description**: List of available OpenShift versions for cluster deployments and upgrades. Completely replaces the versions from `defaults/platforms.yaml`.
+
+**Type**: List of version objects
+
+**Requirements**:
+- At least one version must be defined
+- Exactly one version must be marked with `default: true`
+- All versions must exist in the OpenShift release image graph
+
+**Example**:
+```yaml
+---
+overrideOpenshiftVersions:
+  - version: 4.20.21
+  - version: 4.20.32
+    default: true  # Exactly one version must be marked as default
+  - version: 4.20.35  # CVE z-stream fix added urgently
+```
+
+**Version object properties**:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `version` | string | Yes | OpenShift version in `x.y.z` format (e.g., `4.20.32`) |
+| `default` | boolean | One only | Marks the default version for new deployments. Exactly one version must have `default: true` |
+
+**Notes**:
+- The default version is used for the management cluster installation
+- Non-default versions are available for managed cluster deployments via ACM
+- During fresh install (`fresh: true`), only the default version's release images are mirrored
+- The `enclave reconcile mgmt-cluster-version` command validates requested versions against this list
+
+**When to update**:
+- **Security patches**: Add new z-stream versions with CVE fixes
+- **Version removal**: Remove versions deprecated by Red Hat or no longer in the upgrade graph
+- **Fleet policy**: Adjust available versions to match organizational policies
+- **Testing**: Add versions for validation before wider deployment
 
 ## `config/plugins/<name>.yaml`
 
