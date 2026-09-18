@@ -478,6 +478,15 @@ jobs:
         id: deploy_osac
         run: make -f Makefile.ci deploy-plugin PLUGIN=osac
 
+      # End-to-end check that the fulfillment API is reachable through its route
+      # and OAuth authz works, using the osac CLI. Complements the OSAC plugin's
+      # post-validate (which only checks pod/replica health). Connected only
+      # (fetches the CLI binary from GitHub); runs only when osac was deployed.
+      - name: Run OSAC CLI smoke test
+        if: success() && contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
+        id: osac_smoke
+        run: make -f Makefile.ci osac-smoke
+
       - name: Verify cluster deployment
         if: success()
         id: verify_cluster
@@ -667,6 +676,7 @@ jobs:
             ["deploy_aap"]="Deploy aap plugin"
             ["deploy_cnv"]="Deploy cnv plugin"
             ["deploy_osac"]="Deploy osac plugin"
+            ["osac_smoke"]="Run OSAC CLI smoke test"
             ["verify_cluster"]="Verify cluster deployment"
           )
 
@@ -689,6 +699,7 @@ jobs:
             deploy_aap
             deploy_cnv
             deploy_osac
+            osac_smoke
             verify_cluster
           )
 

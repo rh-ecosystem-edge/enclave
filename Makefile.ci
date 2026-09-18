@@ -27,7 +27,7 @@ include Makefile
         deploy-cluster-write-migration-tasks \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph verify-ceph \
-        verify clean verify-cluster verify-cleanup \
+        verify clean verify-cluster osac-smoke verify-cleanup \
         generate-cluster-name setup-working-dir collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
@@ -79,6 +79,7 @@ help:
 	@echo ""
 	@echo "CI Verification targets:"
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
+	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
 	@echo "  make -f Makefile.ci verify-cleanup                   - Verify infrastructure cleanup"
 	@echo ""
 	@echo "CI Helper targets:"
@@ -479,6 +480,11 @@ clean: clean-infra
 # Verification targets
 verify-cluster:
 	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_cluster.sh
+
+# OSAC CLI post-install smoke test (connected environments only). Exercises the
+# fulfillment API end-to-end through its route via the osac CLI on the LZ.
+osac-smoke:
+	@./scripts/verification/run_osac_smoke.sh
 
 verify-cleanup:
 	@./scripts/cleanup/verify_cleanup.sh
