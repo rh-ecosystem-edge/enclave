@@ -11,7 +11,6 @@ This guide covers setting up a GitHub Actions self-hosted runner on the Enclave 
   - libvirt/KVM installed and configured
   - Podman installed
 - GitHub repository admin access
-- dev-scripts repository cloned and configured
 
 ## Architecture Overview
 
@@ -19,7 +18,6 @@ The self-hosted runner:
 - Runs as a systemd service on the CI machine
 - Executes GitHub Actions workflows from the Enclave Lab repository
 - Has access to libvirt for VM management
-- Uses dev-scripts for infrastructure provisioning
 - Runs in isolated environment with proper permissions
 
 ## Installation Steps
@@ -97,9 +95,7 @@ Create environment file for the runner:
 ```bash
 # Create .env file in runner directory
 cat > ~/actions-runner/.env <<EOF
-# dev-scripts configuration
-DEV_SCRIPTS_PATH=/home/github-runner/dev-scripts
-WORKING_DIR=/opt/dev-scripts
+WORKING_DIR=/opt/clusters
 
 # Pull secret path (will be set from GitHub secrets)
 PULL_SECRET_PATH=/home/github-runner/.pull-secret.json
@@ -109,19 +105,7 @@ EOF
 chmod 600 ~/actions-runner/.env
 ```
 
-### Step 5: Clone and Configure dev-scripts
-
-```bash
-# Clone dev-scripts repository
-cd /home/github-runner
-git clone https://github.com/openshift-metal3/dev-scripts.git
-
-# Create working directory
-sudo mkdir -p /opt/dev-scripts
-sudo chown github-runner:github-runner /opt/dev-scripts
-```
-
-### Step 6: Verify Runner Setup
+### Step 5: Verify Runner Setup
 
 Check that the runner appears in GitHub:
 
@@ -129,13 +113,12 @@ Check that the runner appears in GitHub:
 2. You should see your runner with status "Idle"
 3. Labels should include: `self-hosted`, `enclave`
 
-### Step 7: Configure GitHub Repository Secrets
+### Step 6: Configure GitHub Repository Secrets
 
 Add the following secrets in GitHub repository Settings → Secrets and variables → Actions:
 
 Required secrets:
-- `DEV_SCRIPTS_PATH`: `/home/github-runner/dev-scripts`
-- `WORKING_DIR`: `/opt/dev-scripts`
+- `WORKING_DIR`: `/opt/clusters`
 - `PULL_SECRET`: Your OpenShift pull secret (JSON format)
 
 Additional secrets required for real TLS certificate runs (`cert-type` dispatch input):
@@ -153,11 +136,8 @@ Test that the runner can execute basic commands:
 # Check libvirt access
 sudo virsh list --all
 
-# Check dev-scripts
-ls -la $DEV_SCRIPTS_PATH
-
 # Check disk space
-df -h /opt/dev-scripts
+df -h /opt/clusters
 
 # Check memory
 free -g

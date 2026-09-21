@@ -19,7 +19,6 @@ Run the complete CI workflow locally in one command:
 
 ```bash
 # Set required environment variables
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 # Run full CI flow (connected mode - faster)
@@ -42,9 +41,6 @@ The flow automatically:
 
 ### Required Software
 
-- **dev-scripts**: Infrastructure automation framework
-  - Must support `infra_only` target
-  - Clone from: https://github.com/openshift-metal3/dev-scripts
 - **libvirt/KVM**: Virtualization
   - `sudo systemctl enable --now libvirtd`
 - **Podman**: Container runtime
@@ -60,7 +56,6 @@ The flow automatically:
 
 #### Required
 ```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts    # Path to dev-scripts installation
 export BASE_WORKING_DIR=/opt/clusters           # Base directory for cluster data
 ```
 
@@ -68,7 +63,6 @@ export BASE_WORKING_DIR=/opt/clusters           # Base directory for cluster dat
 ```bash
 export ENCLAVE_CLUSTER_NAME=my-cluster         # Custom cluster name (auto-generated if not set)
 export ENCLAVE_DEPLOYMENT_MODE=connected       # "connected" or "disconnected" (default)
-export CI_TOKEN=your-token                     # OpenShift CI token (for downloads)
 export PULL_SECRET=/path/to/pull-secret.json   # Red Hat pull secret
 ```
 
@@ -79,7 +73,6 @@ export PULL_SECRET=/path/to/pull-secret.json   # Red Hat pull secret
 Fastest option - skips mirror registry setup:
 
 ```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 make ci-flow-connected
@@ -102,7 +95,6 @@ make ci-flow-connected
 Full air-gapped deployment with local mirror registry:
 
 ```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 make ci-flow-disconnected
@@ -121,7 +113,6 @@ Override automatic cluster name generation:
 
 ```bash
 export ENCLAVE_CLUSTER_NAME=dev-test-cluster
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 make ci-flow-connected
@@ -140,7 +131,6 @@ make preflight-checks
 ```
 
 **Checks:**
-- DEV_SCRIPTS_PATH is set and valid
 - WORKING_DIR is set
 - System has sufficient RAM
 - Libvirt is accessible
@@ -194,7 +184,6 @@ make environment
 ```
 
 **What it does:**
-- Configures dev-scripts for cluster
 - Creates 3 master VMs + 1 Landing Zone VM
 - Sets up BMC and cluster networks
 - Starts BMC emulator (sushy-tools)
@@ -317,21 +306,11 @@ make verify-cleanup
 
 ## Environment Variables
 
-### DEV_SCRIPTS_PATH
-
-**Required**: Yes
-**Description**: Path to dev-scripts installation
-**Example**: `/opt/dev-scripts` or `~/dev-scripts`
-
-```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
-```
-
 ### BASE_WORKING_DIR
 
 **Required**: Yes (for `ci-flow-*` and `setup-working-dir`)
 **Description**: Base directory for cluster-specific data
-**Default**: `/opt/dev-scripts` (in some scripts)
+**Default**: `/opt/clusters` (in some scripts)
 **Example**: `/opt/clusters`
 
 ```bash
@@ -380,16 +359,6 @@ export ENCLAVE_DEPLOYMENT_MODE=disconnected
 **Format**: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
 
 Usually don't set manually - let `setup-working-dir` handle it.
-
-### CI_TOKEN
-
-**Required**: For downloading OpenShift releases
-**Description**: OpenShift CI token
-**Obtain from**: https://console-openshift-console.apps.ci.l2s4.p1.openshiftapps.com/
-
-```bash
-export CI_TOKEN=your-token-here
-```
 
 ### PULL_SECRET
 
@@ -494,16 +463,6 @@ make clean
 # Option 2: Use custom name
 export ENCLAVE_CLUSTER_NAME=my-new-cluster-$(date +%s)
 make ci-flow-connected
-```
-
-### DEV_SCRIPTS_PATH Not Set
-
-**Error**: `DEV_SCRIPTS_PATH must be set`
-
-**Solution**:
-```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
-ls -la $DEV_SCRIPTS_PATH  # Verify it exists
 ```
 
 ### Storage Pool Already Active
@@ -686,7 +645,6 @@ free -h
 
 # Disk
 df -h ${BASE_WORKING_DIR}
-df -h ${DEV_SCRIPTS_PATH}
 
 # VMs
 virsh list --all | wc -l
@@ -738,7 +696,6 @@ ls artifacts/
 ```bash
 # Mimic e2e-deployment.yml workflow
 make validate
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 export ENCLAVE_DEPLOYMENT_MODE=connected
 make preflight-checks
@@ -806,7 +763,6 @@ Add to your shell profile:
 
 ```bash
 # ~/.bashrc or ~/.zshrc
-export DEV_SCRIPTS_PATH=/opt/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 alias enclave-test='make ci-flow-connected'

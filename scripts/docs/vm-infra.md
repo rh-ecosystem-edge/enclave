@@ -91,8 +91,7 @@ uplink MAC from `macs.json` so the static DHCP lease applies.
 All resource names (bridges, IP ranges, sushy-tools port, storage pool, VM names)
 embed the cluster name, so multiple CI runs on the same host never conflict.
 
-The libvirt API is safe for concurrent operations on distinct resources; the old
-`with_libvirt_lock.sh` wrapper is no longer needed.
+The libvirt API is safe for concurrent operations on distinct resources.
 
 The one shared resource is the subnet third octet N. `create` serializes subnet
 selection and network creation across all concurrent runs on the host with an

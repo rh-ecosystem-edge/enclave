@@ -9,7 +9,7 @@
 #
 # Environment Variables:
 #   ENCLAVE_CLUSTER_NAME - Cluster name (required)
-#   WORKING_DIR - Working directory (optional, defaults to /opt/dev-scripts)
+#   WORKING_DIR - Working directory (optional, defaults to /opt/clusters)
 #   GITHUB_STEP_SUMMARY - GitHub Actions summary file (optional)
 
 set -euo pipefail
@@ -28,7 +28,7 @@ if [ -z "${WORKING_DIR:-}" ]; then
         WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
     else
         # Fallback to default for backward compatibility
-        WORKING_DIR="/opt/dev-scripts"
+        WORKING_DIR="/opt/clusters"
     fi
 fi
 

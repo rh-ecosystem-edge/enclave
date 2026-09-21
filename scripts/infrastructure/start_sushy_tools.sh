@@ -16,10 +16,9 @@ source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Get cluster name from environment or dev-scripts config
+# Get cluster name from environment
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Try to load dev-scripts config (non-fatal)
 try_load_cluster_env
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"

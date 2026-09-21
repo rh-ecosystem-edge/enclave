@@ -125,7 +125,7 @@ sudo -u github-runner virsh list --all
 is full, not necessarily the VM pool.
 
 **Host layout (important):** `/` is a small (~445 GiB) root disk holding
-`/var/lib/libvirt/images` (the default pool) and `/home`. `/opt/dev-scripts/clusters`
+`/var/lib/libvirt/images` (the default pool) and `/home`. `/opt/clusters/clusters`
 is a bind mount onto the large `/disk1` (~3 TiB), so cluster working dirs do *not*
 fill root — but the default pool and `/home` do.
 

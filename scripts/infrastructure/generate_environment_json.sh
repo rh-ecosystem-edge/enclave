@@ -19,7 +19,7 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 ensure_working_dir
 
-# Try to load dev-scripts config (non-fatal)
+# Try to load cluster config (non-fatal)
 try_load_cluster_env
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
