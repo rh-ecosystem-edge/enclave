@@ -18,7 +18,7 @@ permissions:
 jobs:
   resolve-image:
     name: Resolve CI Image
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 30
     defaults:
       run:
