@@ -18,6 +18,22 @@ properties:
         default:
           type: boolean
           description: Default OpenShift version
+        risks:
+          type: array
+          description: OpenShift version risks to be accepted
+          items:
+            type: object
+            additionalProperties: false
+            properties: 
+              name:
+                type: string
+                description: OpenShift version risk name
+              accept:
+                type: boolean
+                description: To accept or not to accept the risk
+            required:
+            - name
+            - accept
       required:
       - version
 required:
