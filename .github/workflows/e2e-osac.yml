@@ -48,7 +48,10 @@ jobs:
       - name: Query latest nightly OSAC chart version from OCI registry
         id: version
         run: |
-          VERSION=$(skopeo list-tags --no-creds docker://ghcr.io/osac-project/charts/osac \
+          # The pr-validation-aws light runner image ships podman but not skopeo, so run
+          # skopeo from its official container image (jq is available on the host).
+          VERSION=$(podman run --rm quay.io/skopeo/stable \
+            list-tags --no-creds docker://ghcr.io/osac-project/charts/osac \
             | jq -r '.Tags[]' | { grep 'nightly' || test $? = 1; } | sort -V | tail -1)
           if [ -z "$VERSION" ]; then
             echo "::error::No nightly chart version found"
