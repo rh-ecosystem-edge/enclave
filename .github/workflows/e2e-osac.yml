@@ -27,6 +27,10 @@ on:
       - 'plugins/osac/**'
       - '.github/workflows/e2e-osac.yml'
 
+# Default to read-only token; jobs that need more request it explicitly.
+permissions:
+  contents: read
+
 concurrency:
   group: e2e-osac-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
@@ -53,9 +57,103 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Latest OSAC nightly chart version: $VERSION"
 
+  # Resolve the CI image (with helm) used by the values overlay preflight.
+  # The preflight only runs for scheduled/dispatched runs (on PRs the overlay is
+  # already checked against the pinned chart by the osac-values job in
+  # pr-validation.yml), so skip resolving the image on pull requests too.
+  resolve-image:
+    if: github.event_name != 'pull_request'
+    uses: ./.github/workflows/resolve-ci-image.yml
+    secrets: inherit
+
+  # Fast gate: render the OSAC values overlay for every profile and validate it
+  # against the latest nightly chart this run is about to deploy, via
+  # `helm template`. Fails in minutes if the latest chart broke the overlay —
+  # before the ~hours-long E2E runs. Only runs on scheduled/dispatched runs; on
+  # PRs the overlay is checked against the pinned chart by pr-validation.yml, and
+  # this run deploys that same pinned chart, so a preflight would be redundant.
+  osac-values-preflight:
+    name: OSAC values schema preflight
+    needs: [resolve-image, get-latest-chart-version]
+    if: >-
+      always() &&
+      github.event_name != 'pull_request' &&
+      needs.resolve-image.result == 'success' &&
+      needs.get-latest-chart-version.result == 'success'
+    runs-on: [self-hosted, pr-validation]
+    timeout-minutes: 15
+    permissions:
+      contents: read  # only checks out the repo; no write access needed
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      options: --user root
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The latest nightly chart resolved above — the exact chart this run will
+      # deploy, so the preflight validates the overlay against what E2E deploys.
+      OSAC_CHART_VERSION: ${{ needs.get-latest-chart-version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Validate OSAC values overlay against the target chart
+        run: |
+          set -o pipefail
+          echo "## OSAC Values Overlay Preflight" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Chart version**: ${OSAC_CHART_VERSION:-<plugin default>}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if make -f Makefile.ci validate-osac-values 2>&1 | tee osac-values-preflight.log; then
+            echo "### ✅ Overlay validated — proceeding to E2E" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Overlay validation failed — E2E will be skipped" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -50 osac-values-preflight.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Upload preflight log
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: osac-values-preflight-log
+          path: osac-values-preflight.log
+          retention-days: 7
+
+      # Alert on failure for scheduled/dispatched runs (the nightly job sets
+      # send-slack-notification=true). This is the early-warning signal that the
+      # latest OSAC chart broke the values overlay — before it is promoted to the
+      # pinned osacChartVersion. PR runs stay silent (the PR check reports there).
+      - name: Notify Slack on preflight failure
+        if: failure() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
+        uses: ./.github/actions/notify-slack
+        with:
+          status: failure
+          workflow-name: 'E2E OSAC - Values Overlay Preflight'
+          cluster-name: 'N/A (no cluster)'
+          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
+          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          branch-name: ${{ github.ref_name }}
+          commit-sha: ${{ github.sha }}
+          failed-step: 'Validate OSAC values overlay against the target chart'
+          osac-chart-version: ${{ env.OSAC_CHART_VERSION || '<plugin default>' }}
+
   e2e-osac:
-    needs: get-latest-chart-version
-    if: always() && needs.get-latest-chart-version.result != 'failure'
+    needs: [get-latest-chart-version, osac-values-preflight]
+    # On dispatched/scheduled runs the preflight must pass before deploying. Only
+    # PRs may proceed on a skipped preflight (the overlay is checked there by
+    # pr-validation.yml); a skip on a dispatched run means an upstream job failed,
+    # so E2E must not deploy unvalidated.
+    if: >-
+      always() &&
+      needs.get-latest-chart-version.result != 'failure' &&
+      (needs.osac-values-preflight.result == 'success' ||
+       (github.event_name == 'pull_request' &&
+        needs.osac-values-preflight.result == 'skipped'))
     permissions:
       contents: read
       checks: write  # required by e2e-deployment.yml for check-run updates

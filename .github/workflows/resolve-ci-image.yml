@@ -43,6 +43,8 @@ jobs:
               - '.python-version'
               - 'src/**'
               - 'README.md'
+              # Dockerfile.ci installs helm from this file — rebuild on a bump.
+              - 'defaults/control_binaries.yaml'
 
       - name: Build CI image
         if: steps.filter.outputs.changed == 'true'
