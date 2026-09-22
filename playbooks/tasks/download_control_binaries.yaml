@@ -36,17 +36,72 @@
     dest: "{{ workingDir }}/bin/"
     remote_src: true
 
-- name: Download helm
-  ansible.builtin.get_url:
-    url: "{{ control_binaries.helm.url }}"
-    dest: "{{ workingDir }}/bin/helm"
-    checksum: "{{ control_binaries.helm.checksum }}"
-    mode: "0750"
-    timeout: "{{ download_timeout }}"
-  register: _download_helm
-  retries: "{{ download_retries }}"
-  delay: "{{ download_delay }}"
-  until: _download_helm is success
+# The Helm CLI is only needed by plugins that declare a `helm:` block, so keep all
+# control-binary downloads centralized here and download Helm only when a relevant
+# plugin uses it. The relevant set is scoped to the deployment:
+#   - day-0 (via 01-prepare): the enabled plugins.
+#   - day-2 (deploy-plugin.yaml sets plugin_name): only the plugin being deployed,
+#     which is not necessarily in enabled_plugins.
+# Only the candidate plugins' descriptors are read, so an unrelated malformed
+# descriptor cannot fail the download.
+- name: Determine which plugins may require the Helm CLI
+  ansible.builtin.set_fact:
+    _helm_candidate_plugins: >-
+      {{ [plugin_name] if (plugin_name is defined and plugin_name | length > 0)
+         else (enabled_plugins | default([])) }}
+
+- name: Ensure the Helm CLI is present for candidate plugins that use it
+  when: _helm_candidate_plugins | length > 0
+  block:
+    - name: Find plugin descriptors
+      ansible.builtin.find:
+        paths: "{{ playbook_dir }}/../plugins"
+        patterns: "plugin.yaml"
+        recurse: true
+        depth: 2
+      register: r_helm_plugin_find
+
+    - name: Select descriptor paths for candidate plugins
+      ansible.builtin.set_fact:
+        _helm_candidate_descriptors: >-
+          {{ r_helm_plugin_find.files
+             | map(attribute='path')
+             | select('regex', '/(' ~ (_helm_candidate_plugins | map('regex_escape') | join('|')) ~ ')/plugin\.yaml$')
+             | list }}
+
+    - name: Read candidate plugin descriptors
+      ansible.builtin.slurp:
+        src: "{{ plugin_path }}"
+      loop: "{{ _helm_candidate_descriptors }}"
+      register: r_helm_plugin_slurp
+      loop_control:
+        loop_var: plugin_path
+
+    - name: Determine whether any candidate plugin uses Helm
+      ansible.builtin.set_fact:
+        _candidate_plugins_use_helm: >-
+          {{ r_helm_plugin_slurp.results
+             | map(attribute='content')
+             | map('b64decode')
+             | map('from_yaml')
+             | selectattr('helm', 'defined')
+             | list | length > 0 }}
+
+    # get_url with a checksum is idempotent and self-validating: an existing bin/helm is
+    # re-validated against control_binaries.helm.checksum and only (re-)fetched when it
+    # is missing, stale, or corrupt, so day-2 re-runs are a no-op.
+    - name: Download helm
+      ansible.builtin.get_url:
+        url: "{{ control_binaries.helm.url }}"
+        dest: "{{ workingDir }}/bin/helm"
+        checksum: "{{ control_binaries.helm.checksum }}"
+        mode: "0750"
+        timeout: "{{ download_timeout }}"
+      register: _download_helm
+      retries: "{{ download_retries }}"
+      delay: "{{ download_delay }}"
+      until: _download_helm is success
+      when: _candidate_plugins_use_helm | bool
 
 - name: Download latest mirror registry available
   ansible.builtin.get_url:
