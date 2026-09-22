@@ -50,7 +50,10 @@ jobs:
         run: |
           # The pr-validation-aws light runner image ships podman but not skopeo, so run
           # skopeo from its official container image (jq is available on the host).
-          VERSION=$(podman run --rm quay.io/skopeo/stable \
+          # Pin by digest (not the mutable :stable tag) so the emitted chart version can't
+          # be influenced by an unreviewed image change. Digest is quay.io/skopeo/stable at
+          # time of pinning; bump it via a reviewed change.
+          VERSION=$(podman run --rm quay.io/skopeo/stable@sha256:ffc4a6b0a3d2fc4302631a3ef9919768eebc3cafc95350d4bb7d9b1be51231aa \
             list-tags --no-creds docker://ghcr.io/osac-project/charts/osac \
             | jq -r '.Tags[]' | { grep 'nightly' || test $? = 1; } | sort -V | tail -1)
           if [ -z "$VERSION" ]; then
