@@ -188,8 +188,8 @@ sudo dnf install -y \
     openssh-clients \
     sshpass \
     httpd \
-    genisoimage
-success "Utilities installed (jq, rsync, ssh, httpd, genisoimage)"
+    xorriso
+success "Utilities installed (jq, rsync, ssh, httpd, xorriso)"
 echo ""
 
 info "Step 12a: Installing GitHub CLI"
@@ -360,7 +360,7 @@ check_cmd virsh || FAILED=1
 check_cmd virt-install || FAILED=1
 check_cmd podman || FAILED=1
 check_cmd nmstatectl || FAILED=1
-check_cmd genisoimage || FAILED=1
+check_cmd xorrisofs || FAILED=1
 check_cmd dnsmasq || FAILED=1
 
 echo ""
