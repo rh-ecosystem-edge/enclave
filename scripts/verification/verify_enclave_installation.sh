@@ -233,10 +233,11 @@ fi
 
 # Test 7: SSH key
 info "Test 7: Checking SSH key on Landing Zone..."
-if ssh $SSH_OPTS "$LZ_SSH" "test -f ~/.ssh/id_rsa.pub"; then
+if SSH_KEY_PATH=$(find_lz_ssh_public_key); then
     success "SSH public key exists"
-    SSH_KEY=$(ssh $SSH_OPTS "$LZ_SSH" "cat ~/.ssh/id_rsa.pub" 2>/dev/null | head -c 50)
-    info "  Key: ${SSH_KEY}..."
+    # shellcheck disable=SC2086
+    SSH_KEY=$(ssh $SSH_OPTS "$LZ_SSH" "cat '$SSH_KEY_PATH'" 2>/dev/null | head -c 50)
+    info "  Key: ${SSH_KEY}... (${SSH_KEY_PATH})"
 else
     warning "SSH key not found (will be generated during Enclave Lab run)"
 fi

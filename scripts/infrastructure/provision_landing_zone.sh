@@ -16,6 +16,7 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 # Validate required environment variables
@@ -55,10 +56,9 @@ CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")
 CLUSTER_IP="${CLUSTER_NET_PREFIX}.2"  # Initial guess, will be updated from DHCP
 
 # SSH key
-SSH_KEY_FILE="$HOME/.ssh/id_rsa.pub"
-if [ ! -f "$SSH_KEY_FILE" ]; then
-    error "SSH public key not found: $SSH_KEY_FILE"
-    error "Please generate SSH key: ssh-keygen -t rsa -b 4096"
+if ! SSH_KEY_FILE=$(find_local_ssh_public_key); then
+    error "SSH public key not found in ~/.ssh (looked for: $SSH_PUBLIC_KEY_CANDIDATES)"
+    error "Please generate an SSH key: ssh-keygen -t ed25519"
     exit 1
 fi
 SSH_PUBLIC_KEY=$(cat "$SSH_KEY_FILE")
