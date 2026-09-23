@@ -47,6 +47,16 @@
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: quay-disconnected
 
+        - name: Configure MCE AgentServiceConfig
+          when: disconnected | default(true) | bool
+          ansible.builtin.include_tasks:
+            file: ../operators/multicluster-engine/configure_asc.yaml
+            apply:
+              tags: mce-asc
+              environment:
+                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          tags: mce-asc
+
         - name: Configure ACM ClusterImageSets
           ansible.builtin.include_tasks:
             file: ../operators/advanced-cluster-management/acm_cis.yaml
