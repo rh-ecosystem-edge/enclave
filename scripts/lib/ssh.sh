@@ -161,6 +161,6 @@ ensure_lz_ssh_public_key() {
     fi
 
     # None of the candidates exist: generate an ed25519 key pair.
-    ssh_exec 'ssh-keygen -t ed25519 -f "$HOME/.ssh/id_ed25519" -N "" -q' >&2 || return 1
+    ssh_exec 'mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh" && ssh-keygen -t ed25519 -f "$HOME/.ssh/id_ed25519" -N "" -q' >&2 || return 1
     find_lz_ssh_public_key
 }
