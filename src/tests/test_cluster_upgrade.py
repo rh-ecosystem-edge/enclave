@@ -5,6 +5,7 @@ from pytest_mock import MockerFixture
 
 from enclave.reconcile.cluster_upgrade import (
     ClusterOperatorsNotReadyError,
+    ClusterVersionQueryError,
     InvalidVersionError,
     UpdateGraphUnavailableError,
     VersionDowngradeError,
@@ -236,12 +237,12 @@ def test_get_conditional_updates_missing_returns_empty(
 def test_get_conditional_updates_oc_failure(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
-    """A non-zero exit code from oc raises RuntimeError."""
+    """A non-zero exit code from oc raises ClusterVersionQueryError."""
     mocker.patch(
         "enclave.reconcile.cluster_upgrade.run_oc_command",
         return_value=oc_result(stdout="", returncode=1),
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(ClusterVersionQueryError):
         get_conditional_updates()
 
 

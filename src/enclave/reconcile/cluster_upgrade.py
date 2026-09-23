@@ -75,6 +75,10 @@ class ClusterOperatorsNotReadyError(ClusterUpgradeError):
         )
 
 
+class ClusterVersionQueryError(ClusterUpgradeError):
+    """Raised when querying ClusterVersion resource fails."""
+
+
 def get_current_version() -> str:
     """Return the cluster's current desired version from ClusterVersion."""
     result = run_oc_command([
@@ -184,11 +188,15 @@ def get_conditional_updates() -> list[str]:
         "json",
     ])
     if result.returncode != 0:
-        raise RuntimeError(f"oc get clusterversion failed (exit {result.returncode})")
+        raise ClusterVersionQueryError(
+            f"Failed to query ClusterVersion resource (exit {result.returncode})"
+        )
     try:
         raw_json = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("oc get clusterversion returned invalid JSON") from exc
+        raise ClusterVersionQueryError(
+            "ClusterVersion resource returned invalid JSON"
+        ) from exc
 
     raw = raw_json.get("status", {}).get("conditionalUpdates")
     if raw is None:
