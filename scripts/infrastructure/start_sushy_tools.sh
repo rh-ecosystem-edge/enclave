@@ -129,7 +129,7 @@ sudo podman run -d \
     --name "$CONTAINER_NAME" \
     -v "$SUSHY_DIR:/root/sushy:z" \
     -v "/root/.ssh:/root/.ssh:ro,z" \
-    -v "/var/run/libvirt:/var/run/libvirt:z" \
+    -v "/var/run/libvirt:/var/run/libvirt" \
     "${SUSHY_TOOLS_IMAGE}" \
     sushy-emulator --config /root/sushy/conf.py
 
