@@ -17,17 +17,19 @@
   environment:
     PATH: "{{ workingDir | default('') }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
   tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
     - name: Validate workingDir is provided
       ansible.builtin.assert:
         that:
           - workingDir is defined
           - workingDir | length > 0
-        fail_msg: "workingDir must be provided (e.g., -e workingDir=/home/cloud-user)"
-      tags: always
-
-    - name: Load common variables
-      ansible.builtin.include_tasks:
-        file: common/load-vars.yaml
+        fail_msg: "workingDir must be provided (e.g., -e workingDir=/home/cloud-user or set in config/global.yaml)"
       tags: always
 
     - name: Deploy plugin
