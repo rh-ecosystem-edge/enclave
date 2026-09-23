@@ -170,6 +170,35 @@ def get_available_versions() -> list[str] | None:
     return versions
 
 
+def get_conditional_updates() -> list[str]:
+    """Return the list of versions from conditionalUpdates.
+
+    Returns an empty list if conditionalUpdates is not present or null.
+    """
+    result = run_oc_command([
+        "oc",
+        "get",
+        "clusterversion.config.openshift.io",
+        "version",
+        "-o",
+        "json",
+    ])
+    if result.returncode != 0:
+        raise RuntimeError(f"oc get clusterversion failed (exit {result.returncode})")
+    try:
+        raw_json = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("oc get clusterversion returned invalid JSON") from exc
+
+    raw = raw_json.get("status", {}).get("conditionalUpdates")
+    if raw is None:
+        return []
+
+    versions = [update["release"]["version"] for update in raw]
+    logger.debug("Conditional update versions from API: %s", versions)
+    return versions
+
+
 def get_cluster_operators() -> list[dict[str, Any]]:
     """Return all ClusterOperator objects from the cluster."""
     result = run_oc_command([
@@ -347,8 +376,21 @@ def reconcile(
 
     logger.debug("Checking if desired version %s is in available list", desired_version)
 
-    if desired_version not in available_versions and not allow_not_recommended:
-        raise VersionNotAvailableError(desired_version, available_versions)
+    if desired_version not in available_versions:
+        if allow_not_recommended:
+            logger.debug("Version not in availableUpdates, checking conditionalUpdates")
+            conditional_versions = get_conditional_updates()
+            if desired_version not in conditional_versions:
+                all_versions = list(available_versions) + [
+                    v for v in conditional_versions if v not in available_versions
+                ]
+                raise VersionNotAvailableError(desired_version, all_versions)
+            logger.info(
+                "Version %s found in conditionalUpdates, proceeding with allow_not_recommended",
+                desired_version,
+            )
+        else:
+            raise VersionNotAvailableError(desired_version, available_versions)
 
     logger.debug("Checking cluster operators readiness...")
     ready, issues = check_cluster_operators_ready()
