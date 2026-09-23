@@ -152,12 +152,13 @@ def test_operator_versions_missing_required_without_defaults() -> None:
 def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = False
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.21", dry_run, 180, 60, allow_not_recommended=False
+        "4.20.21", dry_run, 180, 60, allow_not_recommended
     )
 
 
@@ -174,15 +175,38 @@ def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) ->
     mock_reconcile.assert_not_called()
 
 
+def test_mgmt_cluster_version_unknown_version_rejected_even_with_allow_not_recommended(
+    mocker: MockerFixture,
+) -> None:
+    """Versions not in platforms.yaml are rejected even with --allow-not-recommended."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+    result = CliRunner().invoke(
+        cli,
+        [
+            "mgmt-cluster-version",
+            "--version",
+            "4.99.0",
+            "--allow-not-recommended",
+            "--dry-run",
+        ],
+        env=_KC,
+    )
+    assert result.exit_code != 0
+    assert "Version '4.99.0'" in result.output
+    assert "not in defaults/platforms.yaml" in result.output
+    mock_reconcile.assert_not_called()
+
+
 def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = False
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.32", dry_run, 180, 60, allow_not_recommended=False
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
@@ -197,12 +221,13 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
 def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = False
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--latest", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.32", dry_run, 180, 60, allow_not_recommended=False
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
@@ -225,6 +250,7 @@ def test_mgmt_cluster_version_latest_mutual_exclusive_use_defaults() -> None:
 def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = True
     result = CliRunner().invoke(
         cli,
         [
@@ -238,7 +264,7 @@ def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> No
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.21", dry_run, 180, 60, allow_not_recommended=True
+        "4.20.21", dry_run, 180, 60, allow_not_recommended
     )
 
 

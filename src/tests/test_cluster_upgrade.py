@@ -426,10 +426,9 @@ def test_reconcile_performs_upgrade(mocker: MockerFixture) -> None:
     mock_upgrade = _patch_reconcile_deps(
         mocker, current="4.20.16", available=["4.20.17"]
     )
+    allow_not_recommended = False
     reconcile("4.20.17", dry_run=False)
-    mock_upgrade.assert_called_once_with(
-        "4.20.17", 180, 60, allow_not_recommended=False
-    )
+    mock_upgrade.assert_called_once_with("4.20.17", 180, 60, allow_not_recommended)
 
 
 # ---------------------------------------------------------------------------
