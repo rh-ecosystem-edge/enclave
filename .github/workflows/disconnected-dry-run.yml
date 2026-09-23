@@ -42,7 +42,7 @@ permissions:
 jobs:
   disconnected-dry-run:
     name: Disconnected Dry-Run Test
-    runs-on: [self-hosted, enclave-small]
+    runs-on: [self-hosted, enclave-small-aws]
     timeout-minutes: 120
 
     env:

@@ -18,7 +18,7 @@ concurrency:
 jobs:
   infra-verify:
     name: Infrastructure Verification
-    runs-on: [self-hosted, enclave-small]
+    runs-on: [self-hosted, enclave-small-aws]
     timeout-minutes: 120
 
     env:
