@@ -760,6 +760,26 @@ quayPinnedImageSetEnabled: true
 - Set to `true` to enable post-mirror prefetch pinning.
 - This setting is ignored when `mirror_dry_run` is enabled.
 
+##### `allowNotRecommendedUpgrades`
+
+**Description**: Controls whether management cluster upgrades are allowed to target OpenShift versions that are not recommended by Red Hat.
+
+**Type**: Boolean (optional)
+
+**Default**: `false`
+
+**Example**:
+```yaml
+allowNotRecommendedUpgrades: true
+```
+
+**Notes**:
+- When `true`, the upgrade process will set `allowNotRecommended: true` in the ClusterVersion patch, allowing upgrades to versions in `conditionalUpdates` that may have known risks
+- When `false` (default), only versions in `availableUpdates` (recommended by Red Hat) are allowed
+- **WARNING**: It is strongly recommended to follow Red Hat supported upgrade paths. Use this option only when necessary and at your own risk
+- This setting is used by `playbooks/upgrade.yaml` during management cluster upgrades
+- Can also be set via CLI: `enclave reconcile mgmt-cluster-version --allow-not-recommended`
+
 #### Pull Secrets
 
 ##### `pullSecret`

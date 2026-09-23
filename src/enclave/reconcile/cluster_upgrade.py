@@ -224,7 +224,10 @@ def check_cluster_operators_ready() -> tuple[bool, list[str]]:
 
 
 def upgrade_cluster(
-    desired_version: str, timeout_minutes: int = 180, sleep_interval: int = 60
+    desired_version: str,
+    timeout_minutes: int = 180,
+    sleep_interval: int = 60,
+    allow_not_recommended: bool = False,
 ) -> None:
     """Patch ClusterVersion to trigger an upgrade and wait for it to complete.
 
@@ -235,9 +238,11 @@ def upgrade_cluster(
     # Calculate shared deadline for both wait operations
     deadline = time.time() + (timeout_minutes * 60)
 
-    patch_payload = json.dumps({
-        "spec": {"desiredUpdate": {"version": desired_version}}
-    })
+    desired_update: dict[str, Any] = {"version": desired_version}
+    if allow_not_recommended:
+        desired_update["allowNotRecommended"] = True
+
+    patch_payload = json.dumps({"spec": {"desiredUpdate": desired_update}})
     result = run_oc_command([
         "oc",
         "patch",
@@ -292,6 +297,7 @@ def reconcile(
     dry_run: bool,
     timeout_minutes: int = 180,
     sleep_interval: int = 60,
+    allow_not_recommended: bool = False,
 ) -> None:
     """Validate preconditions and upgrade the cluster to the version set in desired_version.
 
@@ -300,11 +306,12 @@ def reconcile(
     applying the upgrade.
     """
     logger.debug(
-        "reconcile() called with desired_version=%s, dry_run=%s, timeout_minutes=%d, sleep_interval=%d",
+        "reconcile() called with desired_version=%s, dry_run=%s, timeout_minutes=%d, sleep_interval=%d, allow_not_recommended=%s",
         desired_version,
         dry_run,
         timeout_minutes,
         sleep_interval,
+        allow_not_recommended,
     )
 
     # Parse and validate versions at entry point
@@ -340,7 +347,7 @@ def reconcile(
 
     logger.debug("Checking if desired version %s is in available list", desired_version)
 
-    if desired_version not in available_versions:
+    if desired_version not in available_versions and not allow_not_recommended:
         raise VersionNotAvailableError(desired_version, available_versions)
 
     logger.debug("Checking cluster operators readiness...")
@@ -354,4 +361,6 @@ def reconcile(
         logger.info("Execution is set to DRY-RUN. Exiting.")
         return
 
-    upgrade_cluster(desired_version, timeout_minutes, sleep_interval)
+    upgrade_cluster(
+        desired_version, timeout_minutes, sleep_interval, allow_not_recommended
+    )

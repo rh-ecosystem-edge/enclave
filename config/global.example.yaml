@@ -126,6 +126,11 @@ storage_plugin: lvms
 # the 'updateservice-registry' key from this ConfigMap to prevent UpdateService failures.
 # quayRegistryCAConfigmapName: quay-registry-ca
 
+# Allow management cluster upgrades to not-recommended versions (default: false)
+# When true, the upgrade process will allow versions from conditionalUpdates.
+# WARNING: Only use when necessary. Follow Red Hat supported upgrade paths when possible.
+# allowNotRecommendedUpgrades: false
+
 # Additional NTP sources for cluster nodes (no additional servers by default)
 # defaultNtpServers:
 #  - YOUR_NTP_SERVER_1

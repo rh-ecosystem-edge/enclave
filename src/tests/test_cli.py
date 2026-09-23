@@ -156,7 +156,9 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
         cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.21", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with(
+        "4.20.21", dry_run, 180, 60, allow_not_recommended=False
+    )
 
 
 def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) -> None:
@@ -179,7 +181,9 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
         cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.32", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with(
+        "4.20.32", dry_run, 180, 60, allow_not_recommended=False
+    )
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
@@ -197,7 +201,9 @@ def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
         cli, ["mgmt-cluster-version", "--latest", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.32", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with(
+        "4.20.32", dry_run, 180, 60, allow_not_recommended=False
+    )
 
 
 def test_mgmt_cluster_version_latest_mutual_exclusive_version() -> None:
@@ -214,6 +220,26 @@ def test_mgmt_cluster_version_latest_mutual_exclusive_use_defaults() -> None:
     )
     assert result.exit_code != 0
     assert "mutually exclusive" in result.output
+
+
+def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+    dry_run = True
+    result = CliRunner().invoke(
+        cli,
+        [
+            "mgmt-cluster-version",
+            "--version",
+            "4.20.21",
+            "--allow-not-recommended",
+            "--dry-run",
+        ],
+        env=_KC,
+    )
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with(
+        "4.20.21", dry_run, 180, 60, allow_not_recommended=True
+    )
 
 
 def test_mgmt_cluster_version_no_args_shows_help() -> None:

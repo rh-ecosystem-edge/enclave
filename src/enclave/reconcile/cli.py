@@ -159,6 +159,12 @@ def operator_versions(
     type=click.IntRange(min=1),
     help="Sleep interval between polling attempts in seconds (default: 60)",
 )
+@click.option(
+    "--allow-not-recommended",
+    is_flag=True,
+    default=False,
+    help="Allow upgrade to not-recommended versions",
+)
 def mgmt_cluster_version(
     version: str | None,
     use_defaults: bool,
@@ -166,6 +172,7 @@ def mgmt_cluster_version(
     dry_run: bool,
     timeout_minutes: int,
     sleep_interval: int,
+    allow_not_recommended: bool,
 ) -> None:
     if sum([version is not None, use_defaults, use_latest]) > 1:
         raise click.UsageError(
@@ -206,7 +213,11 @@ def mgmt_cluster_version(
 
     try:
         cluster_upgrade_reconcile(
-            resolved_version, dry_run, timeout_minutes, sleep_interval
+            resolved_version,
+            dry_run,
+            timeout_minutes,
+            sleep_interval,
+            allow_not_recommended,
         )
     except (ClusterUpgradeError, RuntimeError, TimeoutError) as e:
         raise click.ClickException(str(e)) from e
