@@ -297,15 +297,11 @@ fi
 
 # Step 7: Generate SSH key if needed
 info "Step 7: Checking SSH key on Landing Zone..."
-ssh $SSH_OPTS "$LZ_SSH" bash <<'EOSSH'
-if [ ! -f ~/.ssh/id_rsa.pub ]; then
-    echo "  Generating SSH key pair..."
-    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q
-else
-    echo "  SSH key already exists"
+if ! SSH_KEY_PATH=$(ensure_lz_ssh_public_key); then
+    error "Failed to find or generate an SSH key on the Landing Zone"
+    exit 1
 fi
-EOSSH
-success "SSH key ready"
+success "SSH key ready: ${SSH_KEY_PATH}"
 
 # Step 8: Display configuration summary
 info "Step 8: Configuration summary..."
