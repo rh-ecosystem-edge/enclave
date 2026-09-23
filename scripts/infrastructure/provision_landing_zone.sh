@@ -160,10 +160,11 @@ info "✓ cloud-init configuration created"
 
 # Create cloud-init ISO
 info "Creating cloud-init ISO..."
-sudo genisoimage -output "${LZ_WORKING_DIR}/cloud-init.iso" \
+sudo xorrisofs -quiet \
+    -output "${LZ_WORKING_DIR}/cloud-init.iso" \
     -volid cidata -joliet -rock \
     "${LZ_WORKING_DIR}/user-data" \
-    "${LZ_WORKING_DIR}/meta-data" 2>&1 | grep -v "Warning: creating filesystem"
+    "${LZ_WORKING_DIR}/meta-data"
 info "✓ cloud-init ISO created"
 
 # Remove cloud-init files that may contain RHSM credentials
