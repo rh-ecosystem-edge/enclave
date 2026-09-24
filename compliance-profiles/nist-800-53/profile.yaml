@@ -1,0 +1,141 @@
+---
+name: nist-800-53
+description: >-
+  NIST SP 800-53 compliance profile for federal information systems and
+  organizations requiring comprehensive security and privacy controls across
+  access control, audit and accountability, configuration management, and
+  system integrity.
+framework:
+  fullName: NIST Special Publication 800-53 Rev. 5
+  version: "Revision 5"
+  authority: National Institute of Standards and Technology (NIST)
+  applicability: Federal information systems and organizations
+
+controls:
+  - name: mfa-enforcement
+    required: true
+    config:
+      methods:
+        - totp
+        - webauthn
+        - piv-card
+      exemptions: []
+
+  - name: session-timeout
+    required: true
+    config:
+      timeout_minutes: 30
+      idle_timeout_minutes: 15
+      concurrent_session_limit: 3
+
+  - name: encryption-at-rest
+    required: true
+    config:
+      per_project_keys: true
+      algorithm: AES-256
+      fips_mode: true
+      key_rotation_days: 365
+
+  - name: encryption-in-transit
+    required: true
+    config:
+      min_tls_version: "1.2"
+      enforce_mtls: true
+      fips_mode: true
+
+  - name: network-isolation
+    required: true
+    config:
+      level: strict
+      default_deny_ingress: true
+      default_deny_egress: false
+      microsegmentation: true
+
+  - name: audit-logging
+    required: true
+    config:
+      retention_days: 2555  # 7 years
+      log_authentication: true
+      log_authorization: true
+      log_data_access: true
+      log_configuration_changes: true
+      log_privilege_escalation: true
+      log_failed_access_attempts: true
+      tamper_protection: true
+      siem_integration: true
+
+  - name: hardening-profile
+    required: true
+    config:
+      profile: STIG
+      apply_to:
+        - control-plane
+        - worker-nodes
+        - provisioned-instances
+      kernel_hardening: true
+
+  - name: compliance-scanning
+    required: true
+    config:
+      frameworks:
+        - nist-800-53
+      scan_interval: weekly
+      auto_remediate: false
+      report_to:
+        - compliance-admin
+        - security-team
+        - isso  # Information System Security Officer
+
+  - name: access-control-rbac
+    required: true
+    config:
+      principle: least-privilege
+      role_review_interval_days: 90
+      separation_of_duties: true
+      emergency_access_logging: true
+      access_revocation_time_hours: 1
+
+  - name: vulnerability-scanning
+    required: true
+    config:
+      scan_interval: weekly
+      severity_threshold: low
+      block_critical_vulnerabilities: true
+      block_high_vulnerabilities: true
+
+  - name: incident-response
+    required: true
+    config:
+      automated_alerting: true
+      playbook_integration: true
+      forensic_logging: true
+
+  - name: supply-chain-security
+    required: true
+    config:
+      image_signing_required: true
+      sbom_required: true
+      vulnerability_gate: high
+
+  - name: configuration-management
+    required: true
+    config:
+      baseline_enforcement: true
+      change_approval_required: true
+      drift_detection: true
+
+plugins:
+  - name: acs
+    required: true
+  - name: compliance-operator
+    required: true
+  - name: rhbk
+    required: true
+  - name: file-integrity-operator
+    required: true
+
+compatibleWith:
+  - hipaa
+  - eu-sovereignty
+
+conflicts: []

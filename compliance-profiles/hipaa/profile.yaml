@@ -1,0 +1,107 @@
+---
+name: hipaa
+description: >-
+  HIPAA compliance profile for healthcare workloads requiring Protected Health
+  Information (PHI) safeguards, access controls, audit logging, and encryption
+  per the Health Insurance Portability and Accountability Act.
+framework:
+  fullName: Health Insurance Portability and Accountability Act (HIPAA)
+  version: "2013 Omnibus Rule"
+  authority: U.S. Department of Health and Human Services (HHS)
+  applicability: Healthcare organizations handling PHI
+
+controls:
+  - name: mfa-enforcement
+    required: true
+    config:
+      methods:
+        - totp
+        - webauthn
+      exemptions: []
+
+  - name: session-timeout
+    required: true
+    config:
+      timeout_minutes: 15
+      idle_timeout_minutes: 5
+      concurrent_session_limit: 1
+
+  - name: encryption-at-rest
+    required: true
+    config:
+      per_project_keys: true
+      algorithm: AES-256
+      key_rotation_days: 90
+
+  - name: encryption-in-transit
+    required: true
+    config:
+      min_tls_version: "1.2"
+      enforce_mtls: true
+
+  - name: network-isolation
+    required: true
+    config:
+      level: strict
+      default_deny_ingress: true
+      default_deny_egress: true
+
+  - name: audit-logging
+    required: true
+    config:
+      retention_days: 2555  # 7 years per HIPAA requirement
+      log_authentication: true
+      log_authorization: true
+      log_data_access: true
+      log_configuration_changes: true
+      tamper_protection: true
+
+  - name: hardening-profile
+    required: true
+    config:
+      profile: STIG
+      apply_to:
+        - control-plane
+        - worker-nodes
+        - provisioned-instances
+
+  - name: compliance-scanning
+    required: true
+    config:
+      frameworks:
+        - hipaa
+      scan_interval: daily
+      auto_remediate: false
+      report_to:
+        - compliance-admin
+        - security-team
+
+  - name: access-control-rbac
+    required: true
+    config:
+      principle: least-privilege
+      role_review_interval_days: 90
+      emergency_access_logging: true
+
+  - name: vulnerability-scanning
+    required: true
+    config:
+      scan_interval: daily
+      severity_threshold: medium
+      block_critical_vulnerabilities: true
+
+plugins:
+  - name: acs
+    required: true
+  - name: compliance-operator
+    required: true
+  - name: rhbk
+    required: true
+  - name: file-integrity-operator
+    required: true
+
+compatibleWith:
+  - nist-800-53
+  - eu-sovereignty
+
+conflicts: []
