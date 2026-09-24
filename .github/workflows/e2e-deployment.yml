@@ -125,6 +125,7 @@ on:
 permissions:
   contents: read
   checks: write
+  pull-requests: read  # dorny/paths-filter lists changed files via the REST API on pull_request events
 
 jobs:
   check-e2e-needed:
@@ -142,15 +143,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # Positive filters, evaluated with the default "some" quantifier: the
+      # filter matches when any changed file matches any of its patterns.
+      # NOTE: scripts/** is intentionally NOT listed here. A negated pattern
+      # (e.g. !scripts/docs/**) cannot be mixed into a "some"-quantified OR
+      # list: under "some" a negated glob matches every path outside its
+      # target, so a single unrelated file (even docs/*) would flip the whole
+      # filter to true. The scripts exclusion is handled by the dedicated
+      # "every"-quantified step below.
       - name: Check if E2E-relevant files changed
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           filters: |
             e2e:
               - 'playbooks/**'
-              - 'scripts/**'
-              - '!scripts/docs/**'
               - 'src/**'
               - 'Makefile'
               - 'Makefile.ci'
@@ -175,6 +182,22 @@ jobs:
               - 'scripts/infrastructure/setup_ceph*'
               - 'scripts/infrastructure/verify_ceph*'
               - 'scripts/lib/odf.sh'
+
+      # scripts/** changes, excluding CI documentation under scripts/docs/**.
+      # Uses the "every" quantifier so a file matches only when it satisfies
+      # ALL patterns (under scripts/ AND not under scripts/docs/). The filter
+      # is true when at least one such file changed, so a PR touching only
+      # scripts/docs/** (or no scripts at all) correctly leaves it false, while
+      # a PR mixing scripts code and scripts docs still triggers E2E.
+      - name: Check if E2E-relevant scripts changed
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter_scripts
+        with:
+          predicate-quantifier: every
+          filters: |
+            scripts:
+              - 'scripts/**'
+              - '!scripts/docs/**'
 
       - name: Make decision
         id: decision
@@ -222,7 +245,7 @@ jobs:
             echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             echo "Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ steps.filter.outputs.e2e }}" == "true" ]]; then
+          elif [[ "${{ steps.filter.outputs.e2e }}" == "true" || "${{ steps.filter_scripts.outputs.scripts }}" == "true" ]]; then
             echo "should_run=true" >> $GITHUB_OUTPUT
             echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
             if [[ "${{ steps.filter.outputs.odf }}" == "true" ]]; then
