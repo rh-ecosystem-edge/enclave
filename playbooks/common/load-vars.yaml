@@ -6,9 +6,13 @@
       - "{{ vars_file | default('../../config/global.yaml', true) }}"
       - "{{ certs_vars_file | default('../../config/certificates.yaml', true) }}"
       - "{{ cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true) }}"
+      - "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
 
 - name: Include deployment defaults
   ansible.builtin.include_vars: ../../defaults/deployment.yaml
+
+- name: Include platform defaults
+  ansible.builtin.include_vars: ../../defaults/platforms.yaml
 
 - name: Include user config vars
   ansible.builtin.include_vars: "{{ item }}"
@@ -61,7 +65,6 @@
     - control_binaries.yaml
     - download.yaml
     - operators.yaml
-    - platforms.yaml
     - catalogs.yaml
     - mirror_registry.yaml
     - quay_operator.yaml

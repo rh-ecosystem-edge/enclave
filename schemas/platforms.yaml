@@ -20,5 +20,11 @@ properties:
           description: Default OpenShift version
       required:
       - version
+  allowNotRecommendedUpgrades:
+    type: boolean
+    default: false
+    description: >-
+      Allow management cluster upgrades to not-recommended OpenShift versions.
+      When true, passes --allow-not-recommended to the upgrade command.
 required:
 - openshift_versions
