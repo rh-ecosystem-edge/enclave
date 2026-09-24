@@ -151,7 +151,7 @@ jobs:
       # filter to true. The scripts exclusion is handled by the dedicated
       # "every"-quantified step below.
       - name: Check if E2E-relevant files changed
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           filters: |
@@ -189,7 +189,7 @@ jobs:
       # scripts/docs/** (or no scripts at all) correctly leaves it false, while
       # a PR mixing scripts code and scripts docs still triggers E2E.
       - name: Check if E2E-relevant scripts changed
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter_scripts
         with:
           predicate-quantifier: every

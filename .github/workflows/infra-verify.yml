@@ -43,7 +43,7 @@ jobs:
       # (!scripts/docs/**) cannot be mixed into a "some" list without matching
       # every path outside its target. Kept in sync with e2e-deployment.yml.
       - name: Detect deployment-relevant changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           filters: |
@@ -70,7 +70,7 @@ jobs:
               - 'setup_*.sh'
 
       - name: Detect deployment-relevant scripts changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter_scripts
         with:
           predicate-quantifier: every
