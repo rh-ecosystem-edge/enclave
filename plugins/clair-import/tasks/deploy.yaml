@@ -48,22 +48,9 @@
     dest: "/var/www/html/clair/updates.json.gz"
     mode: '0644'
 
-- name: Get Clair Pod object from quay-enterprise
-  kubernetes.core.k8s_info:
-    kind: Pod
-    namespace: quay-enterprise
-    label_selectors:
-      - quay-component=clair-app
-  register: clair_pod_list
-
-- name: Set Pod fact and verify existence
-  ansible.builtin.set_fact:
-    clair_pod: "{{ clair_pod_list.resources[0] }}"
-  failed_when: clair_pod_list.resources | length == 0
-
-- name: Execute Import inside the Clair Pod
+- name: Execute Import inside the Clair Deployment
   ansible.builtin.shell: |
-    {{ workingDir }}/bin/oc exec -n quay-enterprise {{ clair_pod.metadata.name }} -- \
+    {{ workingDir }}/bin/oc exec -n quay-enterprise deployment/registry-clair-app -- \
     /bin/sh -c "
       set -e
       curl -L -o /tmp/updates.json.gz http://{{ quayHostname | quote }}/clair/updates.json.gz
