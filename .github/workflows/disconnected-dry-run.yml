@@ -27,14 +27,34 @@ on:
         default: false
   pull_request:
     types: [opened, synchronize, reopened]
+    # Deployment-relevant paths. Kept in sync with the e2e filter in
+    # e2e-deployment.yml, since the dry-run exercises the same prepare/mirror
+    # pipeline. Native GitHub path filters honour "!" negation (order matters:
+    # the exclusion must follow the positive it refines), so CI-only docs under
+    # scripts/docs/** do not trigger this workflow.
     paths:
       - '.github/workflows/disconnected-dry-run.yml'
-      - 'Makefile'
-      - 'scripts/**'
       - 'playbooks/**'
+      - 'scripts/**'
+      - '!scripts/docs/**'
+      - 'src/**'
+      - 'Makefile'
+      - 'Makefile.ci'
+      - 'config/**'
       - 'defaults/**'
-      - 'plugins/**'
+      - 'schemas/**'
       - 'templates/**'
+      - 'operators/**'
+      - 'plugins/**'
+      - 'files/**'
+      - 'hack/**'
+      - 'ansible.cfg'
+      - 'ansible_collections.txt'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'bootstrap.sh'
+      - 'validations.sh'
+      - 'setup_*.sh'
 
 permissions:
   contents: read

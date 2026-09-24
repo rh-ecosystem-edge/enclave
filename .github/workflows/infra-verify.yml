@@ -32,7 +32,70 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      # This job is a required status check, so it must always run and report a
+      # conclusion (a workflow-level paths filter would leave the check pending
+      # forever on unrelated PRs and block merges). Instead we detect
+      # deployment-relevant changes here and skip the expensive steps below when
+      # nothing relevant changed, mirroring the pattern in pr-validation.yml.
+      #
+      # Positive filters use the default "some" quantifier. scripts/** is
+      # handled separately with the "every" quantifier because a negated glob
+      # (!scripts/docs/**) cannot be mixed into a "some" list without matching
+      # every path outside its target. Kept in sync with e2e-deployment.yml.
+      - name: Detect deployment-relevant changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            infra:
+              - '.github/workflows/infra-verify.yml'
+              - 'playbooks/**'
+              - 'src/**'
+              - 'Makefile'
+              - 'Makefile.ci'
+              - 'config/**'
+              - 'defaults/**'
+              - 'schemas/**'
+              - 'templates/**'
+              - 'operators/**'
+              - 'plugins/**'
+              - 'files/**'
+              - 'hack/**'
+              - 'ansible.cfg'
+              - 'ansible_collections.txt'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'bootstrap.sh'
+              - 'validations.sh'
+              - 'setup_*.sh'
+
+      - name: Detect deployment-relevant scripts changes
+        uses: dorny/paths-filter@v4
+        id: filter_scripts
+        with:
+          predicate-quantifier: every
+          filters: |
+            scripts:
+              - 'scripts/**'
+              - '!scripts/docs/**'
+
+      - name: Determine whether to run infrastructure verification
+        id: gate
+        run: |
+          # Non-PR events (merge_group, workflow_dispatch) always run.
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Event ${{ github.event_name }} - infrastructure verification will run" | tee -a $GITHUB_STEP_SUMMARY
+          elif [[ "${{ steps.filter.outputs.infra }}" == "true" || "${{ steps.filter_scripts.outputs.scripts }}" == "true" ]]; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "Deployment-relevant files changed - infrastructure verification will run" | tee -a $GITHUB_STEP_SUMMARY
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "Only documentation/unrelated files changed - infrastructure verification skipped (required check passes trivially)" | tee -a $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Generate unique cluster name
+        if: steps.gate.outputs.should_run == 'true'
         id: cluster_name
         uses: ./.github/actions/setup-cluster-name
         with:
@@ -41,11 +104,13 @@ jobs:
           run-id: ${{ github.run_id }}
 
       - name: Export cluster name to environment
+        if: steps.gate.outputs.should_run == 'true'
         run: |
           echo "ENCLAVE_CLUSTER_NAME=${{ steps.cluster_name.outputs.cluster-name }}" >> $GITHUB_ENV
           echo "Cluster name for this workflow: ${{ steps.cluster_name.outputs.cluster-name }}"
 
       - name: Setup cluster-specific working directory
+        if: steps.gate.outputs.should_run == 'true'
         env:
           BASE_WORKING_DIR: ${{ env.BASE_WORKING_DIR }}
         run: |
@@ -58,6 +123,7 @@ jobs:
           echo "STEP_LOGS_DIR=$PWD/step-logs" >> $GITHUB_ENV
 
       - name: Workflow information
+        if: steps.gate.outputs.should_run == 'true'
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
@@ -72,6 +138,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
       - name: Pre-flight checks
+        if: steps.gate.outputs.should_run == 'true'
         uses: ./.github/actions/preflight-checks
         with:
           title: Infrastructure Verification Pre-flight Checks
@@ -79,6 +146,7 @@ jobs:
           check-libvirt: 'true'
 
       - name: Create infrastructure
+        if: steps.gate.outputs.should_run == 'true'
         id: create_infra
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -113,6 +181,7 @@ jobs:
           echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 
       - name: Provision Landing Zone
+        if: steps.gate.outputs.should_run == 'true'
         id: provision_lz
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
@@ -124,6 +193,7 @@ jobs:
           echo "✅ Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Enclave Lab (Connected Mode)
+        if: steps.gate.outputs.should_run == 'true'
         id: install_enclave
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
@@ -133,20 +203,20 @@ jobs:
           ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave 2>&1 | tee step-logs/03-install-enclave.log
 
       - name: Collect step logs
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         env:
           WORKING_DIR: ${{ env.WORKING_DIR }}
         run: make -f Makefile.ci collect-step-logs
 
       - name: Collect artifacts
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         uses: ./.github/actions/collect-artifacts
         with:
           artifact-type: infra
           output-directory: ci-artifacts
 
       - name: Upload artifacts
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: infra-verify-artifacts
@@ -156,7 +226,7 @@ jobs:
           retention-days: 7
 
       - name: Cleanup infrastructure
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         run: |
           echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -176,7 +246,7 @@ jobs:
           fi
 
       - name: Collect post-cleanup state
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         run: |
           mkdir -p cleanup-state/libvirt cleanup-state/system cleanup-logs
 
@@ -190,7 +260,7 @@ jobs:
           df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
 
       - name: Verify cleanup completion
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         run: |
           echo "## Cleanup Verification" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -228,7 +298,7 @@ jobs:
           fi
 
       - name: Upload post-cleanup artifacts
-        if: always()
+        if: always() && steps.gate.outputs.should_run == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: post-cleanup-state
