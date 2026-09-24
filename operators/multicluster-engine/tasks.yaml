@@ -321,43 +321,7 @@
   delay: "{{ k8s_delay }}"
   until: r_configmap_cis_git_repo is success
 
-- name: Create AgentServiceConfig for disconnected environment
+- name: Configure AgentServiceConfig
   when: disconnected | default(true) | bool
-  vars:
-    _osimages: |
-      {% for v in openshift_versions %}
-      - cpuArchitecture: x86_64
-        openshiftVersion: "{{ v.version }}"
-        url: "http://{{ quayHostname }}/rhcos-{{ v.version }}-x86_64-live-iso.x86_64.iso"
-        version: "{{ lookup('pipe', 'blkid -s LABEL -o value /var/www/html/rhcos-' + v.version + '-x86_64-live-iso.x86_64.iso') | trim }}"
-      {% endfor %}
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: agent-install.openshift.io/v1beta1
-      kind: AgentServiceConfig
-      metadata:
-        annotations:
-          agent-install.openshift.io/enable-local-cluster-import: "true"
-          unsupported.agent-install.openshift.io/assisted-service-configmap: assisted-service-user-config
-        name: agent
-      spec:
-        mirrorRegistryRef:
-          name: custom-registries
-        databaseStorage:
-          accessModes:
-          - ReadWriteOnce
-          resources:
-            requests:
-              storage: 40Gi
-        filesystemStorage:
-          accessModes:
-          - ReadWriteOnce
-          resources:
-            requests:
-              storage: 40Gi
-        osImages: "{{ _osimages | from_yaml }}"
-  register: r_agentserviceconfig
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until: r_agentserviceconfig is success
+  ansible.builtin.include_tasks:
+    file: configure_asc.yaml
