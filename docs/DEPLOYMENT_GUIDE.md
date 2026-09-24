@@ -256,6 +256,43 @@ Phase 7: Discovery (07-configure-discovery.yaml)
   Configure hardware discovery for additional nodes
 ```
 
+### Existing Management Cluster Mode
+
+The deployment automatically detects when a management cluster already exists and skips provisioning steps:
+
+**Detection**: If `workingDir/ocp-cluster/auth/kubeconfig` exists, the deployment enters "existing management cluster" mode.
+
+**Modified workflow**:
+```text
+Phase 1: Prepare (01-prepare.yaml)
+  Download binaries and RHCOS content
+         ↓
+Phase 2: Mirror (02-mirror.yaml)          ← disconnected only
+  Deploy mirror registry, mirror images
+         ↓
+Validate: Validate existing cluster
+  Verify kubeconfig, check cluster version
+         ↓
+Phase 3: SKIPPED - management cluster already exists
+         ↓
+Phase 4: SKIPPED - cluster already configured
+         ↓
+Phase 5: Operators (05-operators.yaml)
+  Install and configure cluster operators
+         ↓
+Phase 6: Day-2 (06-day2.yaml)
+  Clair, ACM policies, model config, plugin deployment
+         ↓
+Phase 7: Discovery (07-configure-discovery.yaml)
+  Configure hardware discovery for additional nodes
+```
+
+**Use case**: This mode is ideal for focusing on Enclave's mirroring flow (quay.io → mirror-registry → quay-enterprise) when you already have a management cluster provisioned.
+
+**Setup**: Place your existing cluster's kubeconfig at `workingDir/ocp-cluster/auth/kubeconfig` before running the deployment.
+
+**Validation**: The cluster version must match `openshift_version_default` in your configuration.
+
 ### Bootstrap
 
 Before running the deployment phases, run `bootstrap.sh` to:
