@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read  # dorny/paths-filter lists changed files via the REST API on pull_request events
 
 # Cancel previous runs when a PR is updated
 concurrency:

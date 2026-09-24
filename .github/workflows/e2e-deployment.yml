@@ -125,6 +125,7 @@ on:
 permissions:
   contents: read
   checks: write
+  pull-requests: read  # dorny/paths-filter lists changed files via the REST API on pull_request events
 
 jobs:
   check-e2e-needed:
