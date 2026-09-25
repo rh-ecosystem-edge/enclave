@@ -476,6 +476,11 @@ jobs:
           make -f Makefile.ci deploy-cluster-write-migration-tasks
           echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
 
+      - name: Deploy openshift-ai plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',openshift-ai,')
+        id: deploy_openshift_ai
+        run: make -f Makefile.ci deploy-plugin PLUGIN=openshift-ai
+
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
@@ -685,6 +690,7 @@ jobs:
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
+            ["deploy_openshift_ai"]="Deploy openshift-ai plugin"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
@@ -707,6 +713,7 @@ jobs:
             bootstrap_day2
             bootstrap_discovery
             bootstrap_write_migration_tasks
+            deploy_openshift_ai
             deploy_trust_manager
             deploy_rhbk
             deploy_aap
@@ -990,6 +997,11 @@ jobs:
           make -f Makefile.ci deploy-cluster-write-migration-tasks
           echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
 
+      - name: Deploy openshift-ai plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',openshift-ai,')
+        id: deploy_openshift_ai
+        run: make -f Makefile.ci deploy-plugin PLUGIN=openshift-ai
+
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
@@ -1208,6 +1220,7 @@ jobs:
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
+            ["deploy_openshift_ai"]="Deploy openshift-ai plugin"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
@@ -1230,6 +1243,7 @@ jobs:
             bootstrap_day2
             bootstrap_discovery
             bootstrap_write_migration_tasks
+            deploy_openshift_ai
             deploy_trust_manager
             deploy_rhbk
             deploy_aap
