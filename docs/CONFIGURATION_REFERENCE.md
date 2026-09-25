@@ -1364,7 +1364,7 @@ control_binaries:
 
 **Available binaries**:
 - `openshift_client`: OpenShift CLI (`oc`)
-- `helm`: Helm CLI
+- `helm`: Helm CLI (downloaded only when a plugin that uses it is deployed — see notes)
 - `mirror_registry`: Mirror registry installer
 - `oc_mirror`: oc-mirror tool for image mirroring
 
@@ -1372,6 +1372,12 @@ control_binaries:
 - Checksums are verified after download
 - URLs should point to official Red Hat sources
 - Update version numbers as needed
+- The Helm CLI is only downloaded when a plugin that declares a `helm:` block is used.
+  All control binaries are downloaded from a single task: during the prepare phase for
+  day-0, and by the deploy-plugin playbook for day-2 (the downloads are idempotent and
+  checksum-validated, so re-running them is a no-op). Helm is fetched only when an
+  enabled plugin (day-0) or the plugin being deployed (day-2) uses it. Its URL and
+  checksum are still defined here and used for that download.
 
 ### RHCOS ISOs
 
