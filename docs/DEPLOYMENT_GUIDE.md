@@ -85,9 +85,26 @@ The following Red Hat operators are automatically installed and configured:
 
 - **Bare Metal Servers**:
   - Minimum 3 servers for control plane
-  - Redfish-compatible BMC (for hardware configuration)
+  - Redfish-compatible BMC with:
+    - **Minimum**: Redfish 1.6.0 (VirtualMedia 1.3.0 schema)
+    - **Recommended**: Redfish 1.13.0+ for full feature support (Firmware Updates, TLS Cert Injection)
+    - **Tested configurations**: See [OpenShift IPI Firmware Requirements](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installing_on_bare_metal/installer-provisioned-infrastructure#ipi-install-firmware-requirements-for-installing-with-virtual-media_ipi-install-prerequisites) for validated HP, Dell, and Cisco firmware versions
+    - **Note**: Redfish version alone doesn't guarantee compatibility—implementation quality varies significantly by vendor
   - Network connectivity to deployment host
-  - Boot from ISO capability
+  - Boot from ISO capability (via Redfish virtual media)
+
+#### Hardware Compatibility
+
+**Secure Boot Support**:
+- Requires 10th-gen HPE or 13th-gen Dell with firmware ≥ 2.75.75.75
+- Older generations may have compatibility issues with Secure Boot enabled
+
+**Recommended Baseline**:
+- HPE: iLO7 (10th gen+)
+- Dell: iDRAC9 or iDRAC10 (15th gen+)
+- Cisco/Lenovo/Supermicro/Fujitsu: Equivalent generation and Redfish support
+
+**Important**: Each vendor (HP, Dell, Cisco, Lenovo, Supermicro, Fujitsu) implements Redfish differently with vendor-specific quirks. For tested configurations, consult the [OpenShift IPI firmware requirements](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installing_on_bare_metal/installer-provisioned-infrastructure#ipi-install-firmware-requirements-for-installing-with-virtual-media_ipi-install-prerequisites).
 
 ### Software Requirements
 
@@ -133,6 +150,16 @@ The Landing Zone (deployment host) runs several services that bare metal
 nodes, BMCs, and the cluster itself must be able to reach. If `firewalld`
 (or another host firewall) is enabled on the Landing Zone, open the
 following ports:
+
+**HTTP Servers on Landing Zone**:
+
+The Landing Zone runs two separate HTTP services:
+
+1. **System httpd (port 80)**: Installed during bootstrap (`setup_env.sh`). Serves RHCOS discovery ISOs from `/var/www/html/` for manual downloads and optional discovery workflows.
+
+2. **Metal3 httpd (ports 6180/6183)**: Deployed automatically as part of the Ironic pod during cluster installation. Serves the Agent-Based Installer ISO to BMCs via Redfish virtual media for cluster deployment.
+
+Both services must be accessible from the appropriate networks (see port table below).
 
 | Service | Port | Protocol | Direction | Notes |
 |---------|------|----------|-----------|-------|
@@ -553,7 +580,7 @@ Each `agent_hosts` entry requires:
 - `macAddress`: MAC address for network identification (not required if using `networkConfig`)
 - `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
 - `redfish`: BMC IP address for Redfish API
-- `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots.
+- `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
 
 Optional fields for advanced network configuration:
 - `mapInterfaces`: List of interface name to MAC address mappings
@@ -724,6 +751,7 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
    - Verify BMC IP addresses are correct
    - Check network connectivity to BMCs
    - Verify Redfish credentials
+   - Ensure BMC firmware meets minimum requirements (see [Hardware Compatibility](#hardware-compatibility))
    - Try setting `redfish_legacy: true` for older BMCs
 
 2. **ISO Boot Failures**:
