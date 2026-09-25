@@ -159,6 +159,7 @@ jobs:
     permissions:
       contents: read
       checks: write  # required by e2e-deployment.yml for check-run updates
+      pull-requests: read  # required by e2e-deployment.yml for changed-file detection
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       run-connected: true
