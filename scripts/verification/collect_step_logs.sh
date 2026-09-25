@@ -1,5 +1,4 @@
 #!/bin/bash
-# Collect step logs from dev-scripts and cluster directories
 #
 # This script collects logs from various sources into a structured directory
 # for artifact collection. Supports both local and GitHub Actions execution.

@@ -318,9 +318,8 @@ fi
 # node-local RWO PV pins the Quay app to a single node, so a rolling update must
 # briefly run a second pod there; on constrained CI masters the default 6Gi
 # request leaves the surge pod unschedulable. Lower the memory request so the
-# rollout can complete. Gated on OPENSHIFT_CI so documented local deployments
-# (make install-enclave) keep the production defaults.
-if [ "${OPENSHIFT_CI:-}" = "true" ] && [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
+# rollout can complete.
+if [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
     LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
     mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
     # Tolerate unquoted, double-quoted and single-quoted keys (matching

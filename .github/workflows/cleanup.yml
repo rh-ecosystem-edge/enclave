@@ -163,7 +163,7 @@ jobs:
 
           # Clean up libvirt pools (if any were created)
           # Match all cluster-specific pools:
-          # - dev-scripts pools: eci-XXXXXXXX, ecd-XXXXXXXX, nc-YYYYMMDD, nd-YYYYMMDD
+          # - vm_infra.py pools: eci-XXXXXXXX, ecd-XXXXXXXX, nc-YYYYMMDD, nd-YYYYMMDD
           # - Landing Zone pools (new): eci-*-lz, ecd-*-lz, nc-*-lz, nd-*-lz
           # - Landing Zone pools (legacy): eci-*_pool, ecd-*_pool, nc-*_pool, nd-*_pool
           for pool in $(sudo virsh pool-list --all --name | grep -E "^(eci-|ecd-|nc-|nd-)([a-f0-9]{8}|[0-9]{8})(-lz|_pool)?$" || true); do

@@ -356,7 +356,7 @@ Actions tab → Select workflow → View runs
 Monitor CI machine:
 ```bash
 # Disk space
-df -h /opt/dev-scripts
+df -h /opt/clusters
 
 # RAM usage
 free -g

@@ -4,7 +4,7 @@
 # Adds CI-only infrastructure, validation, and image build targets
 
 # CI Configuration (set before include so these defaults take precedence)
-WORKING_DIR ?= /opt/dev-scripts
+WORKING_DIR ?= /opt/clusters
 
 # Cluster name for parallel execution isolation (can be overridden)
 ENCLAVE_CLUSTER_NAME ?= enclave-test
@@ -115,7 +115,7 @@ help:
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
 	@echo ""
 	@echo "Optional configuration:"
-	@echo "  WORKING_DIR        - Working directory (default: /opt/dev-scripts)"
+	@echo "  WORKING_DIR        - Working directory (default: /opt/clusters)"
 	@echo ""
 	@echo "Current values:"
 	@echo "  WORKING_DIR=$(WORKING_DIR)"
@@ -129,7 +129,6 @@ help:
 	@echo "Example workflow (full deployment):"
 	@echo "  make -f Makefile.ci validate                # Validate code quality"
 	@echo "  export BASE_WORKING_DIR=/opt/clusters"
-	@echo "  export CI_TOKEN=your-token"
 	@echo ""
 	@echo "  make -f Makefile.ci environment                # Step 1: Create infrastructure"
 	@echo "  make -f Makefile.ci provision-landing-zone     # Step 2: Install OS on Landing Zone"
@@ -140,10 +139,9 @@ help:
 	@echo "  make -f Makefile.ci ci-flow-connected          # Runs all steps above automatically"
 	@echo ""
 	@echo "Requirements for CI targets:"
-	@echo "  - git (to clone dev-scripts)"
+	@echo "  - git"
 	@echo "  - libvirt installed and running"
 	@echo "  - Sufficient resources (64GB+ RAM recommended)"
-	@echo "  - CI_TOKEN environment variable set"
 
 # --- Override deploy targets to use SSH-based scripts ---
 
@@ -477,7 +475,7 @@ verify:
 	@echo "Verifying infrastructure..."
 	@./scripts/verification/verify_infrastructure.sh
 
-# Clean up infrastructure and remove dev-scripts clone
+# Clean up infrastructure
 clean: clean-infra
 
 # Verification targets

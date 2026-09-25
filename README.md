@@ -132,11 +132,8 @@ Comprehensive documentation is available in the `docs/` folder:
 
 ### Prerequisites
 
-- **dev-scripts** installed and configured
 - **libvirt/KVM** with sufficient resources (64GB+ RAM recommended)
 - **Required tools**: uv, shellcheck, yamllint, ansible-lint, make, jq
-- **Environment variables**:
-  - `DEV_SCRIPTS_PATH`: Path to your dev-scripts installation
 
 ### Make Targets Reference
 
@@ -218,7 +215,6 @@ You can run the complete CI workflow locally to test changes before pushing:
 
 **Automatic cluster name generation:**
 ```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 # Connected mode (faster for development)
@@ -231,7 +227,6 @@ make ci-flow-disconnected
 **With custom cluster name:**
 ```bash
 export ENCLAVE_CLUSTER_NAME=my-test-cluster
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 export BASE_WORKING_DIR=/opt/clusters
 
 make ci-flow-connected
@@ -256,8 +251,6 @@ See [Local CI Testing Guide](docs/LOCAL_TESTING.md) for detailed usage.
 
 #### Test Infrastructure Creation
 ```bash
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
-
 # Create VMs, networks, and BMC emulation
 make environment
 
@@ -298,7 +291,6 @@ make deploy-cluster
 # Complete workflow from scratch
 
 # 1. Create infrastructure
-export DEV_SCRIPTS_PATH=/path/to/dev-scripts
 make environment
 
 # 2. Provision Landing Zone

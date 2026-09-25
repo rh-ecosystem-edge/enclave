@@ -28,7 +28,7 @@ This script:
 
 ### Step 2: Install CI Prerequisites (Optional)
 
-**Only needed if runners will execute full CI workflows** (libvirt, dev-scripts, etc.):
+**Only needed if runners will execute full CI workflows** (libvirt, scripts, etc.):
 
 ```bash
 sudo bash scripts/runners/install_runner_ci_requirements.sh

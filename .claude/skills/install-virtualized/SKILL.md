@@ -6,7 +6,7 @@ description: >-
   "deploy on <host>", "clean up the deployment", "tear down the cluster",
   "install plugins", "deploy plugins", "install experience", or "deploy experience".
 when_to_use: >-
-  Use for deploying Enclave on bare-metal using dev-scripts VMs, cleaning up
+  Use for deploying Enclave on bare-metal creating VMs, cleaning up
   an existing deployment, or installing day-2 addon plugins or experiences
   on a successful deployment. This skill dynamically reads the CI e2e workflow
   each time to stay in sync with the latest deployment steps.
@@ -33,7 +33,7 @@ Before starting, ensure the bare-metal host meets these minimum requirements:
 
 Requirements are validated in detail during Step 7.
 
-This skill deploys Red Hat Sovereign Enclave on a bare-metal host using dev-scripts
+This skill deploys Red Hat Sovereign Enclave on a bare-metal host
 to create virtualized infrastructure (Landing Zone VM + OpenShift master VMs).
 
 **This skill follows the CI e2e-deployment workflow exactly.** It reads the workflow
@@ -120,10 +120,10 @@ If it fails, stop and tell the user to set up passwordless SSH (e.g., `ssh-copy-
 After verifying SSH, check for existing enclave deployments on the host:
 
 ```bash
-ssh <host> "test -f /tmp/working_dir && echo WORKDIR_EXISTS; test -d ~/dev-scripts && echo DEVSCRIPTS_EXISTS; sudo -n virsh list --all --name 2>/dev/null | grep -v '^$' || true"
+ssh <host> "test -f /tmp/working_dir && echo WORKDIR_EXISTS; sudo -n virsh list --all --name 2>/dev/null | grep -v '^$' || true"
 ```
 
-If enclave artifacts are found (`/tmp/working_dir` or `~/dev-scripts` exist),
+If enclave artifacts are found (`/tmp/working_dir` exist),
 a previous enclave deployment exists on this host. This skill does not support
 multiple concurrent deployments on the same host. Show the user the list of
 running VMs regardless, for context.
@@ -366,7 +366,6 @@ host-specific or secret values that cannot be derived from the workflow.
 - `LANDINGZONE_MEMORY` (override if adjusted in Step 7)
 - `LANDINGZONE_VCPU` (override if adjusted in Step 7)
 - `PULL_SECRET` (from Step 5: `$(cat ~/.pull-secret.json)`)
-- `OPENSHIFT_CI` (CI default: `true`)
 - `CLEANUP_AFTER` (CI default: `true`)
 - `ENCLAVE_ENABLE_GPU_PASSTHROUGH` (CI default: `false`)
 - `AAP_LICENSE_FILE` (only when OSAC plugin selected, set in day-2 config)
@@ -673,7 +672,6 @@ When a step fails:
    ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'tail -50 /home/cloud-user/enclave/deployment_bootstrap_<LOG_NAME>.log 2>/dev/null'"
    ```
 3. **Analyze** — look for known patterns:
-   - `CI_TOKEN` / `No valid CI_TOKEN` → verify `OPENSHIFT_CI=true` is set
    - OOM / `Out of memory` / `Killed process` → check `free -m` and `dmesg | grep -i oom`,
      suggest lower `MASTER_MEMORY_VAL`
    - Network errors → check `sudo -n virsh net-list`

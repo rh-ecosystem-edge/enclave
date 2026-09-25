@@ -10,7 +10,7 @@
 #
 # Environment variables:
 #   ENCLAVE_CLUSTER_NAME - Cluster name (default: enclave-test)
-#   WORKING_DIR - Working directory (default: /opt/dev-scripts)
+#   WORKING_DIR - Working directory (default: /opt/clusters)
 
 set -euo pipefail
 

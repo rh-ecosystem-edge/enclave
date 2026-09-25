@@ -389,7 +389,7 @@ jobs:
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          echo "Installing required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 
@@ -898,7 +898,7 @@ jobs:
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing dev-scripts and required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
+          echo "Installing required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci install-enclave
           echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
 

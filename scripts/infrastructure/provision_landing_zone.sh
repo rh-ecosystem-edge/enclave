@@ -1,7 +1,7 @@
 #!/bin/bash
 # Provision Landing Zone VM (CentOS Stream 10 or RHEL 10)
 #
-# This script provisions the existing Landing Zone VM (created by dev-scripts)
+# This script provisions the existing Landing Zone VM
 # with a configurable cloud image (CentOS Stream 10 by default, or RHEL 10)
 # and configures it for Enclave Lab deployment.
 
@@ -41,7 +41,7 @@ OS_VARIANT="${LZ_OS_VARIANT:-centos-stream10}"
 POOL_NAME="${CLUSTER_NAME}"
 POOL_PATH="${WORKING_DIR}/pool"
 
-# Network configuration (from dev-scripts config)
+# Network configuration
 BMC_NETWORK="${PROVISIONING_NETWORK}"
 BMC_NETWORK_NAME="${PROVISIONING_NETWORK_NAME:-bmc}"
 CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
@@ -181,7 +181,6 @@ if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
 fi
 
 # Find or create storage pool for cluster-specific path
-# dev-scripts may create a pool (possibly named oooq_pool) pointing to our cluster path
 # We'll use whatever pool exists for our path, or create one if needed
 if ! sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
     info "Pool '$POOL_NAME' not found, checking if any pool uses path $POOL_PATH..."

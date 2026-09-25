@@ -45,7 +45,6 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 
 # Use utility functions
-require_env_var "DEV_SCRIPTS_PATH"
 info "Starting process..."
 success "Operation completed"
 ```
@@ -61,14 +60,12 @@ Scripts for initial environment setup, prerequisite validation, and configuratio
 | `preflight_checks.sh` | Validate environment variables and system resources before workflow execution |
 | `validate_prerequisites.sh` | Check all required tools are installed (jq, ansible, virsh, etc.) |
 | `setup_working_dir.sh` | Create and initialize cluster working directory structure |
-| `configure_devscripts.sh` | Generate dev-scripts configuration file with network settings |
 | `generate_cluster_name.sh` | Generate unique cluster name based on environment |
 
 **Typical Workflow:**
 ```bash
 make preflight-checks        # Validate environment
 make setup-working-dir       # Create working directory
-make configure-devscripts    # Generate dev-scripts config
 ```
 
 ---
@@ -79,7 +76,7 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 | Script | Purpose |
 |--------|---------|
-| `provision_landing_zone.sh` | Create Landing Zone VM using dev-scripts |
+| `provision_landing_zone.sh` | Create Landing Zone VM |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
 | `generate_environment_json.sh` | Generate infrastructure metadata (IPs, MACs, networks) |
@@ -238,7 +235,6 @@ Common environment variables used across scripts:
 | Variable | Purpose |
 |----------|---------|
 | `ENCLAVE_CLUSTER_NAME` | Cluster name (default: `enclave-test`) |
-| `DEV_SCRIPTS_PATH` | Path to dev-scripts installation |
 | `WORKING_DIR` | Cluster working directory |
 | `BASE_WORKING_DIR` | Base directory for all clusters |
 | `ENCLAVE_DEPLOYMENT_MODE` | Deployment mode: `connected` or `disconnected` |
