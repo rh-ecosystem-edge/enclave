@@ -25,6 +25,8 @@ on:
       - 'plugins/rhbk/**'
       - 'plugins/aap/**'
       - 'plugins/osac/**'
+      - 'scripts/verification/osac_smoke.sh'
+      - 'scripts/verification/run_osac_smoke.sh'
       - '.github/workflows/e2e-osac.yml'
 
 # Default to read-only token; jobs that need more request it explicitly.
