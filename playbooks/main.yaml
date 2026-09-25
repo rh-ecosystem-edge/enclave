@@ -48,8 +48,8 @@
 - name: Phase 5 - Operator installation
   ansible.builtin.import_playbook: 05-operators.yaml
 
-- name: Phase 6 - Day-2 operations
-  ansible.builtin.import_playbook: 06-day2.yaml
+#- name: Phase 6 - Day-2 operations
+#  ansible.builtin.import_playbook: 06-day2.yaml
 
 - name: Phase 7 - Configure hardware discovery
   ansible.builtin.import_playbook: 07-configure-discovery.yaml
