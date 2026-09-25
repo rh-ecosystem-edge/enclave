@@ -463,7 +463,7 @@ jobs:
   osac-values:
     name: OSAC Values Schema Validation
     needs: resolve-image
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     container:
       image: ${{ needs.resolve-image.outputs.image }}
       options: --user root
