@@ -27,8 +27,35 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
+def config_path(filename: str) -> Path:
+    """Resolve path to a config file, supporting both installed and editable installations.
+
+    Args:
+        filename: Name of the config file (e.g., "platforms.yaml")
+
+    Returns:
+        Path to the config file (may not exist)
+    """
+    # Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/ → enclave/config/
+    # Editable:  src/enclave/reconcile/cli.py → src/enclave/ (no config/) → repo_root/config/
+    enclave_pkg = Path(__file__).resolve().parent.parent
+    path = enclave_pkg / "config" / filename
+    if not path.exists():
+        path = enclave_pkg.parent.parent / "config" / filename
+    return path
+
+
 def load_openshift_versions() -> list[dict[str, object]]:
-    """Load the openshift_versions list from defaults/platforms.yaml."""
+    """Load the openshift_versions list from defaults/platforms.yaml, with optional config/platforms.yaml override.
+
+    Validates that exactly one version is marked as default.
+
+    Returns:
+        List of OpenShift version dictionaries, each with 'version' and optional 'default' fields.
+
+    Raises:
+        click.ClickException: If file not found, parse error, invalid structure, or validation fails.
+    """
     defaults_file = defaults_path("platforms.yaml")
     try:
         with defaults_file.open(encoding="utf-8") as fh:
@@ -48,6 +75,37 @@ def load_openshift_versions() -> list[dict[str, object]]:
     if not isinstance(openshift_versions, list) or not openshift_versions:
         raise click.ClickException(
             f"{defaults_file} must define a non-empty 'openshift_versions' list"
+        )
+
+    source_file = defaults_file
+
+    # Check for config override
+    config_file = config_path("platforms.yaml")
+    if config_file.exists():
+        try:
+            with config_file.open(encoding="utf-8") as fh:
+                config_platforms = yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            raise click.ClickException(
+                f"Failed to parse {config_file}: {exc}"
+            ) from exc
+
+        if isinstance(config_platforms, dict):
+            # Override with overrideOpenshiftVersions from config if present
+            override_versions = config_platforms.get("overrideOpenshiftVersions")
+            if override_versions is not None:
+                if not isinstance(override_versions, list) or not override_versions:
+                    raise click.ClickException(
+                        f"{config_file} overrideOpenshiftVersions must be a non-empty list"
+                    )
+                openshift_versions = override_versions
+                source_file = config_file
+
+    # Validate exactly one default version
+    default_versions = [v for v in openshift_versions if v.get("default") is True]
+    if len(default_versions) != 1:
+        raise click.ClickException(
+            f"{source_file} must have exactly one version with 'default: true', found {len(default_versions)}"
         )
 
     return openshift_versions
