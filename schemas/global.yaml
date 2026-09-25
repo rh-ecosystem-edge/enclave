@@ -140,6 +140,12 @@ properties:
     description: >-
       Whether to suppress schema validation task output (no_log). Default: false.
       Set to true in CI to avoid leaking secrets in logs.
+  allowNotRecommendedUpgrades:
+    type: boolean
+    default: false
+    description: >-
+      Allow management cluster upgrades to not-recommended OpenShift versions.
+      When true, passes --allow-not-recommended to the upgrade command.
   sshPubPath:
     "$ref": "#/definitions/nonEmptyString"
   workingDir:
