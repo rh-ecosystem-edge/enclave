@@ -4,7 +4,7 @@
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
-osacChartVersion: "0.0.19-nightly.20260919.d6ac462.100.1"
+osacChartVersion: "0.0.21-nightly.20260923.6f8db92.107.1"
 
 # Default profile pairs caas with bmaas (not vmaas): the chart requires caas to
 # be paired with a compute backend (vmaas or bmaas), and bmaas needs no cluster
