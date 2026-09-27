@@ -238,7 +238,7 @@ def upgrade_cluster(
     upgrade_command = [
         "oc",
         "adm",
-        "upgtade",
+        "upgrade",
         "--to",
         desired_version
     ]
