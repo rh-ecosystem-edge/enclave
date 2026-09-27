@@ -258,7 +258,7 @@ wheels = [
 
 [[package]]
 name = "certbot"
-version = "5.7.0"
+version = "5.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "acme" },
@@ -271,9 +271,9 @@ dependencies = [
     { name = "pyrfc3339" },
     { name = "pywin32", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2d/1a/eb1d1ff8682fbfcf7089f5e0cad80c259646f44cc85ce9d3533af901b3e6/certbot-5.7.0.tar.gz", hash = "sha256:c896a0aa3fe1fa1e344002d4a24a5934889a88b8759f41a22b4dcfe5a8e27b94", size = 704446, upload-time = "2026-07-15T17:40:27.455Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/29/fbf5127d2b8d178d7add2b9145560436a69b437045c6197a4b6edbfcbb3c/certbot-5.8.0.tar.gz", hash = "sha256:a4a2c7b0459bb626b3791ef07b6df26bbb222d2324783ba3e60f76c0933eec87", size = 708523, upload-time = "2026-09-01T21:15:48.114Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/70/b874a4aacc016f9136bd63d3ef6d23d0066759bfb4cbae4d7559c4f2b1a0/certbot-5.7.0-py3-none-any.whl", hash = "sha256:7e5e8f023c5eb4753f4b74f97c26ddd57e43493e82b76eeefb741c120a7d49b6", size = 780839, upload-time = "2026-07-15T17:40:08.913Z" },
+    { url = "https://files.pythonhosted.org/packages/71/a9/7742882b276c06e430fb23da13e4512b3cd89d4aa6fb9ddfd7b96812bbff/certbot-5.8.0-py3-none-any.whl", hash = "sha256:c06793e6a0169b07ee09e11e6a017c7d5a77310055d693fffd66c53363ab87ff", size = 781034, upload-time = "2026-09-01T21:15:35.532Z" },
 ]
 
 [[package]]
@@ -539,7 +539,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 cert-gen = [
-    { name = "certbot", specifier = "==5.7.0" },
+    { name = "certbot", specifier = "==5.8.0" },
     { name = "certbot-dns-hetzner", specifier = "==4.0.0" },
 ]
 dev = [

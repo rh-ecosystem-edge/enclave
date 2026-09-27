@@ -40,7 +40,7 @@ dev = [
     "yamllint ==1.38.0",
 ]
 cert-gen = [
-    "certbot ==5.7.0",
+    "certbot ==5.8.0",
     "certbot-dns-hetzner ==4.0.0",
 ]
 
