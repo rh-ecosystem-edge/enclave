@@ -235,13 +235,15 @@ def upgrade_cluster(
     # Calculate shared deadline for both wait operations
     deadline = time.time() + (timeout_minutes * 60)
 
-    result = run_oc_command([
+    upgrade_command = [
         "oc",
         "adm",
         "upgtade",
         "--to",
         desired_version
-    ])
+    ]
+
+    result = run_oc_command(upgrade_command)
     if result.returncode != 0:
         header = f"oc adm upgrade to {desired_version} failed (exit {result.returncode})"
         if result.stderr:
