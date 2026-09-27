@@ -226,36 +226,30 @@ def check_cluster_operators_ready() -> tuple[bool, list[str]]:
 def upgrade_cluster(
     desired_version: str, timeout_minutes: int = 180, sleep_interval: int = 60
 ) -> None:
-    """Patch ClusterVersion to trigger an upgrade and wait for it to complete.
+    """Trigger Cluster upgrade and wait for it to complete.
 
     The timeout applies to the entire upgrade operation (both wait phases combined).
     """
-    logger.info("Patching clusterversion to desired_version=%s", desired_version)
+    logger.info("Upgrading cluster to desired_version=%s", desired_version)
 
     # Calculate shared deadline for both wait operations
     deadline = time.time() + (timeout_minutes * 60)
 
-    patch_payload = json.dumps({
-        "spec": {"desiredUpdate": {"version": desired_version}}
-    })
     result = run_oc_command([
         "oc",
-        "patch",
-        "clusterversion.config.openshift.io",
-        "version",
-        "--type",
-        "merge",
-        "-p",
-        patch_payload,
+        "adm",
+        "upgtade",
+        "--to",
+        desired_version
     ])
     if result.returncode != 0:
-        header = f"oc patch clusterversion to {desired_version} failed (exit {result.returncode})"
+        header = f"oc adm upgrade to {desired_version} failed (exit {result.returncode})"
         if result.stderr:
             log_subprocess_output(f"{header} [stderr]", result.stderr, logging.ERROR)
         if result.stdout:
             log_subprocess_output(f"{header} [stdout]", result.stdout, logging.ERROR)
         raise RuntimeError(
-            f"oc patch clusterversion to {desired_version} failed (exit {result.returncode})"
+            f"oc adm upgrade to {desired_version} failed (exit {result.returncode})"
         )
 
     # First wait: desired.version update
