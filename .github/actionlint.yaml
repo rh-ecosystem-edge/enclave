@@ -4,4 +4,5 @@ self-hosted-runner:
     - pr-validation-aws   # Fast validation jobs
     - enclave-small       # For cleanup infra, not needed in aws
     - enclave-small-aws   # Medium jobs like infra-verify
-    - enclave-large   # Long-running E2E jobs
+    - enclave-large-aws          # Large nested-virt E2E jobs (PR-context and nightly)
+    - odf                        # ODF disconnected E2E (Ceph-capable servers)

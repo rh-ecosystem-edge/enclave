@@ -7,7 +7,7 @@ This document describes the containerized Ceph cluster used to provide external 
 ODF in external mode connects to a pre-existing Ceph cluster rather than deploying its own. For CI, we run a single-node Ceph cluster on the Landing Zone VM using cephadm. All Ceph daemons run as podman containers on the LZ, which shares the same libvirt network as the OpenShift nodes.
 
 ```text
-CI Runner Machine (runs: [self-hosted, enclave-large])
+CI Runner Machine (runs: [self-hosted, odf])
 ├── libvirt VMs
 │   ├── Landing Zone VM (192.168.X.2)
 │   │   ├── Ceph cluster (cephadm, podman containers)
@@ -168,7 +168,7 @@ No GitHub secrets needed. Config is generated and consumed within the same CI ru
 
 ### Runner Labels
 
-ODF runs use the runner labels `[self-hosted, enclave-large, odf]`. The `odf` label ensures ODF jobs are routed to runners with sufficient disk space for Ceph loopback OSDs.
+ODF runs use the runner labels `[self-hosted, odf]`. The `odf` label ensures ODF jobs are routed to runners with sufficient disk space for Ceph loopback OSDs. Unlike the other E2E jobs (which run on the `enclave-large-aws` AWS pool), ODF stays on the dedicated `odf` servers, since it needs a Ceph-capable instance type.
 
 ### Ceph Setup Step
 

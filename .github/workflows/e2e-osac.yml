@@ -165,7 +165,9 @@ jobs:
       run-connected: true
       run-disconnected: false
       enabled-plugins: 'lvms,trust-manager,rhbk,aap,osac'
-      aap-license-file: '/etc/enclave-ci/aap-license.zip'
+      # Workspace-relative path the deployment job downloads the license to from
+      # the enclave-ci-infra runner-secret-files S3 bucket (see e2e-deployment.yml).
+      aap-license-file: 'aap-license.zip'
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
       workflow-display-name: 'E2E OSAC'

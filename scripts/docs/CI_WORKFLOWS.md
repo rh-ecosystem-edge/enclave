@@ -137,7 +137,9 @@ make validate
 
 **Duration**: ~90-120 minutes (connected), ~180-360 minutes (disconnected)
 
-**Runs on**: Self-hosted runner (`enclave-large`)
+**Runs on**: Self-hosted AWS runners — `enclave-large-aws`, one flat pool serving
+all non-ODF E2E (PR, merge queue, manual dispatch, OSAC PR, and scheduled/nightly).
+ODF disconnected runs stay on the standalone `odf` runners (see ODF_CEPH_CI.md).
 
 ### Jobs
 

@@ -275,7 +275,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       needs.check-e2e-needed.outputs.run_connected == 'true'
-    runs-on: [self-hosted, enclave-large]
+    runs-on: [self-hosted, enclave-large-aws]
     timeout-minutes: 210
 
     strategy:
@@ -303,6 +303,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      # OSAC deployments need the AAP license on the runner to copy into the
+      # landing-zone VM. It is stored out of band in the enclave-ci-infra
+      # runner-secret-files S3 bucket (SSE-KMS) and pulled here at job time via the
+      # runner instance role over IMDS (no credentials in the workflow). Runs only
+      # when a license path is requested (OSAC); other callers pass an empty value.
+      - name: Fetch AAP license
+        if: inputs.aap-license-file != ''
+        run: |
+          dest="${GITHUB_WORKSPACE}/${AAP_LICENSE_FILE}"
+          aws s3 cp "s3://enclave-ci-runner-secret-files/aap-license.zip" "$dest" --region us-east-1
+          echo "AAP_LICENSE_FILE=${dest}" >> "$GITHUB_ENV"
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
@@ -763,7 +775,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       needs.check-e2e-needed.outputs.run_disconnected == 'true'
-    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large", "odf"]') || fromJSON('["self-hosted", "enclave-large"]') }}
+    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "odf"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
     strategy:
@@ -792,6 +804,18 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      # OSAC deployments need the AAP license on the runner to copy into the
+      # landing-zone VM. It is stored out of band in the enclave-ci-infra
+      # runner-secret-files S3 bucket (SSE-KMS) and pulled here at job time via the
+      # runner instance role over IMDS (no credentials in the workflow). Runs only
+      # when a license path is requested (OSAC); other callers pass an empty value.
+      - name: Fetch AAP license
+        if: inputs.aap-license-file != ''
+        run: |
+          dest="${GITHUB_WORKSPACE}/${AAP_LICENSE_FILE}"
+          aws s3 cp "s3://enclave-ci-runner-secret-files/aap-license.zip" "$dest" --region us-east-1
+          echo "AAP_LICENSE_FILE=${dest}" >> "$GITHUB_ENV"
 
       - name: Generate unique cluster name
         uses: ./.github/actions/setup-cluster-name
