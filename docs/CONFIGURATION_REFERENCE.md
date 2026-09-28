@@ -11,8 +11,9 @@ Configuration is split across multiple files for better organization and maintai
 | `config/global.yaml` | Main configuration file with cluster, network, hardware, registry, and pull secret settings |
 | `config/certificates.yaml` | SSL certificates for the API server and Ingress |
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
+| `config/platforms.yaml` | Platform configuration overrides (optional, overrides `defaults/platforms.yaml`) |
 | `defaults/operators.yaml` | General cluster operators configuration |
-| `defaults/platforms.yaml` | Available OpenShift versions |
+| `defaults/platforms.yaml` | Platform defaults: Available OpenShift versions and upgrade behavior |
 | `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
@@ -27,6 +28,8 @@ Copy the example files to get started:
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
 cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+# Optional: Override platform defaults (e.g. allow not-recommended upgrades):
+cp config/platforms.example.yaml config/platforms.yaml
 # For plugin-specific config (e.g. restrict which disks LVMS manages):
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
@@ -51,12 +54,14 @@ All configuration files in the `defaults/` directory are automatically loaded by
    - [Ironic HTTPS Certificate](#ironic-https-certificate-optional)
 3. [`config/cloud_infra.yaml`](#configcloud_infrayaml)
    - [Discovery Hosts Configuration](#discovery-hosts-configuration)
-4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
+4. [`config/platforms.yaml`](#configplatformsyaml)
+   - [Allow Not Recommended Upgrades](#allownotrecommendedupgrades)
+5. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
    - [LVMS Configuration](#lvms-configuration)
-5. [System Defaults (read-only)](#system-defaults-read-only)
-6. [Complete Example](#complete-example)
-7. [Security Best Practices](#security-best-practices)
-8. [Validation](#validation)
+6. [System Defaults (read-only)](#system-defaults-read-only)
+7. [Complete Example](#complete-example)
+8. [Security Best Practices](#security-best-practices)
+9. [Validation](#validation)
 
 ## `config/global.yaml`
 
@@ -760,6 +765,7 @@ quayPinnedImageSetEnabled: true
 - Set to `true` to enable post-mirror prefetch pinning.
 - This setting is ignored when `mirror_dry_run` is enabled.
 
+
 #### Pull Secrets
 
 ##### `pullSecret`
@@ -1254,6 +1260,36 @@ These are used to configure the network interface on each discovered node.
 3. Creates NMStateConfig, BareMetalHost, and BMC credential secret for new hosts
 4. Waits for BareMetalHost to report "provisioned" state
 5. Waits for agents to register
+
+## `config/platforms.yaml`
+
+Platform configuration overrides (optional). This file allows you to override platform defaults from `defaults/platforms.yaml`. Copy from the example template before editing:
+
+```bash
+cp config/platforms.example.yaml config/platforms.yaml
+```
+
+### `allowNotRecommendedUpgrades`
+
+**Description**: Controls whether management cluster upgrades are allowed to target OpenShift versions that are not recommended by Red Hat.
+
+**Type**: Boolean (optional)
+
+**Default**: `false` (defined in `defaults/platforms.yaml`)
+
+**Example**:
+```yaml
+# config/platforms.yaml
+allowNotRecommendedUpgrades: true
+```
+
+**Notes**:
+- When `true`, the upgrade process will set `allowNotRecommended: true` in the ClusterVersion patch, allowing upgrades to versions in `conditionalUpdates` that may have known risks
+- When `false` (default), only versions in `availableUpdates` (recommended by Red Hat) are allowed
+- **WARNING**: It is strongly recommended to follow Red Hat supported upgrade paths. Use this option only when necessary and at your own risk
+- This setting is used by `playbooks/upgrade.yaml` during management cluster upgrades
+- Can also be set via CLI: `enclave reconcile mgmt-cluster-version --allow-not-recommended`
+- Can be overridden in `config/platforms.yaml` or `config/global.yaml` (both override `defaults/platforms.yaml`)
 
 ## `config/plugins/<name>.yaml`
 
