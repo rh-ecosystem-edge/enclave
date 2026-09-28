@@ -6,19 +6,10 @@ type: object
 additionalProperties: false
 properties:
   openshift_versions:
-    type: array
-    minItems: 1
-    items:
-      type: object
-      additionalProperties: false
-      properties:
-        version:
-          type: string
-          description: OpenShift version to be available
-        default:
-          type: boolean
-          description: Default OpenShift version
-      required:
-      - version
-required:
-- openshift_versions
+    "$ref": "#/definitions/openshiftVersionsList"
+  overrideOpenshiftVersions:
+    "$ref": "#/definitions/openshiftVersionsList"
+    description: "Consumer override for openshift_versions from defaults/platforms.yaml (config/platforms.yaml only)"
+oneOf:
+- required: [openshift_versions]
+- required: [overrideOpenshiftVersions]

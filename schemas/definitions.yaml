@@ -79,6 +79,22 @@ definitions:
     type: string
     pattern: "^/"
     description: Path for backend storage
+  openshiftVersionsList:
+    type: array
+    minItems: 1
+    description: List of OpenShift versions with exactly one marked as default
+    items:
+      type: object
+      additionalProperties: false
+      properties:
+        version:
+          type: string
+          description: OpenShift version to be available
+        default:
+          type: boolean
+          description: Default OpenShift version
+      required:
+      - version
   hostEntry:
     type: object
     description: Host entry for cluster or discovery nodes
