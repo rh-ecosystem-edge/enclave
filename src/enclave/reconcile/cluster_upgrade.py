@@ -277,7 +277,7 @@ def upgrade_cluster(
 
     upgrade_command = ["oc", "adm", "upgrade", "--to", desired_version]
     if allow_not_recommended:
-        upgrade_command += "--allow-not-recommended"
+        upgrade_command += ["--allow-not-recommended"]
 
     result = run_oc_command(upgrade_command)
     if result.returncode != 0:
