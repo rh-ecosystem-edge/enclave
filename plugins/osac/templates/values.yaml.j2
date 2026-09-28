@@ -17,32 +17,34 @@ global:
       enabled: false
 {% set _osac_net = osacNetworking | default({}) %}
 {% set _osac_fabric = _osac_net.fabricManager | default('') %}
-{% set _osac_k8s = _osac_net.k8sManager | default('k8s_only') %}
+{# When fabricManager=netris, omit/default k8sManager to "" — not k8s_only
+   (Ansible include_vars replaces the whole osacNetworking mapping). #}
+{% set _osac_k8s = _osac_net.k8sManager | default('' if _osac_fabric == 'netris' else 'k8s_only') %}
   networking:
-    fabricManager: "{{ _osac_fabric }}"
-    k8sManager: "{{ _osac_k8s }}"
+    fabricManager: {{ _osac_fabric | to_json }}
+    k8sManager: {{ _osac_k8s | to_json }}
 {% if _osac_fabric == 'netris' and _osac_net.netris is defined %}
 {% set _osac_netris = _osac_net.netris %}
     netris:
-      controllerUrl: "{{ _osac_netris.controllerUrl }}"
+      controllerUrl: {{ _osac_netris.controllerUrl | to_json }}
       credentials:
-        username: "{{ _osac_netris.credentials.username }}"
+        username: {{ _osac_netris.credentials.username | to_json }}
 {% if _osac_netris.credentials.externalSecret is defined and (_osac_netris.credentials.externalSecret | bool) %}
         externalSecret: true
 {% else %}
-        password: "{{ _osac_netris.credentials.password }}"
+        password: {{ _osac_netris.credentials.password | to_json }}
 {% endif %}
-      siteId: "{{ _osac_netris.siteId }}"
-      tenantId: "{{ _osac_netris.tenantId }}"
-      tenantName: "{{ _osac_netris.tenantName }}"
+      siteId: {{ _osac_netris.siteId | to_json }}
+      tenantId: {{ _osac_netris.tenantId | to_json }}
+      tenantName: {{ _osac_netris.tenantName | to_json }}
 {% if _osac_netris.mgmtVpcId is defined %}
-      mgmtVpcId: "{{ _osac_netris.mgmtVpcId }}"
+      mgmtVpcId: {{ _osac_netris.mgmtVpcId | to_json }}
 {% endif %}
 {% if _osac_netris.mgmtVpcName is defined %}
-      mgmtVpcName: "{{ _osac_netris.mgmtVpcName }}"
+      mgmtVpcName: {{ _osac_netris.mgmtVpcName | to_json }}
 {% endif %}
 {% if _osac_netris.resourceClassMap is defined %}
-      resourceClassMap: '{{ _osac_netris.resourceClassMap }}'
+      resourceClassMap: {{ _osac_netris.resourceClassMap | to_json }}
 {% endif %}
 {% endif %}
 {% if _osac_net.networkClass is defined %}
