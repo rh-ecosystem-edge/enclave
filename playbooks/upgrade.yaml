@@ -25,13 +25,18 @@
     - name: Run metal3 upgrade tasks
       ansible.builtin.include_tasks: tasks/upgrade/metal3-components.yaml
 
+    - name: Build management cluster upgrade arguments
+      ansible.builtin.set_fact:
+        mgmt_cluster_upgrade_argv: >-
+          {{
+            ['enclave', 'reconcile', 'mgmt-cluster-version', '--use-defaults']
+            + (['--allow-not-recommended'] if (allowNotRecommendedUpgrades | default(false) | bool) else [])
+          }}
+      when: upgrade_mgmt_cluster | default(true) | bool
+
     - name: Upgrade management cluster OpenShift version
       ansible.builtin.command:
-        argv:
-          - enclave
-          - reconcile
-          - mgmt-cluster-version
-          - --use-defaults
+        argv: "{{ mgmt_cluster_upgrade_argv }}"
       register: r_mgmt_cluster_upgrade
       when: upgrade_mgmt_cluster | default(true) | bool
 

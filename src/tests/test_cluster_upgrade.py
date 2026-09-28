@@ -5,6 +5,7 @@ from pytest_mock import MockerFixture
 
 from enclave.reconcile.cluster_upgrade import (
     ClusterOperatorsNotReadyError,
+    ClusterVersionQueryError,
     InvalidVersionError,
     UpdateGraphUnavailableError,
     VersionDowngradeError,
@@ -12,6 +13,7 @@ from enclave.reconcile.cluster_upgrade import (
     check_cluster_operators_ready,
     get_available_versions,
     get_cluster_operators,
+    get_conditional_updates,
     get_current_version,
     parse_version,
     reconcile,
@@ -188,6 +190,60 @@ def test_get_available_versions_invalid_json_empty_stdout(
     )
     with pytest.raises(RuntimeError):
         get_available_versions()
+
+
+# ---------------------------------------------------------------------------
+# get_conditional_updates
+# ---------------------------------------------------------------------------
+
+
+def test_get_conditional_updates_from_fixture(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Real cluster data returns conditional update versions."""
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout=fxt.get_json("clusterversion.yaml")),
+    )
+    versions = get_conditional_updates()
+    assert "4.20.19" in versions
+    assert "4.20.18" in versions
+
+
+def test_get_conditional_updates_null_returns_empty(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """A null conditionalUpdates field returns an empty list."""
+    payload = '{"status": {"conditionalUpdates": null}}'
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout=payload),
+    )
+    assert get_conditional_updates() == []
+
+
+def test_get_conditional_updates_missing_returns_empty(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Missing conditionalUpdates field returns an empty list."""
+    payload = '{"status": {}}'
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout=payload),
+    )
+    assert get_conditional_updates() == []
+
+
+def test_get_conditional_updates_oc_failure(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """A non-zero exit code from oc raises ClusterVersionQueryError."""
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.run_oc_command",
+        return_value=oc_result(stdout="", returncode=1),
+    )
+    with pytest.raises(ClusterVersionQueryError):
+        get_conditional_updates()
 
 
 # ---------------------------------------------------------------------------
@@ -426,8 +482,56 @@ def test_reconcile_performs_upgrade(mocker: MockerFixture) -> None:
     mock_upgrade = _patch_reconcile_deps(
         mocker, current="4.20.16", available=["4.20.17"]
     )
+    allow_not_recommended = False
     reconcile("4.20.17", dry_run=False)
-    mock_upgrade.assert_called_once_with("4.20.17", 180, 60)
+    mock_upgrade.assert_called_once_with("4.20.17", 180, 60, allow_not_recommended)
+
+
+def test_reconcile_allow_not_recommended_checks_conditional_updates(
+    mocker: MockerFixture,
+) -> None:
+    """When allow_not_recommended is True and version not in availableUpdates, check conditionalUpdates."""
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_current_version", return_value="4.20.16"
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_available_versions",
+        return_value=["4.20.17"],  # 4.20.18 not in available
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_conditional_updates",
+        return_value=["4.20.18", "4.20.19"],  # but is in conditional
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.check_cluster_operators_ready",
+        return_value=(True, []),
+    )
+    mock_upgrade = mocker.patch("enclave.reconcile.cluster_upgrade.upgrade_cluster")
+    allow_not_recommended = True
+    reconcile("4.20.18", dry_run=False, allow_not_recommended=allow_not_recommended)
+    mock_upgrade.assert_called_once_with("4.20.18", 180, 60, allow_not_recommended)
+
+
+def test_reconcile_allow_not_recommended_rejects_version_not_in_either_list(
+    mocker: MockerFixture,
+) -> None:
+    """When version is in neither availableUpdates nor conditionalUpdates, it's rejected."""
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_current_version", return_value="4.20.16"
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_available_versions",
+        return_value=["4.20.17"],
+    )
+    mocker.patch(
+        "enclave.reconcile.cluster_upgrade.get_conditional_updates",
+        return_value=["4.20.18"],
+    )
+    with pytest.raises(VersionNotAvailableError) as exc_info:
+        reconcile("4.20.99", dry_run=False, allow_not_recommended=True)
+    # Error message should include both available and conditional versions
+    assert "4.20.17" in str(exc_info.value)
+    assert "4.20.18" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

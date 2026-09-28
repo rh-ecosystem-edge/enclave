@@ -12,7 +12,7 @@ Configuration is split across multiple files for better organization and maintai
 | `config/certificates.yaml` | SSL certificates for the API server and Ingress |
 | `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
 | `defaults/operators.yaml` | General cluster operators configuration |
-| `defaults/platforms.yaml` | Available OpenShift versions |
+| `defaults/platforms.yaml` | Platform defaults: Available OpenShift versions and upgrade behavior |
 | `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
 | `defaults/control_binaries.yaml` | URLs and checksums for required binaries (oc, helm, etc.) |
 | `defaults/catalogs.yaml` | Operator catalog source name mappings |
