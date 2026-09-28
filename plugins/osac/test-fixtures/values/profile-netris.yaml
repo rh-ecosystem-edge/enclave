@@ -1,35 +1,22 @@
 ---
-# Profile: Netris network backend
+# Profile: Netris network backend (global.networking facade)
 #
-# Exercises the aap.instanceGroups.clusterFulfillment / networkFulfillment
-# blocks. Config toggles only; see profile-default.yaml. Includes the optional
-# Netris keys so their template branches are rendered too.
+# Exercises osacNetworking → Helm global.networking plus AAP IG enable flags.
+# Does not dual-write AAP NETRIS_* (chart derives those from the facade).
 osac_profile_name: netris
-osacNetrisEnabled: true
-osacNetrisControllerUrl: "https://netris.placeholder.example.com"
-osacNetrisUsername: admin
-osacNetrisPassword: placeholder
-osacNetrisSiteId: "1"
-osacNetrisTenantId: "1"
-osacNetrisTenantName: default
+osacNetworking:
+  fabricManager: netris
+  k8sManager: ""
+  netris:
+    controllerUrl: "https://netris.placeholder.example.com"
+    credentials:
+      username: admin
+      password: placeholder
+    siteId: "1"
+    tenantId: "1"
+    tenantName: default
+    mgmtVpcId: "1"
+    mgmtVpcName: mgmt
+    resourceClassMap: '{"default": "default"}'
 osacDnsClass: dns.route53.dns
 osacDnsZone: placeholder.example.com
-osacNetrisStepsCollection: netris.steps
-osacNetrisMgmtVpcId: "1"
-osacNetrisMgmtVpcName: mgmt
-osacNetrisResourceClassMap: '{"default": "default"}'
-osacNetrisSshBastionHost: bastion.placeholder.example.com
-osacNetrisSshBastionUser: bastion
-osacNetrisSshUser: netris
-osacNetrisMgmtRouteDestination: 0.0.0.0/0
-osacNetrisMgmtRouteGateway: 10.0.0.1
-osacNetrisExternalAccessBaseDomain: ext.placeholder.example.com
-osacNetrisExternalAccessSupportedBaseDomains: ext.placeholder.example.com
-osacNetrisExternalAccessApiInternalNetwork: 10.0.0.0/24
-osacNetrisHostedClusterBaseDomain: hc.placeholder.example.com
-osacNetrisHostedClusterControllerAvailabilityPolicy: SingleReplica
-osacNetrisHostedClusterInfrastructureAvailabilityPolicy: SingleReplica
-osacNetrisAwsAccessKeyId: placeholder
-osacNetrisAwsSecretAccessKey: placeholder
-osacNetrisSshKey: placeholder-ssh-key
-osacNetrisSshBastionKey: placeholder-bastion-key

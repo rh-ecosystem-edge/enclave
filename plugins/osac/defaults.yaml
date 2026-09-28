@@ -1,6 +1,6 @@
 ---
 # OSAC plugin defaults
-# Note: config/plugins/osac.yaml uses camelCase (osacProfilesList, osacBYODatabase, osacNetrisEnabled)
+# Note: config/plugins/osac.yaml uses camelCase (osacProfilesList, osacBYODatabase, osacNetworking)
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
@@ -19,8 +19,10 @@ osacProfilesList:
 # Test users (opt-in for dev/test environments)
 osacTestUsers: false
 
-# Netris network backend
-osacNetrisEnabled: false
+# Networking facade → Helm global.networking (installer $defs/globalNetworking)
+osacNetworking:
+  fabricManager: ""
+  k8sManager: "k8s_only"
 
 # BCM inventory backend
 osacBcmEnabled: false

@@ -46,53 +46,44 @@
 #   aap_bootstrap: "ghcr.io/osac-project/osac-aap:v0.0.4"
 #   cli: "quay.io/openshift/origin-cli:4.20.0"
 
-# --- Netris Network Backend ---
-# Enable Netris integration for cluster and network fulfillment.
-# Requires a pre-deployed Netris controller (see Netris + OSAC Prerequisites Guide).
-# osacNetrisEnabled: true
-
-# Required when osacNetrisEnabled is true:
-# osacNetrisControllerUrl: "https://ctl.netris.io"
-# osacNetrisUsername: "netris"
-# osacNetrisPassword: "changeme"
-# osacNetrisSiteId: "1"
-# osacNetrisTenantId: "1"
-# osacNetrisTenantName: "Admin"
-
-# Optional: DNS configuration
+# --- Networking (global.networking facade) ---
+# Maps to Helm global.networking (osac-installer $defs/globalNetworking).
+# See docs/OSAC_DEPLOYMENT.md and:
+# https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md
+#
+# Default (agentless / k8s_only) — also the plugin defaults:
+# osacNetworking:
+#   fabricManager: ""
+#   k8sManager: "k8s_only"
+#
+# Netris fabric manager (inline password — preferred for wizard-driven deploys):
+# osacNetworking:
+#   fabricManager: "netris"
+#   k8sManager: ""
+#   netris:
+#     controllerUrl: "https://ctl.netris.io"
+#     credentials:
+#       username: "netris"
+#       password: "changeme"
+#     siteId: "1"
+#     tenantId: "1"
+#     tenantName: "Admin"
+#     # Optional facade extras (networkingNetris only):
+#     # mgmtVpcId: "4"
+#     # mgmtVpcName: "RH-Infra"
+#     # resourceClassMap: '{"fc430": {"server_cluster_template_id": 89, "mgmt_interface": "ens4", "vpc_interfaces": ["ens13"]}}'
+#   # Optional NetworkClass overrides (CIDRs / NAT / egressRules):
+#   # networkClass:
+#   #   defaults:
+#   #     enableNatGateway: true
+#
+# Expert-only fields that used to live under flat osacNetris* (SSH keys, AWS
+# keys, hosted-cluster domains, …) are NOT part of osacNetworking — configure
+# them via aap.instanceGroups + global.expertOverrides.aap if needed.
+#
+# Optional DNS (still set on AAP IGs when Netris is selected):
 # osacDnsClass: "dns.route53.dns"
 # osacDnsZone: "example.com"
-
-# Optional Netris config:
-# osacNetrisStepsCollection: "netris.steps"
-# osacNetrisMgmtVpcId: "4"
-# osacNetrisMgmtVpcName: "RH-Infra"
-# osacNetrisResourceClassMap: '{"fc430": {"server_cluster_template_id": 89, "mgmt_interface": "ens4", "vpc_interfaces": ["ens13"]}}'
-# osacNetrisSshBastionHost: "bastion.example.com"
-# osacNetrisSshBastionUser: "ubuntu"
-# osacNetrisSshUser: "core"
-# osacNetrisMgmtRouteDestination: "10.8.0.0/30"
-# osacNetrisMgmtRouteGateway: "192.168.16.1"
-# osacNetrisExternalAccessBaseDomain: "example.com"
-# osacNetrisExternalAccessSupportedBaseDomains: "example.com"
-# osacNetrisExternalAccessApiInternalNetwork: "hypershift"
-# osacNetrisHostedClusterBaseDomain: "example.com"
-# osacNetrisHostedClusterControllerAvailabilityPolicy: "HighlyAvailable"
-# osacNetrisHostedClusterInfrastructureAvailabilityPolicy: "HighlyAvailable"
-
-# AWS Route53 credentials for DNS record management:
-# osacNetrisAwsAccessKeyId: "AKIA..."
-# osacNetrisAwsSecretAccessKey: ""
-
-# SSH keys for server management (multiline, use YAML literal block):
-# osacNetrisSshKey: |
-#   -----BEGIN OPENSSH PRIVATE KEY-----
-#   ...
-#   -----END OPENSSH PRIVATE KEY-----
-# osacNetrisSshBastionKey: |
-#   -----BEGIN OPENSSH PRIVATE KEY-----
-#   ...
-#   -----END OPENSSH PRIVATE KEY-----
 
 # --- BCM Inventory Backend ---
 # Enable BCM (NVIDIA Base Command Manager) integration for bare metal fulfillment.

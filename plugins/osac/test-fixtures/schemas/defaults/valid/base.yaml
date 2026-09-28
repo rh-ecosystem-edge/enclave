@@ -20,7 +20,9 @@ osac_keycloak_service_port: 8443
 osac_keycloak_validate_certs: true
 
 osacTestUsers: false
-osacNetrisEnabled: false
+osacNetworking:
+  fabricManager: ""
+  k8sManager: "k8s_only"
 osacBcmEnabled: false
 osacMetal3Enabled: false
 

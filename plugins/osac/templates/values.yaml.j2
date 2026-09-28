@@ -15,6 +15,40 @@ global:
       enabled: {{ ('bmaas' in osacProfilesList) | lower }}
     maas:
       enabled: false
+{% set _osac_net = osacNetworking | default({}) %}
+{% set _osac_fabric = _osac_net.fabricManager | default('') %}
+{% set _osac_k8s = _osac_net.k8sManager | default('k8s_only') %}
+  networking:
+    fabricManager: "{{ _osac_fabric }}"
+    k8sManager: "{{ _osac_k8s }}"
+{% if _osac_fabric == 'netris' and _osac_net.netris is defined %}
+{% set _osac_netris = _osac_net.netris %}
+    netris:
+      controllerUrl: "{{ _osac_netris.controllerUrl }}"
+      credentials:
+        username: "{{ _osac_netris.credentials.username }}"
+{% if _osac_netris.credentials.externalSecret is defined and (_osac_netris.credentials.externalSecret | bool) %}
+        externalSecret: true
+{% else %}
+        password: "{{ _osac_netris.credentials.password }}"
+{% endif %}
+      siteId: "{{ _osac_netris.siteId }}"
+      tenantId: "{{ _osac_netris.tenantId }}"
+      tenantName: "{{ _osac_netris.tenantName }}"
+{% if _osac_netris.mgmtVpcId is defined %}
+      mgmtVpcId: "{{ _osac_netris.mgmtVpcId }}"
+{% endif %}
+{% if _osac_netris.mgmtVpcName is defined %}
+      mgmtVpcName: "{{ _osac_netris.mgmtVpcName }}"
+{% endif %}
+{% if _osac_netris.resourceClassMap is defined %}
+      resourceClassMap: '{{ _osac_netris.resourceClassMap }}'
+{% endif %}
+{% endif %}
+{% if _osac_net.networkClass is defined %}
+    networkClass:
+{{ _osac_net.networkClass | to_nice_yaml(indent=2) | indent(6, first=true) }}
+{% endif %}
 
 {% if osac_images is defined and osac_images.cli is defined %}
 cliImage: "{{ osac_images.cli }}"
@@ -135,9 +169,11 @@ aap:
     projectGitUri: "{{ osac_aap_project_git_uri }}"
     projectGitBranch: "{{ osac_aap_project_git_branch }}"
   instanceGroups:
-{% if osacNetrisEnabled | default(false) | bool %}
+{% if _osac_fabric == 'netris' %}
+    # Facade (global.networking) derives NETRIS_* / NetworkClass; enable IGs only.
     clusterFulfillment:
       enabled: true
+{% if osacDnsClass is defined or osacDnsZone is defined %}
       config:
 {% if osacDnsClass is defined %}
         DNS_CLASS: "{{ osacDnsClass }}"
@@ -145,79 +181,9 @@ aap:
 {% if osacDnsZone is defined %}
         DNS_ZONE: "{{ osacDnsZone }}"
 {% endif %}
-        NETWORK_CLASS: "netris"
-        NETWORK_STEPS_COLLECTION: "{{ osacNetrisStepsCollection | default('netris.steps') }}"
-        NETRIS_CONTROLLER_URL: "{{ osacNetrisControllerUrl }}"
-        NETRIS_USERNAME: "{{ osacNetrisUsername }}"
-        NETRIS_SITE_ID: "{{ osacNetrisSiteId }}"
-        NETRIS_TENANT_ID: "{{ osacNetrisTenantId }}"
-        NETRIS_TENANT_NAME: "{{ osacNetrisTenantName }}"
-{% if osacNetrisMgmtVpcId is defined %}
-        NETRIS_MGMT_VPC_ID: "{{ osacNetrisMgmtVpcId }}"
-{% endif %}
-{% if osacNetrisMgmtVpcName is defined %}
-        NETRIS_MGMT_VPC_NAME: "{{ osacNetrisMgmtVpcName }}"
-{% endif %}
-{% if osacNetrisResourceClassMap is defined %}
-        NETRIS_RESOURCE_CLASS_MAP: '{{ osacNetrisResourceClassMap }}'
-{% endif %}
-{% if osacNetrisSshBastionHost is defined %}
-        SERVER_SSH_BASTION_HOST: "{{ osacNetrisSshBastionHost }}"
-{% endif %}
-{% if osacNetrisSshBastionUser is defined %}
-        SERVER_SSH_BASTION_USER: "{{ osacNetrisSshBastionUser }}"
-{% endif %}
-{% if osacNetrisSshUser is defined %}
-        SERVER_SSH_USER: "{{ osacNetrisSshUser }}"
-{% endif %}
-{% if osacNetrisMgmtRouteDestination is defined %}
-        SERVER_MGMT_ROUTE_DESTINATION: "{{ osacNetrisMgmtRouteDestination }}"
-{% endif %}
-{% if osacNetrisMgmtRouteGateway is defined %}
-        SERVER_MGMT_ROUTE_GATEWAY: "{{ osacNetrisMgmtRouteGateway }}"
-{% endif %}
-{% if osacNetrisExternalAccessBaseDomain is defined %}
-        EXTERNAL_ACCESS_BASE_DOMAIN: "{{ osacNetrisExternalAccessBaseDomain }}"
-{% endif %}
-{% if osacNetrisExternalAccessSupportedBaseDomains is defined %}
-        EXTERNAL_ACCESS_SUPPORTED_BASE_DOMAINS: "{{ osacNetrisExternalAccessSupportedBaseDomains }}"
-{% endif %}
-{% if osacNetrisExternalAccessApiInternalNetwork is defined %}
-        EXTERNAL_ACCESS_API_INTERNAL_NETWORK: "{{ osacNetrisExternalAccessApiInternalNetwork }}"
-{% endif %}
-{% if osacNetrisHostedClusterBaseDomain is defined %}
-        HOSTED_CLUSTER_BASE_DOMAIN: "{{ osacNetrisHostedClusterBaseDomain }}"
-{% endif %}
-{% if osacNetrisHostedClusterControllerAvailabilityPolicy is defined %}
-        HOSTED_CLUSTER_CONTROLLER_AVAILABILITY_POLICY: "{{ osacNetrisHostedClusterControllerAvailabilityPolicy }}"
-{% endif %}
-{% if osacNetrisHostedClusterInfrastructureAvailabilityPolicy is defined %}
-        HOSTED_CLUSTER_INFRASTRUCTURE_AVAILABILITY_POLICY: "{{ osacNetrisHostedClusterInfrastructureAvailabilityPolicy }}"
-{% endif %}
-      secret:
-        NETRIS_PASSWORD: "{{ osacNetrisPassword }}"
-{% if osacNetrisAwsAccessKeyId is defined %}
-        AWS_ACCESS_KEY_ID: "{{ osacNetrisAwsAccessKeyId }}"
-{% endif %}
-{% if osacNetrisAwsSecretAccessKey is defined %}
-        AWS_SECRET_ACCESS_KEY: "{{ osacNetrisAwsSecretAccessKey }}"
-{% endif %}
-{% if osacNetrisSshKey is defined %}
-        SERVER_SSH_KEY: "{{ osacNetrisSshKey }}"
-{% endif %}
-{% if osacNetrisSshBastionKey is defined %}
-        SERVER_SSH_BASTION_KEY: "{{ osacNetrisSshBastionKey }}"
 {% endif %}
     networkFulfillment:
       enabled: true
-      config:
-        NETRIS_CONTROLLER_URL: "{{ osacNetrisControllerUrl }}"
-        NETRIS_USERNAME: "{{ osacNetrisUsername }}"
-        NETRIS_SITE_ID: "{{ osacNetrisSiteId }}"
-        NETRIS_TENANT_ID: "{{ osacNetrisTenantId }}"
-        NETRIS_TENANT_NAME: "{{ osacNetrisTenantName }}"
-      secret:
-        NETRIS_PASSWORD: "{{ osacNetrisPassword }}"
 {% endif %}
     publishTemplates:
       enabled: true

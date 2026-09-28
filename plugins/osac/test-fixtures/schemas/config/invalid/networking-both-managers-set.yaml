@@ -1,0 +1,14 @@
+---
+# Invalid: fabricManager=netris requires k8sManager to be ""
+osacAapLicenseFile: /tmp/manifest.zip
+osacNetworking:
+  fabricManager: netris
+  k8sManager: k8s_only
+  netris:
+    controllerUrl: "https://ctl.netris.io"
+    credentials:
+      username: netris
+      password: changeme
+    siteId: "1"
+    tenantId: "1"
+    tenantName: Admin
