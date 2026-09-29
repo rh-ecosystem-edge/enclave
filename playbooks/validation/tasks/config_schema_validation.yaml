@@ -46,4 +46,4 @@
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
-  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
+  when: lookup('ansible.builtin.fileglob', platforms_vars_file | default('../../config/platforms.yaml', true)) | length > 0
