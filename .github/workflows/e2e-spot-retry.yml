@@ -1,0 +1,49 @@
+name: E2E Spot Retry
+
+# Auto-retry e2e jobs that AWS reclaimed mid-run (spot interruption), without retrying
+# genuine failures. Fires after an e2e run completes; if any failed job's runner was
+# spot-killed (verified against AWS), re-runs only that run's failed jobs.
+#
+# NOTE: a `workflow_run` workflow only triggers when this file is on the repository's
+# DEFAULT branch, and it always runs in the default-branch context. It observes E2E runs
+# on every branch (incl. PR branches) once merged to the default branch.
+on:
+  workflow_run:
+    workflows: ["E2E Deployment", "E2E OSAC"]
+    types: [completed]
+
+# Least privilege: OIDC to assume the read-only spot-detection role, actions:write to
+# re-run failed jobs via the workflow token (the runner GitHub App stays Actions:Read-only).
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+
+jobs:
+  spot-retry:
+    # Only failed runs, and cap the loop at the original attempt + 2 retries.
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'failure' &&
+          github.event.workflow_run.run_attempt < 3 }}
+    runs-on: [self-hosted, pr-validation-aws]
+    steps:
+      - name: Checkout retry script
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts/infrastructure/spot-retry.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Configure AWS credentials (read-only spot-reclaim detection)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_E2E_SPOT_RETRY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Retry e2e jobs killed by spot reclaim
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          REPO: ${{ github.repository }}
+        run: scripts/infrastructure/spot-retry.sh
