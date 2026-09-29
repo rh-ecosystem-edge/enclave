@@ -21,7 +21,7 @@ operators:
     channel: stable
     init_version: 1.3.0
   - name: rhcl-operator
-    version: 1.3.0
+    version: 1.4.3
     channel: stable
     init_version: 1.3.0
   - name: leader-worker-set
