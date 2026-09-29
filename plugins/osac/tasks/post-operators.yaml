@@ -19,6 +19,7 @@
 #   12. Wait for certificate issuance
 #   13. Create fulfillment-db secret (when not BYO, or BYO with osacDatabaseUrl)
 #   14. Create config-as-code-manifest-ig secret (AAP license)
+#   15. Provision the OSAC Kafka cluster (namespace, listener cert, Kafka CRs)
 
 # =====================================================================
 # 1. Create osac namespace with ca-bundle label
@@ -849,6 +850,16 @@
   no_log: true
 
 # =====================================================================
+# 15. Provision the OSAC Kafka cluster (AMQ Streams / Strimzi)
+# =====================================================================
+# The main OSAC Helm chart renders a KafkaUser in the osac-kafka namespace and a
+# Job that waits for its SCRAM secret, so the cluster and its user operator must
+# be Ready before the chart is deployed (this runs in post-operators, before helm).
+
+- name: Provision OSAC Kafka cluster
+  ansible.builtin.include_tasks: kafka.yaml
+
+# =====================================================================
 # Cleanup: remove CA bundle temp file
 # =====================================================================
 
@@ -863,4 +874,4 @@
     msg: >-
       OSAC post-operators complete. Namespace osac created, Keycloak
       realm/client configured, PostgreSQL {{ 'skipped (BYO)' if osacBYODatabase | bool else 'deployed' }},
-      secrets created.
+      Kafka cluster {{ osac_kafka_cluster_name }} provisioned, secrets created.

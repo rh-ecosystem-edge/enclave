@@ -962,7 +962,8 @@ collect_cluster_plugin_diagnostics() {
     for plugin in "${plugins[@]}"; do
         plugin="${plugin// /}"
         case "$plugin" in
-            osac|aap) namespaces+=("osac") ;;
+            osac) namespaces+=("osac" "osac-kafka") ;;
+            aap) namespaces+=("osac") ;;
             rhbk) namespaces+=("keycloak") ;;
             trust-manager) namespaces+=("cert-manager") ;;
             cnv) namespaces+=("openshift-cnv") ;;

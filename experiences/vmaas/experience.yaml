@@ -8,4 +8,5 @@ plugins:
   - name: rhbk
   - name: aap
   - name: gpu-passthrough
+  - name: amq-streams
   - name: osac

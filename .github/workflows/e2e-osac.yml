@@ -164,7 +164,7 @@ jobs:
     with:
       run-connected: true
       run-disconnected: false
-      enabled-plugins: 'lvms,trust-manager,rhbk,aap,osac'
+      enabled-plugins: 'lvms,trust-manager,rhbk,aap,amq-streams,osac'
       # Workspace-relative path the deployment job downloads the license to from
       # the enclave-ci-infra runner-secret-files S3 bucket (see e2e-deployment.yml).
       aap-license-file: 'aap-license.zip'

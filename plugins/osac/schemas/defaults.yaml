@@ -130,6 +130,25 @@ properties:
   osac_aap_project_git_branch:
     type: string
     description: Git branch for AAP config-as-code project.
+  osac_kafka_ns:
+    type: string
+    description: Namespace for the OSAC Kafka cluster (must match kafka.clusterNamespace in the OSAC chart).
+  osac_kafka_cluster_name:
+    type: string
+    description: Name of the OSAC Kafka cluster (must match kafka.clusterName in the OSAC chart).
+  osac_kafka_replicas:
+    type: integer
+    minimum: 1
+    description: Number of dual-role (controller+broker) Kafka nodes.
+  osac_kafka_storage_size:
+    type: string
+    description: Persistent-claim storage size per Kafka node.
+  osac_kafka_version:
+    type: string
+    description: Kafka version for the cluster spec.
+  osac_kafka_metadata_version:
+    type: string
+    description: Kafka KRaft metadata version for the cluster spec.
 required:
   - osacProfilesList
   - osac_aap_name

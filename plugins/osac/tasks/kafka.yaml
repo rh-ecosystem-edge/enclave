@@ -1,0 +1,227 @@
+---
+# Provision the OSAC Kafka cluster.
+#
+# The generic amq-streams plugin (order 104) installs the AMQ Streams (Strimzi)
+# operator cluster-wide, so its CRDs are already registered by the time this
+# runs. OSAC owns its own Kafka cluster here: the main OSAC Helm chart renders a
+# Strimzi KafkaUser (fulfillment-service) in this namespace and a copy Job that
+# waits for the resulting SCRAM secret, so the cluster (and its entity/user
+# operator) must exist and be Ready before the chart is deployed.
+#
+# This mirrors upstream osac-installer's osac-infra chart (kafka.yaml,
+# kafka-certificate.yaml) but is driven directly with Ansible instead of a Helm
+# post-install hook, since enclave does not deploy osac-infra.
+
+# =====================================================================
+# 1. Create osac-kafka namespace with ca-bundle label
+# =====================================================================
+
+- name: Create osac-kafka namespace with ca-bundle label
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osac_kafka_ns }}"
+        labels:
+          enclave/ca-bundle: "true"
+  register: __r_kafka_ns
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: __r_kafka_ns is success
+
+# =====================================================================
+# 2. Wait for the AMQ Streams (Strimzi) CRDs to be registered
+# =====================================================================
+
+- name: Wait for Kafka CRDs to be registered by the AMQ Streams operator
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: "{{ item }}"
+  register: __r_kafka_crds
+  retries: 60
+  delay: 10
+  until: __r_kafka_crds.resources | default([]) | length > 0
+  loop:
+    - kafkas.kafka.strimzi.io
+    - kafkanodepools.kafka.strimzi.io
+    - kafkausers.kafka.strimzi.io
+
+# =====================================================================
+# 3. Create the listener certificate (issued by the same CA as other OSAC
+#    components so clients trust it via ca-bundle rather than the Strimzi
+#    cluster CA). Strimzi requires the key in unencrypted PKCS#8 form.
+# =====================================================================
+
+- name: Create osac-kafka-listener Certificate
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: osac-kafka-listener
+        namespace: "{{ osac_kafka_ns }}"
+      spec:
+        secretName: osac-kafka-listener-tls
+        issuerRef:
+          kind: ClusterIssuer
+          name: default-ca
+        privateKey:
+          encoding: PKCS8
+          rotationPolicy: Always
+        dnsNames:
+          # Bootstrap service (clients use the FQDN).
+          - "{{ osac_kafka_cluster_name }}-kafka-bootstrap"
+          - "{{ osac_kafka_cluster_name }}-kafka-bootstrap.{{ osac_kafka_ns }}"
+          - "{{ osac_kafka_cluster_name }}-kafka-bootstrap.{{ osac_kafka_ns }}.svc"
+          - "{{ osac_kafka_cluster_name }}-kafka-bootstrap.{{ osac_kafka_ns }}.svc.cluster.local"
+          # Per-broker pod DNS via the headless brokers service.
+          - "*.{{ osac_kafka_cluster_name }}-kafka-brokers"
+          - "*.{{ osac_kafka_cluster_name }}-kafka-brokers.{{ osac_kafka_ns }}"
+          - "*.{{ osac_kafka_cluster_name }}-kafka-brokers.{{ osac_kafka_ns }}.svc"
+          - "*.{{ osac_kafka_cluster_name }}-kafka-brokers.{{ osac_kafka_ns }}.svc.cluster.local"
+
+- name: Wait for osac-kafka-listener-tls secret to be issued
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: osac-kafka-listener-tls
+    namespace: "{{ osac_kafka_ns }}"
+  register: __r_kafka_listener_secret
+  no_log: true
+  retries: 30
+  delay: 10
+  until:
+    - __r_kafka_listener_secret.resources | length > 0
+    - __r_kafka_listener_secret.resources[0].data['tls.crt'] is defined
+    - __r_kafka_listener_secret.resources[0].data['tls.crt'] | length > 0
+
+# =====================================================================
+# 4. Create the Kafka node pool and cluster (KRaft, dual-role nodes,
+#    SCRAM-SHA-512 internal TLS listener, entity/user operator).
+# =====================================================================
+
+- name: Create osac-kafka KafkaNodePool
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: kafka.strimzi.io/v1
+      kind: KafkaNodePool
+      metadata:
+        name: dual-role
+        namespace: "{{ osac_kafka_ns }}"
+        labels:
+          strimzi.io/cluster: "{{ osac_kafka_cluster_name }}"
+      spec:
+        replicas: "{{ osac_kafka_replicas | int }}"
+        roles:
+          - controller
+          - broker
+        storage:
+          type: persistent-claim
+          size: "{{ osac_kafka_storage_size }}"
+          deleteClaim: false
+
+- name: Create osac-kafka Kafka cluster
+  vars:
+    # min.insync.replicas = replicas-1, clamped to 1..2 (1->1, 2->1, 3+->2).
+    # On multi-broker clusters this keeps min ISR below the replication factor,
+    # so a single broker restart (e.g. a rolling update) does not fail acks=all
+    # producers. With the default single broker there is no such protection: a
+    # restart takes the only broker down, so acks=all producers pause/fail until
+    # it returns regardless of this value (which can only be 1 for 1 replica).
+    _kafka_min_isr: "{{ [[(osac_kafka_replicas | int) - 1, 1] | max, 2] | min }}"
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: kafka.strimzi.io/v1
+      kind: Kafka
+      metadata:
+        name: "{{ osac_kafka_cluster_name }}"
+        namespace: "{{ osac_kafka_ns }}"
+        annotations:
+          strimzi.io/kraft: enabled
+          strimzi.io/node-pools: enabled
+      spec:
+        kafka:
+          version: "{{ osac_kafka_version }}"
+          metadataVersion: "{{ osac_kafka_metadata_version }}"
+          listeners:
+            - name: tls
+              port: 9093
+              type: internal
+              tls: true
+              authentication:
+                type: scram-sha-512
+              configuration:
+                brokerCertChainAndKey:
+                  secretName: osac-kafka-listener-tls
+                  certificate: tls.crt
+                  key: tls.key
+          config:
+            offsets.topic.replication.factor: "{{ osac_kafka_replicas | int }}"
+            transaction.state.log.replication.factor: "{{ osac_kafka_replicas | int }}"
+            transaction.state.log.min.isr: "{{ _kafka_min_isr | int }}"
+            default.replication.factor: "{{ osac_kafka_replicas | int }}"
+            min.insync.replicas: "{{ _kafka_min_isr | int }}"
+          authorization:
+            type: simple
+        entityOperator:
+          topicOperator: {}
+          userOperator: {}
+
+# =====================================================================
+# 5. Wait for the Kafka cluster to report Ready
+# =====================================================================
+
+- name: Confirm the osac-kafka Kafka cluster becomes Ready
+  vars:
+    _kafka_status: >-
+      {{ (__r_kafka_ready.resources | default([]) | first | default({})).get('status', {}) }}
+    # NotReady also covers recoverable errors, such as reconciliation timeouts.
+    # Only stop early for configuration errors that require intervention.
+    _kafka_terminal_conditions: >-
+      {{ _kafka_status.conditions | default([])
+         | selectattr('type', 'equalto', 'NotReady')
+         | selectattr('status', 'equalto', 'True')
+         | selectattr('reason', 'defined')
+         | selectattr('reason', 'in', ['InvalidResourceException', 'InvalidConfigurationException', 'UnsupportedKafkaVersionException'])
+         | list }}
+  block:
+    - name: Wait for osac-kafka Kafka cluster to be Ready
+      kubernetes.core.k8s_info:
+        api_version: kafka.strimzi.io/v1
+        kind: Kafka
+        name: "{{ osac_kafka_cluster_name }}"
+        namespace: "{{ osac_kafka_ns }}"
+      register: __r_kafka_ready
+      retries: 60
+      delay: 15
+      until:
+        - __r_kafka_ready.resources | length > 0
+        # Ignore conditions from before the current spec was reconciled.
+        - _kafka_status.observedGeneration | default(-1) == __r_kafka_ready.resources[0].metadata.generation | default(-2)
+        - >-
+          (_kafka_status.conditions | default([])
+          | selectattr('type', 'equalto', 'Ready')
+          | selectattr('status', 'equalto', 'True')
+          | list | length > 0)
+          or (_kafka_terminal_conditions | length > 0)
+
+    - name: Fail on terminal Kafka configuration errors
+      ansible.builtin.fail:
+        msg: "Kafka cluster {{ osac_kafka_cluster_name }} reports a terminal configuration error."
+      when: _kafka_terminal_conditions | length > 0
+  rescue:
+    # Surface the cluster's own conditions instead of only a retry timeout, so
+    # the cause (e.g. bad metadataVersion or listener secret) is visible in CI.
+    - name: Report osac-kafka Kafka cluster status on failure
+      ansible.builtin.fail:
+        msg: >-
+          Kafka cluster {{ osac_kafka_cluster_name }} did not become Ready.
+          Conditions:
+          {{ (__r_kafka_ready.resources | default([]) | first | default({}))
+             .get('status', {}).get('conditions', 'none reported') }}

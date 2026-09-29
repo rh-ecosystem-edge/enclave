@@ -123,3 +123,18 @@ osac_db_database: service
 # AAP bootstrap
 osac_aap_project_git_uri: "https://github.com/osac-project/osac"
 osac_aap_project_git_branch: main
+
+# Kafka cluster (AMQ Streams / Strimzi). The main OSAC chart provisions a
+# KafkaUser against this cluster; the cluster itself is created by
+# tasks/kafka.yaml. clusterName/clusterNamespace must match the OSAC chart
+# defaults (kafka.clusterName, kafka.clusterNamespace = osac-kafka).
+# These are internal defaults, not user-facing config (like osac_db_*): they are
+# not exposed in schemas/config.yaml and cannot be set from config/plugins/osac.yaml.
+osac_kafka_ns: osac-kafka
+osac_kafka_cluster_name: osac-kafka
+# Single dual-role node with 10Gi for dev/CI, matching the built-in dev
+# PostgreSQL footprint.
+osac_kafka_replicas: 1
+osac_kafka_storage_size: 10Gi
+osac_kafka_version: "4.2.0"
+osac_kafka_metadata_version: "4.2-IV0"
