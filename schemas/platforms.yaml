@@ -20,7 +20,7 @@ properties:
           description: Default OpenShift version
       required:
       - version
-  allowNotRecommendedUpgrades:
+  allow_not_recommended_upgrades:
     type: boolean
     default: false
     description: >-

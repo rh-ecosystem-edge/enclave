@@ -30,7 +30,7 @@
         mgmt_cluster_upgrade_argv: >-
           {{
             ['enclave', 'reconcile', 'mgmt-cluster-version', '--use-defaults']
-            + (['--allow-not-recommended'] if (allowNotRecommendedUpgrades | default(false) | bool) else [])
+            + (['--allow-not-recommended'] if (allow_not_recommended_upgrades | default(false) | bool) else [])
           }}
       when: upgrade_mgmt_cluster | default(true) | bool
 

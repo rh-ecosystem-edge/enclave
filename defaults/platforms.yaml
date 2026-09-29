@@ -7,4 +7,4 @@ openshift_versions:
 # Allow management cluster upgrades to not-recommended OpenShift versions (default: false)
 # When true, the upgrade process will allow versions from conditionalUpdates.
 # WARNING: Only use when necessary. Follow Red Hat supported upgrade paths when possible.
-allowNotRecommendedUpgrades: false
+allow_not_recommended_upgrades: false
