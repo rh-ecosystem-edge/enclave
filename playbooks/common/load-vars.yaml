@@ -99,6 +99,16 @@
   loop_control:
     label: "{{ item.stat.path | basename }}"
 
+- name: Check for optional OpenShift platforms override
+  ansible.builtin.stat:
+    path: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
+  register: r_platforms_override
+
+- name: Load optional OpenShift platforms override
+  ansible.builtin.include_vars:
+    file: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
+  when: r_platforms_override.stat.exists
+
 - name: Set Management cluster OpenShift version from default
   ansible.builtin.set_fact:
     mgmt_openshift_version: "{{ (openshift_versions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | first).version }}"

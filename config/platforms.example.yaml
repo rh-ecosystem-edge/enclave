@@ -1,0 +1,11 @@
+---
+# ============================================================================
+# Platform Configuration Overrides
+# ============================================================================
+# This file allows you to override platform defaults from defaults/platforms.yaml
+# Copy this file to platforms.yaml and uncomment/modify as needed.
+
+# Allow management cluster upgrades to not-recommended versions (default: false)
+# When true, the upgrade process will allow versions from conditionalUpdates.
+# WARNING: Only use when necessary. Follow Red Hat supported upgrade paths when possible.
+# allow_not_recommended_upgrades: false

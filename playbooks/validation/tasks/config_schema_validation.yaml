@@ -39,3 +39,11 @@
   when:
     - lookup('ansible.builtin.fileglob', item.path + '/schemas/config.yaml') | length > 0
     - lookup('ansible.builtin.fileglob', playbook_dir + '/../../config/plugins/' + item.path | basename + '.yaml') | length > 0
+
+- name: Validate platforms.yaml against platforms schema (if present)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', platforms_vars_file | default('../../config/platforms.yaml', true)) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
+    engine: ansible.utils.jsonschema
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
