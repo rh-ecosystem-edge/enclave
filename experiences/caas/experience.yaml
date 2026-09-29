@@ -7,4 +7,5 @@ plugins:
   - name: trust-manager
   - name: rhbk
   - name: aap
+  - name: amq-streams
   - name: osac
