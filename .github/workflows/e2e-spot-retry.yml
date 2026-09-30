@@ -27,15 +27,9 @@ jobs:
           github.event.workflow_run.run_attempt < 3 }}
     runs-on: [self-hosted, pr-validation-aws]
     steps:
-      # TEMPORARY (debug): pull the retry script from the feature branch instead of the
-      # default branch so spot-retry.sh can be iterated on in feature/enclave-large-aws-runners
-      # without merging each change to main. REVERT before this is considered done — a
-      # workflow_run job is privileged (actions:write + OIDC), so running a non-default-branch
-      # script here executes unreviewed branch code with those privileges.
       - name: Checkout retry script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: feature/enclave-large-aws-runners
           sparse-checkout: |
             scripts/infrastructure/spot-retry.sh
           sparse-checkout-cone-mode: false
