@@ -54,7 +54,7 @@ Each Enclave tarball release includes:
     ```sh
     WORKING_DIR=<your global.yaml workingDir variable>
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
-    enclave reconcile mgmt-cluster-version --use-defaults
+    enclave reconcile mgmt-cluster-version --use-defaults # optional: --allow-not-recommended
     ```
 9. **Upgrade operators** - Update operators to the versions in the tarball:
     ```sh

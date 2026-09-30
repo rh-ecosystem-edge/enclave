@@ -200,11 +200,12 @@
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml
 
-- name: Validate a single default version is in the versions list
+- name: Validate openshift_versions exists and has exactly one default version
   ansible.builtin.assert:
     that:
+      - openshift_versions is defined
       - openshift_versions | selectattr('default', 'defined') | selectattr('default', 'equalto', true) | list | length == 1
-    fail_msg: "a single default version is required in the openshift_versions list!"
+    fail_msg: "openshift_versions must be defined with exactly one default version!"
 
 - name: Find all experience.yaml files
   ansible.builtin.find:

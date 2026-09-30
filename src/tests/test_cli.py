@@ -148,21 +148,27 @@ def test_operator_versions_missing_required_without_defaults() -> None:
 def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = False
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"]
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.21", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with(
+        "4.20.21", dry_run, 180, 60, allow_not_recommended
+    )
 
 
 def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
+    allow_not_recommended = False
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"]
     )
     assert result.exit_code == 0, result.output
-    mock_reconcile.assert_called_once_with("4.20.32", dry_run, 180, 60)
+    mock_reconcile.assert_called_once_with(
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
+    )
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
