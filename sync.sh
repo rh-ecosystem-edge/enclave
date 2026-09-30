@@ -81,12 +81,12 @@ echo "Validating Config .. " | tee -a ${log}
     bash ./validations.sh 2>&1 | tee -a ${log}
 step_done
 
-echo "Building local cache .. " | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/02-mirror.yaml -e fresh=false --tags mirror-registry
-step_done
-
 echo "Configure MultiClusterHub .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags acm-mch
+step_done
+
+echo "Building local cache .. " | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/02-mirror.yaml -e fresh=false --tags mirror-registry
 step_done
 
 echo "Quay disconnected .." | tee -a ${log}
