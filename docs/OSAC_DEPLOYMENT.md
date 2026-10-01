@@ -23,9 +23,10 @@ OSAC is deployed as a set of Enclave plugins that are installed sequentially. Ea
 | `trust-manager` | 100 | cert-manager ClusterIssuer and CA bundle sync |
 | `rhbk` | 101 | Red Hat Build of Keycloak (identity provider) |
 | `aap` | 103 | AAP operator installation (provides CRDs for the OSAC chart) |
-| `osac` | 200 | OSAC fulfillment service, operator, chart-managed AAP instance, bootstrap |
+| `amq-streams` | 104 | AMQ Streams (Strimzi) operator — provides the `kafka.strimzi.io` CRDs |
+| `osac` | 200 | OSAC fulfillment service, operator, Kafka cluster, chart-managed AAP instance, bootstrap |
 
-The `aap` plugin installs the AAP operator and waits for it to be available (no configuration required). The `osac` plugin then deploys the OSAC Helm chart, which creates its own AAP instance (`osac-aap`) in the `osac` namespace.
+The `aap` plugin installs the AAP operator and waits for it to be available (no configuration required). The `amq-streams` plugin installs the AMQ Streams operator cluster-wide (in `openshift-operators`); it is generic and owns no Kafka cluster of its own. The `osac` plugin then provisions its own `osac-kafka` Kafka cluster and deploys the OSAC Helm chart, which creates its own AAP instance (`osac-aap`) in the `osac` namespace.
 
 ### What Gets Deployed
 
@@ -36,6 +37,14 @@ After a successful deployment, the `osac` namespace contains:
 - **AAP instance** (`osac-aap`): gateway, controller, EDA, Redis, PostgreSQL (AAP internal)
 - **PostgreSQL**: fulfillment database with mTLS (unless BYO database)
 - **Bootstrap job**: configures AAP with execution environments and project templates
+
+The `osac-kafka` namespace contains:
+
+- **Kafka cluster** (`osac-kafka`): KRaft-based AMQ Streams cluster with an internal TLS
+  listener (SCRAM-SHA-512), used by the fulfillment service to publish per-tenant events.
+  The listener certificate is issued by the `default-ca` ClusterIssuer. The OSAC Helm chart
+  creates the `fulfillment-service` `KafkaUser` here and copies its credentials into the
+  `osac` namespace.
 
 ## Prerequisites
 
@@ -99,7 +108,10 @@ make deploy-plugin PLUGIN=rhbk
 # 3. AAP — installs operator only, no config required (provides CRDs for OSAC)
 make deploy-plugin PLUGIN=aap
 
-# 4. Deploy the OSAC plugin
+# 4. AMQ Streams — installs the Strimzi operator (provides kafka.strimzi.io CRDs)
+make deploy-plugin PLUGIN=amq-streams
+
+# 5. Deploy the OSAC plugin
 make deploy-plugin PLUGIN=osac
 ```
 
@@ -107,7 +119,7 @@ The `make deploy-plugin PLUGIN=osac` command runs the full plugin lifecycle:
 
 1. **pre-validate** — checks Keycloak ready, AAP CRDs registered, license file exists
 2. **mirror** — mirrors images (disconnected environments only)
-3. **post-operators** — creates osac namespace, Keycloak realm/client, PostgreSQL, secrets
+3. **post-operators** — creates osac namespace, Keycloak realm/client, PostgreSQL, secrets, and the `osac-kafka` Kafka cluster (waits for it to be Ready)
 4. **helm deploy** — installs the OSAC Helm chart
 5. **deploy** — waits for AAP, creates access token, patches the OSAC operator
 6. **post-validate** — verifies all components are healthy
@@ -142,6 +154,11 @@ oc get pods -n osac
 # - osac-aap-* (multiple pods: web, task, eda, redis, etc.)
 # - postgres-* (unless BYO database)
 # - osac-aap-bootstrap-* (Completed)
+
+# Check the Kafka cluster (Ready) and its pods
+oc get kafka osac-kafka -n osac-kafka
+oc get pods -n osac-kafka
+# Expected: osac-kafka-dual-role-* (broker/controller), osac-kafka-entity-operator-*
 
 # Check Helm release
 helm status osac -n osac

@@ -496,6 +496,11 @@ jobs:
         id: deploy_cnv
         run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
 
+      - name: Deploy amq-streams plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',amq-streams,')
+        id: deploy_amq_streams
+        run: make -f Makefile.ci deploy-plugin PLUGIN=amq-streams
+
       - name: Deploy osac plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
@@ -698,6 +703,7 @@ jobs:
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
             ["deploy_cnv"]="Deploy cnv plugin"
+            ["deploy_amq_streams"]="Deploy amq-streams plugin"
             ["deploy_osac"]="Deploy osac plugin"
             ["osac_smoke"]="Run OSAC CLI smoke test"
             ["verify_cluster"]="Verify cluster deployment"
@@ -721,6 +727,7 @@ jobs:
             deploy_rhbk
             deploy_aap
             deploy_cnv
+            deploy_amq_streams
             deploy_osac
             osac_smoke
             verify_cluster
@@ -1021,6 +1028,11 @@ jobs:
         id: deploy_cnv
         run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
 
+      - name: Deploy amq-streams plugin
+        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',amq-streams,')
+        id: deploy_amq_streams
+        run: make -f Makefile.ci deploy-plugin PLUGIN=amq-streams
+
       - name: Deploy osac plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: deploy_osac
@@ -1223,6 +1235,7 @@ jobs:
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
             ["deploy_cnv"]="Deploy cnv plugin"
+            ["deploy_amq_streams"]="Deploy amq-streams plugin"
             ["deploy_osac"]="Deploy osac plugin"
             ["verify_cluster"]="Verify cluster deployment"
           )
@@ -1245,6 +1258,7 @@ jobs:
             deploy_rhbk
             deploy_aap
             deploy_cnv
+            deploy_amq_streams
             deploy_osac
             verify_cluster
           )

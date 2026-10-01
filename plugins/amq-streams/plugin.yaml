@@ -1,0 +1,35 @@
+---
+name: amq-streams
+type: addon
+# Installs before any plugin that declares Kafka custom resources. The osac
+# plugin (order 200) renders a Strimzi KafkaUser and provisions its own Kafka
+# cluster, so the operator (and its CRDs) must be present first.
+order: 104
+
+operators:
+  - name: amq-streams
+    # Installed cluster-wide via the openshift-operators namespace (AllNamespaces
+    # install mode), so any namespace can host Kafka custom resources. That
+    # namespace also uses Automatic install-plan approval, so the operator tracks
+    # the 'stable' channel without a pinned startingCSV.
+    #
+    # version/init_version are used only for the disconnected mirror image-set;
+    # they do not gate the connected install (openshift-operators tracks the
+    # channel head under Automatic approval).
+    #
+    # 3.2.1-14 is the head of the 'stable' channel in the redhat-operators
+    # catalog for OpenShift 4.20 (Streams for Apache Kafka 3.2): it ships Kafka
+    # 4.2.0 and serves the kafka.strimzi.io/v1 API group required by consumers
+    # such as the osac plugin. Re-verify for other OpenShift versions with:
+    #   oc get packagemanifests amq-streams \
+    #     -o jsonpath='{.status.channels[?(@.name=="stable")].currentCSV}'
+    version: 3.2.1-14
+    channel: stable
+    init_version: 3.2.1-14
+    namespace: openshift-operators
+    csvNames:
+      - amqstreams
+
+registries:
+  - location: registry.redhat.io/amq-streams
+    mirror: amq-streams

@@ -1,0 +1,48 @@
+---
+- name: Wait for AMQ Streams (Strimzi) CRDs to be registered
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: "{{ item }}"
+  register: __r_amq_streams_crds
+  retries: 60
+  delay: 10
+  until: __r_amq_streams_crds.resources | default([]) | length > 0
+  loop:
+    - kafkas.kafka.strimzi.io
+    - kafkanodepools.kafka.strimzi.io
+    - kafkausers.kafka.strimzi.io
+    - kafkatopics.kafka.strimzi.io
+
+- name: Confirm the Kafka CRD serves the kafka.strimzi.io/v1 API
+  kubernetes.core.k8s_info:
+    api_version: apiextensions.k8s.io/v1
+    kind: CustomResourceDefinition
+    name: kafkas.kafka.strimzi.io
+  register: __r_amq_streams_kafka_crd
+
+- name: Fail if kafka.strimzi.io/v1 is not served
+  ansible.builtin.fail:
+    msg: >-
+      The installed AMQ Streams operator does not serve the kafka.strimzi.io/v1
+      API. Consumers that declare v1 resources (e.g. the osac plugin) require an
+      AMQ Streams release that serves the v1 API group.
+  when: >
+    (__r_amq_streams_kafka_crd.resources | default([]) | first | default({})).get('spec', {}).get('versions', [])
+    | selectattr('name', 'equalto', 'v1')
+    | selectattr('served', 'equalto', true)
+    | list | length == 0
+
+- name: Confirm the AMQ Streams operator CSV has succeeded
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: openshift-operators
+  register: __r_amq_streams_csvs
+  retries: 30
+  delay: 10
+  until: >
+    __r_amq_streams_csvs.resources | default([])
+    | selectattr('metadata.name', 'match', '^amqstreams\\.')
+    | selectattr('status.phase', 'equalto', 'Succeeded')
+    | list | length > 0
