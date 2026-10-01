@@ -9,7 +9,10 @@ name: E2E Spot Retry
 # on every branch (incl. PR branches) once merged to the default branch.
 on:
   workflow_run:
-    workflows: ["E2E Deployment", "E2E OSAC"]
+    workflows:
+      - 'E2E Deployment'
+      - 'E2E OSAC'
+      - 'Disconnected Dry-Run'
     types: [completed]
 
 # Least privilege: OIDC to assume the read-only spot-detection role, actions:write to
