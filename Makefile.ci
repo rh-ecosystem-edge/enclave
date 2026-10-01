@@ -332,6 +332,9 @@ test-ci-image:
 	@echo "Test 10: Verify pytest is installed..."
 	@podman run --rm $(CI_IMAGE_FULL) pytest --version
 	@echo ""
+	@echo "Test 11: Verify jq is installed..."
+	@podman run --rm $(CI_IMAGE_FULL) jq --version
+	@echo ""
 	@echo "All CI image tests passed!"
 
 build-push-ci-image: build-ci-image push-ci-image
