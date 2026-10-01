@@ -104,7 +104,7 @@ jobs:
           | `/test infra` | Infrastructure verification | enclave-small-aws |
           | `/test e2e-connected` | Dispatch E2E (connected only) | enclave-large-aws |
           | `/test e2e-disconnected` | Dispatch E2E (disconnected only) | enclave-large-aws |
-          | `/test e2e-disconnected-odf` | Dispatch E2E disconnected with ODF storage | odf |
+          | `/test e2e-disconnected-odf` | Dispatch E2E disconnected with ODF storage | enclave-large-odf-aws |
           | `/test cleanup` | Run cleanup workflow | enclave-small-aws |
           | `/test all` | Run validation + tarball + infra + e2e (both modes) | multiple |
           | `/test ?` or `/test help` | Show this help message | — |

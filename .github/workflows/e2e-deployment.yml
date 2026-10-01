@@ -775,7 +775,7 @@ jobs:
     if: >-
       needs.check-e2e-needed.outputs.should_run == 'true' &&
       needs.check-e2e-needed.outputs.run_disconnected == 'true'
-    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "odf"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
+    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
     timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
 
     strategy:
