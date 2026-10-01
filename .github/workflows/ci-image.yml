@@ -16,7 +16,7 @@ concurrency:
 jobs:
   ci-image:
     name: CI Image Build
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 30
     defaults:
       run:

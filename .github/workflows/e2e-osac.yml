@@ -82,7 +82,7 @@ jobs:
       github.event_name != 'pull_request' &&
       needs.resolve-image.result == 'success' &&
       needs.get-latest-chart-version.result == 'success'
-    runs-on: [self-hosted, pr-validation]
+    runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 15
     permissions:
       contents: read  # only checks out the repo; no write access needed
