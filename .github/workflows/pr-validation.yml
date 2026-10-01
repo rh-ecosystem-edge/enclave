@@ -33,10 +33,20 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          # Unique checkout dir per run/attempt/job. The pr-validation-aws fleet is
+          # non-ephemeral, so jobs share a host and its _work; a fixed path let a
+          # neighbour's checkout churn the tree out from under a running `make`
+          # (intermittent `make: Makefile.ci: No such file or directory`). A unique path
+          # isolates each job. Paired with the runner's job-completed prune hook in
+          # enclave-ci-infra (which sweeps _work/enclave between jobs). Applied to every
+          # job below the same way.
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run shellcheck
         run: |
@@ -66,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: shellcheck-log
-          path: shellcheck.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/shellcheck.log
           retention-days: 7
 
   # Job 2: YAML validation
@@ -81,10 +91,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run yamllint
         run: |
@@ -114,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: yamllint-log
-          path: yamllint.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/yamllint.log
           retention-days: 7
 
   # Job 3: JSON schema validation
@@ -129,10 +142,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run JSON schema validation
         run: |
@@ -162,7 +178,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: json-schema-log
-          path: json-schema.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/json-schema.log
           retention-days: 7
 
   # Job 4: Ansible playbook validation
@@ -177,10 +193,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run ansible-lint
         run: |
@@ -210,7 +229,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ansible-lint-log
-          path: ansible-lint.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/ansible-lint.log
           retention-days: 7
 
   # Job 5: Ansible playbook tags validation
@@ -225,10 +244,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run tag validation
         run: |
@@ -260,7 +282,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: tags-log
-          path: tags.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/tags.log
           retention-days: 7
 
   # Job 6: Template rendering validation
@@ -276,10 +298,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run template rendering validation
         run: |
@@ -307,7 +332,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: template-rendering-log
-          path: template-rendering.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/template-rendering.log
           retention-days: 7
 
   # Job 7: Makefile validation
@@ -322,10 +347,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run Makefile validation
         run: |
@@ -355,7 +383,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: makefile-log
-          path: makefile.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/makefile.log
           retention-days: 7
 
   # Job 7: Plugin validation
@@ -370,10 +398,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run plugin validation
         run: |
@@ -403,7 +434,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: plugins-log
-          path: plugins.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/plugins.log
           retention-days: 7
 
   # Job 8: Python validation (ruff, mypy, pytest)
@@ -418,10 +449,13 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Run Python validation
         run: |
@@ -451,7 +485,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: python-log
-          path: python.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/python.log
           retention-days: 7
 
   # Job 9: OSAC values overlay schema validation
@@ -471,15 +505,21 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Detect OSAC-relevant changes
         uses: dorny/paths-filter@v4
         id: filter
         with:
+          # The repo is checked out under a unique subdir (see Checkout step), so point
+          # the filter's git diff at it rather than the default workspace root.
+          working-directory: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
           filters: |
             osac:
               - 'plugins/osac/**'
@@ -533,5 +573,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: osac-values-log
-          path: osac-values.log
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/osac-values.log
           retention-days: 7
