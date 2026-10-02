@@ -147,6 +147,11 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
+# The Helm CLI is downloaded by tasks/download_control_binaries.yaml, which both
+# entrypoints for this task run first: 01-prepare for day-0 plugins and
+# deploy-plugin.yaml for day-2 plugins. It is available here (for both the mirror and
+# deploy paths) whenever the plugin declares a `helm:` block, so it is not fetched
+# again here.
 - name: "{{ plugin_name }} | Extract images from Helm charts for mirroring"
   ansible.builtin.include_tasks:
     file: tasks/helm_extract_images.yaml

@@ -523,6 +523,12 @@ control_binaries:
     checksum: "sha256:..."
 ```
 
+> **Note:** `oc`, `mirror-registry`, and `oc-mirror` are always downloaded during the
+> prepare phase. The Helm CLI is downloaded from the same task only when a plugin that
+> declares a `helm:` block is used: for day-0 if any enabled plugin uses Helm, and for
+> day-2 the deploy-plugin playbook re-runs that download (idempotent, checksum-validated)
+> for the plugin being deployed. Its URL and checksum above are used for that download.
+
 ## Detailed Configuration Reference
 
 ### Network Configuration

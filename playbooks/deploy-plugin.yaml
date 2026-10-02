@@ -30,6 +30,19 @@
         file: common/load-vars.yaml
       tags: always
 
+    # The prepare phase does not run for day-2 deploys, so ensure the control
+    # binaries (including the Helm CLI when this plugin uses it) are present. The
+    # downloads are idempotent and checksum-validated, so this is a no-op when the
+    # binaries are already in place. apply.tags propagates `always` to the included
+    # tasks so the binaries are still downloaded under a tag-scoped run (e.g.
+    # --tags mirror), which would otherwise skip the untagged child tasks.
+    - name: Ensure control binaries are available
+      ansible.builtin.include_tasks:
+        file: tasks/download_control_binaries.yaml
+        apply:
+          tags: always
+      tags: always
+
     - name: Deploy plugin
       ansible.builtin.include_tasks:
         file: tasks/deploy_plugin.yaml
