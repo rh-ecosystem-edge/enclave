@@ -180,34 +180,55 @@ _announced_pg=0
 _announced_datadir=0
 _announced_logdir=0
 _announced_sqlite=0
-_container_snapshot_done=0
+_announced_quayapp=0
+_containers_changed=0   # set by detect_containers when the monitored set grows
 
 detect_containers() {
-    # Already resolved (or explicitly overridden)? nothing to do.
-    [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] && return 0
+    # Re-scan and MERGE every call. The mirror-registry pod comes up in stages:
+    # redis (and a pod -infra container) first, the quay-app container only once
+    # the DB is ready. An early one-shot detection froze on [quay-redis] and
+    # never saw quay-app (quay_app=none, db_backend=unknown in every 2.0.x run).
+    # Merging newly-appeared containers each tick fixes that.
+    _containers_changed=0
 
     if [ -n "$CONTAINERS_OVERRIDE" ]; then
-        # shellcheck disable=SC2206
-        MONITOR_CONTAINERS=($CONTAINERS_OVERRIDE)
+        # Explicit override: honour it verbatim, once.
+        if [ "${#MONITOR_CONTAINERS[@]}" -eq 0 ]; then
+            # shellcheck disable=SC2206
+            MONITOR_CONTAINERS=($CONTAINERS_OVERRIDE)
+            _containers_changed=1
+        fi
     else
         local running_names name
         running_names=$(podman ps --format '{{.Names}}' 2>/dev/null || true)
-        [ -n "$running_names" ] || return 1
-        while IFS= read -r name; do
-            [ -n "$name" ] || continue
-            case "$name" in
-                *postgres*|*redis*|*quay*|*registry*) MONITOR_CONTAINERS+=("$name") ;;
-            esac
-        done <<<"$running_names"
+        if [ -n "$running_names" ]; then
+            while IFS= read -r name; do
+                [ -n "$name" ] || continue
+                case "$name" in
+                    *postgres*|*redis*|*quay*|*registry*) ;;
+                    *) continue ;;
+                esac
+                # Add only if not already monitored (string membership test is
+                # safe on an empty array under set -u).
+                case " ${MONITOR_CONTAINERS[*]:-} " in
+                    *" $name "*) ;;
+                    *) MONITOR_CONTAINERS+=("$name"); _containers_changed=1 ;;
+                esac
+            done <<<"$running_names"
+        fi
     fi
     [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] || return 1
 
+    # (Re)resolve roles from the current set each call, so a container that
+    # appears later (quay-app, quay-postgres) upgrades the classification.
     local n
+    PG_CONT=""
     for n in "${MONITOR_CONTAINERS[@]}"; do
         case "$n" in *postgres*) PG_CONT="$n" ;; esac
     done
     # Pick the Quay application container: prefer an exact quay-app, else first
     # quay*/registry* that is not the postgres/redis sidecar.
+    QUAY_APP=""
     if podman container exists quay-app 2>/dev/null; then
         QUAY_APP="quay-app"
     else
@@ -288,6 +309,44 @@ SQLITE_DB=""
 SYNCED_LOGS_DIR=""   # set after OUT exists; durable copy of <workingDir>/logs
 GLOBAL_YAML="${ENCLAVE_DIR%/}/config/global.yaml"
 
+# Quay writes its application logs to FILES inside the container, not stdout, so
+# `podman logs quay-app` is empty. The server-side "database is locked" evidence
+# therefore lives in those files. The quay-app container (and its pod) may be
+# torn down the moment mirror.sh finishes — before the probe is stopped — so we
+# discover the log file paths once and tail them into the report on every tick
+# while the container is still alive; the last captured tail survives teardown.
+QUAY_LOG_PATHS=""
+_quay_logs_discovered=0
+QUAY_LOGS_DIR=""     # set after OUT exists; durable copy of quay-app log files
+
+discover_quay_logs() {
+    [ "$_quay_logs_discovered" = 1 ] && return 0
+    [ -n "$QUAY_APP" ] || return 1
+    podman container exists "$QUAY_APP" 2>/dev/null || return 1
+    QUAY_LOG_PATHS=$(podman exec "$QUAY_APP" sh -c '
+        for d in /var/log /var/log/quay /quay-registry /conf/stack /tmp /app; do
+            [ -d "$d" ] && find "$d" -maxdepth 3 -type f -name "*.log" 2>/dev/null
+        done' 2>/dev/null | head -30 || true)
+    [ -n "$QUAY_LOG_PATHS" ] && _quay_logs_discovered=1
+    return 0
+}
+
+# Tail each discovered Quay log file into the report (overwrite = keep latest).
+sync_quay_logs() {
+    [ -n "$QUAY_APP" ] || return 0
+    podman container exists "$QUAY_APP" 2>/dev/null || return 0
+    [ -n "$QUAY_LOGS_DIR" ] || return 0
+    discover_quay_logs
+    [ -n "$QUAY_LOG_PATHS" ] || return 0
+    mkdir -p "$QUAY_LOGS_DIR" 2>/dev/null || true
+    local lf safe
+    while IFS= read -r lf; do
+        [ -n "$lf" ] || continue
+        safe=$(printf '%s' "$lf" | sed 's#^/##; s#/#_#g')
+        podman exec "$QUAY_APP" tail -n 20000 "$lf" >"${QUAY_LOGS_DIR}/${safe}" 2>/dev/null || true
+    done <<<"$QUAY_LOG_PATHS"
+}
+
 resolve_work_dir() {
     [ -n "$WORK_DIR" ] && return 0
     if [ -n "$WORKING_DIR_OVERRIDE" ]; then
@@ -337,29 +396,36 @@ sync_logs() {
     cp -a -u "$OC_MIRROR_LOG_DIR"/. "$SYNCED_LOGS_DIR"/ 2>>"$ERRLOG" || true
 }
 
-# Container-dependent part of the one-time snapshot, deferred until the
-# containers actually appear (so starting early still captures inspect/env).
+# Container-dependent part of the snapshot. Re-runnable: the mirror-registry
+# pod members appear in stages, so this inspects each container the first time
+# it is seen and re-dumps podman ps whenever the monitored set grows. That way
+# the quay-app container (which starts late) is always captured — its inspect
+# records the image tag under test and its mounts/cmd reveal where Quay logs.
 capture_container_snapshot() {
-    [ "$_container_snapshot_done" = 1 ] && return 0
     [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] || return 1
     local S="${OUT}/snapshot" cont
-    podman ps -a >"$S/podman-ps.txt" 2>&1 || true
-    # Image tags identify the mirror-registry version under test.
-    podman ps --format '{{.Names}}\t{{.Image}}' >"$S/podman-images.txt" 2>&1 || true
+    # Re-dump ps/images when the set changed (keeps a per-stage history so the
+    # moment quay-app appears is preserved, not overwritten by teardown state).
+    if [ "$_containers_changed" = 1 ]; then
+        podman ps -a >"$S/podman-ps.txt" 2>&1 || true
+        podman ps -a >"$S/podman-ps-$(date +%s).txt" 2>&1 || true
+        podman ps --format '{{.Names}}\t{{.Image}}' >"$S/podman-images.txt" 2>&1 || true
+    fi
+    # Inspect each container once, the first time it is seen (image tag + mounts).
     for cont in "${MONITOR_CONTAINERS[@]}"; do
+        [ -f "$S/inspect-${cont}.json" ] && continue
         podman container exists "$cont" 2>/dev/null && \
             podman inspect "$cont" >"$S/inspect-${cont}.json" 2>&1 || true
     done
     # Quay worker-relevant environment (no secrets: only WORKER/GUNICORN/COUNT keys)
-    if [ -n "$QUAY_APP" ]; then
+    if [ -n "$QUAY_APP" ] && [ ! -f "$S/quay-app-env.txt" ]; then
         podman exec "$QUAY_APP" sh -c 'printenv 2>/dev/null | grep -Ei "worker|gunicorn|count|_conn|pool|sqlite|database" || true' \
             >"$S/quay-app-env.txt" 2>&1 || true
     fi
-    if [ "$PG_OK" = 1 ]; then
+    if [ "$PG_OK" = 1 ] && [ ! -f "$S/pg-settings.txt" ]; then
         pg_query_raw "SELECT name, setting, unit FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') ORDER BY name;" \
             >"$S/pg-settings.txt" 2>&1 || true
     fi
-    _container_snapshot_done=1
 }
 
 # Single lazy-detection pass: fill in anything not yet resolved and announce
@@ -375,11 +441,16 @@ rescan() {
     fi
     resolve_paths
 
-    if [ "$_announced_containers" = 0 ] && [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ]; then
+    # Announce the set on first populate AND whenever it grows (a late quay-app
+    # joining is the whole point of the re-scan), but keep the chatter bounded.
+    if [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] && \
+       { [ "$_announced_containers" = 0 ] || [ "$_containers_changed" = 1 ]; }; then
         info "detected containers: ${MONITOR_CONTAINERS[*]}"
-        info "quay app container : ${QUAY_APP:-not found}"
         info "postgres container : ${PG_CONT:-none (SQLite / embedded backend assumed)}"
         _announced_containers=1
+    fi
+    if [ "$_announced_quayapp" = 0 ] && [ -n "$QUAY_APP" ]; then
+        info "quay app container : ${QUAY_APP}"; _announced_quayapp=1
     fi
     if [ "$_announced_backend" = 0 ] && [ "$DB_BACKEND" != unknown ]; then
         info "db backend         : ${DB_BACKEND}"
@@ -405,9 +476,10 @@ rescan() {
 # ----------------------------------------------------------------------------
 # Prepare output layout
 # ----------------------------------------------------------------------------
-mkdir -p "$OUT"/{snapshot,timeseries/pg_stat_activity,timeseries/podman_stats,timeseries/iostat,timeseries/pressure,logs/working-dir-logs}
+mkdir -p "$OUT"/{snapshot,timeseries/pg_stat_activity,timeseries/podman_stats,timeseries/iostat,timeseries/pressure,logs/working-dir-logs,logs/quay-app-files}
 ERRLOG="${OUT}/errors.log"; : >"$ERRLOG"
 SYNCED_LOGS_DIR="${OUT}/logs/working-dir-logs"
+QUAY_LOGS_DIR="${OUT}/logs/quay-app-files"
 
 # Host/DB time-series (one row per tick): the primary comparison artifact.
 CSV="${OUT}/timeseries/samples.csv"
@@ -507,6 +579,7 @@ finalize() {
     info "finalizing: collecting logs and packaging ..."
     # Final log sync + meta refresh so the report reflects the resolved state.
     sync_logs
+    sync_quay_logs   # last tail of Quay's on-disk logs if the container is still up
     write_meta
     # container logs (whatever is present)
     for cont in "${MONITOR_CONTAINERS[@]}"; do
@@ -574,11 +647,23 @@ finalize() {
             echo "  matches: ${pg_err:-0}"
             echo
         fi
-        if [ "$DB_BACKEND" = "sqlite" ] && [ -n "$QUAY_APP" ] && [ -f "${OUT}/logs/${QUAY_APP}.log" ]; then
-            echo "SQLite contention errors in captured quay-app log window:"
-            sq_err=$(grep -icE 'database is locked|database table is locked|OperationalError.*lock' \
-                "${OUT}/logs/${QUAY_APP}.log" 2>/dev/null || true)
-            echo "  database-locked matches: ${sq_err:-0}"
+        if [ "$DB_BACKEND" = "sqlite" ]; then
+            echo "SQLite contention errors in captured quay-app logs (server-side):"
+            # Quay logs to files, not stdout, so the evidence is in the on-disk
+            # logs tailed into logs/quay-app-files/ (podman logs is usually empty).
+            # Count across both the file tails and the podman-logs capture.
+            sq_src=()
+            [ -d "${OUT}/logs/quay-app-files" ] && \
+                while IFS= read -r qf; do [ -n "$qf" ] && sq_src+=("$qf"); done \
+                    < <(find "${OUT}/logs/quay-app-files" -type f 2>/dev/null)
+            [ -n "$QUAY_APP" ] && [ -f "${OUT}/logs/${QUAY_APP}.log" ] && sq_src+=("${OUT}/logs/${QUAY_APP}.log")
+            if [ "${#sq_src[@]}" -gt 0 ]; then
+                # shellcheck disable=SC2126
+                sq_err=$({ grep -ahicE 'database is locked|database table is locked|OperationalError.*lock' "${sq_src[@]}" 2>/dev/null || true; } | awk '{s+=$1} END{print s+0}')
+                echo "  database-locked matches: ${sq_err:-0}  (across ${#sq_src[@]} log file(s))"
+            else
+                echo "  database-locked matches: n/a (no quay-app logs captured -- container not detected while alive)"
+            fi
             echo
         fi
         oom_n=$(grep -icE 'oom|killed process|out of memory' "${OUT}/logs/dmesg-oom.txt" 2>/dev/null || true)
@@ -657,6 +742,9 @@ info "sampling started (Ctrl-C to stop)"
 echo
 start_epoch=$(date +%s)
 tick=0
+# Tail the quay-app server logs about once a minute (not every tick) to limit
+# podman-exec overhead so it does not perturb the CPU/load measurements.
+quay_sync_stride=$(( INTERVAL >= 60 ? 1 : (60 + INTERVAL - 1) / INTERVAL ))
 while [ "$RUNNING" = 1 ]; do
     now_epoch=$(date +%s)
     now_iso=$(date -Is 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
@@ -664,6 +752,7 @@ while [ "$RUNNING" = 1 ]; do
     # Lazy detection + incremental log preservation (cheap; no-ops once resolved).
     rescan
     sync_logs
+    [ $(( tick % quay_sync_stride )) -eq 0 ] && sync_quay_logs
 
     # --- CPU (delta over interval) ---
     read -r cur_total cur_idle cur_io < <(read_cpu) || { cur_total=$prev_total; cur_idle=$prev_idle; cur_io=$prev_io; }
