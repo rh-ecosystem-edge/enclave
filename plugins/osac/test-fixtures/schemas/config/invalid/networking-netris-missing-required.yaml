@@ -1,0 +1,6 @@
+---
+# Invalid: fabricManager=netris requires netris connection fields
+osacAapLicenseFile: /tmp/manifest.zip
+osacNetworking:
+  fabricManager: netris
+  k8sManager: ""

@@ -97,9 +97,19 @@ properties:
   osacTestUsers:
     type: boolean
     description: Create test users in the Keycloak osac realm for initial UI/CLI access.
-  osacNetrisEnabled:
-    type: boolean
-    description: Enable Netris network backend for cluster/network fulfillment.
+  osacNetworking:
+    type: object
+    description: >-
+      Networking facade defaults for Helm global.networking
+      (installer $defs/globalNetworking).
+    additionalProperties: false
+    properties:
+      fabricManager:
+        type: string
+        enum: ["", "netris", "cudn_net", "vlan"]
+      k8sManager:
+        type: string
+        enum: ["", "k8s_only"]
   osacBcmEnabled:
     type: boolean
     description: Enable BCM inventory backend for bare metal fulfillment.

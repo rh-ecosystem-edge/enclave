@@ -59,86 +59,192 @@ properties:
   osacDnsZone:
     type: string
     description: "DNS zone to operate in (defaults to EXTERNAL_ACCESS_BASE_DOMAIN)"
-  osacNetrisEnabled:
-    type: boolean
-    description: "Enable Netris network backend for cluster/network fulfillment"
-  osacNetrisControllerUrl:
-    type: string
-    description: "Netris controller API URL (e.g. https://ctl.netris.io)"
-  osacNetrisUsername:
-    type: string
-    description: "Netris API username"
-  osacNetrisPassword:
-    type: string
-    description: "Netris API password"
-  osacNetrisSiteId:
-    type: string
-    description: "Netris site ID (integer as string)"
-  osacNetrisTenantId:
-    type: string
-    description: "Netris tenant ID (integer as string)"
-  osacNetrisTenantName:
-    type: string
-    description: "Netris tenant name"
-  osacNetrisStepsCollection:
-    type: string
-    description: "Ansible steps collection for Netris (default: netris.steps)"
-  osacNetrisMgmtVpcId:
-    type: string
-    description: "Management VPC ID in Netris"
-  osacNetrisMgmtVpcName:
-    type: string
-    description: "Management VPC name in Netris"
-  osacNetrisResourceClassMap:
-    type: string
-    description: "JSON dict mapping resource classes to Netris server cluster templates"
-  osacNetrisSshBastionHost:
-    type: string
-    description: "SSH bastion hostname/IP for server management access"
-  osacNetrisSshBastionUser:
-    type: string
-    description: "SSH bastion username"
-  osacNetrisSshUser:
-    type: string
-    description: "SSH username for bare-metal servers (typically 'core')"
-  osacNetrisMgmtRouteDestination:
-    type: string
-    description: "Management route CIDR (e.g. 10.8.0.0/30)"
-  osacNetrisMgmtRouteGateway:
-    type: string
-    description: "Management route gateway IP"
-  osacNetrisExternalAccessBaseDomain:
-    type: string
-    description: "DNS domain for cluster endpoints"
-  osacNetrisExternalAccessSupportedBaseDomains:
-    type: string
-    description: "Comma-separated list of allowed base domains"
-  osacNetrisExternalAccessApiInternalNetwork:
-    type: string
-    description: "Internal network type for API access (e.g. 'hypershift')"
-  osacNetrisHostedClusterBaseDomain:
-    type: string
-    description: "Base domain for hosted clusters"
-  osacNetrisHostedClusterControllerAvailabilityPolicy:
-    type: string
-    enum: [SingleReplica, HighlyAvailable]
-    description: "Controller availability policy for hosted clusters"
-  osacNetrisHostedClusterInfrastructureAvailabilityPolicy:
-    type: string
-    enum: [SingleReplica, HighlyAvailable]
-    description: "Infrastructure availability policy for hosted clusters"
-  osacNetrisAwsAccessKeyId:
-    type: string
-    description: "AWS access key for Route53 DNS management"
-  osacNetrisAwsSecretAccessKey:
-    type: string
-    description: "AWS secret key for Route53 DNS management"
-  osacNetrisSshKey:
-    type: string
-    description: "SSH private key for bare-metal server access"
-  osacNetrisSshBastionKey:
-    type: string
-    description: "SSH private key for bastion host access"
+  osacNetworking:
+    type: object
+    description: >-
+      High-level networking profile passed through to Helm global.networking.
+      Mirrors osac-installer values.schema.json $defs/globalNetworking.
+    additionalProperties: false
+    properties:
+      fabricManager:
+        type: string
+        description: >-
+          Fabric manager profile. Supported: empty string or netris.
+          Reserved names cudn_net and vlan fail during Helm rendering.
+        enum: ["", "netris", "cudn_net", "vlan"]
+        default: ""
+      k8sManager:
+        type: string
+        description: >-
+          Kubernetes manager profile. Supported: empty string or k8s_only.
+          Cannot be set together with a non-empty fabricManager.
+        enum: ["", "k8s_only"]
+        default: "k8s_only"
+      netris:
+        type: object
+        description: Netris fabric manager configuration.
+        additionalProperties: false
+        properties:
+          controllerUrl:
+            type: string
+            description: Netris controller API URL (HTTPS only).
+            pattern: "^$|^https://[^/\\s:]+(:[0-9]+)?(/[^\\s]*)?$"
+          credentials:
+            type: object
+            additionalProperties: false
+            properties:
+              username:
+                type: string
+              password:
+                type: string
+              externalSecret:
+                type: boolean
+                const: true
+                description: >-
+                  Use the externally managed netris-credentials Secret
+                  (NETRIS_PASSWORD key) in the AAP namespace instead of an
+                  inline password.
+          siteId:
+            type: string
+          tenantId:
+            type: string
+          tenantName:
+            type: string
+          mgmtVpcId:
+            type: string
+          mgmtVpcName:
+            type: string
+          resourceClassMap:
+            type: string
+      networkClass:
+        type: object
+        description: >-
+          Optional NetworkClass override. Empty or partial values are merged
+          with the manager-specific default generated by Helm.
+        additionalProperties: false
+        properties:
+          enabled:
+            type: boolean
+            default: true
+          title:
+            type: string
+            minLength: 1
+          description:
+            type: string
+          fabricManager:
+            type: string
+          k8sManager:
+            type: string
+          isDefault:
+            type: boolean
+            default: true
+          defaults:
+            type: object
+            additionalProperties: false
+            properties:
+              virtualNetworkIPv4CIDR:
+                type: string
+                pattern: "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/(3[0-2]|[12]?[0-9])$"
+              subnetIPv4CIDR:
+                type: string
+                pattern: "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/(3[0-2]|[12]?[0-9])$"
+              enableNatGateway:
+                type: boolean
+              egressRules:
+                type: array
+                items:
+                  type: object
+                  required: [protocol]
+                  additionalProperties: false
+                  properties:
+                    protocol:
+                      type: string
+                      enum: [PROTOCOL_TCP, PROTOCOL_UDP, PROTOCOL_ICMP, PROTOCOL_ALL]
+                    ipv4Cidr:
+                      type: string
+                      pattern: "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/(3[0-2]|[12]?[0-9])$"
+                    ipv6Cidr:
+                      type: string
+                      pattern: "^$|^[0-9a-fA-F:]+/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$"
+                    portFrom:
+                      type: integer
+                      minimum: 1
+                      maximum: 65535
+                    portTo:
+                      type: integer
+                      minimum: 1
+                      maximum: 65535
+                  allOf:
+                    - if:
+                        properties:
+                          protocol:
+                            enum: [PROTOCOL_ICMP, PROTOCOL_ALL]
+                        required: [protocol]
+                      then:
+                        properties:
+                          portFrom:
+                            not: {}
+                          portTo:
+                            not: {}
+        allOf:
+          - if:
+              properties:
+                k8sManager:
+                  const: "k8s_only"
+              required: [k8sManager]
+            then:
+              properties:
+                fabricManager:
+                  type: string
+                  maxLength: 0
+    allOf:
+      - if:
+          properties:
+            fabricManager:
+              const: netris
+          required: [fabricManager]
+        then:
+          required: [netris]
+          properties:
+            k8sManager:
+              enum: [""]
+            netris:
+              required: [controllerUrl, credentials, siteId, tenantId, tenantName]
+              properties:
+                controllerUrl:
+                  minLength: 1
+                  pattern: "^https://[^/\\s:]+(:[0-9]+)?(/[^\\s]*)?$"
+                credentials:
+                  required: [username]
+                  oneOf:
+                    - required: [password]
+                    - required: [externalSecret]
+                      properties:
+                        externalSecret:
+                          const: true
+                  properties:
+                    username:
+                      minLength: 1
+                    password:
+                      minLength: 1
+                    externalSecret:
+                      type: boolean
+                      const: true
+                siteId:
+                  minLength: 1
+                tenantId:
+                  minLength: 1
+                tenantName:
+                  minLength: 1
+      - if:
+          properties:
+            k8sManager:
+              const: k8s_only
+          required: [k8sManager]
+        then:
+          properties:
+            fabricManager:
+              enum: [""]
   osacBcmEnabled:
     type: boolean
     description: "Enable BCM inventory backend for bare metal fulfillment"
@@ -183,26 +289,7 @@ properties:
     description: "Host class identifier for Metal3 inventory (default: metal3)"
 required:
   - osacAapLicenseFile
-dependencies:
-  osacNetrisAwsAccessKeyId:
-    - osacNetrisAwsSecretAccessKey
-  osacNetrisAwsSecretAccessKey:
-    - osacNetrisAwsAccessKeyId
 allOf:
-  - if:
-      required:
-        - osacNetrisEnabled
-      properties:
-        osacNetrisEnabled:
-          const: true
-    then:
-      required:
-        - osacNetrisControllerUrl
-        - osacNetrisUsername
-        - osacNetrisPassword
-        - osacNetrisSiteId
-        - osacNetrisTenantId
-        - osacNetrisTenantName
   - if:
       required:
         - osacBcmEnabled

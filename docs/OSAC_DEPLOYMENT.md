@@ -263,6 +263,49 @@ service-mapped controllers below are derived by the chart from
   run against absent bare-metal infrastructure (mirrors upstream caas-ci).
   Configure a backend to run a functional BMF.
 
+## Networking (`osacNetworking` → `global.networking`)
+
+Configure networking only under nested `osacNetworking`. Enclave maps it to
+Helm `global.networking`, mirroring osac-installer
+[`$defs/globalNetworking`](https://github.com/osac-project/osac/blob/main/osac-installer/charts/osac/values.schema.json)
+([network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md)).
+
+**Defaults (agentless):**
+
+```yaml
+osacNetworking:
+  fabricManager: ""
+  k8sManager: "k8s_only"
+```
+
+**Netris (inline password):**
+
+```yaml
+osacNetworking:
+  fabricManager: "netris"
+  k8sManager: ""
+  netris:
+    controllerUrl: "https://ctl.netris.io"
+    credentials:
+      username: "netris"
+      password: "changeme"
+    siteId: "1"
+    tenantId: "1"
+    tenantName: "Admin"
+```
+
+When `fabricManager` is `netris`, Enclave turns on the AAP instance groups
+used for cluster and network fulfillment (`clusterFulfillment` and
+`networkFulfillment`). The OSAC Helm chart then fills in the Netris
+connection settings those groups need from `global.networking.netris`
+(you do not set AAP env vars by hand). For what instance groups are and how
+they are configured, see
+[AAP Configuration](https://github.com/osac-project/osac/blob/main/osac-installer/docs/aap-configuration.md).
+
+Extra settings such as SSH bastion/server keys, AWS keys, or hosted-cluster
+domains are not part of `osacNetworking`. For those, use expert AAP / Helm
+overrides (see [network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md)).
+
 ## Post-Install Steps
 
 After deployment, hub registration and tenant creation require manual steps:
