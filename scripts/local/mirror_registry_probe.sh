@@ -600,9 +600,27 @@ finalize() {
             oc_src=$({ grep -ahE 'authentication required|manifest unknown|unauthorized' "${oc_files[@]}" 2>/dev/null || true; } | wc -l | tr -d ' ')
             # shellcheck disable=SC2126
             oc_slot=$({ grep -ahE 'remaining connection slots|too many clients|too many connections|database is locked' "${oc_files[@]}" 2>/dev/null || true; } | wc -l | tr -d ' ')
+            # upstream read EOF: the dominant failure signature observed on
+            # 2.0.x runs. oc-mirror's read from quay.io's CDN drops mid-blob
+            # ('happened during read: unexpected EOF ... Get "cdn01.quay.io/...')
+            # and the local :8443 write is only the victim. This is a SOURCE /
+            # network problem, not destination/DB contention, and it varies
+            # run-to-run, so it confounds backend (SQLite vs Postgres) A/B runs.
+            # Counting it lets a confounded trial be identified and discarded.
+            # shellcheck disable=SC2126
+            oc_eof=$({ grep -ahE 'happened during read: unexpected EOF|unexpected EOF \(while reconnecting' "${oc_files[@]}" 2>/dev/null || true; } | wc -l | tr -d ' ')
+            # shellcheck disable=SC2126
+            oc_eof_cdn=$({ grep -ahE 'unexpected EOF' "${oc_files[@]}" 2>/dev/null || true; } | grep -cE 'cdn[0-9]*\.quay\.io|quayio-production-s3|quay\.io' 2>/dev/null || true)
+            printf '  upstream read EOF (quay.io CDN/source)     : %s (of which quay.io/S3: %s)\n' "${oc_eof:-0}" "${oc_eof_cdn:-0}"
             printf '  destination-side (Quay 500 / bearer token) : %s\n' "${oc_dest:-0}"
             printf '  db contention (pg slots / sqlite locked)   : %s\n' "${oc_slot:-0}"
             printf '  source-side (upstream auth / manifest)     : %s\n' "${oc_src:-0}"
+            if [ "${oc_eof:-0}" -gt 0 ] 2>/dev/null; then
+                echo
+                echo "  NOTE: upstream read EOFs are a source/network fault, not a"
+                echo "        backend fault. A run with a high count here does not"
+                echo "        cleanly compare SQLite vs Postgres - treat it as confounded."
+            fi
             echo
             echo "  distinct images that failed to mirror:"
             grep -ahoE 'error mirroring image [^ ]+' "${oc_files[@]}" 2>/dev/null \
