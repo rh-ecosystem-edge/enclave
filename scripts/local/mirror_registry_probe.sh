@@ -323,8 +323,15 @@ GLOBAL_YAML="${ENCLAVE_DIR%/}/config/global.yaml"
 # file, overwritten each cycle (the logs are cumulative, so the last capture
 # before teardown is complete). A bounded context tail is taken once at finalize.
 QUAY_LOGS_DIR=""     # set after OUT exists; durable copy of quay-app DB evidence
-# SQLite write-contention / server-side DB error signatures.
-QUAY_DB_ERR_RE='database is locked|database table is locked|OperationalError|disk I/O error|SQLITE_BUSY|unable to open database'
+QUAY_IMAGE=""        # quay-app image ref (tag identifies the Quay version)
+# SQLite write-contention signatures. These are the exact symptoms documented in
+# PROJQUAY-8758 ("Quay SQLite database locked", Critical, impacts all OMR/mirror-
+# registry installs): sqlite3/peewee "OperationalError: database is locked" and
+# "Attempting to close database while transaction is open", across many workers.
+# PROJQUAY-9362 fixes it by adding PRAGMA statements (WAL + busy_timeout) to the
+# sqlite driver — landed for 3.14.z/3.15.2, ABSENT from the 3.12.x line the 2.0.x
+# appliance ships. We capture both the log signatures and the live PRAGMA state.
+QUAY_DB_ERR_RE='database is locked|database table is locked|OperationalError|Attempting to close database while transaction is open|RetryOperationalError|disk I/O error|SQLITE_BUSY|unable to open database'
 
 # Cheap per-cycle capture: aggregate DB-contention lines (with file + line no).
 sync_quay_logs() {
@@ -344,7 +351,8 @@ capture_quay_log_context() {
     podman container exists "$QUAY_APP" 2>/dev/null || return 0
     [ -n "$QUAY_LOGS_DIR" ] || return 0
     mkdir -p "$QUAY_LOGS_DIR" 2>/dev/null || true
-    local lg
+    local lg agg="${QUAY_LOGS_DIR}/quay-app-db-errors.log"
+    # Request-path workers (where the oc-mirror push writes land).
     for lg in gunicorn-registry gunicorn-web nginx; do
         podman exec "$QUAY_APP" sh -c \
             "tail -n 3000 /tmp/${lg}-stdout*supervisor*.log 2>/dev/null" \
@@ -352,6 +360,47 @@ capture_quay_log_context() {
     done
     podman exec "$QUAY_APP" sh -c 'tail -n 2000 /quay-registry/supervisord.log 2>/dev/null' \
         >"${QUAY_LOGS_DIR}/supervisord.tail.log" 2>/dev/null || true
+    # Preserve the full peewee traceback (PROJQUAY-8758) for EVERY worker that
+    # actually recorded a DB error, not just the request path (gcworker, etc.).
+    if [ -f "$agg" ]; then
+        local cpath safe
+        cut -d: -f1 "$agg" 2>/dev/null | sort -u | while IFS= read -r cpath; do
+            case "$cpath" in /tmp/*|/quay-registry/*) ;; *) continue ;; esac
+            safe=$(basename "$cpath")
+            podman exec "$QUAY_APP" tail -n 4000 "$cpath" \
+                >"${QUAY_LOGS_DIR}/errctx-${safe}" 2>/dev/null || true
+        done
+    fi
+}
+
+# Capture the live SQLite PRAGMA state Quay is running with. PROJQUAY-9362 fixes
+# the lock bug by setting PRAGMA journal_mode=WAL + busy_timeout on the driver; on
+# the shipped 3.12.x appliance those are absent, so journal_mode is typically
+# "delete" and busy_timeout 0. Recording them shows the fix is NOT in effect.
+capture_quay_sqlite_pragmas() {
+    [ -n "$QUAY_APP" ] || return 0
+    podman container exists "$QUAY_APP" 2>/dev/null || return 0
+    local out="${OUT}/snapshot/quay-sqlite-pragmas.txt" cfg dburi dbpath
+    cfg=$(podman exec "$QUAY_APP" sh -c \
+        'for f in /conf/stack/config.yaml /quay-registry/conf/stack/config.yaml; do [ -f "$f" ] && echo "$f" && break; done' \
+        2>/dev/null | head -1)
+    dburi=$(podman exec "$QUAY_APP" sh -c "grep -hiE 'DB_URI' '${cfg:-/conf/stack/config.yaml}' 2>/dev/null" | head -1)
+    # DB_URI: sqlite:////abs/path -> /abs/path (collapse scheme + leading slashes).
+    dbpath=$(printf '%s' "$dburi" | sed -nE 's#.*sqlite:/+#/#Ip' | tr -d '"'"'"' ' | head -1)
+    {
+        echo "# $(date -Is 2>/dev/null || date)"
+        echo "quay_image: ${QUAY_IMAGE:-unknown}"
+        echo "config: ${cfg:-not found}"
+        echo "DB_URI: ${dburi:-not found}"
+        echo "db_path: ${dbpath:-unresolved}"
+        if [ -n "$dbpath" ]; then
+            echo "-- PRAGMAs (read-only) --"
+            podman exec "$QUAY_APP" python3 -c "import sqlite3; c=sqlite3.connect('file:${dbpath}?mode=ro',uri=True,timeout=2); print('\n'.join('%s=%s'%(p,c.execute('PRAGMA '+p).fetchone()[0]) for p in ['journal_mode','busy_timeout','synchronous','wal_autocheckpoint','locking_mode']))" 2>&1 \
+                || echo "pragma query failed (python3/sqlite3 unavailable or db busy)"
+            echo "-- db files --"
+            podman exec "$QUAY_APP" sh -c "ls -la '${dbpath}' '${dbpath}-wal' '${dbpath}-shm' 2>/dev/null" || true
+        fi
+    } >"$out" 2>&1 || true
 }
 
 resolve_work_dir() {
@@ -433,6 +482,11 @@ capture_container_snapshot() {
         pg_query_raw "SELECT name, setting, unit FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') ORDER BY name;" \
             >"$S/pg-settings.txt" 2>&1 || true
     fi
+    # SQLite PRAGMA state (shows whether the PROJQUAY-9362 WAL/busy_timeout fix is
+    # present); capture once as soon as quay-app is up.
+    if [ "$DB_BACKEND" = "sqlite" ] && [ -n "$QUAY_APP" ] && [ ! -f "$S/quay-sqlite-pragmas.txt" ]; then
+        capture_quay_sqlite_pragmas
+    fi
 }
 
 # Single lazy-detection pass: fill in anything not yet resolved and announce
@@ -457,7 +511,8 @@ rescan() {
         _announced_containers=1
     fi
     if [ "$_announced_quayapp" = 0 ] && [ -n "$QUAY_APP" ]; then
-        info "quay app container : ${QUAY_APP}"; _announced_quayapp=1
+        QUAY_IMAGE=$(podman inspect --format '{{.ImageName}}' "$QUAY_APP" 2>/dev/null || true)
+        info "quay app container : ${QUAY_APP} (${QUAY_IMAGE:-image unknown})"; _announced_quayapp=1
     fi
     if [ "$_announced_backend" = 0 ] && [ "$DB_BACKEND" != unknown ]; then
         info "db backend         : ${DB_BACKEND}"
@@ -511,6 +566,7 @@ write_meta() {
         echo "db_backend: $DB_BACKEND"
         echo "containers: ${MONITOR_CONTAINERS[*]:-none}"
         echo "quay_app: ${QUAY_APP:-none}"
+        echo "quay_image: ${QUAY_IMAGE:-unknown}"
         echo "work_dir: ${WORK_DIR:-unresolved}"
         echo "data_dir: ${DATA_DIR:-unresolved}"
         echo "sqlite_db: ${SQLITE_DB:-n/a}"
@@ -586,8 +642,9 @@ finalize() {
     info "finalizing: collecting logs and packaging ..."
     # Final log sync + meta refresh so the report reflects the resolved state.
     sync_logs
-    sync_quay_logs            # final grep of Quay's on-disk logs for DB errors
-    capture_quay_log_context  # bounded context tails for the key workers
+    sync_quay_logs             # final grep of Quay's on-disk logs for DB errors
+    capture_quay_log_context   # bounded context tails + per-worker tracebacks
+    capture_quay_sqlite_pragmas # live PRAGMA state (PROJQUAY-9362 fix present?)
     write_meta
     # container logs (whatever is present)
     for cont in "${MONITOR_CONTAINERS[@]}"; do
@@ -656,18 +713,30 @@ finalize() {
             echo
         fi
         if [ "$DB_BACKEND" = "sqlite" ]; then
-            echo "SQLite contention errors in captured quay-app logs (server-side):"
+            echo "SQLite contention (server-side, matches PROJQUAY-8758 / fixed by PROJQUAY-9362):"
+            echo "  quay image: ${QUAY_IMAGE:-unknown}"
             # Quay logs to files, not stdout; sync_quay_logs greps them into
             # logs/quay-app-files/quay-app-db-errors.log (file:lineno:match).
             local sq_agg="${OUT}/logs/quay-app-files/quay-app-db-errors.log"
-            if [ -f "$sq_agg" ]; then
+            if [ -f "$sq_agg" ] && [ -s "$sq_agg" ]; then
                 sq_lock=$(grep -icE 'database is locked|database table is locked' "$sq_agg" 2>/dev/null || true)
+                sq_close=$(grep -icE 'Attempting to close database while transaction is open' "$sq_agg" 2>/dev/null || true)
                 sq_any=$(grep -c . "$sq_agg" 2>/dev/null || true)
-                echo "  database-locked lines : ${sq_lock:-0}"
-                echo "  all DB-error lines    : ${sq_any:-0}  (see logs/quay-app-files/quay-app-db-errors.log)"
+                echo "  database-locked lines      : ${sq_lock:-0}"
+                echo "  close-while-open lines     : ${sq_close:-0}"
+                echo "  all DB-error lines         : ${sq_any:-0}  (see logs/quay-app-files/quay-app-db-errors.log)"
+                echo "  by worker (log file):"
+                # Count errors per supervisor log (worker) to show it is not
+                # confined to one worker, as PROJQUAY-8758 describes.
+                cut -d: -f1 "$sq_agg" 2>/dev/null | sed 's#.*/##; s#-stdout.*##' \
+                    | sort | uniq -c | sort -rn | sed 's/^/    /' || true
+            elif [ -f "$sq_agg" ]; then
+                echo "  database-locked lines      : 0 (no DB-contention lines captured this run)"
             else
                 echo "  n/a -- quay-app not detected while alive (no server-side logs captured)"
             fi
+            [ -f "${OUT}/snapshot/quay-sqlite-pragmas.txt" ] && \
+                echo "  PRAGMA state captured      : snapshot/quay-sqlite-pragmas.txt (WAL/busy_timeout = PROJQUAY-9362 fix?)"
             echo
         fi
         oom_n=$(grep -icE 'oom|killed process|out of memory' "${OUT}/logs/dmesg-oom.txt" 2>/dev/null || true)
