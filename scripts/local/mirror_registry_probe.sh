@@ -309,42 +309,49 @@ SQLITE_DB=""
 SYNCED_LOGS_DIR=""   # set after OUT exists; durable copy of <workingDir>/logs
 GLOBAL_YAML="${ENCLAVE_DIR%/}/config/global.yaml"
 
-# Quay writes its application logs to FILES inside the container, not stdout, so
-# `podman logs quay-app` is empty. The server-side "database is locked" evidence
-# therefore lives in those files. The quay-app container (and its pod) may be
-# torn down the moment mirror.sh finishes — before the probe is stopped — so we
-# discover the log file paths once and tail them into the report on every tick
-# while the container is still alive; the last captured tail survives teardown.
-QUAY_LOG_PATHS=""
-_quay_logs_discovered=0
-QUAY_LOGS_DIR=""     # set after OUT exists; durable copy of quay-app log files
+# Quay writes its application logs to FILES inside the container, not stdout
+# (`podman logs quay-app` is empty). The server-side "database is locked"
+# evidence lives in /tmp/*-stdout---supervisor-*.log (the per-worker supervisord
+# logs; the gunicorn-registry one handles the oc-mirror push) and in
+# /quay-registry/supervisord.log. The pod may be torn down the moment mirror.sh
+# finishes — before the probe is stopped — so we must capture while it is alive.
+#
+# Those logs are large (tens of MB) and numerous (~70 files), so we DO NOT copy
+# them wholesale every tick (that would bloat the report and perturb the idle-CPU
+# measurement that is central to this experiment). Instead, each cycle runs ONE
+# podman exec that greps the logs for DB-contention lines into a single aggregate
+# file, overwritten each cycle (the logs are cumulative, so the last capture
+# before teardown is complete). A bounded context tail is taken once at finalize.
+QUAY_LOGS_DIR=""     # set after OUT exists; durable copy of quay-app DB evidence
+# SQLite write-contention / server-side DB error signatures.
+QUAY_DB_ERR_RE='database is locked|database table is locked|OperationalError|disk I/O error|SQLITE_BUSY|unable to open database'
 
-discover_quay_logs() {
-    [ "$_quay_logs_discovered" = 1 ] && return 0
-    [ -n "$QUAY_APP" ] || return 1
-    podman container exists "$QUAY_APP" 2>/dev/null || return 1
-    QUAY_LOG_PATHS=$(podman exec "$QUAY_APP" sh -c '
-        for d in /var/log /var/log/quay /quay-registry /conf/stack /tmp /app; do
-            [ -d "$d" ] && find "$d" -maxdepth 3 -type f -name "*.log" 2>/dev/null
-        done' 2>/dev/null | head -30 || true)
-    [ -n "$QUAY_LOG_PATHS" ] && _quay_logs_discovered=1
-    return 0
-}
-
-# Tail each discovered Quay log file into the report (overwrite = keep latest).
+# Cheap per-cycle capture: aggregate DB-contention lines (with file + line no).
 sync_quay_logs() {
     [ -n "$QUAY_APP" ] || return 0
     podman container exists "$QUAY_APP" 2>/dev/null || return 0
     [ -n "$QUAY_LOGS_DIR" ] || return 0
-    discover_quay_logs
-    [ -n "$QUAY_LOG_PATHS" ] || return 0
     mkdir -p "$QUAY_LOGS_DIR" 2>/dev/null || true
-    local lf safe
-    while IFS= read -r lf; do
-        [ -n "$lf" ] || continue
-        safe=$(printf '%s' "$lf" | sed 's#^/##; s#/#_#g')
-        podman exec "$QUAY_APP" tail -n 20000 "$lf" >"${QUAY_LOGS_DIR}/${safe}" 2>/dev/null || true
-    done <<<"$QUAY_LOG_PATHS"
+    podman exec "$QUAY_APP" sh -c \
+        "grep -HniE '${QUAY_DB_ERR_RE}' /tmp/*.log /quay-registry/*.log 2>/dev/null" \
+        >"${QUAY_LOGS_DIR}/quay-app-db-errors.log" 2>/dev/null || true
+}
+
+# One-time context capture (finalize): tail the few logs that matter so the
+# aggregate error lines have surrounding context without hauling in everything.
+capture_quay_log_context() {
+    [ -n "$QUAY_APP" ] || return 0
+    podman container exists "$QUAY_APP" 2>/dev/null || return 0
+    [ -n "$QUAY_LOGS_DIR" ] || return 0
+    mkdir -p "$QUAY_LOGS_DIR" 2>/dev/null || true
+    local lg
+    for lg in gunicorn-registry gunicorn-web nginx; do
+        podman exec "$QUAY_APP" sh -c \
+            "tail -n 3000 /tmp/${lg}-stdout*supervisor*.log 2>/dev/null" \
+            >"${QUAY_LOGS_DIR}/${lg}.tail.log" 2>/dev/null || true
+    done
+    podman exec "$QUAY_APP" sh -c 'tail -n 2000 /quay-registry/supervisord.log 2>/dev/null' \
+        >"${QUAY_LOGS_DIR}/supervisord.tail.log" 2>/dev/null || true
 }
 
 resolve_work_dir() {
@@ -579,7 +586,8 @@ finalize() {
     info "finalizing: collecting logs and packaging ..."
     # Final log sync + meta refresh so the report reflects the resolved state.
     sync_logs
-    sync_quay_logs   # last tail of Quay's on-disk logs if the container is still up
+    sync_quay_logs            # final grep of Quay's on-disk logs for DB errors
+    capture_quay_log_context  # bounded context tails for the key workers
     write_meta
     # container logs (whatever is present)
     for cont in "${MONITOR_CONTAINERS[@]}"; do
@@ -649,20 +657,16 @@ finalize() {
         fi
         if [ "$DB_BACKEND" = "sqlite" ]; then
             echo "SQLite contention errors in captured quay-app logs (server-side):"
-            # Quay logs to files, not stdout, so the evidence is in the on-disk
-            # logs tailed into logs/quay-app-files/ (podman logs is usually empty).
-            # Count across both the file tails and the podman-logs capture.
-            sq_src=()
-            [ -d "${OUT}/logs/quay-app-files" ] && \
-                while IFS= read -r qf; do [ -n "$qf" ] && sq_src+=("$qf"); done \
-                    < <(find "${OUT}/logs/quay-app-files" -type f 2>/dev/null)
-            [ -n "$QUAY_APP" ] && [ -f "${OUT}/logs/${QUAY_APP}.log" ] && sq_src+=("${OUT}/logs/${QUAY_APP}.log")
-            if [ "${#sq_src[@]}" -gt 0 ]; then
-                # shellcheck disable=SC2126
-                sq_err=$({ grep -ahicE 'database is locked|database table is locked|OperationalError.*lock' "${sq_src[@]}" 2>/dev/null || true; } | awk '{s+=$1} END{print s+0}')
-                echo "  database-locked matches: ${sq_err:-0}  (across ${#sq_src[@]} log file(s))"
+            # Quay logs to files, not stdout; sync_quay_logs greps them into
+            # logs/quay-app-files/quay-app-db-errors.log (file:lineno:match).
+            local sq_agg="${OUT}/logs/quay-app-files/quay-app-db-errors.log"
+            if [ -f "$sq_agg" ]; then
+                sq_lock=$(grep -icE 'database is locked|database table is locked' "$sq_agg" 2>/dev/null || true)
+                sq_any=$(grep -c . "$sq_agg" 2>/dev/null || true)
+                echo "  database-locked lines : ${sq_lock:-0}"
+                echo "  all DB-error lines    : ${sq_any:-0}  (see logs/quay-app-files/quay-app-db-errors.log)"
             else
-                echo "  database-locked matches: n/a (no quay-app logs captured -- container not detected while alive)"
+                echo "  n/a -- quay-app not detected while alive (no server-side logs captured)"
             fi
             echo
         fi
