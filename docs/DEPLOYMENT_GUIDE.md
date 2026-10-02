@@ -58,7 +58,7 @@ The following Red Hat operators are automatically installed and configured:
 | **NetObserv Operator** | `openshift-netobserv-operator` | Network observability |
 | **Cluster Logging** | `openshift-logging` | Cluster log collection and forwarding |
 | **Loki Operator** | `openshift-operators-redhat` | Log storage backend |
-| **Red Hat OADP** | `openshift-oadp` | Backup and restore operations |
+| **Red Hat OADP** | `open-cluster-management-backup` | Backup and restore operations |
 | **OpenShift Cert Manager** | `cert-manager-operator` | Certificate management |
 | **Cluster Observability** | `openshift-cluster-observability-operator` | Monitoring and observability |
 | **External Secrets Operator** | `external-secrets-operator` | External secrets management |
@@ -381,7 +381,7 @@ operators:
   # Backup and Restore
   - name: redhat-oadp-operator
     channel: stable
-    namespace: openshift-oadp
+    namespace: open-cluster-management-backup
 
   # Certificate Manager
   - name: openshift-cert-manager-operator
