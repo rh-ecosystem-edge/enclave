@@ -11,5 +11,5 @@ ocMirrorAnsibleDelay: 10
 ocMirrorCacheAnsibleRetries: 5
 ocMirrorParallelLayersLocalStorage: 1
 ## Internet to LZ Mirroring defaults
-ocMirrorParallelImagesLZMirror: 2
-ocMirrorParallelLayersLZMirror: 1
+ocMirrorParallelImagesLZMirror: 10
+ocMirrorParallelLayersLZMirror: 10
