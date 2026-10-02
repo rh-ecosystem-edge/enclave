@@ -5,6 +5,9 @@ Fresh installs pick up the scopes from `defaults/quay_operator.yaml` automatical
 > [!WARNING]
 > Quay does not revoke the previous token when a new one is issued. The old token keeps working with its old (narrower) scopes until it expires or is deleted manually under `quayadmin` -> Settings -> Tokens. Patching the Secret only swaps which token the cluster uses.
 
+> [!NOTE]
+> A manually reissued token (per the steps below) persists across `operators` re-runs: the playbook skips Quay OAuth setup when `quay-oauth-credentials` already exists, so it won't overwrite your patched token.
+
 ## Prerequisites
 
 - `oc`, `curl`, and `jq` on `PATH`
