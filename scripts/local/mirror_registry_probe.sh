@@ -42,6 +42,8 @@
 #     -l, --label TEXT       run label, e.g. v1.3.11 / v2.0.12 (default: none)
 #     -o, --out DIR          output directory (default: ./mirror-probe-<label>-<host>-<ts>)
 #     -e, --enclave-dir DIR  enclave repo dir for config (default: .)
+#     -w, --working-dir DIR  Quay/oc-mirror working dir (default: from config/global.yaml);
+#                            its logs/ subdir is synced into the report every tick
 #     -c, --containers "A B" explicit container names to monitor (default: auto-detect)
 #         --allow-degraded   continue even if a present PostgreSQL cannot be sampled
 #     -h, --help             show this help
@@ -58,6 +60,7 @@ set -euo pipefail
 INTERVAL=15
 DURATION=0
 ENCLAVE_DIR="."
+WORKING_DIR_OVERRIDE=""
 OUT=""
 LABEL=""
 CONTAINERS_OVERRIDE=""
@@ -65,7 +68,7 @@ ALLOW_DEGRADED=0
 
 SCRIPT_NAME=$(basename "$0")
 
-usage() { sed -n '2,56p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^set -euo pipefail/p' "$0" | sed '/^set -euo pipefail/d' | sed 's/^# \{0,1\}//'; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -74,6 +77,7 @@ while [ $# -gt 0 ]; do
         -l|--label)        LABEL="${2:?}"; shift 2 ;;
         -o|--out)          OUT="${2:?}"; shift 2 ;;
         -e|--enclave-dir)  ENCLAVE_DIR="${2:?}"; shift 2 ;;
+        -w|--working-dir)  WORKING_DIR_OVERRIDE="${2:?}"; shift 2 ;;
         -c|--containers)   CONTAINERS_OVERRIDE="${2:?}"; shift 2 ;;
         --allow-degraded)  ALLOW_DEGRADED=1; shift ;;
         -h|--help)         usage; exit 0 ;;
@@ -127,7 +131,7 @@ to_mb() { # value-with-unit
 # ----------------------------------------------------------------------------
 # Preflight: verify commands
 # ----------------------------------------------------------------------------
-REQUIRED=(podman awk sed grep date sleep mkdir tar cat printf hostname)
+REQUIRED=(podman awk sed grep date sleep mkdir tar cat printf hostname cp)
 OPTIONAL=(lscpu lsblk iostat mpstat vmstat ss ip numactl dmesg journalctl python3 curl free uptime nproc df stat find)
 
 echo
@@ -154,60 +158,74 @@ if [ "$missing_required" -ne 0 ]; then
 fi
 
 # ----------------------------------------------------------------------------
-# Container + DB backend auto-detection
+# Container + DB backend + path detection (lazy, re-tried every tick)
 # ----------------------------------------------------------------------------
-# Container names differ slightly across mirror-registry versions, and 2.0.12
+# Container names differ slightly across mirror-registry versions, and 2.0.x
 # has no quay-postgres container at all (SQLite). Rather than hardcode, detect
 # the running set and classify the DB backend from it.
+#
+# Detection is LAZY: each piece (containers, DB backend, PostgreSQL sampling,
+# data dir, oc-mirror log dir, SQLite file) is retried on every tick until it
+# resolves. This means the probe can be started BEFORE the registry is up / the
+# mirror has begun, without losing the container, DB and log data (the earlier
+# one-shot-at-startup detection captured host metrics only in that case).
 QUAY_APP=""; PG_CONT=""
 MONITOR_CONTAINERS=()
 DB_BACKEND="unknown"
 
-running_names=$(podman ps --format '{{.Names}}' 2>/dev/null || true)
-if [ -z "$running_names" ]; then
-    warn "No running containers visible to this user's podman."
-    warn "Run this script as the user that installed mirror-registry / runs mirror.sh"
-    warn "(rootless podman containers are per-user), and ensure the registry is up."
-fi
+# one-time announcement guards (so lazy re-detection doesn't spam the console)
+_announced_containers=0
+_announced_backend=0
+_announced_pg=0
+_announced_datadir=0
+_announced_logdir=0
+_announced_sqlite=0
+_container_snapshot_done=0
 
-if [ -n "$CONTAINERS_OVERRIDE" ]; then
-    # shellcheck disable=SC2206
-    MONITOR_CONTAINERS=($CONTAINERS_OVERRIDE)
-else
-    while IFS= read -r name; do
-        [ -n "$name" ] || continue
-        case "$name" in
-            *postgres*)        PG_CONT="$name"; MONITOR_CONTAINERS+=("$name") ;;
-            *redis*)           MONITOR_CONTAINERS+=("$name") ;;
-            *quay*|*registry*) MONITOR_CONTAINERS+=("$name") ;;
-        esac
-    done <<<"$running_names"
-fi
+detect_containers() {
+    # Already resolved (or explicitly overridden)? nothing to do.
+    [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] && return 0
 
-# Pick the Quay application container: prefer an exact quay-app, else first
-# quay* that is not the postgres/redis sidecar.
-if podman container exists quay-app 2>/dev/null; then
-    QUAY_APP="quay-app"
-else
-    for name in "${MONITOR_CONTAINERS[@]}"; do
-        case "$name" in
-            *postgres*|*redis*) : ;;
-            *quay*|*registry*)  QUAY_APP="$name"; break ;;
-        esac
+    if [ -n "$CONTAINERS_OVERRIDE" ]; then
+        # shellcheck disable=SC2206
+        MONITOR_CONTAINERS=($CONTAINERS_OVERRIDE)
+    else
+        local running_names name
+        running_names=$(podman ps --format '{{.Names}}' 2>/dev/null || true)
+        [ -n "$running_names" ] || return 1
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            case "$name" in
+                *postgres*|*redis*|*quay*|*registry*) MONITOR_CONTAINERS+=("$name") ;;
+            esac
+        done <<<"$running_names"
+    fi
+    [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] || return 1
+
+    local n
+    for n in "${MONITOR_CONTAINERS[@]}"; do
+        case "$n" in *postgres*) PG_CONT="$n" ;; esac
     done
-fi
-
-# Classify DB backend.
-if [ -n "$PG_CONT" ]; then
-    DB_BACKEND="postgres"
-elif [ -n "$QUAY_APP" ]; then
-    DB_BACKEND="sqlite"   # 2.0.12 default when no postgres sidecar is present
-fi
-
-info "detected containers: ${MONITOR_CONTAINERS[*]:-none}"
-info "quay app container : ${QUAY_APP:-not found}"
-info "postgres container : ${PG_CONT:-none (SQLite / embedded backend assumed)}"
-info "db backend         : ${DB_BACKEND}"
+    # Pick the Quay application container: prefer an exact quay-app, else first
+    # quay*/registry* that is not the postgres/redis sidecar.
+    if podman container exists quay-app 2>/dev/null; then
+        QUAY_APP="quay-app"
+    else
+        for n in "${MONITOR_CONTAINERS[@]}"; do
+            case "$n" in
+                *postgres*|*redis*) : ;;
+                *quay*|*registry*)  QUAY_APP="$n"; break ;;
+            esac
+        done
+    fi
+    # Classify DB backend.
+    if [ -n "$PG_CONT" ]; then
+        DB_BACKEND="postgres"
+    elif [ -n "$QUAY_APP" ]; then
+        DB_BACKEND="sqlite"   # 2.0.x default when no postgres sidecar is present
+    fi
+    return 0
+}
 
 # ----------------------------------------------------------------------------
 # PostgreSQL connection detection (1.3.11 only; the key metric there)
@@ -260,78 +278,136 @@ pg_query_raw() { # human-readable table form
     fi
 }
 
-if [ "$DB_BACKEND" = "postgres" ]; then
-    if detect_pg; then
-        PG_OK=1
-        PG_MAX=$(pg_query "SHOW max_connections;" | head -1)
-        [ -n "$PG_MAX" ] || PG_MAX="NA"
-        info "PostgreSQL reachable as user='${PG_USER}' db='${PG_DB}' max_connections=${PG_MAX}"
-    else
-        warn "A PostgreSQL container ('${PG_CONT}') is present but could not be sampled."
-        warn "This is the most important metric for the 1.3.11 investigation."
-        if [ "$ALLOW_DEGRADED" -ne 1 ]; then
-            err "Aborting. Re-run with --allow-degraded to collect host metrics only."
-            exit 1
-        fi
-        warn "Continuing in degraded mode (host metrics only) as requested."
-    fi
-else
-    info "No PostgreSQL backend; skipping pg_stat_activity (expected for 2.0.12/SQLite)."
-fi
-
 # ----------------------------------------------------------------------------
-# Resolve the Quay working/data dir and (for SQLite) the DB file to watch
+# Working dir / data dir / log dir / SQLite file resolution (lazy)
 # ----------------------------------------------------------------------------
 DATA_DIR=""
 WORK_DIR=""
 OC_MIRROR_LOG_DIR=""
 SQLITE_DB=""
+SYNCED_LOGS_DIR=""   # set after OUT exists; durable copy of <workingDir>/logs
 GLOBAL_YAML="${ENCLAVE_DIR%/}/config/global.yaml"
-if has python3 && [ -f "$GLOBAL_YAML" ]; then
-    wd=$(python3 -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])) or {}; print(d.get("workingDir",""))' "$GLOBAL_YAML" 2>/dev/null || true)
-    if [ -n "$wd" ]; then
-        DATA_DIR="${wd%/}/data"
-        WORK_DIR="${wd%/}"
-    fi
-fi
-[ -n "$DATA_DIR" ] && [ ! -d "$DATA_DIR" ] && DATA_DIR=""
-if [ -n "$DATA_DIR" ]; then
-    info "watching data dir: $DATA_DIR"
-else
-    warn "Quay data dir not resolved; disk-usage column will be NA"
-fi
 
-# oc-mirror writes its progress logs under <workingDir>/logs (see
-# playbooks/tasks/mirror_registry.yaml). Capture them at finalize so the
-# source/destination error split is preserved alongside the host metrics.
-if [ -n "$WORK_DIR" ] && [ -d "${WORK_DIR}/logs" ]; then
-    OC_MIRROR_LOG_DIR="${WORK_DIR}/logs"
-    info "oc-mirror log dir: $OC_MIRROR_LOG_DIR"
-else
-    warn "oc-mirror log dir not resolved; oc-mirror logs will not be captured"
-fi
+resolve_work_dir() {
+    [ -n "$WORK_DIR" ] && return 0
+    if [ -n "$WORKING_DIR_OVERRIDE" ]; then
+        WORK_DIR="${WORKING_DIR_OVERRIDE%/}"
+        return 0
+    fi
+    if has python3 && [ -f "$GLOBAL_YAML" ]; then
+        local wd
+        wd=$(python3 -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])) or {}; print(d.get("workingDir",""))' "$GLOBAL_YAML" 2>/dev/null || true)
+        [ -n "$wd" ] && WORK_DIR="${wd%/}"
+    fi
+    [ -n "$WORK_DIR" ]
+}
 
-# For the SQLite backend, locate the largest *.sqlite/*.db file under the
-# working dir so we can track its growth (the SQLite analogue to watching the
-# PG connection pool). Best effort; NA if not found.
-if [ "$DB_BACKEND" = "sqlite" ] && has find; then
-    search_root="${WORK_DIR:-$DATA_DIR}"
-    if [ -n "$search_root" ] && [ -d "$search_root" ]; then
-        SQLITE_DB=$(find "$search_root" -type f \( -iname '*.sqlite' -o -iname '*.sqlite3' -o -iname '*.db' \) \
-            -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -1 | cut -f2- || true)
+resolve_paths() {
+    resolve_work_dir || true
+    [ -n "$WORK_DIR" ] || return 0
+    if [ -z "$DATA_DIR" ] && [ -d "${WORK_DIR}/data" ]; then
+        DATA_DIR="${WORK_DIR}/data"
     fi
-    if [ -n "$SQLITE_DB" ]; then
-        info "watching sqlite db: $SQLITE_DB"
-    else
-        warn "SQLite db file not located under '${search_root:-?}'; sqlite size columns will be NA"
+    # oc-mirror writes its progress logs under <workingDir>/logs (see
+    # playbooks/tasks/mirror_registry.yaml); mirror.sh logs land there too.
+    if [ -z "$OC_MIRROR_LOG_DIR" ] && [ -d "${WORK_DIR}/logs" ]; then
+        OC_MIRROR_LOG_DIR="${WORK_DIR}/logs"
     fi
-fi
+    # For the SQLite backend, locate the largest *.sqlite/*.db file under the
+    # working dir so we can track its growth (the SQLite analogue to watching
+    # the PG connection pool). Best effort; NA until it appears.
+    if [ "$DB_BACKEND" = "sqlite" ] && [ -z "$SQLITE_DB" ] && has find; then
+        local search_root
+        search_root="${WORK_DIR:-$DATA_DIR}"
+        if [ -n "$search_root" ] && [ -d "$search_root" ]; then
+            SQLITE_DB=$(find "$search_root" -type f \( -iname '*.sqlite' -o -iname '*.sqlite3' -o -iname '*.db' \) \
+                -printf '%s\t%p\n' 2>/dev/null | sort -rn | head -1 | cut -f2- || true)
+        fi
+    fi
+}
+
+# Incrementally mirror <workingDir>/logs into the report so oc-mirror / mirror.sh
+# logs are preserved even if the playbook (or a later run) removes or rewrites
+# them. -a keeps mtimes intact so the "created since probe start" filter in
+# finalize still works; -u copies only newer files (cheap every tick).
+sync_logs() {
+    [ -n "$OC_MIRROR_LOG_DIR" ] && [ -d "$OC_MIRROR_LOG_DIR" ] || return 0
+    [ -n "$SYNCED_LOGS_DIR" ] || return 0
+    mkdir -p "$SYNCED_LOGS_DIR" 2>/dev/null || true
+    cp -a -u "$OC_MIRROR_LOG_DIR"/. "$SYNCED_LOGS_DIR"/ 2>>"$ERRLOG" || true
+}
+
+# Container-dependent part of the one-time snapshot, deferred until the
+# containers actually appear (so starting early still captures inspect/env).
+capture_container_snapshot() {
+    [ "$_container_snapshot_done" = 1 ] && return 0
+    [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ] || return 1
+    local S="${OUT}/snapshot" cont
+    podman ps -a >"$S/podman-ps.txt" 2>&1 || true
+    # Image tags identify the mirror-registry version under test.
+    podman ps --format '{{.Names}}\t{{.Image}}' >"$S/podman-images.txt" 2>&1 || true
+    for cont in "${MONITOR_CONTAINERS[@]}"; do
+        podman container exists "$cont" 2>/dev/null && \
+            podman inspect "$cont" >"$S/inspect-${cont}.json" 2>&1 || true
+    done
+    # Quay worker-relevant environment (no secrets: only WORKER/GUNICORN/COUNT keys)
+    if [ -n "$QUAY_APP" ]; then
+        podman exec "$QUAY_APP" sh -c 'printenv 2>/dev/null | grep -Ei "worker|gunicorn|count|_conn|pool|sqlite|database" || true' \
+            >"$S/quay-app-env.txt" 2>&1 || true
+    fi
+    if [ "$PG_OK" = 1 ]; then
+        pg_query_raw "SELECT name, setting, unit FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') ORDER BY name;" \
+            >"$S/pg-settings.txt" 2>&1 || true
+    fi
+    _container_snapshot_done=1
+}
+
+# Single lazy-detection pass: fill in anything not yet resolved and announce
+# each piece exactly once. Safe to call every tick.
+rescan() {
+    detect_containers || true
+    if [ "$DB_BACKEND" = "postgres" ] && [ "$PG_OK" != 1 ]; then
+        if detect_pg; then
+            PG_OK=1
+            PG_MAX=$(pg_query "SHOW max_connections;" | head -1)
+            [ -n "$PG_MAX" ] || PG_MAX="NA"
+        fi
+    fi
+    resolve_paths
+
+    if [ "$_announced_containers" = 0 ] && [ "${#MONITOR_CONTAINERS[@]}" -gt 0 ]; then
+        info "detected containers: ${MONITOR_CONTAINERS[*]}"
+        info "quay app container : ${QUAY_APP:-not found}"
+        info "postgres container : ${PG_CONT:-none (SQLite / embedded backend assumed)}"
+        _announced_containers=1
+    fi
+    if [ "$_announced_backend" = 0 ] && [ "$DB_BACKEND" != unknown ]; then
+        info "db backend         : ${DB_BACKEND}"
+        _announced_backend=1
+    fi
+    if [ "$_announced_pg" = 0 ] && [ "$PG_OK" = 1 ]; then
+        info "PostgreSQL reachable as user='${PG_USER}' db='${PG_DB}' max_connections=${PG_MAX}"
+        _announced_pg=1
+    fi
+    if [ "$_announced_datadir" = 0 ] && [ -n "$DATA_DIR" ]; then
+        info "watching data dir  : $DATA_DIR"; _announced_datadir=1
+    fi
+    if [ "$_announced_logdir" = 0 ] && [ -n "$OC_MIRROR_LOG_DIR" ]; then
+        info "working-dir logs   : $OC_MIRROR_LOG_DIR (synced into report)"; _announced_logdir=1
+    fi
+    if [ "$_announced_sqlite" = 0 ] && [ -n "$SQLITE_DB" ]; then
+        info "watching sqlite db : $SQLITE_DB"; _announced_sqlite=1
+    fi
+
+    capture_container_snapshot || true
+}
 
 # ----------------------------------------------------------------------------
 # Prepare output layout
 # ----------------------------------------------------------------------------
-mkdir -p "$OUT"/{snapshot,timeseries/pg_stat_activity,timeseries/podman_stats,timeseries/iostat,timeseries/pressure,logs}
+mkdir -p "$OUT"/{snapshot,timeseries/pg_stat_activity,timeseries/podman_stats,timeseries/iostat,timeseries/pressure,logs/working-dir-logs}
 ERRLOG="${OUT}/errors.log"; : >"$ERRLOG"
+SYNCED_LOGS_DIR="${OUT}/logs/working-dir-logs"
 
 # Host/DB time-series (one row per tick): the primary comparison artifact.
 CSV="${OUT}/timeseries/samples.csv"
@@ -341,24 +417,29 @@ echo "ts_epoch,ts_iso,label,db_backend,load1,cpu_busy_pct,cpu_iowait_pct,mem_use
 PODMAN_CSV="${OUT}/timeseries/podman_stats.csv"
 echo "ts_epoch,label,container,cpu_pct,mem_used_mb,mem_pct,block_read_mb,block_write_mb,net_rx_mb,net_tx_mb,pids" >"$PODMAN_CSV"
 
-{
-    echo "script: $SCRIPT_NAME"
-    echo "started: $(date -Is 2>/dev/null || date)"
-    echo "host: $(hostname 2>/dev/null)"
-    echo "user: $(id -un 2>/dev/null) (uid $(id -u 2>/dev/null))"
-    echo "label: ${LABEL:-none}"
-    echo "interval_s: $INTERVAL"
-    echo "duration_s: $DURATION (0 = until interrupted)"
-    echo "enclave_dir: $ENCLAVE_DIR"
-    echo "db_backend: $DB_BACKEND"
-    echo "containers: ${MONITOR_CONTAINERS[*]:-none}"
-    echo "quay_app: ${QUAY_APP:-none}"
-    echo "work_dir: ${WORK_DIR:-unresolved}"
-    echo "data_dir: ${DATA_DIR:-unresolved}"
-    echo "sqlite_db: ${SQLITE_DB:-n/a}"
-    echo "oc_mirror_log_dir: ${OC_MIRROR_LOG_DIR:-unresolved}"
-    echo "pg_sampling: $([ "$PG_OK" = 1 ] && echo "yes (user=$PG_USER db=$PG_DB max_connections=$PG_MAX)" || echo no)"
-} >"${OUT}/meta.txt"
+# Written at startup and rewritten at finalize so it reflects whatever lazy
+# detection managed to resolve by the end of the run.
+write_meta() {
+    {
+        echo "script: $SCRIPT_NAME"
+        echo "started: $(date -Is -d "@${PROBE_START_EPOCH}" 2>/dev/null || date -Is 2>/dev/null || date)"
+        echo "host: $(hostname 2>/dev/null)"
+        echo "user: $(id -un 2>/dev/null) (uid $(id -u 2>/dev/null))"
+        echo "label: ${LABEL:-none}"
+        echo "interval_s: $INTERVAL"
+        echo "duration_s: $DURATION (0 = until interrupted)"
+        echo "enclave_dir: $ENCLAVE_DIR"
+        echo "db_backend: $DB_BACKEND"
+        echo "containers: ${MONITOR_CONTAINERS[*]:-none}"
+        echo "quay_app: ${QUAY_APP:-none}"
+        echo "work_dir: ${WORK_DIR:-unresolved}"
+        echo "data_dir: ${DATA_DIR:-unresolved}"
+        echo "sqlite_db: ${SQLITE_DB:-n/a}"
+        echo "oc_mirror_log_dir: ${OC_MIRROR_LOG_DIR:-unresolved}"
+        echo "pg_sampling: $([ "$PG_OK" = 1 ] && echo "yes (user=$PG_USER db=$PG_DB max_connections=$PG_MAX)" || echo no)"
+    } >"${OUT}/meta.txt"
+}
+write_meta
 
 # ----------------------------------------------------------------------------
 # One-time capacity snapshot
@@ -382,27 +463,37 @@ mount >"$S/mount.txt" 2>&1 || true
 { cat /proc/sys/fs/file-nr; echo; sysctl -a 2>/dev/null | grep -Ei 'vm.swappiness|vm.dirty|fs.file-max|net.core.somaxconn|net.ipv4.tcp_fin_timeout'; } >"$S/sysctl.txt" 2>&1 || true
 podman version >"$S/podman-version.txt" 2>&1 || true
 podman info >"$S/podman-info.txt" 2>&1 || true
-podman ps -a >"$S/podman-ps.txt" 2>&1 || true
-# Image tags identify the mirror-registry version under test.
-podman ps --format '{{.Names}}\t{{.Image}}' >"$S/podman-images.txt" 2>&1 || true
-for cont in "${MONITOR_CONTAINERS[@]}"; do
-    podman container exists "$cont" 2>/dev/null && \
-        podman inspect "$cont" >"$S/inspect-${cont}.json" 2>&1 || true
-done
-# Quay worker-relevant environment (no secrets: only WORKER/GUNICORN/COUNT keys)
-if [ -n "$QUAY_APP" ]; then
-    podman exec "$QUAY_APP" sh -c 'printenv 2>/dev/null | grep -Ei "worker|gunicorn|count|_conn|pool|sqlite|database" || true' \
-        >"$S/quay-app-env.txt" 2>&1 || true
-fi
 # oc-mirror concurrency defaults in effect (for correlation)
 cp "${ENCLAVE_DIR%/}/defaults/oc_mirror.yaml" "$S/oc_mirror.yaml" 2>/dev/null || true
 if has python3 && [ -f "$GLOBAL_YAML" ]; then
     python3 -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1])) or {}; print("quayBackend:", d.get("quayBackend")); print("workingDir:", d.get("workingDir"))' \
         "$GLOBAL_YAML" >"$S/global-relevant.txt" 2>&1 || true
 fi
-if [ "$PG_OK" = 1 ]; then
-    pg_query_raw "SELECT name, setting, unit FROM pg_settings WHERE name IN ('max_connections','superuser_reserved_connections','shared_buffers','work_mem','effective_cache_size','maintenance_work_mem') ORDER BY name;" \
-        >"$S/pg-settings.txt" 2>&1 || true
+# Container/DB-dependent snapshot (podman ps/inspect, quay env, pg-settings) is
+# captured by capture_container_snapshot() the moment the containers appear.
+
+# ----------------------------------------------------------------------------
+# Initial lazy detection (re-tried every tick in the sampling loop)
+# ----------------------------------------------------------------------------
+rescan
+write_meta
+
+if [ "${#MONITOR_CONTAINERS[@]}" -eq 0 ]; then
+    warn "No mirror-registry containers detected yet."
+    warn "Run this script as the user that installed mirror-registry / runs mirror.sh"
+    warn "(rootless podman containers are per-user). Detection is retried every tick,"
+    warn "so it is fine to start the probe before the registry is up."
+fi
+# When the registry is already up (the typical 1.3.11 case) a present-but-
+# unsampleable PostgreSQL is a hard error unless --allow-degraded is given.
+if [ "$DB_BACKEND" = "postgres" ] && [ "$PG_OK" != 1 ]; then
+    warn "A PostgreSQL container ('${PG_CONT}') is present but could not be sampled."
+    warn "This is the most important metric for the 1.3.11 investigation."
+    if [ "$ALLOW_DEGRADED" -ne 1 ]; then
+        err "Aborting. Re-run with --allow-degraded to collect host metrics only."
+        exit 1
+    fi
+    warn "Continuing in degraded mode (host metrics only) as requested."
 fi
 
 # ----------------------------------------------------------------------------
@@ -414,20 +505,26 @@ finalize() {
     FINALIZED=1
     echo
     info "finalizing: collecting logs and packaging ..."
+    # Final log sync + meta refresh so the report reflects the resolved state.
+    sync_logs
+    write_meta
     # container logs (whatever is present)
     for cont in "${MONITOR_CONTAINERS[@]}"; do
         podman logs --tail 3000 "$cont" >"${OUT}/logs/${cont}.log" 2>&1 || true
     done
-    # oc-mirror progress logs (the mirror itself): capture the most recent ones
-    # created since the probe started so the error classification reflects THIS
-    # run and is not contaminated by logs from prior runs.
+    # oc-mirror progress logs (the mirror itself): read from the durable synced
+    # copy (sync_logs preserves mtimes) and keep only the ones created since the
+    # probe started so the error classification reflects THIS run and is not
+    # contaminated by logs from prior runs. Reading the synced copy means the
+    # logs survive even if the playbook / a later run removed the originals.
     oc_logs_captured=0
-    if [ -n "$OC_MIRROR_LOG_DIR" ]; then
+    oc_src_dir="${SYNCED_LOGS_DIR:-$OC_MIRROR_LOG_DIR}"
+    if [ -n "$oc_src_dir" ] && [ -d "$oc_src_dir" ]; then
         mkdir -p "${OUT}/logs/oc-mirror" 2>/dev/null || true
         while IFS= read -r f; do
             [ -n "$f" ] || continue
             cp "$f" "${OUT}/logs/oc-mirror/" 2>>"$ERRLOG" && oc_logs_captured=$((oc_logs_captured + 1))
-        done < <(find "$OC_MIRROR_LOG_DIR" -maxdepth 1 -type f -name 'oc-mirror*.log' \
+        done < <(find "$oc_src_dir" -maxdepth 1 -type f -name 'oc-mirror*.log' \
                      -newermt "@${PROBE_START_EPOCH}" 2>/dev/null | sort | tail -20)
         info "captured ${oc_logs_captured} oc-mirror log(s) created since probe start"
     fi
@@ -545,6 +642,10 @@ tick=0
 while [ "$RUNNING" = 1 ]; do
     now_epoch=$(date +%s)
     now_iso=$(date -Is 2>/dev/null || date +%Y-%m-%dT%H:%M:%S)
+
+    # Lazy detection + incremental log preservation (cheap; no-ops once resolved).
+    rescan
+    sync_logs
 
     # --- CPU (delta over interval) ---
     read -r cur_total cur_idle cur_io < <(read_cpu) || { cur_total=$prev_total; cur_idle=$prev_idle; cur_io=$prev_io; }
