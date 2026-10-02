@@ -41,6 +41,14 @@ properties:
     type: integer
     minimum: 1
     description: Number of parallel layer downloads when using LocalStorage backend
+  ocMirrorParallelImagesLZMirror:
+    type: integer
+    minimum: 1
+    description: Number of parallel image downloads in Internet to LZ mirror
+  ocMirrorParallelLayersLZMirror:
+    type: integer
+    minimum: 1
+    description: Number of parallel layer downloads in Internet to LZ mirror
 
 required:
   - ocMirrorParallelImages
@@ -52,3 +60,5 @@ required:
   - ocMirrorAnsibleDelay
   - ocMirrorCacheAnsibleRetries
   - ocMirrorParallelLayersLocalStorage
+  - ocMirrorParallelImagesLZMirror
+  - ocMirrorParallelLayersLZMirror

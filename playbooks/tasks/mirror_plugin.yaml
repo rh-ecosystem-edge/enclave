@@ -39,8 +39,8 @@
           --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
           docker://{{ quayHostname }}:8443 \
           --dest-tls-verify=false \
-          --parallel-images {{ ocMirrorParallelImages }} \
-          --parallel-layers {{ ocMirrorParallelLayers }} \
+          --parallel-images {{ ocMirrorParallelImagesLZMirror }} \
+          --parallel-layers {{ ocMirrorParallelLayersLZMirror }} \
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
           > {{ _oc_mirror_plugin_log }} 2>&1

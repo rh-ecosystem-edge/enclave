@@ -92,18 +92,14 @@
     path: "{{ workingDir }}/logs/"
     state: directory
 
-- name: Set oc-mirror log path
-  ansible.builtin.set_fact:
-    _oc_mirror_log: "{{ workingDir }}/logs/oc-mirror.progress.{{ lookup('pipe', 'date +%s') }}.log"
-
-- name: Show oc-mirror log path
-  ansible.builtin.debug:
-    msg: "oc-mirror log file: {{ _oc_mirror_log }}"
-
 - name: Start oc-mirror process
   block:
     - name: Run oc-mirror to mirror registry
+      # Each attempt writes to its own timestamped log so a retry never
+      # overwrites the previous attempt's log; the failure evidence survives.
       ansible.builtin.shell: |
+        oc_mirror_log="{{ workingDir }}/logs/oc-mirror.progress.$(date +%s%N).log"
+        echo "oc-mirror attempt log: ${oc_mirror_log}"
         {{ workingDir }}/bin/oc-mirror --v2 \
           {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
           --log-level {{ ocMirrorLogLevel }} \
@@ -113,28 +109,42 @@
           --dest-tls-verify=false \
           -c {{ workingDir }}/config/imagesetconfiguration.yaml \
           --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
-          --parallel-images {{ ocMirrorParallelImages }} \
-          --parallel-layers {{ ocMirrorParallelLayers }} \
+          --parallel-images {{ ocMirrorParallelImagesLZMirror }} \
+          --parallel-layers {{ ocMirrorParallelLayersLZMirror }} \
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
           docker://{{ quayHostname }}:8443 \
-          > {{ _oc_mirror_log }} 2>&1
+          > "${oc_mirror_log}" 2>&1
       retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
       delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleDelay }}"
       register: r_oc_mirror
       until: r_oc_mirror is success
 
   rescue:
+    - name: Find oc-mirror attempt logs
+      ansible.builtin.find:
+        paths: "{{ workingDir }}/logs"
+        patterns: "oc-mirror.progress.*.log"
+      register: _oc_mirror_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Select the most recent oc-mirror attempt log
+      ansible.builtin.set_fact:
+        _oc_mirror_log: "{{ (_oc_mirror_logs.files | sort(attribute='mtime') | last).path }}"
+      when: _oc_mirror_logs.files | length > 0
+
     - name: Read oc-mirror log tail
       ansible.builtin.command:
         argv:
           - tail
           - -n
-          - "10"
+          - "20"
           - "{{ _oc_mirror_log }}"
       register: _oc_mirror_tail
       changed_when: false
       failed_when: false
+      when: _oc_mirror_log is defined
 
     - name: oc-mirror failed
       ansible.builtin.fail:
@@ -143,7 +153,7 @@
 
           {{ _oc_mirror_tail.stdout | default('Unable to read oc-mirror log tail.') }}
 
-          Full log: {{ _oc_mirror_log }}
+          Attempt logs: {{ workingDir }}/logs/oc-mirror.progress.*.log
 
 - name: Apply cluster resources from oc-mirror workspace
   ansible.builtin.include_tasks:
