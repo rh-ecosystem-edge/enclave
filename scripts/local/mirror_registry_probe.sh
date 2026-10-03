@@ -374,9 +374,13 @@ capture_quay_log_context() {
 }
 
 # Capture the live SQLite PRAGMA state Quay is running with. PROJQUAY-9362 fixes
-# the lock bug by setting PRAGMA journal_mode=WAL + busy_timeout on the driver; on
-# the shipped 3.12.x appliance those are absent, so journal_mode is typically
-# "delete" and busy_timeout 0. Recording them shows the fix is NOT in effect.
+# the lock bug by setting PRAGMA statements (WAL + busy_timeout) on the driver.
+# NOTE: busy_timeout / synchronous are PER-CONNECTION and cannot be read back from
+# a separate connection (our own connect() would just report its own defaults --
+# e.g. python's timeout= sets busy_timeout). So we report only the FILE-PERSISTENT
+# pragmas (journal_mode, page_size, auto_vacuum) from the DB, and read Quay's
+# ACTUAL driver pragmas from its code (data/database.py) + config, which is the
+# real PROJQUAY-9362-relevant evidence.
 capture_quay_sqlite_pragmas() {
     [ -n "$QUAY_APP" ] || return 0
     podman container exists "$QUAY_APP" 2>/dev/null || return 0
@@ -384,9 +388,10 @@ capture_quay_sqlite_pragmas() {
     cfg=$(podman exec "$QUAY_APP" sh -c \
         'for f in /conf/stack/config.yaml /quay-registry/conf/stack/config.yaml; do [ -f "$f" ] && echo "$f" && break; done' \
         2>/dev/null | head -1)
-    dburi=$(podman exec "$QUAY_APP" sh -c "grep -hiE 'DB_URI' '${cfg:-/conf/stack/config.yaml}' 2>/dev/null" | head -1)
-    # DB_URI: sqlite:////abs/path -> /abs/path (collapse scheme + leading slashes).
-    dbpath=$(printf '%s' "$dburi" | sed -nE 's#.*sqlite:/+#/#Ip' | tr -d '"'"'"' ' | head -1)
+    dburi=$(podman exec "$QUAY_APP" sh -c "grep -hiE 'DB_URI' '${cfg:-/conf/stack/config.yaml}' 2>/dev/null" \
+        | head -1 | sed -E 's/^[[:space:]]*DB_URI:[[:space:]]*//I' | tr -d '"'"'"'')
+    # sqlite:////abs/path -> /abs/path (collapse scheme + leading slashes).
+    dbpath=$(printf '%s' "$dburi" | sed -nE 's#.*sqlite:/+#/#Ip' | tr -d ' ' | head -1)
     {
         echo "# $(date -Is 2>/dev/null || date)"
         echo "quay_image: ${QUAY_IMAGE:-unknown}"
@@ -394,12 +399,20 @@ capture_quay_sqlite_pragmas() {
         echo "DB_URI: ${dburi:-not found}"
         echo "db_path: ${dbpath:-unresolved}"
         if [ -n "$dbpath" ]; then
-            echo "-- PRAGMAs (read-only) --"
-            podman exec "$QUAY_APP" python3 -c "import sqlite3; c=sqlite3.connect('file:${dbpath}?mode=ro',uri=True,timeout=2); print('\n'.join('%s=%s'%(p,c.execute('PRAGMA '+p).fetchone()[0]) for p in ['journal_mode','busy_timeout','synchronous','wal_autocheckpoint','locking_mode']))" 2>&1 \
+            echo "-- DB file-persistent PRAGMAs (reliable) --"
+            podman exec "$QUAY_APP" python3 -c "import sqlite3; c=sqlite3.connect('file:${dbpath}?mode=ro',uri=True); print('\n'.join('%s=%s'%(p,c.execute('PRAGMA '+p).fetchone()[0]) for p in ['journal_mode','page_size','auto_vacuum','user_version','application_id']))" 2>&1 \
                 || echo "pragma query failed (python3/sqlite3 unavailable or db busy)"
+            echo "(busy_timeout/synchronous are per-connection; see Quay driver pragmas below)"
             echo "-- db files --"
             podman exec "$QUAY_APP" sh -c "ls -la '${dbpath}' '${dbpath}-wal' '${dbpath}-shm' 2>/dev/null" || true
         fi
+        echo "-- Quay driver pragmas (data/database.py source) --"
+        podman exec "$QUAY_APP" sh -c \
+            'grep -rniE "busy_timeout|journal_mode|synchronous|wal|PRAGMA|pragmas" /quay-registry/data/database.py 2>/dev/null' \
+            || echo "(not found)"
+        echo "-- DB_CONNECTION_ARGS (config) --"
+        podman exec "$QUAY_APP" sh -c "grep -niA12 'DB_CONNECTION_ARGS' '${cfg:-/conf/stack/config.yaml}' 2>/dev/null" \
+            || echo "(none)"
     } >"$out" 2>&1 || true
 }
 
