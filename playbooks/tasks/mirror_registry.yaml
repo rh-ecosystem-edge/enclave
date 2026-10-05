@@ -100,21 +100,26 @@
       ansible.builtin.shell: |
         oc_mirror_log="{{ workingDir }}/logs/oc-mirror.progress.$(date +%s%N).log"
         echo "oc-mirror attempt log: ${oc_mirror_log}"
-        {{ workingDir }}/bin/oc-mirror --v2 \
-          {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
-          --log-level {{ ocMirrorLogLevel }} \
-          --authfile {{ pullSecretPath }} \
-          --ignore-release-signature \
-          --src-tls-verify=false \
-          --dest-tls-verify=false \
-          -c {{ workingDir }}/config/imagesetconfiguration.yaml \
-          --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
-          --parallel-images {{ ocMirrorParallelImagesLZMirror }} \
-          --parallel-layers {{ ocMirrorParallelLayersLZMirror }} \
-          --retry-times {{ ocMirrorRetryTimes }} \
-          --retry-delay {{ ocMirrorRetryDelay }} \
-          docker://{{ quayHostname }}:8443 \
-          > "${oc_mirror_log}" 2>&1
+        # Run inside a group whose combined output is redirected to the per-attempt
+        # log, with `set -x` so the fully-expanded oc-mirror command (parallelism
+        # flags included) is recorded at the top of the log as support evidence.
+        {
+          set -x
+          {{ workingDir }}/bin/oc-mirror --v2 \
+            {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
+            --log-level {{ ocMirrorLogLevel }} \
+            --authfile {{ pullSecretPath }} \
+            --ignore-release-signature \
+            --src-tls-verify=false \
+            --dest-tls-verify=false \
+            -c {{ workingDir }}/config/imagesetconfiguration.yaml \
+            --workspace file://{{ workingDir }}/config/oc-mirror-workspace \
+            --parallel-images {{ ocMirrorParallelImagesLZMirror }} \
+            --parallel-layers {{ ocMirrorParallelLayersLZMirror }} \
+            --retry-times {{ ocMirrorRetryTimes }} \
+            --retry-delay {{ ocMirrorRetryDelay }} \
+            docker://{{ quayHostname }}:8443
+        } > "${oc_mirror_log}" 2>&1
       retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
       delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleDelay }}"
       register: r_oc_mirror
