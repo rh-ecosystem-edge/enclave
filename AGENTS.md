@@ -111,6 +111,7 @@ artifact map and step-by-step recipes.
 - Each plugin has a single `plugin.yaml` descriptor validated against `schemas/plugin.yaml`
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
+- For creating or modifying plugins, see the [create-plugin skill](.claude/skills/create-plugin/SKILL.md)
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
 
