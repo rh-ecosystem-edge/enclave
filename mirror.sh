@@ -209,7 +209,7 @@ step_build_cache() {
     if [ "$is_disconnected" = false ]; then
         echo "Connected mode - skipping mirror registry setup" | tee -a ${log}
     else
-        ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/02-mirror.yaml $EXTRA_VARS --tags mirror-registry
+        ANSIBLE_LOG_PATH=${log} ansible-playbook -vvv playbooks/02-mirror.yaml $EXTRA_VARS --tags mirror-registry
     fi
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/03-deploy.yaml $EXTRA_VARS --tags configure-abi
     step_done
