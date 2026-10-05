@@ -14,7 +14,7 @@
     {
       "customType": "regex",
       "description": "Update uv version in setup_ansible.sh and install_enclave.sh (kept in sync with ghcr.io/astral-sh/uv in Dockerfile.ci via a shared datasource)",
-      "managerFilePatterns": ["setup_ansible.sh", "scripts/deployment/install_enclave.sh"],
+      "managerFilePatterns": ["setup_ansible.sh"],
       "matchStrings": ["UV_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "ghcr.io/astral-sh/uv",
       "datasourceTemplate": "docker",
