@@ -47,7 +47,11 @@
         annotations:
           installer.open-cluster-management.io/mce-subscription-spec: "{{ mce_subscription_spec | to_json }}"
           installer.open-cluster-management.io/oadp-subscription-spec: "{{ oadp_subscription_spec | to_json }}"
-      spec: {}
+      spec:
+        overrides:
+          components:
+            - name: cluster-backup
+              enabled: true
   retries: 60
   delay: 10
   register: r_mch
