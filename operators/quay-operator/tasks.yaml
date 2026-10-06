@@ -1,11 +1,37 @@
-# Create initial quay-config Secret with empty OAuth whitelist
+# Detect whether the Quay OAuth application was already configured on a previous
+# run. When quay-oauth-credentials exists, the organization, OAuth app and its
+# long-lived token are already in place, so the one-time setup below must be
+# skipped: the initial user token used to create them expires (~2.5h) and reusing
+# it on a re-run fails, while re-creating the app would mint duplicate apps with
+# rotating client_id/client_secret.
+- name: Check if Quay OAuth application is already configured
+  no_log: true
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: quay-oauth-credentials
+    namespace: quay-enterprise
+  register: r_quay_oauth_existing
+
+# Create/update quay-config Secret. On first run the whitelist is empty and gets
+# populated by oauth_setup.yaml; on re-runs it is preserved from the existing
+# OAuth credentials so the rendered config stays byte-identical and does not
+# trigger a spurious quay-app rollout.
+# oauth_client_ids is set as a task-scoped var (not a set_fact) on purpose: a
+# host fact would outrank the task-scoped override oauth_setup.yaml uses to
+# populate the whitelist on first run, leaving it empty and breaking the OAuth
+# token grant.
 - name: Create or update quay-config Secret
   no_log: true
+  vars:
+    oauth_client_ids: >-
+      {{ [r_quay_oauth_existing.resources[0].data['client-id'] | b64decode]
+         if ((quayOAuthApp.enabled | default(true))
+             and (r_quay_oauth_existing.resources | default([]) | length > 0))
+         else [] }}
   kubernetes.core.k8s:
     state: present
     definition: "{{ lookup('template', 'templates/quay-config-secret.yaml.j2') | from_yaml }}"
-  vars:
-    oauth_client_ids: []
   register: r_quay_config_secret
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
@@ -53,6 +79,7 @@
   register: r_quay_user
   retries: 10
   delay: 30
+  when: r_quay_oauth_existing.resources | default([]) | length == 0
   until:
     - r_quay_user is defined
     - r_quay_user.status | default(0) == 200 or r_quay_user.json.message | default("") == "Cannot initialize user in a non-empty database"
@@ -62,7 +89,8 @@
   ansible.builtin.set_fact:
     quay_initial_token: "{{ r_quay_user.json.access_token }}"
   when:
-    - r_quay_user.status == 200
+    - r_quay_oauth_existing.resources | default([]) | length == 0
+    - r_quay_user.status | default(0) == 200
     - r_quay_user.json.access_token is defined
     - r_quay_user.json.access_token | length > 0
 
@@ -84,6 +112,7 @@
         username: "{{ quayUser }}"
         access-token: "{{ quay_initial_token }}"
   when:
+    - r_quay_oauth_existing.resources | default([]) | length == 0
     - quay_initial_token is defined
     - quay_initial_token | length > 0
   register: r_quay_initial_user_secret
@@ -100,6 +129,7 @@
     namespace: quay-enterprise
   register: r_quay_initial_user_secret_info
   when:
+    - r_quay_oauth_existing.resources | default([]) | length == 0
     - quay_initial_token is not defined or quay_initial_token | length == 0
 
 - name: Extract initial user access token from Kubernetes Secret
@@ -107,18 +137,22 @@
   ansible.builtin.set_fact:
     quay_initial_token: "{{ r_quay_initial_user_secret_info.resources[0].data['access-token'] | b64decode }}"
   when:
+    - r_quay_oauth_existing.resources | default([]) | length == 0
     - quay_initial_token is not defined or quay_initial_token | length == 0
     - r_quay_initial_user_secret_info.resources is defined
     - r_quay_initial_user_secret_info.resources | length > 0
     - r_quay_initial_user_secret_info.resources[0].data is defined
     - r_quay_initial_user_secret_info.resources[0].data['access-token'] is defined
 
-# Configure OAuth application (organization, app, token generation)
-# This is extracted to a separate file for better maintainability
+# Configure OAuth application (organization, app, token generation).
+# Skipped once quay-oauth-credentials exists: the OAuth app and its long-lived
+# token are already provisioned, and the initial user token needed here has since
+# expired. This is extracted to a separate file for better maintainability.
 - name: Configure OAuth application for Quay
   ansible.builtin.include_tasks:
     file: oauth_setup.yaml
   when:
+    - r_quay_oauth_existing.resources | default([]) | length == 0
     - quayOAuthApp.enabled | default(true)
     - quay_initial_token is defined
     - quay_initial_token | length > 0
