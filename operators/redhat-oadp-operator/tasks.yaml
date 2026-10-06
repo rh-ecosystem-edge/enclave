@@ -1,7 +1,3 @@
 ---
-# OADP for RHACM Hub backup/restore is managed in
-# open-cluster-management-backup (Cluster Backup and Restore SoT).
-# Subscription/OperatorGroup/CSV handling is done by configure_operator.yaml
-# MCH also gets oadp-subscription-spec so ACM keeps Manual approval and the mirrored
 - ansible.builtin.debug:
     msg: "Operator configured properly, no further actions"
