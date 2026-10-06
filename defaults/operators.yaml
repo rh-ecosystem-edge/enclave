@@ -14,6 +14,18 @@ operators:
     namespace: multicluster-engine
     seed: true
 
+  # RHACM Hub Backup and Restore SoT namespace. ACM backup is enabled
+  # by enclave, so set as seed.
+  - name: redhat-oadp-operator
+    version: 1.5.8
+    channel: stable
+    init_version: 1.5.5
+    namespace: open-cluster-management-backup
+    seed: true
+    connected_auto: true
+    csvNames:
+      - oadp-operator
+
   - name: advanced-cluster-management
     version: 2.15.4
     channel: release-2.15
@@ -64,16 +76,6 @@ operators:
     init_version: 6.4.2
     namespace: openshift-operators-redhat
     global: true
-
-  # RHACM Hub Backup and Restore SoT namespace. ACM backup is not enabled
-  # by enclave (left for the consumer), so keep non-seed install order.
-  - name: redhat-oadp-operator
-    version: 1.5.5
-    channel: stable
-    init_version: 1.5.5
-    namespace: open-cluster-management-backup
-    csvNames:
-      - oadp-operator
 
   - name: openshift-cert-manager-operator
     version: 1.18.1
