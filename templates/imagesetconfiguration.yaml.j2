@@ -23,6 +23,7 @@ mirror:
       - name: {{ channel_name }}
         minVersion: {{ data.min_ver }}
         maxVersion: {{ data.max_ver }}
+        shortestPath: true
 {% endfor %}
     graph: true
   operators:
