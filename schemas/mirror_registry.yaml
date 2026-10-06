@@ -11,6 +11,44 @@ properties:
   quayCAPath:
     type: string
     description: Path to Quay CA certificate file
+  quayPgVolume:
+    type: string
+    description: Podman named volume for the Quay PostgreSQL data
+  quayPgImage:
+    type: string
+    description: Container image for the Quay PostgreSQL backend
+  quayPgUser:
+    type: string
+    description: PostgreSQL user for the Quay database
+  quayPgPassword:
+    type: string
+    description: PostgreSQL password for the Quay database
+  quayPgDatabase:
+    type: string
+    description: Name of the Quay PostgreSQL database
+  quayPgMaxConnections:
+    type: integer
+    description: Maximum PostgreSQL server connections
+  quayWorkerCountWeb:
+    type: integer
+    description: Number of Quay web workers
+  quayWorkerCountRegistry:
+    type: integer
+    description: Number of Quay registry workers
+  quayWorkerCountSecscan:
+    type: integer
+    description: Number of Quay security scan workers
+  quayDbConnArgs:
+    type: object
+    description: Quay database connection pool arguments
+    additionalProperties: false
+    properties:
+      max_connections:
+        type: integer
+        description: Maximum Quay database connection pool size
+      stale_timeout:
+        type: integer
+        description: Seconds before pooled connections are recycled
 
 required:
   - quayHostname
