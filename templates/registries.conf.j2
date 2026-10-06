@@ -1,5 +1,17 @@
 [[registry]]
   prefix = ""
+  location = "registry.redhat.io/redhat"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/redhat"
+
+[[registry]]
+  prefix = ""
+  location = "quay.io/openshift-release-dev/ocp-release"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/openshift/release-images"
+
+[[registry]]
+  prefix = ""
   location="quay.io/openshift-release-dev/ocp-v4.0-art-dev"
   mirror-by-digest-only=true
 [[registry.mirror]]
