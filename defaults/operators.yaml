@@ -70,7 +70,7 @@ operators:
     version: 1.5.8
     channel: stable
     init_version: 1.5.5
-    namespace: open-cluster-management-backup
+    namespace: openshift-oadp
     csvNames:
       - oadp-operator
 
