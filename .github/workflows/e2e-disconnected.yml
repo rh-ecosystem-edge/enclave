@@ -69,32 +69,6 @@ on:
           - le-ecdsa-short
           - zerossl-rsa
           - zerossl-ecdsa
-  workflow_call:
-    inputs:
-      storage-plugin:
-        type: string
-        default: ''
-      skip-cleanup:
-        type: boolean
-        default: false
-      send-slack-notification:
-        type: boolean
-        default: false
-      enabled-plugins:
-        type: string
-        default: ''
-      aap-license-file:
-        type: string
-        default: ''
-      workflow-display-name:
-        type: string
-        default: 'E2E Disconnected'
-      osac-chart-version:
-        type: string
-        default: ''
-      cert-type:
-        type: string
-        default: ''
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:

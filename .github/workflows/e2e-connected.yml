@@ -3,10 +3,10 @@ name: E2E Connected
 # Connected-mode E2E: fast deployment pulling from upstream registries.
 #
 # Thin wrapper that calls the reusable single-mode workflow e2e-deployment.yml
-# with mode=connected. Runs on every PR and nightly, and is also callable
-# (workflow_call) by e2e-osac.yml for custom plugin chains. Disconnected is a
-# separate workflow (e2e-disconnected.yml) so each mode runs — and is retried by
-# e2e-spot-retry.yml — independently.
+# with mode=connected. Runs on every PR and nightly. Disconnected is a separate
+# workflow (e2e-disconnected.yml) so each mode runs — and is retried by
+# e2e-spot-retry.yml — independently. Callers that need a custom plugin chain
+# (e.g. e2e-osac.yml) call e2e-deployment.yml directly, not this wrapper.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -56,35 +56,6 @@ on:
         required: false
         type: string
         default: ''
-  workflow_call:
-    inputs:
-      force-run:
-        # Callers (e.g. e2e-osac.yml) that apply their own PR path gate set this
-        # to run regardless of the generic paths-filter — which does not list
-        # caller-specific trigger paths such as .github/workflows/e2e-osac.yml.
-        type: boolean
-        default: false
-      storage-plugin:
-        type: string
-        default: ''
-      skip-cleanup:
-        type: boolean
-        default: false
-      send-slack-notification:
-        type: boolean
-        default: false
-      enabled-plugins:
-        type: string
-        default: ''
-      aap-license-file:
-        type: string
-        default: ''
-      workflow-display-name:
-        type: string
-        default: 'E2E Connected'
-      osac-chart-version:
-        type: string
-        default: ''
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -101,9 +72,8 @@ jobs:
     with:
       mode: connected
       # Everything that is not a plain PR runs unconditionally; PRs are gated by
-      # the paths-filter inside the reusable workflow's check-e2e-needed. Callers
-      # with their own PR path gate can force the run via the force-run input.
-      force-run: ${{ inputs.force-run || github.event_name != 'pull_request' }}
+      # the paths-filter inside the reusable workflow's check-e2e-needed.
+      force-run: ${{ github.event_name != 'pull_request' }}
       storage-plugin: ${{ inputs.storage-plugin || '' }}
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}

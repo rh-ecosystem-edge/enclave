@@ -3,10 +3,13 @@ name: E2E Deployment
 # Reusable single-mode end-to-end deployment workflow.
 #
 # Runs ONE E2E deployment for a given mode (connected or disconnected) and
-# storage plugin. It is called via workflow_call by the thin wrapper workflows:
+# storage plugin. It is called via workflow_call by:
 #   - e2e-connected.yml    ("E2E Connected")
 #   - e2e-disconnected.yml ("E2E Disconnected")
-# and (through the connected wrapper) by e2e-osac.yml for custom plugin chains.
+#   - e2e-osac.yml (mode=connected, custom plugin chain)
+# OSAC calls this directly rather than via the connected wrapper: the wrapper's
+# top-level concurrency resolves to the caller name when reused and, at that
+# nesting depth, queues OSAC runs instead of cancelling them.
 #
 # Splitting connected and disconnected into separate top-level workflows that
 # share this body removes the previous duplication and lets e2e-spot-retry.yml
