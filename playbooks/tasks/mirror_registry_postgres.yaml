@@ -8,8 +8,11 @@
 # the existing quay-pod, repoint DB_URI and raise the worker counts.
 #
 # The migration wipes the Quay database, so it must run right after install and
-# before any content is mirrored. It is idempotent and re-runnable: an already
-# migrated registry is detected and skipped.
+# before any content is mirrored. A marker file written only once the migration
+# fully succeeds (including recreating the init user) drives idempotency: while
+# the marker is absent the whole migration re-runs from a clean database, and
+# once it is present the play only ensures the PostgreSQL service stays enabled
+# and running (so it survives reboots) without touching the data.
 
 - name: Get current user id
   ansible.builtin.command: id -u
@@ -23,27 +26,26 @@
       DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ r_uid.stdout }}/bus"
     _quay_config_path: "{{ workingDir }}/data/quay-config/config.yaml"
     _quay_app_unit: "{{ lookup('env', 'HOME') }}/.config/systemd/user/quay-app.service"
+    _pg_marker: "{{ workingDir }}/data/.pg-migration-done"
 
 - name: Migrate Quay backend to PostgreSQL
   environment: "{{ _pg_user_env }}"
   block:
-    - name: Gather facts on the quay-postgres container
-      containers.podman.podman_container_info:
-        name: quay-postgres
-      register: r_pg_container
+    - name: Check for the PostgreSQL migration marker
+      ansible.builtin.stat:
+        path: "{{ _pg_marker }}"
+      register: r_pg_marker
 
-    - name: Check whether Quay already uses the PostgreSQL backend
-      ansible.builtin.command: "grep -q '^DB_URI: postgresql://' {{ _quay_config_path }}"
-      register: r_pg_configured
-      changed_when: false
-      failed_when: false
-
-    - name: Determine whether migration is already complete
-      ansible.builtin.set_fact:
-        _pg_migration_done: "{{ (r_pg_container.containers | default([]) | length > 0) and (r_pg_configured.rc == 0) }}"
+    - name: Ensure quay-postgres is enabled and running when already migrated
+      when: r_pg_marker.stat.exists
+      ansible.builtin.systemd_service:
+        name: quay-postgres.service
+        scope: user
+        state: started
+        enabled: true
 
     - name: Perform SQLite to PostgreSQL migration
-      when: not _pg_migration_done
+      when: not r_pg_marker.stat.exists
       block:
         - name: Stop the Quay app service
           ansible.builtin.systemd_service:
@@ -72,6 +74,17 @@
           changed_when: false
           failed_when: false
 
+        # Keep the password out of the world-readable unit file (and out of
+        # systemctl/podman inspect) by passing it through a podman secret, the
+        # same way the stock quay-redis unit handles its password.
+        - name: Create the quay-postgres password secret
+          containers.podman.podman_secret:
+            name: "{{ quayPgSecretName }}"
+            data: "{{ quayPgPassword }}"
+            state: present
+            force: true
+          no_log: true
+
         - name: Pull the PostgreSQL image
           ansible.builtin.command: podman pull --authfile {{ pullSecretPath }} {{ quayPgImage }}
           register: r_pg_pull
@@ -81,13 +94,14 @@
           ansible.builtin.template:
             src: ../../templates/quay-postgres.service.j2
             dest: "{{ lookup('env', 'HOME') }}/.config/systemd/user/quay-postgres.service"
-            mode: "0644"
+            mode: "0600"
 
         - name: Start the quay-postgres service
           ansible.builtin.systemd_service:
             name: quay-postgres.service
             scope: user
             state: started
+            enabled: true
             daemon_reload: true
 
         - name: Wait for PostgreSQL to accept connections
@@ -110,7 +124,8 @@
           ansible.builtin.replace:
             path: "{{ _quay_config_path }}"
             regexp: '^DB_URI:.*$'
-            replace: "DB_URI: postgresql://{{ quayPgUser }}:{{ quayPgPassword }}@quay-postgres/{{ quayPgDatabase }}"
+            replace: >-
+              DB_URI: postgresql://{{ quayPgUser | urlencode | replace('/', '%2F') }}:{{ quayPgPassword | urlencode | replace('/', '%2F') }}@quay-postgres/{{ quayPgDatabase }}
           no_log: true
 
         - name: Add Quay DB_CONNECTION_ARGS
@@ -195,3 +210,11 @@
           until: r_quay_v2.status in [200, 401]
           retries: 30
           delay: 10
+
+        # Written last, so a failure anywhere above leaves no marker and the
+        # whole migration re-runs from a clean database on the next play.
+        - name: Mark the PostgreSQL migration as complete
+          ansible.builtin.copy:
+            dest: "{{ _pg_marker }}"
+            content: "mirror-registry migrated to PostgreSQL (KCS 7140667)\n"
+            mode: "0644"

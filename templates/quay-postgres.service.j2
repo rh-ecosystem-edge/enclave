@@ -16,7 +16,7 @@ ExecStart=/usr/bin/podman run \
     --image-volume=ignore \
     -e POSTGRESQL_USER={{ quayPgUser }} \
     -e POSTGRESQL_DATABASE={{ quayPgDatabase }} \
-    -e POSTGRESQL_PASSWORD={{ quayPgPassword }} \
+    --secret={{ quayPgSecretName }},type=env,target=POSTGRESQL_PASSWORD \
     -e POSTGRESQL_MAX_CONNECTIONS={{ quayPgMaxConnections }} \
     --conmon-pidfile %t/%n-pid \
     --cidfile %t/%n-cid \

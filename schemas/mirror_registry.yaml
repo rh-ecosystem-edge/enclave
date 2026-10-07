@@ -14,6 +14,9 @@ properties:
   quayPgVolume:
     type: string
     description: Podman named volume for the Quay PostgreSQL data
+  quayPgSecretName:
+    type: string
+    description: Podman secret name holding the Quay PostgreSQL password
   quayPgImage:
     type: string
     description: Container image for the Quay PostgreSQL backend
