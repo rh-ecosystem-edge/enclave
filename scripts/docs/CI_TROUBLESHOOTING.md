@@ -13,7 +13,8 @@ scriptable, and gives an agent the raw text it needs instead of screenshots.
 gh pr checks <pr>
 
 # Recent runs for a workflow (find a run id)
-gh run list --workflow "E2E Deployment" --limit 10
+gh run list --workflow "E2E Connected" --limit 10
+gh run list --workflow "E2E Disconnected" --limit 10
 
 # Overview of a run: which jobs failed
 gh run view <run-id>

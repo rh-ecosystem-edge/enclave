@@ -1,101 +1,36 @@
 name: E2E Deployment
 
-# Unified end-to-end deployment testing for connected and disconnected modes.
+# Reusable single-mode end-to-end deployment workflow.
 #
-# Runs two parallel jobs:
-#   - e2e-connected:    Fast deployment pulling from upstream registries
-#   - e2e-disconnected: Full air-gapped deployment with local mirror registry
+# Runs ONE E2E deployment for a given mode (connected or disconnected) and
+# storage plugin. It is called via workflow_call by:
+#   - e2e-connected.yml    ("E2E Connected")
+#   - e2e-disconnected.yml ("E2E Disconnected")
+#   - e2e-osac.yml (mode=connected, custom plugin chain)
+# OSAC calls this directly rather than via the connected wrapper: the wrapper's
+# top-level concurrency resolves to the caller name when reused and, at that
+# nesting depth, queues OSAC runs instead of cancelling them.
 #
-# Both jobs run on every PR and nightly schedule. Manual dispatch allows
-# selecting which modes to run, skipping cleanup, and sending Slack notifications.
-#
-# Also callable as a reusable workflow (workflow_call) from other workflows
-# that need to run E2E with a custom plugin chain (e.g. e2e-osac.yml).
-
-# Cancel previous runs when a PR is updated
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: true
+# Splitting connected and disconnected into separate top-level workflows that
+# share this body removes the previous duplication and lets e2e-spot-retry.yml
+# retry each mode independently. The paths-filter/decision logic lives in the
+# ./.github/actions/check-e2e-needed composite action.
 
 on:
-  schedule:
-    # Run daily at 10:00 PM EST (03:00 UTC)
-    - cron: '0 3 * * *'
-  workflow_dispatch:
-    inputs:
-      run-connected:
-        description: 'Run connected mode E2E test'
-        required: false
-        type: boolean
-        default: true
-      run-disconnected:
-        description: 'Run disconnected mode E2E test'
-        required: false
-        type: boolean
-        default: true
-      storage-plugin:
-        description: 'Storage plugin to deploy (lvms, odf or vast-csi)'
-        required: true
-        default: 'lvms'
-        type: choice
-        options:
-          - lvms
-          - odf
-          - vast-csi
-      skip-cleanup:
-        description: 'Skip cleanup after deployment (leave infrastructure running)'
-        required: false
-        type: boolean
-        default: false
-      send-slack-notification:
-        description: 'Send Slack notification on completion'
-        required: false
-        type: boolean
-        default: false
-      enabled-plugins:
-        description: 'Comma-separated list of plugins to deploy (default: storage plugin only)'
-        required: false
-        type: string
-        default: ''
-      aap-license-file:
-        description: 'Path to AAP license file on the CI runner (required for OSAC deployments)'
-        required: false
-        type: string
-        default: ''
-      workflow-display-name:
-        description: 'Display name prefix for Slack notifications (e.g., "E2E OSAC")'
-        required: false
-        type: string
-        default: 'E2E Deployment'
-      osac-chart-version:
-        description: 'OSAC Helm chart version to deploy (overrides plugin default)'
-        required: false
-        type: string
-        default: ''
-      cert-type:
-        description: 'TLS certificate type for API/ingress/ironic (self-signed = local CA, auto = day-of-week rotation)'
-        required: false
-        type: choice
-        default: self-signed
-        options:
-          - self-signed
-          - auto
-          - le-rsa
-          - le-ecdsa-long
-          - le-ecdsa-short
-          - zerossl-rsa
-          - zerossl-ecdsa
   workflow_call:
     inputs:
-      run-connected:
-        type: boolean
-        default: true
-      run-disconnected:
-        type: boolean
-        default: true
-      storage-plugin:
+      mode:
+        description: 'Deployment mode (connected or disconnected)'
         type: string
-        default: 'lvms'
+        required: true
+      force-run:
+        description: 'Run regardless of changed files (schedule/dispatch/merge_group/callers)'
+        type: boolean
+        default: false
+      storage-plugin:
+        description: 'Explicit storage plugin override (empty = auto-decide from changed files)'
+        type: string
+        default: ''
       skip-cleanup:
         type: boolean
         default: false
@@ -117,10 +52,6 @@ on:
       cert-type:
         type: string
         default: ''
-  pull_request:
-    types: [opened, synchronize, reopened]
-  merge_group:
-    types: [checks_requested]
 
 permissions:
   contents: read
@@ -134,163 +65,45 @@ jobs:
     timeout-minutes: 5
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
-      run_connected: ${{ steps.decision.outputs.run_connected }}
-      run_disconnected: ${{ steps.decision.outputs.run_disconnected }}
       storage_plugins: ${{ steps.decision.outputs.storage_plugins }}
-      storage_plugins_connected: ${{ steps.decision.outputs.storage_plugins_connected }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # Positive filters, evaluated with the default "some" quantifier: the
-      # filter matches when any changed file matches any of its patterns.
-      # NOTE: scripts/** is intentionally NOT listed here. A negated pattern
-      # (e.g. !scripts/docs/**) cannot be mixed into a "some"-quantified OR
-      # list: under "some" a negated glob matches every path outside its
-      # target, so a single unrelated file (even docs/*) would flip the whole
-      # filter to true. The scripts exclusion is handled by the dedicated
-      # "every"-quantified step below.
-      - name: Check if E2E-relevant files changed
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
-        id: filter
-        with:
-          filters: |
-            e2e:
-              - 'playbooks/**'
-              - 'src/**'
-              - 'Makefile'
-              - 'Makefile.ci'
-              - 'config/**'
-              - 'defaults/**'
-              - 'schemas/**'
-              - 'templates/**'
-              - 'operators/**'
-              - 'plugins/**'
-              - 'files/**'
-              - 'hack/**'
-              - '.github/workflows/e2e-deployment.yml'
-              - 'ansible.cfg'
-              - 'ansible_collections.txt'
-              - 'pyproject.toml'
-              - 'uv.lock'
-              - 'bootstrap.sh'
-              - 'validations.sh'
-              - 'setup_*.sh'
-            odf:
-              - 'plugins/odf/**'
-              - 'scripts/infrastructure/setup_ceph*'
-              - 'scripts/infrastructure/verify_ceph*'
-              - 'scripts/lib/odf.sh'
-
-      # scripts/** changes, excluding CI documentation under scripts/docs/**.
-      # Uses the "every" quantifier so a file matches only when it satisfies
-      # ALL patterns (under scripts/ AND not under scripts/docs/). The filter
-      # is true when at least one such file changed, so a PR touching only
-      # scripts/docs/** (or no scripts at all) correctly leaves it false, while
-      # a PR mixing scripts code and scripts docs still triggers E2E.
-      - name: Check if E2E-relevant scripts changed
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
-        id: filter_scripts
-        with:
-          predicate-quantifier: every
-          filters: |
-            scripts:
-              - 'scripts/**'
-              - '!scripts/docs/**'
-
-      - name: Make decision
+      - name: Check if E2E is needed
         id: decision
-        run: |
-          # Determine whether to run and which storage plugins to test.
-          # storage_plugins is a JSON array consumed by the job matrix.
-          # ODF only runs in disconnected mode. Connected always uses lvms.
-          #
-          # run_connected / run_disconnected: honour caller inputs when present,
-          # default to running both modes. Resolved here (not at job level)
-          # because the inputs context is unreliable in workflow_call when the
-          # caller's event_name is inherited.
-          RUN_CONNECTED="${{ inputs.run-connected }}"
-          RUN_DISCONNECTED="${{ inputs.run-disconnected }}"
-          [[ -z "$RUN_CONNECTED" ]] && RUN_CONNECTED=true
-          [[ -z "$RUN_DISCONNECTED" ]] && RUN_DISCONNECTED=true
-
-          if [[ "${{ github.event_name }}" == "workflow_call" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
-            echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            if [[ "$PLUGIN" == "odf" ]]; then
-              echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            else
-              echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            fi
-            echo "Called as reusable workflow - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            PLUGIN="${{ inputs.storage-plugin || 'lvms' }}"
-            echo "storage_plugins=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            if [[ "$PLUGIN" == "odf" ]]; then
-              echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            else
-              echo "storage_plugins_connected=[\"${PLUGIN}\"]" >> $GITHUB_OUTPUT
-            fi
-            echo "Manual trigger - E2E will run (${PLUGIN})" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "Scheduled trigger - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "Merge queue - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
-          elif [[ "${{ steps.filter.outputs.e2e }}" == "true" || "${{ steps.filter_scripts.outputs.scripts }}" == "true" ]]; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            if [[ "${{ steps.filter.outputs.odf }}" == "true" ]]; then
-              echo "storage_plugins=[\"odf\"]" >> $GITHUB_OUTPUT
-              echo "E2E-relevant files changed (including ODF) - ODF disconnected will run" | tee -a $GITHUB_STEP_SUMMARY
-            else
-              echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
-              echo "E2E-relevant files changed - E2E will run" | tee -a $GITHUB_STEP_SUMMARY
-            fi
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "storage_plugins=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "storage_plugins_connected=[\"lvms\"]" >> $GITHUB_OUTPUT
-            echo "Only documentation/config files changed - E2E will be skipped" | tee -a $GITHUB_STEP_SUMMARY
-            echo "To run E2E anyway, use manual workflow_dispatch" | tee -a $GITHUB_STEP_SUMMARY
-          fi
-
-          echo "run_connected=${RUN_CONNECTED}" >> $GITHUB_OUTPUT
-          echo "run_disconnected=${RUN_DISCONNECTED}" >> $GITHUB_OUTPUT
+        uses: ./.github/actions/check-e2e-needed
+        with:
+          mode: ${{ inputs.mode }}
+          storage-plugin: ${{ inputs.storage-plugin }}
+          force-run: ${{ inputs.force-run }}
 
   # ---------------------------------------------------------------------------
-  # Connected mode E2E deployment
+  # Single-mode E2E deployment (connected or disconnected, per inputs.mode)
   # ---------------------------------------------------------------------------
-  e2e-connected:
-    name: E2E Connected (${{ matrix.storage-plugin }})
+  e2e:
+    name: E2E ${{ inputs.mode }} (${{ matrix.storage-plugin }})
     needs: check-e2e-needed
-    if: >-
-      needs.check-e2e-needed.outputs.should_run == 'true' &&
-      needs.check-e2e-needed.outputs.run_connected == 'true'
-    runs-on: [self-hosted, enclave-large-aws]
-    timeout-minutes: 210
+    if: needs.check-e2e-needed.outputs.should_run == 'true'
+    # ODF needs a larger disconnected runner; everything else uses the standard one.
+    runs-on: ${{ (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
+    # Connected is fast; disconnected mirrors content (longer, longest on nightly).
+    timeout-minutes: ${{ inputs.mode == 'connected' && 210 || (github.event_name == 'schedule' && 600 || 360) }}
 
     strategy:
       fail-fast: false
       matrix:
-        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins_connected) }}
+        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins) }}
 
     concurrency:
-      group: enclave-ci-connected-${{ matrix.storage-plugin }}-${{ github.run_id }}
+      group: enclave-ci-${{ inputs.mode }}-${{ matrix.storage-plugin }}-${{ github.run_id }}
       cancel-in-progress: false
 
     env:
       BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
       PULL_SECRET: ${{ secrets.PULL_SECRET }}
-      ENCLAVE_DEPLOYMENT_MODE: connected
+      ENCLAVE_DEPLOYMENT_MODE: ${{ inputs.mode }}
       CLEANUP_AFTER: 'true'
       STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
       ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
@@ -299,6 +112,8 @@ jobs:
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
       OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
+      # Disconnected serves the Ironic ISO over HTTPS; connected does not.
+      ENCLAVE_IRONIC_HTTPS: ${{ inputs.mode == 'disconnected' && 'true' || '' }}
 
     steps:
       - name: Checkout code
@@ -320,7 +135,8 @@ jobs:
         uses: ./.github/actions/setup-cluster-name
         with:
           naming-strategy: hash
-          prefix: ${{ github.event_name == 'schedule' && 'nc' || 'eci' }}
+          # nc/nd = nightly (schedule), eci/ecd = everything else; c/d = connected/disconnected.
+          prefix: ${{ github.event_name == 'schedule' && (inputs.mode == 'connected' && 'nc' || 'nd') || (inputs.mode == 'connected' && 'eci' || 'ecd') }}
           run-id: ${{ github.run_id }}
 
       - name: Setup cluster-specific working directory
@@ -328,9 +144,36 @@ jobs:
           make -f Makefile.ci setup-working-dir
           echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
 
+      - name: Determine certificate type
+        if: inputs.mode == 'disconnected'
+        env:
+          INPUT_CERT_TYPE: ${{ inputs.cert-type }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          CERT_TYPE="${INPUT_CERT_TYPE}"
+          if [ "${CERT_TYPE}" = "self-signed" ]; then
+              CERT_TYPE=""
+          fi
+          if [ "${EVENT_NAME}" = "schedule" ] && [ -z "${CERT_TYPE}" ]; then
+              CERT_TYPE="auto"
+          fi
+          if [ "${CERT_TYPE}" = "auto" ]; then
+              TYPES=(le-rsa le-ecdsa-long le-ecdsa-short zerossl-rsa zerossl-ecdsa)
+              CERT_TYPE="${TYPES[$(( ($(date +%u) - 1) % 5 ))]}"
+          fi
+          if [ -n "${CERT_TYPE}" ]; then
+              case "${CERT_TYPE}" in
+                le-rsa|le-ecdsa-long|le-ecdsa-short|zerossl-rsa|zerossl-ecdsa) ;;
+                *) echo "Invalid cert type: ${CERT_TYPE}" >&2; exit 1 ;;
+              esac
+              echo "ENCLAVE_CERT_TYPE=${CERT_TYPE}" >> "$GITHUB_ENV"
+              echo "ENCLAVE_BASE_DOMAIN=nodns.in" >> "$GITHUB_ENV"
+              echo "Certificate type for this run: ${CERT_TYPE}"
+          fi
+
       - name: Workflow information
         run: |
-          echo "## E2E Deployment - Connected Mode" >> $GITHUB_STEP_SUMMARY
+          echo "## E2E Deployment - ${{ inputs.mode }} mode" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
@@ -340,7 +183,7 @@ jobs:
       - name: Pre-flight checks
         uses: ./.github/actions/preflight-checks
         with:
-          title: E2E Deployment - Connected Mode
+          title: E2E Deployment - ${{ inputs.mode }} mode
           check-pull-secret: 'true'
           check-system-resources: 'true'
           check-libvirt: 'true'
@@ -397,7 +240,14 @@ jobs:
           make -f Makefile.ci provision-landing-zone
           echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
 
+      # ACME/Hetzner/ZeroSSL secrets are only consumed by the disconnected cert
+      # flow; they resolve to empty strings for connected runs.
       - name: Install Enclave Lab
+        env:
+          HETZNER_API_TOKEN: ${{ inputs.mode == 'disconnected' && secrets.HETZNER_API_TOKEN || '' }}
+          ACME_EMAIL: ${{ inputs.mode == 'disconnected' && vars.ACME_EMAIL || '' }}
+          ZEROSSL_EAB_KID: ${{ inputs.mode == 'disconnected' && secrets.ZEROSSL_EAB_KID || '' }}
+          ZEROSSL_EAB_HMAC_KEY: ${{ inputs.mode == 'disconnected' && secrets.ZEROSSL_EAB_HMAC_KEY || '' }}
         run: |
           echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -408,6 +258,11 @@ jobs:
       - name: Generate Ironic ISO server TLS certificate
         id: generate_ironic_cert
         if: env.ENCLAVE_IRONIC_HTTPS == 'true'
+        env:
+          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
+          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
+          ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
+          ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
         run: make -f Makefile.ci generate-ironic-cert
 
       - name: Setup Ceph on Landing Zone
@@ -523,14 +378,25 @@ jobs:
       # post-validate (which only checks pod/replica health). Connected only
       # (fetches the CLI binary from GitHub); runs only when osac was deployed.
       - name: Run OSAC CLI smoke test
-        if: success() && contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
+        if: success() && inputs.mode == 'connected' && contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: osac_smoke
         run: make -f Makefile.ci osac-smoke
 
       - name: Verify cluster deployment
         if: success()
         id: verify_cluster
-        run: make -f Makefile.ci verify-cluster
+        run: |
+          make -f Makefile.ci verify-cluster
+
+          # Additional verification for disconnected mode - check mirror registry
+          if [ "${{ inputs.mode }}" = "disconnected" ]; then
+            LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
+            ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+          fi
 
       # Stop the in-flight sampler before post-mortem collection so its logs
       # under artifacts/inflight are flushed and shipped by Upload artifacts.
@@ -586,7 +452,7 @@ jobs:
         id: upload_artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
+          name: e2e-${{ inputs.mode }}-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
           path: artifacts/
           retention-days: 7
           if-no-files-found: warn
@@ -599,7 +465,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             sleep $((attempt * 2))
             ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-              --jq '[.artifacts[] | select(.name == "e2e-connected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}")] | sort_by(.created_at) | last // empty | .id')
+              --jq '[.artifacts[] | select(.name == "e2e-${{ inputs.mode }}-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}")] | sort_by(.created_at) | last // empty | .id')
             if [ -n "$ARTIFACT_ID" ]; then
               break
             fi
@@ -669,7 +535,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: post-cleanup-connected-${{ github.run_id }}
+          name: post-cleanup-${{ inputs.mode }}-${{ github.run_id }}
           path: |
             cleanup-logs/
             cleanup-state/
@@ -682,7 +548,7 @@ jobs:
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: Connected" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.mode == 'connected' && 'Connected' || 'Disconnected (Air-gapped)' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
           echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
@@ -763,549 +629,7 @@ jobs:
         uses: ./.github/actions/notify-slack
         with:
           status: ${{ job.status }}
-          workflow-name: ${{ inputs.workflow-display-name || 'E2E Deployment' }} - Connected
-          cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
-          slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
-          workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          branch-name: ${{ github.ref_name }}
-          commit-sha: ${{ github.sha }}
-          failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
-          artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
-          osac-chart-version: ${{ inputs.osac-chart-version }}
-
-  # ---------------------------------------------------------------------------
-  # Disconnected mode E2E deployment
-  # ---------------------------------------------------------------------------
-  e2e-disconnected:
-    name: E2E Disconnected (${{ matrix.storage-plugin }})
-    needs: check-e2e-needed
-    if: >-
-      needs.check-e2e-needed.outputs.should_run == 'true' &&
-      needs.check-e2e-needed.outputs.run_disconnected == 'true'
-    runs-on: ${{ matrix.storage-plugin == 'odf' && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
-    timeout-minutes: ${{ github.event_name == 'schedule' && 600 || 360 }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        storage-plugin: ${{ fromJSON(needs.check-e2e-needed.outputs.storage_plugins) }}
-
-    concurrency:
-      group: enclave-ci-disconnected-${{ matrix.storage-plugin }}-${{ github.run_id }}
-      cancel-in-progress: false
-
-    env:
-      BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
-      PULL_SECRET: ${{ secrets.PULL_SECRET }}
-      ENCLAVE_DEPLOYMENT_MODE: disconnected
-      CLEANUP_AFTER: 'true'
-      STORAGE_PLUGIN: ${{ matrix.storage-plugin }}
-      ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
-      OPENSHIFT_CI: "true"
-      ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
-      LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
-      AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
-      OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
-      ENCLAVE_IRONIC_HTTPS: 'true'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      # OSAC deployments need the AAP license on the runner to copy into the
-      # landing-zone VM. It is stored out of band in the enclave-ci-infra
-      # runner-secret-files S3 bucket (SSE-KMS) and pulled here at job time via the
-      # runner instance role over IMDS (no credentials in the workflow). Runs only
-      # when a license path is requested (OSAC); other callers pass an empty value.
-      - name: Fetch AAP license
-        if: inputs.aap-license-file != ''
-        run: |
-          dest="${GITHUB_WORKSPACE}/${AAP_LICENSE_FILE}"
-          aws s3 cp "s3://enclave-ci-runner-secret-files/aap-license.zip" "$dest" --region us-east-1
-          echo "AAP_LICENSE_FILE=${dest}" >> "$GITHUB_ENV"
-
-      - name: Generate unique cluster name
-        uses: ./.github/actions/setup-cluster-name
-        with:
-          naming-strategy: hash
-          prefix: ${{ github.event_name == 'schedule' && 'nd' || 'ecd' }}
-          run-id: ${{ github.run_id }}
-
-      - name: Setup cluster-specific working directory
-        run: |
-          make -f Makefile.ci setup-working-dir
-          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
-
-      - name: Determine certificate type
-        env:
-          INPUT_CERT_TYPE: ${{ inputs.cert-type }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          CERT_TYPE="${INPUT_CERT_TYPE}"
-          if [ "${CERT_TYPE}" = "self-signed" ]; then
-              CERT_TYPE=""
-          fi
-          if [ "${EVENT_NAME}" = "schedule" ] && [ -z "${CERT_TYPE}" ]; then
-              CERT_TYPE="auto"
-          fi
-          if [ "${CERT_TYPE}" = "auto" ]; then
-              TYPES=(le-rsa le-ecdsa-long le-ecdsa-short zerossl-rsa zerossl-ecdsa)
-              CERT_TYPE="${TYPES[$(( ($(date +%u) - 1) % 5 ))]}"
-          fi
-          if [ -n "${CERT_TYPE}" ]; then
-              case "${CERT_TYPE}" in
-                le-rsa|le-ecdsa-long|le-ecdsa-short|zerossl-rsa|zerossl-ecdsa) ;;
-                *) echo "Invalid cert type: ${CERT_TYPE}" >&2; exit 1 ;;
-              esac
-              echo "ENCLAVE_CERT_TYPE=${CERT_TYPE}" >> "$GITHUB_ENV"
-              echo "ENCLAVE_BASE_DOMAIN=nodns.in" >> "$GITHUB_ENV"
-              echo "Certificate type for this run: ${CERT_TYPE}"
-          fi
-
-      - name: Workflow information
-        run: |
-          echo "## E2E Deployment - Disconnected Mode" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Started at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "**Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-      - name: Pre-flight checks
-        uses: ./.github/actions/preflight-checks
-        with:
-          title: E2E Deployment - Disconnected Mode
-          check-pull-secret: 'true'
-          check-system-resources: 'true'
-          check-libvirt: 'true'
-
-      # Self-heal the runner: reap CI VMs left by earlier cancelled/timed-out/killed
-      # runs (which per-run cleanup can never match). Configurable via repo variables;
-      # set ENABLE_PREJOB_REAP=false to disable, REAP_AGE_HOURS to change the threshold.
-      - name: Reap stale cross-run CI VMs
-        if: vars.ENABLE_PREJOB_REAP != 'false'
-        env:
-          REAP_AGE_HOURS: ${{ vars.REAP_AGE_HOURS || '12' }}
-          BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
-        run: make -f Makefile.ci reap-stale-vms
-
-      # Start in-flight resource sampling before infrastructure creation so it
-      # covers the whole run. Post-mortem artifact collection runs only after
-      # the host has recovered and misses the transient stalls that cause
-      # failures; this records host/LZ/cluster state and API latency every 15s
-      # into artifacts/inflight for later analysis.
-      - name: Start resource sampler
-        id: start_resource_sampler
-        run: ./scripts/verification/sample_resources.sh start artifacts/inflight 15
-
-      - name: Create infrastructure
-        env:
-          WORKING_DIR: ${{ env.WORKING_DIR }}
-        run: |
-          echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
-
-          # vm_infra.py selects the subnet from libvirt and writes cluster-env.sh
-          make -f Makefile.ci environment
-
-          # cluster-env.sh always exists once create succeeds (else the step
-          # already failed above); report the subnet vm_infra.py selected.
-          # shellcheck disable=SC1091
-          source "${WORKING_DIR}/cluster-env.sh"
-          echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
-          echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY
-
-      - name: Provision Landing Zone
-        env:
-          LZ_CLOUD_IMAGE_URL: ${{ vars.LZ_CLOUD_IMAGE_URL }}
-          LZ_CLOUD_IMAGE_NAME: ${{ vars.LZ_CLOUD_IMAGE_NAME }}
-          LZ_RHSM_ORG: ${{ secrets.LZ_RHSM_ORG }}
-          LZ_RHSM_ACTIVATION_KEY: ${{ secrets.LZ_RHSM_ACTIVATION_KEY }}
-        run: |
-          echo "## Provisioning Landing Zone" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing ${LZ_OS_VARIANT:-centos-stream10} on Landing Zone VM..." >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci provision-landing-zone
-          echo "Landing Zone provisioned" >> $GITHUB_STEP_SUMMARY
-
-      - name: Install Enclave Lab
-        env:
-          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
-          ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
-          ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
-        run: |
-          echo "## Installing Enclave Lab" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Installing required packages on Landing Zone..." >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci install-enclave
-          echo "Enclave Lab installed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Generate Ironic ISO server TLS certificate
-        id: generate_ironic_cert
-        if: env.ENCLAVE_IRONIC_HTTPS == 'true'
-        env:
-          HETZNER_API_TOKEN: ${{ secrets.HETZNER_API_TOKEN }}
-          ACME_EMAIL: ${{ vars.ACME_EMAIL }}
-          ZEROSSL_EAB_KID: ${{ secrets.ZEROSSL_EAB_KID }}
-          ZEROSSL_EAB_HMAC_KEY: ${{ secrets.ZEROSSL_EAB_HMAC_KEY }}
-        run: make -f Makefile.ci generate-ironic-cert
-
-      - name: Setup Ceph on Landing Zone
-        if: env.STORAGE_PLUGIN == 'odf'
-        id: setup_ceph
-        run: |
-          echo "## Ceph Setup on Landing Zone" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci setup-ceph
-          echo "Ceph cluster deployed on Landing Zone" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Validate configuration
-        id: bootstrap_validate
-        run: |
-          echo "## Bootstrap: Validate" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-validate
-          echo "Validation complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Download content
-        id: bootstrap_download_content
-        run: |
-          echo "## Bootstrap: Download Content" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-prepare
-          echo "Download complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Build local cache
-        id: bootstrap_build_cache
-        run: |
-          echo "## Bootstrap: Build Cache" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-mirror
-          echo "Cache build complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Acquire hardware
-        id: bootstrap_acquire_hardware
-        run: |
-          echo "## Bootstrap: Acquire Hardware" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-acquire-hardware
-          echo "Hardware acquired" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Deploy cluster
-        id: bootstrap_deploy
-        run: |
-          echo "## Bootstrap: Deploy Cluster" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-install
-          echo "Cluster deployed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Post-install
-        id: bootstrap_post_install
-        run: |
-          echo "## Bootstrap: Post-Install" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-post-install
-          echo "Post-install complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Operators
-        id: bootstrap_operators
-        run: |
-          echo "## Bootstrap: Operators" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-operators
-          echo "Operators installed" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Day-2
-        id: bootstrap_day2
-        run: |
-          echo "## Bootstrap: Day-2" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-day2
-          echo "Day-2 complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Discovery
-        id: bootstrap_discovery
-        run: |
-          echo "## Bootstrap: Discovery" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-discovery
-          echo "Discovery complete" >> $GITHUB_STEP_SUMMARY
-
-      - name: Bootstrap - Write migration tasks
-        id: bootstrap_write_migration_tasks
-        run: |
-          echo "## Bootstrap: Write Migration Tasks" >> $GITHUB_STEP_SUMMARY
-          make -f Makefile.ci deploy-cluster-write-migration-tasks
-          echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
-
-      - name: Deploy trust-manager plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
-        id: deploy_trust_manager
-        run: make -f Makefile.ci deploy-plugin PLUGIN=trust-manager
-
-      - name: Deploy rhbk plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',rhbk,')
-        id: deploy_rhbk
-        run: make -f Makefile.ci deploy-plugin PLUGIN=rhbk
-
-      - name: Deploy aap plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',aap,')
-        id: deploy_aap
-        run: make -f Makefile.ci deploy-plugin PLUGIN=aap
-
-      - name: Deploy cnv plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',cnv,')
-        id: deploy_cnv
-        run: make -f Makefile.ci deploy-plugin PLUGIN=cnv
-
-      - name: Deploy amq-streams plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',amq-streams,')
-        id: deploy_amq_streams
-        run: make -f Makefile.ci deploy-plugin PLUGIN=amq-streams
-
-      - name: Deploy osac plugin
-        if: contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
-        id: deploy_osac
-        run: make -f Makefile.ci deploy-plugin PLUGIN=osac
-
-      - name: Verify cluster deployment
-        if: success()
-        id: verify_cluster
-        run: |
-          make -f Makefile.ci verify-cluster
-
-          # Additional verification for disconnected mode - check mirror registry
-          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
-          ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
-
-      # Stop the in-flight sampler before post-mortem collection so its logs
-      # under artifacts/inflight are flushed and shipped by Upload artifacts.
-      - name: Stop resource sampler
-        if: always()
-        run: ./scripts/verification/sample_resources.sh stop artifacts/inflight || true
-
-      - name: Collect artifacts
-        if: always()
-        uses: ./.github/actions/collect-artifacts
-        with:
-          artifact-type: deployment
-          output-directory: artifacts
-
-      - name: Collect full diagnostics on failure
-        if: failure()
-        run: |
-          echo "## Collecting Full Diagnostics (failure)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if ! ./scripts/verification/collect_ci_artifacts.sh full artifacts 2>&1 | tee artifact-collection-full.log; then
-            echo "Full artifact collection failed; continuing with must-gather" >> $GITHUB_STEP_SUMMARY
-          fi
-
-          LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
-          if [ -n "$LZ_IP" ]; then
-            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-            if ssh $SSH_OPTS cloud-user@$LZ_IP "test -f /home/cloud-user/enclave/scripts/diagnostics/gather.sh" 2>/dev/null; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### Running must-gather..." >> $GITHUB_STEP_SUMMARY
-
-              mkdir -p artifacts/must-gather
-              GATHER_OUT=$(ssh $SSH_OPTS cloud-user@$LZ_IP \
-                "cd /home/cloud-user/enclave/scripts/diagnostics && \
-                 export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
-                 GITHUB_RUN_ID='${{ github.run_id }}' ./gather.sh --must-gather=full ../../config/global.yaml 2>&1" || true)
-              echo "$GATHER_OUT" >> artifacts/must-gather/gather-output.txt
-
-              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/lz-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
-              scp $SSH_OPTS "cloud-user@${LZ_IP}:/home/cloud-user/enclave/scripts/diagnostics/cluster-logs-*.tar.gz" artifacts/must-gather/ 2>/dev/null || true
-
-              if ls artifacts/must-gather/*-logs-*.tar.gz 1>/dev/null 2>&1; then
-                echo "Collected must-gather archives" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "Must-gather failed (see must-gather/gather-output.txt)" >> $GITHUB_STEP_SUMMARY
-              fi
-            fi
-          fi
-
-      - name: Upload artifacts
-        if: always()
-        id: upload_artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}
-          path: artifacts/
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Get artifact download URL
-        if: always()
-        id: artifact_url
-        run: |
-          ARTIFACT_ID=""
-          for attempt in 1 2 3 4 5; do
-            sleep $((attempt * 2))
-            ARTIFACT_ID=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
-              --jq '[.artifacts[] | select(.name == "e2e-disconnected-${{ env.ENCLAVE_CLUSTER_NAME }}-${{ github.run_id }}")] | sort_by(.created_at) | last // empty | .id')
-            if [ -n "$ARTIFACT_ID" ]; then
-              break
-            fi
-          done
-
-          if [ -n "$ARTIFACT_ID" ]; then
-            ARTIFACT_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts/${ARTIFACT_ID}"
-            echo "ARTIFACT_URL=${ARTIFACT_URL}" >> $GITHUB_OUTPUT
-          else
-            echo "ARTIFACT_URL=" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: Cleanup infrastructure
-        if: always() && inputs.skip-cleanup != true
-        run: |
-          echo "## Cleanup Infrastructure" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Removing infrastructure for cluster: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
-
-          mkdir -p cleanup-logs
-
-          set +e
-          make -f Makefile.ci clean 2>&1 | tee cleanup-logs/cleanup.log
-          CLEANUP_EXIT_CODE=$?
-          set -e
-
-          if grep -q "WARNING:" cleanup-logs/cleanup.log; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Cleanup completed with warnings:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            grep "WARNING:" cleanup-logs/cleanup.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          elif [ $CLEANUP_EXIT_CODE -eq 0 ]; then
-            echo "Infrastructure cleaned up successfully" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Cleanup completed with errors (exit code: $CLEANUP_EXIT_CODE)" >> $GITHUB_STEP_SUMMARY
-            echo "Check cleanup-logs/cleanup.log for details" >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Cleanup skipped notice
-        if: always() && inputs.skip-cleanup == true
-        run: |
-          echo "## Cleanup Skipped" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Infrastructure cleanup was skipped as requested." >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**IMPORTANT**: Remember to manually clean up the infrastructure:" >> $GITHUB_STEP_SUMMARY
-          echo '```bash' >> $GITHUB_STEP_SUMMARY
-          echo "make clean" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Cluster name**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
-
-      - name: Collect post-cleanup state
-        if: always()
-        run: |
-          mkdir -p cleanup-state/libvirt cleanup-state/system
-
-          sudo virsh pool-list --all --details > cleanup-state/libvirt/storage-pools.txt 2>&1 || true
-          sudo virsh net-list --all > cleanup-state/libvirt/networks.txt 2>&1 || true
-          sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
-          df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
-
-      - name: Upload post-cleanup artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: post-cleanup-disconnected-${{ github.run_id }}
-          path: |
-            cleanup-logs/
-            cleanup-state/
-          retention-days: 7
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "---" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: Disconnected (Air-gapped)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Storage Plugin**: $STORAGE_PLUGIN" >> $GITHUB_STEP_SUMMARY
-          echo "- **Cluster**: $ENCLAVE_CLUSTER_NAME" >> $GITHUB_STEP_SUMMARY
-          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Triggered by**: @${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Completed at**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-      - name: Determine failed step
-        if: failure()
-        id: failed_step
-        env:
-          STEPS_JSON: ${{ toJSON(steps) }}
-        run: |
-          declare -A step_names=(
-            ["generate_ironic_cert"]="Generate Ironic ISO server TLS certificate"
-            ["setup_ceph"]="Setup Ceph on Landing Zone"
-            ["bootstrap_setup"]="Bootstrap: Setup environment"
-            ["bootstrap_validate"]="Bootstrap: Validate configuration"
-            ["bootstrap_download_content"]="Bootstrap: Download content"
-            ["bootstrap_build_cache"]="Bootstrap: Build local cache"
-            ["bootstrap_acquire_hardware"]="Bootstrap: Acquire hardware"
-            ["bootstrap_deploy"]="Bootstrap: Deploy cluster"
-            ["bootstrap_post_install"]="Bootstrap: Post-install"
-            ["bootstrap_operators"]="Bootstrap: Operators"
-            ["bootstrap_day2"]="Bootstrap: Day-2"
-            ["bootstrap_discovery"]="Bootstrap: Discovery"
-            ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
-            ["deploy_trust_manager"]="Deploy trust-manager plugin"
-            ["deploy_rhbk"]="Deploy rhbk plugin"
-            ["deploy_aap"]="Deploy aap plugin"
-            ["deploy_cnv"]="Deploy cnv plugin"
-            ["deploy_amq_streams"]="Deploy amq-streams plugin"
-            ["deploy_osac"]="Deploy osac plugin"
-            ["verify_cluster"]="Verify cluster deployment"
-          )
-
-          step_order=(
-            generate_ironic_cert
-            setup_ceph
-            bootstrap_setup
-            bootstrap_validate
-            bootstrap_download_content
-            bootstrap_build_cache
-            bootstrap_acquire_hardware
-            bootstrap_deploy
-            bootstrap_post_install
-            bootstrap_operators
-            bootstrap_day2
-            bootstrap_discovery
-            bootstrap_write_migration_tasks
-            deploy_trust_manager
-            deploy_rhbk
-            deploy_aap
-            deploy_cnv
-            deploy_amq_streams
-            deploy_osac
-            verify_cluster
-          )
-
-          FAILED_STEP=""
-          for step_id in "${step_order[@]}"; do
-            outcome=$(printf '%s' "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
-            if [ "$outcome" == "failure" ]; then
-              FAILED_STEP="${step_names[$step_id]}"
-              break
-            fi
-          done
-
-          if [ -n "$FAILED_STEP" ]; then
-            echo "FAILED_STEP=$FAILED_STEP" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Notify Slack
-        if: always() && (github.event_name == 'schedule' || inputs.send-slack-notification == true)
-        uses: ./.github/actions/notify-slack
-        with:
-          status: ${{ job.status }}
-          workflow-name: ${{ inputs.workflow-display-name || 'E2E Deployment' }} - Disconnected
+          workflow-name: ${{ inputs.workflow-display-name || 'E2E Deployment' }} - ${{ inputs.mode == 'connected' && 'Connected' || 'Disconnected' }}
           cluster-name: ${{ env.ENCLAVE_CLUSTER_NAME }}
           slack-webhook-urls: ${{ secrets.SLACK_WEBHOOK_URLS }}
           workflow-url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

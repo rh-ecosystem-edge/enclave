@@ -181,21 +181,15 @@ jobs:
               rerun_pr_workflow infra-verify.yml; track_result "Infra Verify" $?
               ;;
             e2e-connected)
-              dispatch_workflow e2e-deployment.yml \
-                -f run-connected=true \
-                -f run-disconnected=false
+              dispatch_workflow e2e-connected.yml
               track_result "E2E Connected" $?
               ;;
             e2e-disconnected)
-              dispatch_workflow e2e-deployment.yml \
-                -f run-connected=false \
-                -f run-disconnected=true
+              dispatch_workflow e2e-disconnected.yml
               track_result "E2E Disconnected" $?
               ;;
             e2e-disconnected-odf)
-              dispatch_workflow e2e-deployment.yml \
-                -f run-connected=false \
-                -f run-disconnected=true \
+              dispatch_workflow e2e-disconnected.yml \
                 -f storage-plugin=odf
               track_result "E2E Disconnected ODF" $?
               ;;
@@ -206,10 +200,8 @@ jobs:
               rerun_pr_workflow pr-validation.yml; track_result "PR Validation" $?
               rerun_pr_workflow build-push-tarball.yml; track_result "Build Tarball" $?
               rerun_pr_workflow infra-verify.yml; track_result "Infra Verify" $?
-              dispatch_workflow e2e-deployment.yml \
-                -f run-connected=true \
-                -f run-disconnected=true
-              track_result "E2E" $?
+              dispatch_workflow e2e-connected.yml; track_result "E2E Connected" $?
+              dispatch_workflow e2e-disconnected.yml; track_result "E2E Disconnected" $?
               ;;
             *)
               gh pr comment "${PR_NUMBER}" -R "${REPO}" \
@@ -306,9 +298,9 @@ jobs:
               validation)           echo "pr-validation.yml" ;;
               tarball)              echo "build-push-tarball.yml" ;;
               infra)                echo "infra-verify.yml" ;;
-              e2e-connected)        echo "e2e-deployment.yml" ;;
-              e2e-disconnected)     echo "e2e-deployment.yml" ;;
-              e2e-disconnected-odf) echo "e2e-deployment.yml" ;;
+              e2e-connected)        echo "e2e-connected.yml" ;;
+              e2e-disconnected)     echo "e2e-disconnected.yml" ;;
+              e2e-disconnected-odf) echo "e2e-disconnected.yml" ;;
               cleanup)              echo "cleanup.yml" ;;
               *) return 1 ;;
             esac

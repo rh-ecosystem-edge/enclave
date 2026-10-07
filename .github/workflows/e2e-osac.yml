@@ -160,10 +160,16 @@ jobs:
       contents: read
       checks: write  # required by e2e-deployment.yml for check-run updates
       pull-requests: read  # required by e2e-deployment.yml for changed-file detection
+    # Call the reusable single-mode workflow directly (not via the e2e-connected
+    # wrapper): the wrapper's top-level concurrency resolves to the caller's name
+    # when reused, which at this nesting depth queues OSAC runs behind each other
+    # instead of cancelling them. e2e-deployment.yml has no top-level concurrency.
     uses: ./.github/workflows/e2e-deployment.yml
     with:
-      run-connected: true
-      run-disconnected: false
+      mode: connected
+      # OSAC applies its own PR path gate (the pull_request paths above), so run
+      # regardless of the generic paths-filter, which does not list e2e-osac.yml.
+      force-run: true
       enabled-plugins: 'lvms,trust-manager,rhbk,aap,amq-streams,osac'
       # Workspace-relative path the deployment job downloads the license to from
       # the enclave-ci-infra runner-secret-files S3 bucket (see e2e-deployment.yml).

@@ -1,0 +1,84 @@
+name: E2E Connected
+
+# Connected-mode E2E: fast deployment pulling from upstream registries.
+#
+# Thin wrapper that calls the reusable single-mode workflow e2e-deployment.yml
+# with mode=connected. Runs on every PR and nightly. Disconnected is a separate
+# workflow (e2e-disconnected.yml) so each mode runs — and is retried by
+# e2e-spot-retry.yml — independently. Callers that need a custom plugin chain
+# (e.g. e2e-osac.yml) call e2e-deployment.yml directly, not this wrapper.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  schedule:
+    # Run daily at 10:00 PM EST (03:00 UTC)
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      storage-plugin:
+        description: 'Storage plugin to deploy (connected supports lvms or vast-csi)'
+        required: true
+        default: 'lvms'
+        type: choice
+        options:
+          - lvms
+          - vast-csi
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+      enabled-plugins:
+        description: 'Comma-separated list of plugins to deploy (default: storage plugin only)'
+        required: false
+        type: string
+        default: ''
+      aap-license-file:
+        description: 'Path to AAP license file on the CI runner (required for OSAC deployments)'
+        required: false
+        type: string
+        default: ''
+      workflow-display-name:
+        description: 'Display name prefix for Slack notifications (e.g., "E2E OSAC")'
+        required: false
+        type: string
+        default: 'E2E Connected'
+      osac-chart-version:
+        description: 'OSAC Helm chart version to deploy (overrides plugin default)'
+        required: false
+        type: string
+        default: ''
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: read
+
+jobs:
+  e2e:
+    uses: ./.github/workflows/e2e-deployment.yml
+    with:
+      mode: connected
+      # Everything that is not a plain PR runs unconditionally; PRs are gated by
+      # the paths-filter inside the reusable workflow's check-e2e-needed.
+      force-run: ${{ github.event_name != 'pull_request' }}
+      storage-plugin: ${{ inputs.storage-plugin || '' }}
+      skip-cleanup: ${{ inputs.skip-cleanup || false }}
+      send-slack-notification: ${{ inputs.send-slack-notification || false }}
+      enabled-plugins: ${{ inputs.enabled-plugins || '' }}
+      aap-license-file: ${{ inputs.aap-license-file || '' }}
+      workflow-display-name: ${{ inputs.workflow-display-name || 'E2E Connected' }}
+      osac-chart-version: ${{ inputs.osac-chart-version || '' }}
+    secrets: inherit
