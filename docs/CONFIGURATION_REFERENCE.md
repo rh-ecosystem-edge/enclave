@@ -1381,7 +1381,7 @@ control_binaries:
 
 ### RHCOS ISOs
 
-RHCOS ISOs are automatically extracted from OpenShift release images during the prepare phase. For each version defined in `defaults/platforms.yaml`, the system:
+In disconnected deployments, RHCOS ISOs are automatically extracted from OpenShift release images during the prepare phase. (Connected deployments skip this step — the Assisted Installer pulls RHCOS from its default sources.) For each version defined in `defaults/platforms.yaml`, the system:
 
 1. Queries the release image for the `machine-os-images` component
 2. Extracts the ISO from the machine-os-images container
