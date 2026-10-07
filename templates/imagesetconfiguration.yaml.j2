@@ -24,7 +24,7 @@ mirror:
         minVersion: {{ data.min_ver }}
         maxVersion: {{ data.max_ver }}
 {% endfor %}
-    graph: true
+    graph: false
   operators:
 {% for c_name, c_catalog_operators in catalog_operators.items() %}
 {% if c_name == 'core' %}
