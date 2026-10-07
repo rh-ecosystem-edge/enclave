@@ -58,6 +58,12 @@ on:
         default: ''
   workflow_call:
     inputs:
+      force-run:
+        # Callers (e.g. e2e-osac.yml) that apply their own PR path gate set this
+        # to run regardless of the generic paths-filter — which does not list
+        # caller-specific trigger paths such as .github/workflows/e2e-osac.yml.
+        type: boolean
+        default: false
       storage-plugin:
         type: string
         default: ''
@@ -95,8 +101,9 @@ jobs:
     with:
       mode: connected
       # Everything that is not a plain PR runs unconditionally; PRs are gated by
-      # the paths-filter inside the reusable workflow's check-e2e-needed.
-      force-run: ${{ github.event_name != 'pull_request' }}
+      # the paths-filter inside the reusable workflow's check-e2e-needed. Callers
+      # with their own PR path gate can force the run via the force-run input.
+      force-run: ${{ inputs.force-run || github.event_name != 'pull_request' }}
       storage-plugin: ${{ inputs.storage-plugin || '' }}
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}
