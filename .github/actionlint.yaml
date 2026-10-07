@@ -2,6 +2,7 @@ self-hosted-runner:
   # Custom runner labels for enclave CI infrastructure
   labels:
     - pr-validation-aws   # Fast validation jobs
+    - code-ql-aws         # CodeQL code scanning (shares the pr-validation pool)
     - enclave-small       # For cleanup infra, not needed in aws
     - enclave-small-aws   # Medium jobs like infra-verify
     - enclave-large-aws          # Large nested-virt E2E jobs (PR-context and nightly)

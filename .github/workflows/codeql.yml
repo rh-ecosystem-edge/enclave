@@ -1,0 +1,71 @@
+name: CodeQL
+
+# GitHub code scanning (CodeQL), advanced setup.
+#
+# This replaces the previously GitHub-managed "default setup". Default setup validates, at
+# configuration time, that a runner carrying its label is already assigned to the repo — which
+# a scale-from-zero self-hosted fleet can never satisfy (no runner exists at rest). Advanced
+# setup is just a normal workflow: the job queues like any other, the enclave-ci-infra webhook
+# launches a runner on demand, so there is nothing to pre-validate. It also keeps CodeQL
+# consistent with the rest of enclave CI, where every AWS-routed job lives in a workflow file.
+#
+# Runs on the AWS pr-validation pool via the code-ql-aws label (the pool registers and routes
+# on both pr-validation-aws and code-ql-aws — see enclave-ci-infra terraform/runners). Mirrors
+# the old default-setup config: languages actions + python, default query suite, weekly schedule.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly (Monday 02:31 UTC), matching the old default-setup cadence.
+    - cron: '31 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel superseded runs for the same PR/branch (run_id fallback for non-PR events).
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: [self-hosted, code-ql-aws]
+    permissions:
+      # Upload analysis results to code scanning.
+      security-events: write
+      # Read workflow contents (required for the `actions` language) and the repo.
+      actions: read
+      contents: read
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, python]
+
+    steps:
+      # Unique checkout dir per run/attempt/job/language. The code-ql-aws jobs land on the
+      # non-ephemeral pr-validation pool (shared host + _work), so a fixed path lets a
+      # neighbour's checkout churn the tree mid-analysis. A unique path isolates each job,
+      # matching pr-validation.yml; the runner's job-completed hook (enclave-ci-infra) sweeps
+      # _work/enclave between jobs. source-root/checkout_path below point CodeQL at this dir.
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.language }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          source-root: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.language }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+          checkout_path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}-${{ matrix.language }}
