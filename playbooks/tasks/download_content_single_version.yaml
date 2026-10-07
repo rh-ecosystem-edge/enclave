@@ -23,18 +23,29 @@
         prefix: "rhcos-extract-{{ version_item.version }}-"
       register: temp_extract_dir
 
-    - name: Extract ISO from machine-os-images container
-      ansible.builtin.command:
-        cmd: >
-          {{ workingDir }}/bin/oc image extract
-          --registry-config={{ pullSecretPath }}
-          {{ machine_os_image.stdout }}
-          --path /coreos/coreos-x86_64.iso:{{ temp_extract_dir.path }}/
-      changed_when: true
-      register: iso_extraction
-      retries: "{{ k8s_retries }}"
-      delay: "{{ k8s_delay }}"
-      until: iso_extraction is success
+    - name: Extract ISO with failure diagnostics
+      block:
+        # --confirm lets retries overwrite partial content left by a failed attempt.
+        - name: Extract ISO from machine-os-images container
+          ansible.builtin.command:
+            cmd: >
+              {{ workingDir }}/bin/oc image extract
+              --registry-config={{ pullSecretPath }}
+              {{ machine_os_image.stdout }}
+              --confirm
+              --path /coreos/coreos-x86_64.iso:{{ temp_extract_dir.path }}/
+          changed_when: true
+          register: iso_extraction
+          retries: "{{ k8s_retries }}"
+          delay: "{{ k8s_delay }}"
+          until: iso_extraction is success
+      rescue:
+        - name: Surface original RHCOS extraction failure for {{ version_item.version }}
+          ansible.builtin.fail:
+            msg: >-
+              RHCOS ISO extraction for {{ version_item.version }} failed after
+              {{ iso_extraction.attempts | default('?') }} attempt(s).
+              Original error: {{ iso_extraction.stderr | default('n/a') }}
 
     - name: Move ISO to final location with version-specific name
       become: true
