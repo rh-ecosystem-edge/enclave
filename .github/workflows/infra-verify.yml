@@ -40,7 +40,8 @@ jobs:
       # Positive filters use the default "some" quantifier. scripts/** is
       # handled separately with the "every" quantifier because a negated glob
       # (!scripts/docs/**) cannot be mixed into a "some" list without matching
-      # every path outside its target. Kept in sync with e2e-deployment.yml.
+      # every path outside its target. Kept in sync with the check-e2e-needed
+      # composite action (.github/actions/check-e2e-needed).
       - name: Detect deployment-relevant changes
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter

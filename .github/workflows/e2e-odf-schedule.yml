@@ -1,7 +1,7 @@
 name: E2E ODF (Scheduled)
 
-# Weekly ODF E2E test. Dispatches the main e2e-deployment workflow with
-# storage-plugin=odf so no cron-matching logic is needed.
+# Weekly ODF E2E test. Dispatches the disconnected E2E workflow with
+# storage-plugin=odf so no cron-matching logic is needed (ODF is disconnected-only).
 
 on:
   schedule:
@@ -17,14 +17,12 @@ jobs:
     runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 5
     steps:
-      - name: Trigger E2E Deployment with ODF
+      - name: Trigger E2E Disconnected with ODF
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow run e2e-deployment.yml \
+          gh workflow run e2e-disconnected.yml \
             --ref "${{ github.ref }}" \
-            -f run-connected=false \
-            -f run-disconnected=true \
             -f storage-plugin=odf \
             -f send-slack-notification=true \
             -f workflow-display-name="E2E ODF" \

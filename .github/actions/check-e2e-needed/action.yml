@@ -1,0 +1,142 @@
+name: Check if E2E is needed
+description: >-
+  Decide whether an E2E run should proceed and which storage plugin to use.
+  Shared by the e2e-connected and e2e-disconnected workflows via the single-mode
+  reusable workflow, so the paths-filter and decision logic live in one place.
+
+inputs:
+  mode:
+    description: 'Deployment mode (connected or disconnected)'
+    required: true
+  storage-plugin:
+    description: 'Explicit storage plugin override (empty = auto-decide from changed files)'
+    required: false
+    default: ''
+  force-run:
+    description: 'Run regardless of changed files (set for schedule/dispatch/merge_group/callers)'
+    required: false
+    default: 'false'
+
+outputs:
+  should_run:
+    description: 'Whether the E2E job should run (true/false)'
+    value: ${{ steps.decision.outputs.should_run }}
+  storage_plugins:
+    description: 'JSON array with the single storage plugin for the job matrix'
+    value: ${{ steps.decision.outputs.storage_plugins }}
+
+runs:
+  using: composite
+  steps:
+    # Positive filters, evaluated with the default "some" quantifier: the
+    # filter matches when any changed file matches any of its patterns.
+    # NOTE: scripts/** is intentionally NOT listed here. A negated pattern
+    # (e.g. !scripts/docs/**) cannot be mixed into a "some"-quantified OR
+    # list: under "some" a negated glob matches every path outside its
+    # target, so a single unrelated file (even docs/*) would flip the whole
+    # filter to true. The scripts exclusion is handled by the dedicated
+    # "every"-quantified step below.
+    #
+    # Skipped entirely when force-run is set (schedule/dispatch/merge_group and
+    # reusable callers): the decision is already made, and paths-filter needs a
+    # PR base to diff against.
+    - name: Check if E2E-relevant files changed
+      if: inputs.force-run != 'true'
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+      id: filter
+      with:
+        filters: |
+          e2e:
+            - 'playbooks/**'
+            - 'src/**'
+            - 'Makefile'
+            - 'Makefile.ci'
+            - 'config/**'
+            - 'defaults/**'
+            - 'schemas/**'
+            - 'templates/**'
+            - 'operators/**'
+            - 'plugins/**'
+            - 'files/**'
+            - 'hack/**'
+            - '.github/workflows/e2e-connected.yml'
+            - '.github/workflows/e2e-disconnected.yml'
+            - '.github/workflows/e2e-deployment.yml'
+            - '.github/actions/check-e2e-needed/**'
+            - 'ansible.cfg'
+            - 'ansible_collections.txt'
+            - 'pyproject.toml'
+            - 'uv.lock'
+            - 'bootstrap.sh'
+            - 'validations.sh'
+            - 'setup_*.sh'
+          odf:
+            - 'plugins/odf/**'
+            - 'scripts/infrastructure/setup_ceph*'
+            - 'scripts/infrastructure/verify_ceph*'
+            - 'scripts/lib/odf.sh'
+
+    # scripts/** changes, excluding CI documentation under scripts/docs/**.
+    # Uses the "every" quantifier so a file matches only when it satisfies
+    # ALL patterns (under scripts/ AND not under scripts/docs/). The filter
+    # is true when at least one such file changed, so a PR touching only
+    # scripts/docs/** (or no scripts at all) correctly leaves it false, while
+    # a PR mixing scripts code and scripts docs still triggers E2E.
+    - name: Check if E2E-relevant scripts changed
+      if: inputs.force-run != 'true'
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+      id: filter_scripts
+      with:
+        predicate-quantifier: every
+        filters: |
+          scripts:
+            - 'scripts/**'
+            - '!scripts/docs/**'
+
+    - name: Make decision
+      id: decision
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+        INPUT_PLUGIN: ${{ inputs.storage-plugin }}
+        FORCE_RUN: ${{ inputs.force-run }}
+        FILTER_E2E: ${{ steps.filter.outputs.e2e }}
+        FILTER_SCRIPTS: ${{ steps.filter_scripts.outputs.scripts }}
+        FILTER_ODF: ${{ steps.filter.outputs.odf }}
+      run: |
+        # should_run: force-run always runs; otherwise run when E2E-relevant
+        # files or scripts changed. storage_plugins is a single-element JSON
+        # array consumed by the job matrix.
+        if [ "$FORCE_RUN" = "true" ]; then
+          SHOULD_RUN=true
+          REASON="forced run (schedule/dispatch/merge queue/reusable caller)"
+        elif [ "$FILTER_E2E" = "true" ] || [ "$FILTER_SCRIPTS" = "true" ]; then
+          SHOULD_RUN=true
+          REASON="E2E-relevant files changed"
+        else
+          SHOULD_RUN=false
+          REASON="only documentation/config files changed"
+        fi
+
+        # Plugin: explicit override wins; else disconnected auto-picks odf when
+        # ODF-relevant files changed (PR path only), otherwise lvms. Connected
+        # never uses odf.
+        if [ -n "$INPUT_PLUGIN" ]; then
+          PLUGIN="$INPUT_PLUGIN"
+        elif [ "$MODE" = "disconnected" ] && [ "$FORCE_RUN" != "true" ] && [ "$FILTER_ODF" = "true" ]; then
+          PLUGIN="odf"
+        else
+          PLUGIN="lvms"
+        fi
+        if [ "$MODE" = "connected" ] && [ "$PLUGIN" = "odf" ]; then
+          PLUGIN="lvms"
+        fi
+
+        echo "should_run=${SHOULD_RUN}" >> "$GITHUB_OUTPUT"
+        echo "storage_plugins=[\"${PLUGIN}\"]" >> "$GITHUB_OUTPUT"
+
+        echo "E2E decision (${MODE}): should_run=${SHOULD_RUN} (${REASON}), storage plugin=${PLUGIN}" \
+          | tee -a "$GITHUB_STEP_SUMMARY"
+        if [ "$SHOULD_RUN" = "false" ]; then
+          echo "To run E2E anyway, use manual workflow_dispatch" | tee -a "$GITHUB_STEP_SUMMARY"
+        fi

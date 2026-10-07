@@ -158,15 +158,14 @@ jobs:
         needs.osac-values-preflight.result == 'skipped'))
     permissions:
       contents: read
-      checks: write  # required by e2e-deployment.yml for check-run updates
-      pull-requests: read  # required by e2e-deployment.yml for changed-file detection
-    uses: ./.github/workflows/e2e-deployment.yml
+      checks: write  # required by e2e-connected.yml for check-run updates
+      pull-requests: read  # required by e2e-connected.yml for changed-file detection
+    uses: ./.github/workflows/e2e-connected.yml
     with:
-      run-connected: true
-      run-disconnected: false
       enabled-plugins: 'lvms,trust-manager,rhbk,aap,amq-streams,osac'
       # Workspace-relative path the deployment job downloads the license to from
-      # the enclave-ci-infra runner-secret-files S3 bucket (see e2e-deployment.yml).
+      # the enclave-ci-infra runner-secret-files S3 bucket (see e2e-deployment.yml,
+      # called by e2e-connected.yml).
       aap-license-file: 'aap-license.zip'
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}

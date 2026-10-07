@@ -258,7 +258,7 @@ Scripts use `set -euo pipefail` for strict error handling:
 
 Scripts are used by GitHub Actions workflows:
 
-- `.github/workflows/e2e-deployment.yml` - End-to-end deployment workflow (connected and disconnected modes)
+- `.github/workflows/e2e-connected.yml` / `.github/workflows/e2e-disconnected.yml` - End-to-end deployment workflows (one per mode), both calling the reusable `.github/workflows/e2e-deployment.yml`
 
 Custom GitHub Actions in `.github/actions/`:
 - `preflight-checks` - Run pre-flight validation

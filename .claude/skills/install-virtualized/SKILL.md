@@ -58,11 +58,14 @@ $ARGUMENTS
 the complete deployment procedure dynamically. Do NOT assume any steps, env vars,
 or plugin order — derive everything from these files:
 
-1. **`.github/workflows/e2e-deployment.yml`** — find the job for the selected mode
-   (connected or disconnected). Extract:
+1. **`.github/workflows/e2e-deployment.yml`** — the reusable single-mode workflow
+   (called by `e2e-connected.yml` / `e2e-disconnected.yml` with `mode`). Read the
+   `e2e` job and extract, resolving `inputs.mode`-conditional expressions for the
+   selected mode (connected or disconnected):
    - The `env:` block (all environment variables and their values)
    - Every `run:` step in order (each `make -f Makefile.ci <target>` call)
-   - Conditional steps (`if:` clauses — e.g., steps that only run for certain storage plugins)
+   - Conditional steps (`if:` clauses — e.g., steps that only run for certain storage
+     plugins or only for a given mode)
    - The plugin deployment order (the sequence of `deploy-plugin PLUGIN=<name>` steps)
 
 2. **`Makefile.ci`** — understand target dependencies and the `clean` target
@@ -90,16 +93,18 @@ have a `deploy-plugin` step in the workflow.
 Before proceeding, check whether the corresponding e2e job is currently passing on `main`:
 
 ```bash
-gh run list --workflow=e2e-deployment.yml --branch=main --limit=5 --json databaseId,status,conclusion,displayTitle,createdAt
+# Pick the workflow matching the selected mode
+gh run list --workflow=e2e-connected.yml --branch=main --limit=5 --json databaseId,status,conclusion,displayTitle,createdAt
+gh run list --workflow=e2e-disconnected.yml --branch=main --limit=5 --json databaseId,status,conclusion,displayTitle,createdAt
 ```
 
-Then inspect the specific job for the selected mode using the most recent run ID:
+Then inspect the deployment job using the most recent run ID:
 ```bash
-gh run view <run-id> --json jobs --jq '.jobs[] | select(.name | test("e2e-connected|e2e-disconnected")) | {name, status, conclusion, url}'
+gh run view <run-id> --json jobs --jq '.jobs[] | select(.name | test("E2E ")) | {name, status, conclusion, url}'
 ```
 
-If the job matching the selected mode is **failing**:
-- **Warn the user clearly**: "The CI e2e-connected job is currently failing on main.
+If the workflow matching the selected mode is **failing**:
+- **Warn the user clearly**: "The CI E2E Connected workflow is currently failing on main.
   This deployment follows the same workflow, so it may hit the same failure."
 - Show the failure details (run URL, which step failed)
 - Ask if they want to proceed anyway, use a specific branch, or wait

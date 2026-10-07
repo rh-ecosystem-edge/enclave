@@ -127,10 +127,17 @@ make validate
 
 ## Workflow 3: E2E Deployment
 
-**Purpose**: Full end-to-end cluster deployment testing in both connected and disconnected modes
+**Purpose**: Full end-to-end cluster deployment testing in connected and disconnected modes
 
-**Trigger**:
-- Automatic on every PR (both modes run in parallel)
+Connected and disconnected are two independent workflows — `E2E Connected`
+(`e2e-connected.yml`) and `E2E Disconnected` (`e2e-disconnected.yml`) — that both
+call the reusable single-mode workflow `e2e-deployment.yml` (`workflow_call` only).
+The paths-filter/decision logic lives in the `./.github/actions/check-e2e-needed`
+composite action. Running them as separate workflows removes duplication and lets
+`e2e-spot-retry.yml` retry each mode independently.
+
+**Trigger** (each workflow, independently):
+- Automatic on every PR
 - Nightly schedule (03:00 UTC daily)
 - Manual dispatch (Actions tab)
 - Merge queue
@@ -143,14 +150,15 @@ ODF disconnected runs stay on the standalone `odf` runners (see ODF_CEPH_CI.md).
 
 ### Jobs
 
-The workflow runs two parallel jobs:
+Each workflow calls the reusable `e2e-deployment.yml`, which runs:
 
-| Job | Mode | Description |
-|-----|------|-------------|
-| `e2e-connected` | Connected | Fast deployment pulling from upstream registries |
-| `e2e-disconnected` | Disconnected | Full air-gapped deployment with local mirror registry |
+| Job | Description |
+|-----|-------------|
+| `check-e2e-needed` | Decides whether to run and which storage plugin to use (via the composite action) |
+| `e2e` | The single-mode deployment (connected or disconnected, per `mode` input) |
 
-Both jobs appear as separate checks on PRs, so you can see which mode failed.
+Connected and disconnected appear as separate workflow runs/checks on PRs, so you
+can see which mode failed and retry them independently.
 
 ### What It Does
 
@@ -167,18 +175,17 @@ Both jobs appear as separate checks on PRs, so you can see which mode failed.
 ### How to Use
 
 **Automatic (PR)**:
-Both connected and disconnected jobs run automatically on every PR with E2E-relevant file changes.
+Both the `E2E Connected` and `E2E Disconnected` workflows run automatically on every PR
+with E2E-relevant file changes.
 
 **Manual Dispatch**:
 
 1. Go to Actions tab
-2. Select "E2E Deployment"
+2. Select "E2E Connected" or "E2E Disconnected"
 3. Click "Run workflow"
 4. Configure options:
-   - **run-connected**: Run connected mode (default: true)
-   - **run-disconnected**: Run disconnected mode (default: true)
-   - **storage-plugin**: lvms or odf (default: lvms)
-   - **cert-type**: TLS certificate type for ingress/API/Ironic certs; empty = self-signed,
+   - **storage-plugin**: connected supports lvms/vast-csi; disconnected also supports odf (default: lvms)
+   - **cert-type** (disconnected only): TLS certificate type for ingress/API/Ironic certs; empty = self-signed,
      `zerossl-ecdsa` = real certificate via ZeroSSL DNS-01 challenge (default: empty)
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
