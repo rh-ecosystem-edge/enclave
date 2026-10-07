@@ -69,11 +69,14 @@
           ansible.builtin.command: podman rm --ignore --force quay-postgres
           changed_when: false
 
+        # rc 0 = volume present, rc 1 = absent; any other code is a real error
+        # and must abort rather than be treated as "absent" (which would skip
+        # removal and let PostgreSQL start on stale data).
         - name: Check for a stale quay-postgres data volume
           ansible.builtin.command: podman volume exists {{ quayPgVolume }}
           register: r_pg_volume
           changed_when: false
-          failed_when: false
+          failed_when: r_pg_volume.rc not in [0, 1]
 
         # Do not suppress removal failures: if a stale volume cannot be removed
         # the migration must abort rather than start PostgreSQL on old data and
