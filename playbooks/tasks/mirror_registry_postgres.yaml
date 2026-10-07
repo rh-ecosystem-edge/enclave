@@ -69,10 +69,19 @@
           ansible.builtin.command: podman rm --ignore --force quay-postgres
           changed_when: false
 
-        - name: Remove any stale quay-postgres data volume
-          ansible.builtin.command: podman volume rm --force {{ quayPgVolume }}
+        - name: Check for a stale quay-postgres data volume
+          ansible.builtin.command: podman volume exists {{ quayPgVolume }}
+          register: r_pg_volume
           changed_when: false
           failed_when: false
+
+        # Do not suppress removal failures: if a stale volume cannot be removed
+        # the migration must abort rather than start PostgreSQL on old data and
+        # then write the completion marker.
+        - name: Remove any stale quay-postgres data volume
+          ansible.builtin.command: podman volume rm --force {{ quayPgVolume }}
+          when: r_pg_volume.rc == 0
+          changed_when: true
 
         # Keep the password out of the world-readable unit file (and out of
         # systemctl/podman inspect) by passing it through a podman secret, the
@@ -125,7 +134,7 @@
             path: "{{ _quay_config_path }}"
             regexp: '^DB_URI:.*$'
             replace: >-
-              DB_URI: postgresql://{{ quayPgUser | urlencode | replace('/', '%2F') }}:{{ quayPgPassword | urlencode | replace('/', '%2F') }}@quay-postgres/{{ quayPgDatabase }}
+              DB_URI: postgresql://{{ quayPgUser | urlencode | replace('/', '%2F') }}:{{ quayPgPassword | urlencode | replace('/', '%2F') }}@localhost/{{ quayPgDatabase }}
           no_log: true
 
         - name: Add Quay DB_CONNECTION_ARGS
