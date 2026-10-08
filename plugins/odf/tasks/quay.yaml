@@ -2,6 +2,66 @@
 # ODF-specific Quay tasks: QuayRegistry CR with RadosGW object storage.
 # Included from operators/quay-operator/tasks.yaml via dynamic plugin include.
 
+# spec.components is an atomic list, so a client-side apply replaces it wholesale
+# and strips the components the Quay operator adds (clair, redis, route, mirror,
+# monitoring, tls) — which it re-adds, bumping the generation every run. Merge our
+# entries over the live list (by kind) instead, so steady-state re-runs are a no-op.
+- name: Get current QuayRegistry (ODF Backend)
+  kubernetes.core.k8s_info:
+    api_version: quay.redhat.com/v1
+    kind: QuayRegistry
+    name: registry
+    namespace: quay-enterprise
+  register: r_quay_registry_current
+
+- name: Define desired QuayRegistry components (ODF Backend)
+  ansible.builtin.set_fact:
+    quay_desired_components:
+      - kind: horizontalpodautoscaler
+        managed: true
+      - kind: quay
+        managed: true
+        overrides:
+          resources:
+            limits:
+              cpu: "8"
+              memory: 32Gi
+            requests:
+              cpu: "{{ '4' if (disconnected | default(true)) else '2' }}"
+              memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
+      - kind: objectstorage
+        managed: false
+      - kind: postgres
+        managed: true
+        overrides:
+          resources:
+            limits:
+              cpu: 1
+              memory: 4Gi
+            requests:
+              cpu: 500m
+              memory: 2Gi
+      - kind: clairpostgres
+        managed: true
+        overrides:
+          resources:
+            limits:
+              cpu: 1
+              memory: 4Gi
+            requests:
+              cpu: 500m
+              memory: 2Gi
+
+# combine() overrides matching kinds and appends the rest, preserving the
+# operator's components and their order; an empty live list yields just ours.
+- name: Merge desired components over the live QuayRegistry components (ODF Backend)
+  vars:
+    live_components: "{{ r_quay_registry_current.resources[0].spec.components | default([]) }}"
+    live_by_kind: "{{ dict(live_components | map(attribute='kind') | list | zip(live_components)) }}"
+    desired_by_kind: "{{ dict(quay_desired_components | map(attribute='kind') | list | zip(quay_desired_components)) }}"
+  ansible.builtin.set_fact:
+    quay_merged_components: "{{ (live_by_kind | combine(desired_by_kind)).values() | list }}"
+
 - name: Ensure QuayRegistry is present (ODF Backend)
   kubernetes.core.k8s:
     state: present
@@ -13,41 +73,7 @@
         namespace: quay-enterprise
       spec:
         configBundleSecret: quay-config
-        components:
-        - kind: horizontalpodautoscaler
-          managed: true
-        - kind: quay
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: "8"
-                memory: 32Gi
-              requests:
-                cpu: "{{ '4' if (disconnected | default(true)) else '2' }}"
-                memory: "{{ '16Gi' if (disconnected | default(true)) else '2Gi' }}"
-        - kind: objectstorage
-          managed: false
-        - kind: postgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 1
-                memory: 4Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
-        - kind: clairpostgres
-          managed: true
-          overrides:
-            resources:
-              limits:
-                cpu: 1
-                memory: 4Gi
-              requests:
-                cpu: 500m
-                memory: 2Gi
+        components: "{{ quay_merged_components }}"
   retries: 60
   delay: 10
   register: r_quay
