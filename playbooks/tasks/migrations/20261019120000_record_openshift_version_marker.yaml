@@ -1,0 +1,42 @@
+---
+# Record OpenShift version marker migration
+#
+# Backfills {{ workingDir }}/ocp-cluster/.enclave-openshift-version for clusters
+# installed before release tracking existed. configure_ocp_abi.yaml refuses a
+# deploy rerun when ocp-cluster has installer state but no version marker
+# ("OpenShift release cannot be determined"); seeding the marker from the running
+# cluster lets existing installations keep rerunning after this upgrade.
+#
+# The version is read from the ClusterVersion API (structured, not parsed text).
+# Migrations run before the management-cluster upgrade in upgrade.yaml, so
+# status.desired.version reflects the release the cluster currently runs.
+
+- name: Check for existing openshift-install state in the cluster directory
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/ocp-cluster/.openshift_install_state.json"
+  register: r_installer_state
+
+- name: Check for an existing OpenShift version marker
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/ocp-cluster/.enclave-openshift-version"
+  register: r_version_marker
+
+- name: Backfill the OpenShift version marker from the running cluster
+  when:
+    - r_installer_state.stat.exists
+    - not r_version_marker.stat.exists
+  block:
+    - name: Read the cluster's OpenShift version
+      kubernetes.core.k8s_info:
+        kind: ClusterVersion
+        name: version
+      register: r_clusterversion
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+    - name: Record the OpenShift version marker
+      when: r_clusterversion.resources | length > 0
+      ansible.builtin.copy:
+        dest: "{{ workingDir }}/ocp-cluster/.enclave-openshift-version"
+        content: "{{ r_clusterversion.resources[0].status.desired.version }}\n"
+        mode: "0644"
