@@ -13,10 +13,81 @@
     backend: cryptography
     private_key_format: ssh
 
-- name: Extract openshift-install binary
-  ansible.builtin.command: |
-    {{ workingDir }}/bin/oc adm release extract --registry-config={{ pullSecretPath }} --command=openshift-install --to {{ workingDir }}/bin/
-    quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
+# openshift-install can't reuse ocp-cluster across releases (cached state pins the
+# release image), so a rerun after a version change fails obscurely in "agent
+# create image". Compare the configured version against the one recorded from the
+# previous build and stop early, before the costly binary extraction, with an
+# upgrade hint; an unchanged version reuses the dir, keeping the kubeconfig stable
+# for the idempotent hardware skip in configure_hardware_filter_hosts.yaml.
+- name: Read the OpenShift version recorded from a previous ISO generation
+  ansible.builtin.slurp:
+    src: "{{ workingDir }}/ocp-cluster/.enclave-openshift-version"
+  register: r_previous_openshift_version
+  failed_when: false
+
+- name: Stop when rerunning against a cluster built for a different release
+  when:
+    - r_previous_openshift_version.content is defined
+    - (r_previous_openshift_version.content | b64decode | trim) != mgmt_openshift_version
+  ansible.builtin.fail:
+    msg: |-
+      This Landing Zone already generated an OpenShift install ISO for a different
+      release than the one currently configured:
+
+        previously built: {{ r_previous_openshift_version.content | b64decode | trim }}
+        now configured:   {{ mgmt_openshift_version }}
+
+      Rerunning the deployment (bootstrap.sh or the 03-deploy playbook) cannot
+      change the OpenShift version of an existing cluster: openshift-install
+      refuses to reuse an installation directory across releases, so the ISO
+      generation would fail with a releaseImage mismatch.
+
+      To upgrade the management cluster to a new OpenShift version, use the day-2
+      upgrade workflow instead (see docs/UPGRADE.md):
+
+        ./sync.sh      # mirror the new content
+        ./upgrade.sh   # upgrade Landing Zone + management cluster + operators
+
+      If you instead intend to destroy and redeploy this cluster from scratch,
+      remove the existing cluster directory first:
+
+        rm -rf {{ workingDir }}/ocp-cluster
+
+- name: Check for an existing openshift-install binary
+  ansible.builtin.stat:
+    path: "{{ workingDir }}/bin/openshift-install"
+  register: r_installer_bin
+
+- name: Get the version of the existing openshift-install binary
+  ansible.builtin.command: "{{ workingDir }}/bin/openshift-install version"
+  register: r_existing_installer_version
+  changed_when: false
+  when: r_installer_bin.stat.exists
+
+- name: Record the version of the existing openshift-install binary
+  ansible.builtin.set_fact:
+    existing_installer_version: >-
+      {{ (r_existing_installer_version.stdout | default(''))
+         | regex_search('openshift-install \\S+')
+         | default('', true) | regex_replace('^openshift-install\\s+', '') }}
+  when: r_installer_bin.stat.exists
+
+# Only (re)extract when absent or version-mismatched: extract refuses to
+# overwrite, pulling is costly, and the binary must match mgmt_openshift_version.
+- name: Extract openshift-install binary when missing or version mismatched
+  when: >-
+    not r_installer_bin.stat.exists
+    or existing_installer_version | default('') != mgmt_openshift_version
+  block:
+    - name: Remove the previously extracted openshift-install binary
+      ansible.builtin.file:
+        path: "{{ workingDir }}/bin/openshift-install"
+        state: absent
+
+    - name: Extract openshift-install binary
+      ansible.builtin.command: |
+        {{ workingDir }}/bin/oc adm release extract --registry-config={{ pullSecretPath }} --command=openshift-install --to {{ workingDir }}/bin/
+        quay.io/openshift-release-dev/ocp-release:{{ mgmt_openshift_version }}-x86_64
 
 - name: Ensure {{ workingDir }}/ocp-cluster/ exists
   ansible.builtin.file:
@@ -27,6 +98,14 @@
   ansible.builtin.file:
     path: "{{ workingDir }}/ocp-cluster/openshift/"
     state: directory
+
+# Write before building so an interrupted build still leaves the marker the check
+# above reads.
+- name: Record the OpenShift version used to generate this ISO
+  ansible.builtin.copy:
+    dest: "{{ workingDir }}/ocp-cluster/.enclave-openshift-version"
+    content: "{{ mgmt_openshift_version }}\n"
+    mode: "0644"
 
 - name: Set install-config template based on deployment mode
   ansible.builtin.set_fact:
