@@ -60,4 +60,4 @@
       ansible.builtin.file:
         path: "{{ temp_extract_dir.path }}"
         state: absent
-      when: temp_extract_dir is defined
+      when: temp_extract_dir.path is defined

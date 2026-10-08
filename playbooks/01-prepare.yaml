@@ -6,7 +6,7 @@
 # - OpenShift client tools (oc, kubectl)
 # - OpenShift installer binaries
 # - Mirror registry binary
-# - Additional content images
+# - Additional content images (RHCOS ISOs — disconnected deployments only)
 #
 # Usage:
 #   ansible-playbook playbooks/01-prepare.yaml
@@ -56,6 +56,7 @@
           tags: download-control-binaries
 
         - name: Download content
+          when: disconnected | default(true) | bool
           ansible.builtin.include_tasks:
             file: tasks/download_content.yaml
             apply:
