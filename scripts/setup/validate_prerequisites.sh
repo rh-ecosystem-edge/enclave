@@ -141,18 +141,30 @@ else
     info_indent "You may need to reduce VM specs in configuration"
 fi
 
-# Check disk space on /opt (where WORKING_DIR is)
-if [ -d "/opt" ]; then
-    AVAILABLE_GB=$(df -BG /opt | tail -1 | awk '{print $4}' | sed 's/G//')
+# Check disk space on the filesystem that will hold the cluster working directory.
+# WORKING_DIR may not exist yet (vm_infra.py derives/creates it from BASE_WORKING_DIR at
+# create time), so resolve the nearest existing ancestor, follow symlinks, and let df
+# report whatever filesystem/mount actually backs that path — never hardcode /opt.
+CHECK_DIR="${WORKING_DIR:-${BASE_WORKING_DIR:-/opt/clusters}}"
+while [ ! -d "$CHECK_DIR" ] && [ "$CHECK_DIR" != "/" ]; do
+    CHECK_DIR="$(dirname "$CHECK_DIR")"
+done
+CHECK_DIR="$(readlink -f "$CHECK_DIR" 2>/dev/null || echo "$CHECK_DIR")"
+
+DF_LINE="$(df -BG -P "$CHECK_DIR" 2>/dev/null | awk 'NR==2')"
+AVAILABLE_GB="$(echo "$DF_LINE" | awk '{gsub(/G/, "", $4); print $4}')"
+MOUNT_POINT="$(echo "$DF_LINE" | awk '{print $6}')"
+
+if [ -n "$AVAILABLE_GB" ]; then
     if [ "$AVAILABLE_GB" -ge "$MIN_DISK_GB" ]; then
-        success "Sufficient disk space on /opt: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
+        success "Sufficient disk space on ${MOUNT_POINT:-$CHECK_DIR}: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
     else
-        warning "Low disk space on /opt: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+ for ${DEPLOYMENT_MODE} mode)"
+        warning "Low disk space on ${MOUNT_POINT:-$CHECK_DIR}: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+ for ${DEPLOYMENT_MODE} mode)"
         info_indent "Disconnected: ~1200GB+ (VM extra disks 1200G for mirroring + masters + Landing Zone)"
         info_indent "Connected: ~200GB (3 masters x 120GB + Landing Zone 60GB)"
     fi
 else
-    warning "/opt directory does not exist (will be created)"
+    warning "Could not determine available disk space for ${CHECK_DIR}"
 fi
 echo ""
 
