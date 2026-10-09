@@ -22,10 +22,10 @@ Run the complete CI workflow locally in one command:
 export BASE_WORKING_DIR=/opt/clusters
 
 # Run full CI flow (connected mode - faster)
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 
 # Or disconnected mode (full validation)
-make ci-flow-disconnected
+make -f Makefile.ci ci-flow-disconnected
 ```
 
 The flow automatically:
@@ -75,7 +75,7 @@ Fastest option - skips mirror registry setup:
 ```bash
 export BASE_WORKING_DIR=/opt/clusters
 
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 **What happens:**
@@ -97,7 +97,7 @@ Full air-gapped deployment with local mirror registry:
 ```bash
 export BASE_WORKING_DIR=/opt/clusters
 
-make ci-flow-disconnected
+make -f Makefile.ci ci-flow-disconnected
 ```
 
 **Additional steps:**
@@ -115,7 +115,7 @@ Override automatic cluster name generation:
 export ENCLAVE_CLUSTER_NAME=dev-test-cluster
 export BASE_WORKING_DIR=/opt/clusters
 
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ## Individual Components
@@ -127,7 +127,7 @@ You can run each phase of the CI flow independently for faster iteration:
 Validate environment before starting:
 
 ```bash
-make preflight-checks
+make -f Makefile.ci preflight-checks
 ```
 
 **Checks:**
@@ -153,7 +153,7 @@ make preflight-checks
 Create VMs, networks, and BMC emulation:
 
 ```bash
-make environment
+make -f Makefile.ci environment
 ```
 
 `vm_infra.py` owns cluster identity: when `ENCLAVE_CLUSTER_NAME` is unset it generates a
@@ -165,29 +165,29 @@ step shares it:
 
 ```bash
 export ENCLAVE_CLUSTER_NAME=eci-local
-make environment
-make provision-landing-zone
+make -f Makefile.ci environment
+make -f Makefile.ci provision-landing-zone
 ```
 
-or let `make environment` record the generated identity into an env file and read the two
-values back **as data** (this is what `make ci-flow-connected` does under the hood — it
+or let `make -f Makefile.ci environment` record the generated identity into an env file and read the two
+values back **as data** (this is what `make -f Makefile.ci ci-flow-connected` does under the hood — it
 never runs `create` twice):
 
 ```bash
 ident=$(mktemp)
-GITHUB_ENV="$ident" make environment
+GITHUB_ENV="$ident" make -f Makefile.ci environment
 # Read the values literally (do NOT `source` the file — it is GitHub's KEY=value format,
 # not shell-quoted, so a path with spaces would break sourcing).
 export ENCLAVE_CLUSTER_NAME="$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$ident")"
 export WORKING_DIR="$(sed -n 's/^WORKING_DIR=//p' "$ident")"
 echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
-make provision-landing-zone
+make -f Makefile.ci provision-landing-zone
 ```
 
 > Do **not** run `vm_infra.py create` again to "read back" the name — a second create
 > generates a new name and a whole second cluster.
 
-**What `make environment` does:**
+**What `make -f Makefile.ci environment` does:**
 - Generates the cluster name + working dir (via vm_infra.py)
 - Creates 3 master VMs + 1 Landing Zone VM
 - Sets up BMC and cluster networks
@@ -206,7 +206,7 @@ sudo podman ps | grep sushy-tools   # Check BMC emulator
 Install OS and configure Landing Zone VM:
 
 ```bash
-make provision-landing-zone
+make -f Makefile.ci provision-landing-zone
 ```
 
 **What it does:**
@@ -219,7 +219,7 @@ make provision-landing-zone
 
 **Verify:**
 ```bash
-make verify-landing-zone
+make -f Makefile.ci verify-landing-zone
 
 # Or manually:
 virsh list | grep landingzone       # VM running
@@ -232,10 +232,10 @@ Install Enclave Lab software on Landing Zone:
 
 ```bash
 # Connected mode (faster)
-ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
+ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave
 
 # Disconnected mode (default)
-make install-enclave
+make -f Makefile.ci install-enclave
 ```
 
 **What it does:**
@@ -248,7 +248,7 @@ make install-enclave
 
 **Verify:**
 ```bash
-make verify-enclave-installation
+make -f Makefile.ci verify-enclave-installation
 
 # Or manually:
 ssh cloud-user@<landing-zone-ip> ls -la /home/cloud-user/enclave
@@ -259,18 +259,18 @@ ssh cloud-user@<landing-zone-ip> ls -la /home/cloud-user/enclave
 Deploy OpenShift cluster:
 
 ```bash
-make deploy-cluster
+make -f Makefile.ci deploy-cluster
 ```
 
 **Individual phases:**
 ```bash
-make deploy-cluster-prepare          # Download binaries
-make deploy-cluster-mirror           # Mirror registry (disconnected only)
-make deploy-cluster-install          # Deploy cluster
-make deploy-cluster-post-install     # Post-install config
-make deploy-cluster-operators        # Install operators
-make deploy-cluster-day2             # Day-2 operations
-make deploy-cluster-discovery        # Hardware discovery
+make -f Makefile.ci deploy-cluster-prepare          # Download binaries
+make -f Makefile.ci deploy-cluster-mirror           # Mirror registry (disconnected only)
+make -f Makefile.ci deploy-cluster-install          # Deploy cluster
+make -f Makefile.ci deploy-cluster-post-install     # Post-install config
+make -f Makefile.ci deploy-cluster-operators        # Install operators
+make -f Makefile.ci deploy-cluster-day2             # Day-2 operations
+make -f Makefile.ci deploy-cluster-discovery        # Hardware discovery
 ```
 
 ### 6. Verify Cluster
@@ -278,7 +278,7 @@ make deploy-cluster-discovery        # Hardware discovery
 Verify cluster deployment and health:
 
 ```bash
-make verify-cluster
+make -f Makefile.ci verify-cluster
 ```
 
 **Checks:**
@@ -295,12 +295,12 @@ make verify-cluster
 Remove all infrastructure:
 
 ```bash
-make clean
+make -f Makefile.ci clean
 ```
 
 **Verify cleanup:**
 ```bash
-make verify-cleanup
+make -f Makefile.ci verify-cleanup
 ```
 
 **Checks for leftover:**
@@ -313,7 +313,7 @@ make verify-cleanup
 
 ### BASE_WORKING_DIR
 
-**Required**: Yes (for `make environment` / `ci-flow-*`)
+**Required**: Yes (for `make -f Makefile.ci environment` / `ci-flow-*`)
 **Description**: Base directory for cluster-specific data; vm_infra.py derives WORKING_DIR from it
 **Default**: `/opt/clusters` (in some scripts)
 **Example**: `/opt/clusters`
@@ -334,11 +334,11 @@ Each cluster gets: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
 ```bash
 # Auto-generate (recommended for local testing)
 unset ENCLAVE_CLUSTER_NAME
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 
 # Custom name
 export ENCLAVE_CLUSTER_NAME=dev-cluster-1
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ### ENCLAVE_DEPLOYMENT_MODE
@@ -360,7 +360,7 @@ export ENCLAVE_DEPLOYMENT_MODE=disconnected
 
 **Required**: No
 **Description**: Cluster-specific working directory
-**Auto-set by**: `vm_infra.py` (via `make environment`), recorded in `cluster-env.sh` / `$GITHUB_ENV`
+**Auto-set by**: `vm_infra.py` (via `make -f Makefile.ci environment`), recorded in `cluster-env.sh` / `$GITHUB_ENV`
 **Format**: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
 
 Usually don't set manually - let `vm_infra.py` derive it from `BASE_WORKING_DIR`.
@@ -463,11 +463,11 @@ ssh $SSH_OPTS cloud-user@$LZ_IP \
 **Solution**: Either clean up or use a different name:
 ```bash
 # Option 1: Clean up old cluster
-make clean
+make -f Makefile.ci clean
 
 # Option 2: Use custom name
 export ENCLAVE_CLUSTER_NAME=my-new-cluster-$(date +%s)
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ### Storage Pool Already Active
@@ -559,12 +559,12 @@ ssh $SSH_OPTS cloud-user@$LZ_IP \
 
 ### Cleanup Fails
 
-**Error**: Resources remain after `make clean`
+**Error**: Resources remain after `make -f Makefile.ci clean`
 
 **Force cleanup**:
 ```bash
 # Verify what remains
-make verify-cleanup
+make -f Makefile.ci verify-cleanup
 
 # Manual VM cleanup
 virsh list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $2}' | \
@@ -591,23 +591,23 @@ virsh pool-list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $1}' | \
 
 1. **Always validate before commit**:
    ```bash
-   make validate
+   make -f Makefile.ci validate
    ```
 
 2. **Use connected mode for development**:
    ```bash
-   ENCLAVE_DEPLOYMENT_MODE=connected make ci-flow-connected
+   ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci ci-flow-connected
    ```
 
 3. **Test disconnected mode before PR**:
    ```bash
-   make ci-flow-disconnected
+   make -f Makefile.ci ci-flow-disconnected
    ```
 
 4. **Clean up after testing**:
    ```bash
-   make clean
-   make verify-cleanup
+   make -f Makefile.ci clean
+   make -f Makefile.ci verify-cleanup
    ```
 
 ### Efficient Testing
@@ -615,21 +615,21 @@ virsh pool-list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $1}' | \
 **Test specific components instead of full flow:**
 
 Pin `ENCLAVE_CLUSTER_NAME` first (e.g. `export ENCLAVE_CLUSTER_NAME=eci-local`) so each
-target operates on the same cluster; otherwise `make environment` generates a name that
+target operates on the same cluster; otherwise `make -f Makefile.ci environment` generates a name that
 the later standalone targets won't know.
 
 ```bash
 # Just infrastructure
-make environment
-make verify
+make -f Makefile.ci environment
+make -f Makefile.ci verify
 
 # Just Landing Zone
-make provision-landing-zone
-make verify-landing-zone
+make -f Makefile.ci provision-landing-zone
+make -f Makefile.ci verify-landing-zone
 
 # Just Enclave installation
-ENCLAVE_DEPLOYMENT_MODE=connected make install-enclave
-make verify-enclave-installation
+ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave
+make -f Makefile.ci verify-enclave-installation
 ```
 
 **Use custom cluster names for parallel testing:**
@@ -637,11 +637,11 @@ make verify-enclave-installation
 ```bash
 # Terminal 1
 export ENCLAVE_CLUSTER_NAME=test-feature-a
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 
 # Terminal 2
 export ENCLAVE_CLUSTER_NAME=test-feature-b
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ### Resource Management
@@ -667,7 +667,7 @@ ls ${BASE_WORKING_DIR}/clusters/
 
 # Remove specific cluster
 export ENCLAVE_CLUSTER_NAME=old-cluster
-make clean
+make -f Makefile.ci clean
 ```
 
 ### Debugging
@@ -676,7 +676,7 @@ make clean
 
 ```bash
 # For Makefile
-make -n ci-flow-connected     # Dry run (show commands)
+make -f Makefile.ci -n ci-flow-connected     # Dry run (show commands)
 
 # For scripts
 bash -x ./scripts/infrastructure/provision_landing_zone.sh
@@ -691,10 +691,10 @@ ansible-playbook -vvv playbooks/main.yaml
 
 ```bash
 # Step logs
-make collect-step-logs
+make -f Makefile.ci collect-step-logs
 
 # Full artifacts
-make collect-artifacts-full
+make -f Makefile.ci collect-artifacts-full
 ls artifacts/
 ```
 
@@ -704,27 +704,27 @@ ls artifacts/
 
 ```bash
 # Mimic e2e-deployment.yml workflow
-make validate
+make -f Makefile.ci validate
 export BASE_WORKING_DIR=/opt/clusters
 export ENCLAVE_DEPLOYMENT_MODE=connected
 # Pin the cluster name so every target below shares the same identity. (Leave it unset
-# and vm_infra.py generates one — but then use `make ci-flow-connected`, or the
+# and vm_infra.py generates one — but then use `make -f Makefile.ci ci-flow-connected`, or the
 # identity-capture shown in "Create Infrastructure" above, so later targets can find it.)
 export ENCLAVE_CLUSTER_NAME=eci-local
-make preflight-checks
-make environment
-make provision-landing-zone
-make install-enclave
-make deploy-cluster
-make verify-cluster
-make clean
-make verify-cleanup
+make -f Makefile.ci preflight-checks
+make -f Makefile.ci environment
+make -f Makefile.ci provision-landing-zone
+make -f Makefile.ci install-enclave
+make -f Makefile.ci deploy-cluster
+make -f Makefile.ci verify-cluster
+make -f Makefile.ci clean
+make -f Makefile.ci verify-cleanup
 ```
 
 **Or use the one-liner:**
 
 ```bash
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ## Advanced Usage
@@ -734,7 +734,7 @@ make ci-flow-connected
 If scripts are updated, use them directly:
 
 ```bash
-# Instead of: make verify-cluster
+# Instead of: make -f Makefile.ci verify-cluster
 ./scripts/verification/verify_cluster.sh
 
 # With custom arguments
@@ -749,12 +749,12 @@ Test multiple configurations simultaneously:
 # Terminal 1: Connected mode
 export ENCLAVE_CLUSTER_NAME=test-connected-$(date +%s)
 export ENCLAVE_DEPLOYMENT_MODE=connected
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 
 # Terminal 2: Disconnected mode
 export ENCLAVE_CLUSTER_NAME=test-disconnected-$(date +%s)
 export ENCLAVE_DEPLOYMENT_MODE=disconnected
-make ci-flow-disconnected
+make -f Makefile.ci ci-flow-disconnected
 ```
 
 ### Custom Working Directory
@@ -766,7 +766,7 @@ Use different base directories:
 export BASE_WORKING_DIR=/opt/my-project/clusters
 mkdir -p $BASE_WORKING_DIR
 
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 ```
 
 ### Integration with Your Workflow
@@ -777,9 +777,9 @@ Add to your shell profile:
 # ~/.bashrc or ~/.zshrc
 export BASE_WORKING_DIR=/opt/clusters
 
-alias enclave-test='make ci-flow-connected'
-alias enclave-clean='make clean && make verify-cleanup'
-alias enclave-verify='make verify-cluster'
+alias enclave-test='make -f Makefile.ci ci-flow-connected'
+alias enclave-clean='make -f Makefile.ci clean && make -f Makefile.ci verify-cleanup'
+alias enclave-verify='make -f Makefile.ci verify-cluster'
 ```
 
 ## Summary
@@ -796,16 +796,16 @@ The local CI testing workflow provides:
 
 ```bash
 # Full flow
-make ci-flow-connected
+make -f Makefile.ci ci-flow-connected
 
 # Verify
-make verify-cluster
+make -f Makefile.ci verify-cluster
 
 # Clean up
-make clean
+make -f Makefile.ci clean
 ```
 
 For more information:
 - **README.md**: Overview and quick start
 - **docs/CI_WORKFLOWS.md**: GitHub Actions workflows
-- **Makefile**: All available targets (`make help`)
+- **Makefile**: All available targets (`make -f Makefile.ci help`)
