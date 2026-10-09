@@ -70,10 +70,10 @@ or plugin order — derive everything from these files:
 
 2. **`Makefile.ci`** — understand target dependencies and the `clean` target
 
-3. **`scripts/setup/configure_devscripts.sh`** — extract current default VM resource
-   values (grep for `MASTER_MEMORY_VAL`, `MASTER_VCPU_VAL`, `LANDINGZONE_MEMORY`,
-   `LANDINGZONE_VCPU`, `LANDINGZONE_DISK_VAL`, `ENCLAVE_NUM_MASTERS`, `MASTER_DISK`,
-   `VM_EXTRADISKS_SIZE_VAL`)
+3. **`scripts/infrastructure/vm_infra.py`** (`Config.from_env`) — extract current default
+   VM resource values (the `default_master_mem`/`_vcpu`/`_extra`, `default_lz_mem`/`_disk`
+   branches keyed on `STORAGE_PLUGIN` / `ENCLAVE_DEPLOYMENT_MODE`, and the `MASTER_DISK` /
+   `ENCLAVE_NUM_MASTERS` / `LANDINGZONE_VCPU` defaults)
 
 4. **`experiences/`** — read the experience YAML files to understand plugin sets
 
@@ -125,13 +125,13 @@ If it fails, stop and tell the user to set up passwordless SSH (e.g., `ssh-copy-
 After verifying SSH, check for existing enclave deployments on the host:
 
 ```bash
-ssh <host> "test -f /tmp/working_dir && echo WORKDIR_EXISTS; sudo -n virsh list --all --name 2>/dev/null | grep -v '^$' || true"
+ssh <host> "sudo -n virsh list --all --name 2>/dev/null | grep -vE '^$' || true; ls -d \${BASE_WORKING_DIR:-/opt/clusters}/clusters/* 2>/dev/null || true"
 ```
 
-If enclave artifacts are found (`/tmp/working_dir` exist),
-a previous enclave deployment exists on this host. This skill does not support
-multiple concurrent deployments on the same host. Show the user the list of
-running VMs regardless, for context.
+If enclave VMs (e.g. `*_landingzone_0` / `*_master_*`) or per-cluster working
+directories are found, a previous enclave deployment exists on this host. This skill
+does not support multiple concurrent deployments on the same host. Show the user the
+list of running VMs regardless, for context.
 
 Show the user:
 - The list of running VMs
@@ -285,13 +285,13 @@ Gather available resources:
 ssh <host> "free -m | awk '/Mem:/{print \$2}'; nproc; df -BG --output=avail / /home 2>/dev/null | tail -n+2"
 ```
 
-Use the defaults extracted from `configure_devscripts.sh` **and**
-`scripts/infrastructure/provision_landing_zone.sh` to calculate total requirements.
+Use the defaults in `scripts/infrastructure/vm_infra.py` to calculate total
+requirements.
 
-**Important**: `configure_devscripts.sh` and `provision_landing_zone.sh` both define
-LZ resource defaults. Always check both files and use the values from
-`provision_landing_zone.sh` (the `--memory` and `--vcpus` args to `virt-install`)
-as the source of truth, since that script actually creates the LZ VM.
+**Important**: `vm_infra.py` is the single source of truth for all VM sizing. Master and
+Landing Zone memory / vcpu / disk defaults live in `Config.from_env` (keyed on
+`STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE`), and it defines **and** sizes every
+domain (including the LZ). Override via `MASTER_*` / `LANDINGZONE_*` env vars.
 
 ### Disk space requirements
 
@@ -300,19 +300,18 @@ actual values dynamically from these files (do NOT hardcode them):
 
 - **`scripts/setup/validate_prerequisites.sh`** — grep for `MIN_DISK_GB` to
   get the minimum disk thresholds for each deployment mode
-- **`scripts/setup/configure_devscripts.sh`** — grep for `VM_EXTRADISKS_SIZE_VAL`
-  to get the per-master extra disk size (differs by deployment mode)
-- **`scripts/infrastructure/provision_landing_zone.sh`** — grep for `LZ_DISK_SIZE`
-  to get the Landing Zone disk size (differs by deployment mode)
+- **`scripts/infrastructure/vm_infra.py`** (`Config.from_env`) — the single source of
+  all VM sizing defaults, keyed on `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE`:
+  `default_master_extra` (per-master extra disk) and `default_lz_disk` (Landing Zone disk)
 
 Compare the host's available disk against the `MIN_DISK_GB` for the selected
 mode. If below the threshold, warn the user and explain that disconnected mode
 needs extra space for the mirror registry and mirrored container images.
 
 ```
-RAM:  ENCLAVE_NUM_MASTERS x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 (host overhead)
-vCPU: ENCLAVE_NUM_MASTERS x MASTER_VCPU_VAL + LANDINGZONE_VCPU
-Disk: ENCLAVE_NUM_MASTERS x (MASTER_DISK + VM_EXTRADISKS_SIZE_VAL) + LZ_DISK_SIZE
+RAM:  ENCLAVE_NUM_MASTERS x MASTER_MEMORY + LANDINGZONE_MEMORY + 4096 (host overhead)
+vCPU: ENCLAVE_NUM_MASTERS x MASTER_VCPU + LANDINGZONE_VCPU
+Disk: ENCLAVE_NUM_MASTERS x (MASTER_DISK + MASTER_EXTRA_DISK) + LANDINGZONE_DISK
 ```
 
 Disk images use qcow2 thin provisioning — actual usage is much lower than the
@@ -329,25 +328,25 @@ Calculate `available_for_vms = total_ram_mb - 4096` (host overhead).
   A minimum of 128 GB RAM is recommended for a stable deployment."
 - Ask the user if they want to proceed anyway with reduced resources or stop.
 - If proceeding: use the same calculation as >64 GB hosts below, with a floor
-  of `MASTER_MEMORY_VAL=16384` (16 GB) and `LANDINGZONE_MEMORY=2048`. If even
+  of `MASTER_MEMORY=16384` (16 GB) and `LANDINGZONE_MEMORY=2048`. If even
   these minimums don't fit, stop — the host cannot run Enclave.
 
 **Hosts with >64 GB RAM** — use **3 masters** (default):
-- Check if the CI defaults from `configure_devscripts.sh` fit:
-  `3 x MASTER_MEMORY_VAL + LANDINGZONE_MEMORY + 4096 ≤ total_ram_mb`
+- Check if the `vm_infra.py` defaults fit:
+  `3 x MASTER_MEMORY + LANDINGZONE_MEMORY + 4096 ≤ total_ram_mb`
 - If defaults fit: use them as-is
 - If defaults don't fit: calculate values that do:
   - `LANDINGZONE_MEMORY=2048` (LZ uses <2 GB in practice)
-  - `MASTER_MEMORY_VAL = (available_for_vms - LANDINGZONE_MEMORY) / 3`
+  - `MASTER_MEMORY = (available_for_vms - LANDINGZONE_MEMORY) / 3`
   - `LANDINGZONE_VCPU=2`
-  - `MASTER_VCPU_VAL = min(default, (host_vcpus - LANDINGZONE_VCPU) / 3)`
+  - `MASTER_VCPU = min(default, (host_vcpus - LANDINGZONE_VCPU) / 3)`
   - Show the adjusted values and the calculation
 
 **Always present the suggested resource allocation to the user for confirmation.**
 
-**Important**: The override env vars are `MASTER_MEMORY_VAL` (not `MASTER_MEMORY`).
-This is what `configure_devscripts.sh` reads when the fix from PR #562 is present.
-Also pass `MASTER_VCPU_VAL`, `LANDINGZONE_MEMORY`, `LANDINGZONE_VCPU` if adjusted.
+**Important**: The override env vars read by `vm_infra.py` are `MASTER_MEMORY`,
+`MASTER_VCPU`, `MASTER_DISK`, `LANDINGZONE_MEMORY`, `LANDINGZONE_VCPU` and
+`LANDINGZONE_DISK` (MiB for memory, GiB for disk). Pass whichever you adjusted.
 
 ## Step 8: Storage Plugin
 
@@ -368,8 +367,8 @@ host-specific or secret values that cannot be derived from the workflow.
 - `ENCLAVE_DEPLOYMENT_MODE` (set from Step 6: `connected` or `disconnected`)
 - `STORAGE_PLUGIN` (set from Step 8: `lvms`)
 - `ENABLED_PLUGINS` (default: same as `STORAGE_PLUGIN`, updated in Step 9 day-2 selection)
-- `MASTER_MEMORY_VAL` (override if adjusted in Step 7)
-- `MASTER_VCPU_VAL` (override if adjusted in Step 7)
+- `MASTER_MEMORY` (override if adjusted in Step 7)
+- `MASTER_VCPU` (override if adjusted in Step 7)
 - `LANDINGZONE_MEMORY` (override if adjusted in Step 7)
 - `LANDINGZONE_VCPU` (override if adjusted in Step 7)
 - `PULL_SECRET` (from Step 5: `$(cat ~/.pull-secret.json)`)
@@ -469,7 +468,7 @@ Always report progress via the progress bar after each step completes.
 After each step completes, display a progress bar:
 
 ```
-[████████░░░░░░░░] 8/22 — deploy-cluster-prepare ✓
+[████████░░░░░░░░] 7/21 — deploy-cluster-prepare ✓
 ```
 
 - Use 16 characters width: `█` for completed portion, `░` for remaining
@@ -518,12 +517,12 @@ For each step:
 1. Show the progress bar with the step about to run
 2. **Show the log path** for the step (see mapping table above):
    ```
-   [████████░░░░░░░░] 8/22 — deploy-cluster-install
+   [████████░░░░░░░░] 7/21 — deploy-cluster-install
      Log: ssh <host> "ssh cloud-user@<LZ_IP> 'tail -f ~/enclave/deployment_bootstrap_deploy.log'"
    ```
    For steps without a log file:
    ```
-   [██░░░░░░░░░░░░░░] 3/22 — provision-landing-zone
+   [██░░░░░░░░░░░░░░] 2/21 — provision-landing-zone
      Log: (output in SSH session)
    ```
 3. Run it via SSH with the full env block
@@ -588,7 +587,7 @@ takes 30-60+ minutes), provide live feedback:
 
 Show the final progress bar at 100%:
 ```
-[████████████████] 22/22 — verify-cluster ✓
+[████████████████] 21/21 — verify-cluster ✓
 
 Deployment complete!
 ```
@@ -630,7 +629,7 @@ ssh <host> "cd ~/enclave && <env-block> make -f Makefile.ci deploy-plugin PLUGIN
 Include plugin steps in the progress bar, extending `TOTAL_STEPS` accordingly.
 Show the log path for each plugin:
 ```
-[██████████████░░] 20/22 — deploy-plugin PLUGIN=trust-manager
+[██████████████░░] 19/21 — deploy-plugin PLUGIN=trust-manager
   Log: ssh <host> "ssh cloud-user@<LZ_IP> 'tail -f ~/enclave/deployment_plugin_trust-manager.log'"
 ```
 
@@ -681,7 +680,7 @@ When a step fails:
    ```
 3. **Analyze** — look for known patterns:
    - OOM / `Out of memory` / `Killed process` → check `free -m` and `dmesg | grep -i oom`,
-     suggest lower `MASTER_MEMORY_VAL`
+     suggest lower `MASTER_MEMORY`
    - Network errors → check `sudo -n virsh net-list`
    - `bootstrap process timed out` → check VM status with `sudo -n virsh list --all`,
      check if a master VM is shut off (likely OOM killed)
