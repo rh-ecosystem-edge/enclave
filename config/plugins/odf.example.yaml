@@ -4,6 +4,14 @@
 # Instructions: Copy this file to 'config/plugins/odf.yaml' and set values.
 # Required when storage_plugin is odf. Run ceph-external-cluster-details-exporter.py
 # on the external Ceph cluster to obtain the JSON value.
+#
+# The exporter ships with the ODF operator (console "Download Script" link, or the
+# ocs-operator CSV annotation). When it is not available before the cluster exists,
+# the upstream equivalent is create-external-cluster-resources.py in the rook repo:
+#   https://github.com/rook/rook/blob/master/deploy/examples/create-external-cluster-resources.py
+# Use the branch matching the rook release bundled in your ODF version (not master),
+# as the output schema can differ between releases. See the provider-export guide for usage:
+#   https://rook.io/docs/rook/latest-release/CRDs/Cluster/external-cluster/provider-export/
 ##############################################################################
 
 # odfExternalConfig: >-
