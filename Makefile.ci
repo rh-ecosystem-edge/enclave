@@ -477,7 +477,7 @@ ci-flow-connected:
 	@echo "=========================================="
 	@set -e; \
 	 ident_env="$$(mktemp)"; \
-	 trap 'rm -f "$$ident_env"' EXIT; \
+	 trap 'rc=$$?; if [ "$$rc" -eq 0 ]; then rm -f "$$ident_env"; else echo "ci-flow failed (exit $$rc); cluster identity kept for cleanup at $$ident_env:" >&2; cat "$$ident_env" >&2; fi; exit "$$rc"' EXIT; \
 	 $(MAKE) -f Makefile.ci preflight-checks; \
 	 GITHUB_ENV="$$ident_env" $(MAKE) -f Makefile.ci environment; \
 	 ENCLAVE_CLUSTER_NAME="$$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$$ident_env")"; \
