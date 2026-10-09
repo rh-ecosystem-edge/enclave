@@ -6,7 +6,14 @@ Creates/destroys libvirt networks and KVM VMs for e2e test runs.
 All configuration is read from environment variables; no pip dependencies
 beyond the system-provided libvirt and jinja2 packages.
 
-See scripts/docs/vm-infra.md for details.
+This is the single source of truth for the test environment: it generates the cluster
+identity (name, WORKING_DIR), creates and owns every libvirt resource (networks, DNS,
+pool, volumes, domains including the Landing Zone), and emits everything downstream needs
+to $WORKING_DIR/cluster-env.sh (also echoed to stdout). Downstream scripts must consume
+that file and must NOT create or mutate libvirt resources out-of-band. Add new
+infrastructure/derived values here and emit them — do not compute them in consumers.
+
+See scripts/docs/vm-infra.md for details (incl. the design principle).
 
 This script currently needs to be run in a RHEL9 Hypervisor with Python 3.9.
 

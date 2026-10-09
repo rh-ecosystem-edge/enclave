@@ -5,6 +5,30 @@ by Enclave CI e2e runs, replacing the previous dependency on
 [dev-scripts](https://github.com/openshift-metal3/dev-scripts) and
 [metal3-dev-env](https://github.com/metal3-io/metal3-dev-env).
 
+## Design principle: single source of truth
+
+`vm_infra.py` is the **single source of truth** for the test environment. It generates the
+cluster identity (name, `WORKING_DIR`), creates and owns every libvirt resource — networks,
+bridges, DNS, storage pool, volumes, disks, and all VM domains including the Landing Zone —
+and writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh` (also
+echoed to stdout).
+
+The rules that keep this design intact:
+
+- **All environment setup lives here.** New infrastructure or derived values (IPs, MACs,
+  gateways, ports, endpoints, DNS records, …) are created/computed in `vm_infra.py` and
+  emitted in `cluster-env.sh`.
+- **No out-of-band modification from other scripts.** `provision` / `install` / `deploy` /
+  `verify` / `cleanup` consume `cluster-env.sh`; they must not create or mutate libvirt
+  resources (`virsh net-update`, `virt-install`, pool/volume creation, `net-start`, …) or
+  re-derive values `vm_infra.py` already provides.
+- **Exceptions, by design:** OS-level provisioning *inside* a guest (cloud-init, on-guest
+  `nmcli`) stays in `provision_landing_zone.sh`; shared-host safety (subnet `flock`,
+  `reap`/cleanup, per-cluster namespacing) stays and must be preserved for a possible return
+  to shared baremetal/hybrid hosts.
+
+When in doubt, add it to `vm_infra.py` and emit it — don't compute or mutate it elsewhere.
+
 ## Network topology
 
 All subnets share the same third octet N (e.g. N=5 → BMC `100.64.5.0/24`,
