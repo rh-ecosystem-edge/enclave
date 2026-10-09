@@ -37,8 +37,9 @@ fi
 
 info "GPU passthrough enabled (ENCLAVE_ENABLE_GPU_PASSTHROUGH=true)"
 
-if [ -z "${CLUSTER_NAME:-}" ]; then
-    error "CLUSTER_NAME not set after loading config"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-}"
+if [ -z "${CLUSTER_NAME}" ]; then
+    error "ENCLAVE_CLUSTER_NAME not set after loading config"
     exit 1
 fi
 

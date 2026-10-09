@@ -4,8 +4,9 @@
   <vcpu placement='static'>{{ vcpu }}</vcpu>
   <os firmware='efi'>
     <type arch='x86_64' machine='q35'>hvm</type>
-    <boot dev='cdrom'/>
-    <boot dev='hd'/>
+{% for dev in boot_order | default(['cdrom', 'hd']) %}
+    <boot dev='{{ dev }}'/>
+{% endfor %}
   </os>
   <features>
     <acpi/>
@@ -22,6 +23,9 @@
     </disk>
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
+{% if cdrom_path | default('') %}
+      <source file='{{ cdrom_path }}'/>
+{% endif %}
       <target dev='sda' bus='sata'/>
       <readonly/>
     </disk>

@@ -38,11 +38,7 @@ load_cluster_env() {
 
     # shellcheck source=/dev/null
     source "$env_file"
-    _set_compat_vars
 }
-
-# Backward-compat alias
-load_devscripts_config() { load_cluster_env "$@"; }
 
 # Try to load cluster-env.sh (non-fatal)
 # Returns: 0 if loaded successfully, 1 if not found
@@ -60,24 +56,7 @@ try_load_cluster_env() {
 
     # shellcheck source=/dev/null
     source "$env_file"
-    _set_compat_vars
     return 0
-}
-
-# Backward-compat alias
-try_load_devscripts_config() { try_load_cluster_env "$@"; }
-
-# Export compat variable aliases so scripts that reference old dev-scripts
-# variable names continue to work without changes.
-_set_compat_vars() {
-    CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME}"
-    PROVISIONING_NETWORK="${ENCLAVE_BMC_NETWORK}"
-    PROVISIONING_NETWORK_NAME="${ENCLAVE_BMC_BRIDGE}"
-    EXTERNAL_SUBNET_V4="${ENCLAVE_CLUSTER_NETWORK}"
-    BAREMETAL_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE}"
-    BASE_DOMAIN="${BASE_DOMAIN:-${ENCLAVE_BASE_DOMAIN:-${ENCLAVE_CLUSTER_NAME}.lab}}"
-    export CLUSTER_NAME PROVISIONING_NETWORK PROVISIONING_NETWORK_NAME
-    export EXTERNAL_SUBNET_V4 BAREMETAL_NETWORK_NAME BASE_DOMAIN
 }
 
 # Return 0 if Enclave is running in disconnected mode.

@@ -165,7 +165,10 @@ class Config:
             default_master_mem = 49152
             default_master_vcpu = 16
             default_master_extra = 60
-            default_lz_disk = 500
+            # ODF additionally keeps a second copy of the mirror on the LZ: oc-mirror's
+            # local container cache plus the Ceph loopback OSD files (~900 GB raw, 3x
+            # OSD_SIZE_GB) that back RadosGW/RBD, on top of the mirror/OS/buffer.
+            default_lz_disk = 1500
             # ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the
             # LZ alongside Quay and oc-mirror; 8 GB (and even 16 GB) is not enough
             # and the guest OOM-kills Quay during the operators phase, so give ODF
@@ -175,7 +178,9 @@ class Config:
             default_master_mem = 32768
             default_master_vcpu = 12
             default_master_extra = 1200 if deployment_mode == "disconnected" else 60
-            default_lz_disk = 60
+            # Disconnected mirrors the full release + OLM catalogs locally, so the LZ
+            # needs far more than connected (Quay ~130 GB, oc-mirror, ISOs, OS, buffer).
+            default_lz_disk = 1000 if deployment_mode == "disconnected" else 600
             # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
             default_lz_mem = 16384
 
@@ -235,7 +240,7 @@ class Config:
             ),
             lz=VMSpec(
                 memory_mb=optint("LANDINGZONE_MEMORY", default_lz_mem),
-                vcpu=optint("LANDINGZONE_VCPU", 4),
+                vcpu=optint("LANDINGZONE_VCPU", 16),
                 disk_gb=optint("LANDINGZONE_DISK", default_lz_disk),
                 extra_disk_gb=0,
             ),
@@ -372,6 +377,16 @@ class Config:
     def pool_dir(self) -> Path:
         """Libvirt dir-type storage pool backing directory."""
         return self._wd / "pool"
+
+    @property
+    def lz_disk_path(self) -> Path:
+        """Landing Zone root qcow2 volume (vm_infra.py creates it; provision populates it)."""
+        return self.pool_dir / f"{self.lz_vm_name}.qcow2"
+
+    @property
+    def lz_cloud_init_iso(self) -> Path:
+        """Landing Zone cloud-init ISO path referenced by the LZ domain's cdrom; written by provision."""
+        return self.pool_dir / f"{self.lz_vm_name}-cloud-init.iso"
 
     @property
     def cluster_env_file(self) -> Path:
@@ -798,6 +813,9 @@ def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str
         f'export ENCLAVE_LZ_BMC_MAC="{lz["bmc"]}"',
         f'export ENCLAVE_LZ_CLUSTER_MAC="{lz["cluster"]}"',
         f'export ENCLAVE_LZ_UPLINK_MAC="{lz.get("uplink", "")}"',
+        f'export ENCLAVE_LZ_DISK_PATH="{cfg.lz_disk_path}"',
+        f'export ENCLAVE_LZ_DISK_GB="{cfg.lz.disk_gb}"',
+        f'export ENCLAVE_LZ_CLOUD_INIT_ISO="{cfg.lz_cloud_init_iso}"',
         # Masters
         f'export ENCLAVE_MASTER_COUNT="{cfg.num_masters}"',
     ]
@@ -940,6 +958,10 @@ def create(cfg: Config) -> None:
             vol_name=lz_vol,
             nics=lz_nics,
             extra_disk_path="",
+            # The LZ boots its populated root disk; provision_landing_zone.sh writes
+            # the cloud-init ISO at this path and starts the (already-defined) domain.
+            cdrom_path=str(cfg.lz_cloud_init_iso),
+            boot_order=["hd", "cdrom"],
         ),
         cfg.lz_vm_name,
     )
@@ -967,6 +989,9 @@ def create(cfg: Config) -> None:
                 vol_name=vol,
                 nics=master_nics,
                 extra_disk_path=str(extra_path),
+                # Masters boot the ABI ISO sushy-tools inserts into the empty cdrom.
+                cdrom_path="",
+                boot_order=["cdrom", "hd"],
             ),
             name,
         )
