@@ -59,6 +59,20 @@ CLUSTER_PREFIXES = ("eci", "ecd", "nc", "nd")
 DEFAULT_CLUSTER_PREFIX = "eci"
 _PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
 
+# ENCLAVE_BASE_DOMAIN validation. Downstream builds hostnames like
+# <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
+# cap the configured zone well below that to leave room for the generated prefixes.
+_MAX_BASE_DOMAIN_LEN = 200
+# A single RFC 1035 label: 1–63 chars, alphanumeric, internal hyphens only.
+_DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _is_valid_base_domain(domain: str) -> bool:
+    """True if domain is a syntactically valid dotted DNS name within our length cap."""
+    if not domain or len(domain) > _MAX_BASE_DOMAIN_LEN:
+        return False
+    return all(_DNS_LABEL_RE.fullmatch(label) for label in domain.split("."))
+
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -203,11 +217,14 @@ class Config:
                 f"{', '.join(CLUSTER_PREFIXES)}"
             )
 
-        # Base domain ends up in cluster-env.sh (which is sourced/eval'd downstream) and
-        # in DNS/cloud-init; allow-list it to a hostname-safe charset.
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
         base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
-        if base_domain and not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,252})", base_domain):
-            sys.exit(f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
 
         def check_xml_safe(label: str, value: str) -> None:
             """Reject path values that would break the libvirt XML they are embedded in."""
@@ -220,15 +237,28 @@ class Config:
         check_xml_safe("BASE_WORKING_DIR", raw_base)
         base_working_dir = Path(raw_base) if raw_base else None
 
-        # Resolve working_dir now when possible; defer (None) only when the name is
-        # still to be generated — finalize_working_dir() derives it post-generation.
+        # Resolve working_dir. A generated name must derive its own directory from
+        # BASE_WORKING_DIR so two generated clusters can never share one dir; pinning
+        # WORKING_DIR while the name is generated is ambiguous and would allow exactly
+        # that (distinct names, same dir — colliding pools and cluster-env.sh), so reject
+        # it. Deferral (None) happens only for the generated-name case.
         working_dir: Optional[Path]
-        if raw_wd:
+        if not cluster_name:
+            if raw_wd:
+                sys.exit(
+                    "ERROR: set ENCLAVE_CLUSTER_NAME when WORKING_DIR is pinned; a "
+                    "generated name derives its own directory from BASE_WORKING_DIR"
+                )
+            if base_working_dir is None:
+                sys.exit(
+                    "ERROR: set BASE_WORKING_DIR so a generated cluster name gets its "
+                    "own working directory"
+                )
+            working_dir = None  # finalize_working_dir() derives it after name generation
+        elif raw_wd:
             working_dir = Path(raw_wd)
-        elif cluster_name and base_working_dir is not None:
+        elif base_working_dir is not None:
             working_dir = base_working_dir / "clusters" / cluster_name
-        elif generate_name and base_working_dir is not None:
-            working_dir = None
         else:
             sys.exit(
                 "ERROR: set WORKING_DIR, or BASE_WORKING_DIR together with "

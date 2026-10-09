@@ -480,7 +480,9 @@ ci-flow-connected:
 	 trap 'rm -f "$$ident_env"' EXIT; \
 	 $(MAKE) -f Makefile.ci preflight-checks; \
 	 GITHUB_ENV="$$ident_env" $(MAKE) -f Makefile.ci environment; \
-	 set -a; . "$$ident_env"; set +a; \
+	 ENCLAVE_CLUSTER_NAME="$$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$$ident_env")"; \
+	 WORKING_DIR="$$(sed -n 's/^WORKING_DIR=//p' "$$ident_env")"; \
+	 export ENCLAVE_CLUSTER_NAME WORKING_DIR; \
 	 echo "Using cluster: $$ENCLAVE_CLUSTER_NAME ($$WORKING_DIR)"; \
 	 $(MAKE) -f Makefile.ci provision-landing-zone; \
 	 $(MAKE) -f Makefile.ci install-enclave; \

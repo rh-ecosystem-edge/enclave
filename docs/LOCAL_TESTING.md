@@ -169,14 +169,17 @@ make environment
 make provision-landing-zone
 ```
 
-or let `make environment` record the generated identity into an env file you then source
-(this is what `make ci-flow-connected` does under the hood — it never runs `create`
-twice):
+or let `make environment` record the generated identity into an env file and read the two
+values back **as data** (this is what `make ci-flow-connected` does under the hood — it
+never runs `create` twice):
 
 ```bash
 ident=$(mktemp)
 GITHUB_ENV="$ident" make environment
-set -a; . "$ident"; set +a   # exports ENCLAVE_CLUSTER_NAME + WORKING_DIR
+# Read the values literally (do NOT `source` the file — it is GitHub's KEY=value format,
+# not shell-quoted, so a path with spaces would break sourcing).
+export ENCLAVE_CLUSTER_NAME="$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$ident")"
+export WORKING_DIR="$(sed -n 's/^WORKING_DIR=//p' "$ident")"
 echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
 make provision-landing-zone
 ```
@@ -611,6 +614,10 @@ virsh pool-list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $1}' | \
 
 **Test specific components instead of full flow:**
 
+Pin `ENCLAVE_CLUSTER_NAME` first (e.g. `export ENCLAVE_CLUSTER_NAME=eci-local`) so each
+target operates on the same cluster; otherwise `make environment` generates a name that
+the later standalone targets won't know.
+
 ```bash
 # Just infrastructure
 make environment
@@ -700,6 +707,10 @@ ls artifacts/
 make validate
 export BASE_WORKING_DIR=/opt/clusters
 export ENCLAVE_DEPLOYMENT_MODE=connected
+# Pin the cluster name so every target below shares the same identity. (Leave it unset
+# and vm_infra.py generates one — but then use `make ci-flow-connected`, or the
+# identity-capture shown in "Create Infrastructure" above, so later targets can find it.)
+export ENCLAVE_CLUSTER_NAME=eci-local
 make preflight-checks
 make environment
 make provision-landing-zone
