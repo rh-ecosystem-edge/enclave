@@ -90,6 +90,9 @@ class Config:
     # Cluster-name prefix (from the CLUSTER_PREFIXES allow-list) used when
     # generating a name; ignored when a name is supplied explicitly.
     prefix: str = DEFAULT_CLUSTER_PREFIX
+    # Cluster base domain override (ENCLAVE_BASE_DOMAIN); empty means derive
+    # {cluster_name}.lab (see the base_domain property).
+    base_domain_override: str = ""
     # Third octet shared by all per-cluster subnets. None until selected at
     # create time (or supplied via ENCLAVE_SUBNET_ID / ENCLAVE_BMC_NETWORK).
     subnet_id: Optional[int] = None
@@ -240,6 +243,7 @@ class Config:
             working_dir=working_dir,
             base_working_dir=base_working_dir,
             prefix=prefix,
+            base_domain_override=os.environ.get("ENCLAVE_BASE_DOMAIN", ""),
             subnet_id=subnet_override(),
         )
 
@@ -358,6 +362,11 @@ class Config:
     def ingress_vip(self) -> str:
         """OpenShift ingress virtual IP (192.168.N.101; floats on control plane, outside the DHCP range)."""
         return f"192.168.{self._subnet}.101"
+
+    @property
+    def base_domain(self) -> str:
+        """Cluster base domain: ENCLAVE_BASE_DOMAIN override, else {cluster_name}.lab."""
+        return self.base_domain_override or f"{self.cluster_name}.lab"
 
     @property
     def pool_dir(self) -> Path:
@@ -760,6 +769,7 @@ def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str
     lz = macs[cfg.lz_vm_name]
     lines = [
         f'export ENCLAVE_CLUSTER_NAME="{cfg.cluster_name}"',
+        f'export ENCLAVE_BASE_DOMAIN="{cfg.base_domain}"',
         f'export ENCLAVE_DEPLOYMENT_MODE="{cfg.deployment_mode}"',
         f'export WORKING_DIR="{cfg._wd}"',
         f'export ENCLAVE_WORKING_DIR="{cfg._wd}"',

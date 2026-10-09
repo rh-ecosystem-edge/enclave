@@ -83,7 +83,7 @@ load_cluster_env
 LZ_VM_NAME="${ENCLAVE_CLUSTER_NAME}_landingzone_0"
 
 # Get Landing Zone IP
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 LZ_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
 
 if [ -z "$LZ_IP" ]; then

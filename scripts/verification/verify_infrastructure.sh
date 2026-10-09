@@ -33,9 +33,9 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-BMC_NETWORK_NAME="${PROVISIONING_NETWORK_NAME:-bmc}"
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-cluster}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+BMC_NETWORK_NAME="${ENCLAVE_BMC_BRIDGE:-bmc}"
+CLUSTER_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE:-cluster}"
 NUM_MASTERS="${NUM_MASTERS:-3}"
 
 info "========================================="
@@ -150,7 +150,7 @@ fi
 
 # Test 4: Check BMC emulation (sushy-tools)
 info "Test 4: Checking BMC emulation (sushy-tools)..."
-BMC_NETWORK="${PROVISIONING_NETWORK}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
 BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
 SUSHY_ENDPOINT="http://${BMC_GATEWAY}:8000/redfish/v1/Systems"
 

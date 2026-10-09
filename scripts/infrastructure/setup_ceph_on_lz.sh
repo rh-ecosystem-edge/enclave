@@ -36,11 +36,11 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 
 # Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
 
 if [ -z "$CLUSTER_IP" ]; then

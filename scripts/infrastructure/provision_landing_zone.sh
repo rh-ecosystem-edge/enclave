@@ -28,7 +28,7 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
 LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
@@ -42,10 +42,10 @@ POOL_NAME="${CLUSTER_NAME}"
 POOL_PATH="${WORKING_DIR}/pool"
 
 # Network configuration
-BMC_NETWORK="${PROVISIONING_NETWORK}"
-BMC_NETWORK_NAME="${PROVISIONING_NETWORK_NAME:-bmc}"
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-cluster}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
+BMC_NETWORK_NAME="${ENCLAVE_BMC_BRIDGE:-bmc}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
+CLUSTER_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE:-cluster}"
 
 # Calculate network prefixes for IP detection
 BMC_IP=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}')

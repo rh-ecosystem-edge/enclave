@@ -34,10 +34,10 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-BMC_NETWORK="${PROVISIONING_NETWORK}"
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 
 # Extract network prefixes for dynamic IP detection
 CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")

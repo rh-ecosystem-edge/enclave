@@ -38,11 +38,11 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 
 # Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 
 # Get Landing Zone IP - dynamic subnet detection
 CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
@@ -288,7 +288,7 @@ fi
 
 # Test 11: Check network connectivity from Landing Zone to BMC
 info "Test 11: Testing network connectivity from Landing Zone..."
-BMC_NETWORK="${PROVISIONING_NETWORK}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
 BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
 SUSHY_ENDPOINT="http://${BMC_GATEWAY}:8000/redfish/v1/Systems"
 

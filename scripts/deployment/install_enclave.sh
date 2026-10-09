@@ -29,7 +29,7 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
@@ -41,7 +41,7 @@ if [ ! -f "$ENVIRONMENT_JSON" ]; then
 fi
 
 # Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 
 # Get Landing Zone IP - dynamic subnet detection
 CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
@@ -147,7 +147,7 @@ if [[ -z "$BASE_DOMAIN" || -z "$CLUSTER_CFG_NAME" || -z "$API_VIP" || -z "$INGRE
     exit 1
 fi
 
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-${ENCLAVE_CLUSTER_NAME}-e}"
+CLUSTER_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE:-${ENCLAVE_CLUSTER_NAME}-e}"
 
 # Add cluster DNS entries to libvirt network dnsmasq (same approach as mirror entry in provision_landing_zone.sh)
 # Note: virsh net-update only allows one host entry per IP, so all hostnames for the same IP must be grouped

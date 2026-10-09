@@ -43,13 +43,12 @@ ensure_working_dir
 
 SUSHY_DIR="${WORKING_DIR}/virtualbmc/sushy-tools"
 
-# Calculate BMC gateway and port from PROVISIONING_NETWORK
-PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
-BMC_GATEWAY=$(get_network_gateway "$PROVISIONING_NETWORK")
-BMC_PORT=$(calculate_bmc_port "$PROVISIONING_NETWORK")
+# BMC gateway and port come straight from cluster-env.sh (vm_infra.py owns them).
+BMC_GATEWAY="${ENCLAVE_BMC_GATEWAY}"
+BMC_PORT="${ENCLAVE_BMC_PORT}"
 
 # Verify BMC bridge exists and has its IP assigned (libvirt isolated networks are synchronous)
-BMC_BRIDGE="${CLUSTER_NAME}-p"
+BMC_BRIDGE="${ENCLAVE_BMC_BRIDGE}"
 if ! ip addr show "$BMC_BRIDGE" 2>/dev/null | grep -q "inet ${BMC_GATEWAY}/"; then
     error "BMC bridge ${BMC_BRIDGE} does not have expected IP ${BMC_GATEWAY}"
     error "Run 'make -f Makefile.ci environment' to create the infrastructure"
