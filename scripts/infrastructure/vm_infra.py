@@ -25,6 +25,7 @@ import logging
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -202,6 +203,12 @@ class Config:
                 f"{', '.join(CLUSTER_PREFIXES)}"
             )
 
+        # Base domain ends up in cluster-env.sh (which is sourced/eval'd downstream) and
+        # in DNS/cloud-init; allow-list it to a hostname-safe charset.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.-]{0,252})", base_domain):
+            sys.exit(f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name")
+
         def check_xml_safe(label: str, value: str) -> None:
             """Reject path values that would break the libvirt XML they are embedded in."""
             if any(c in value for c in "<>&\"'"):
@@ -248,7 +255,7 @@ class Config:
             working_dir=working_dir,
             base_working_dir=base_working_dir,
             prefix=prefix,
-            base_domain_override=os.environ.get("ENCLAVE_BASE_DOMAIN", ""),
+            base_domain_override=base_domain,
             subnet_id=subnet_override(),
         )
 
@@ -780,55 +787,59 @@ def _define_domain(conn: libvirt.virConnect, xml: str, name: str) -> None:
 
 def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str]:
     """Build the `export` lines for cluster-env.sh — the single source of truth consumed
-    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs and MACs)."""
+    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs and MACs).
+
+    Every value is shell-quoted with shlex.quote: cluster-env.sh is sourced and `eval`'d
+    downstream, so an unexpected character in a value must never become shell code.
+    """
     lz = macs[cfg.lz_vm_name]
-    lines = [
-        f'export ENCLAVE_CLUSTER_NAME="{cfg.cluster_name}"',
-        f'export ENCLAVE_BASE_DOMAIN="{cfg.base_domain}"',
-        f'export ENCLAVE_DEPLOYMENT_MODE="{cfg.deployment_mode}"',
-        f'export WORKING_DIR="{cfg._wd}"',
-        f'export ENCLAVE_WORKING_DIR="{cfg._wd}"',
-        f'export ENCLAVE_POOL_PATH="{cfg.pool_dir}"',
+    pairs: List[tuple] = [
+        ("ENCLAVE_CLUSTER_NAME", cfg.cluster_name),
+        ("ENCLAVE_BASE_DOMAIN", cfg.base_domain),
+        ("ENCLAVE_DEPLOYMENT_MODE", cfg.deployment_mode),
+        ("WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_POOL_PATH", str(cfg.pool_dir)),
         # Networks
-        f'export ENCLAVE_BMC_BRIDGE="{cfg.bmc_bridge}"',
-        f'export ENCLAVE_CLUSTER_BRIDGE="{cfg.cluster_bridge}"',
-        f'export ENCLAVE_UPLINK_BRIDGE="{cfg.uplink_bridge or ""}"',
-        f'export ENCLAVE_BMC_NETWORK="{cfg.bmc_network}"',
-        f'export ENCLAVE_CLUSTER_NETWORK="{cfg.cluster_network}"',
-        f'export ENCLAVE_LZ_NETWORK="{cfg.lz_network or ""}"',
-        f'export ENCLAVE_BMC_GATEWAY="{cfg.bmc_gateway}"',
-        f'export ENCLAVE_CLUSTER_GATEWAY="{cfg.cluster_gateway}"',
-        f'export ENCLAVE_UPLINK_GATEWAY="{cfg.uplink_gateway or ""}"',
-        f'export ENCLAVE_CLUSTER_PREFIX_LEN="{cfg.cluster_prefix_len}"',
-        f'export ENCLAVE_BMC_PORT="{cfg.bmc_port}"',
-        f'export ENCLAVE_BMC_ENDPOINT="{cfg.bmc_endpoint}"',
+        ("ENCLAVE_BMC_BRIDGE", cfg.bmc_bridge),
+        ("ENCLAVE_CLUSTER_BRIDGE", cfg.cluster_bridge),
+        ("ENCLAVE_UPLINK_BRIDGE", cfg.uplink_bridge or ""),
+        ("ENCLAVE_BMC_NETWORK", cfg.bmc_network),
+        ("ENCLAVE_CLUSTER_NETWORK", cfg.cluster_network),
+        ("ENCLAVE_LZ_NETWORK", cfg.lz_network or ""),
+        ("ENCLAVE_BMC_GATEWAY", cfg.bmc_gateway),
+        ("ENCLAVE_CLUSTER_GATEWAY", cfg.cluster_gateway),
+        ("ENCLAVE_UPLINK_GATEWAY", cfg.uplink_gateway or ""),
+        ("ENCLAVE_CLUSTER_PREFIX_LEN", str(cfg.cluster_prefix_len)),
+        ("ENCLAVE_BMC_PORT", str(cfg.bmc_port)),
+        ("ENCLAVE_BMC_ENDPOINT", cfg.bmc_endpoint),
         # Cluster service IPs
-        f'export ENCLAVE_API_VIP="{cfg.api_vip}"',
-        f'export ENCLAVE_INGRESS_VIP="{cfg.ingress_vip}"',
-        f'export ENCLAVE_RENDEZVOUS_IP="{cfg.rendezvous_ip}"',
+        ("ENCLAVE_API_VIP", cfg.api_vip),
+        ("ENCLAVE_INGRESS_VIP", cfg.ingress_vip),
+        ("ENCLAVE_RENDEZVOUS_IP", cfg.rendezvous_ip),
         # Landing Zone
-        f'export ENCLAVE_LZ_VM_NAME="{cfg.lz_vm_name}"',
-        f'export ENCLAVE_LZ_BMC_IP="{cfg.lz_bmc_ip}"',
-        f'export ENCLAVE_LZ_CLUSTER_IP="{cfg.lz_cluster_ip}"',
-        f'export ENCLAVE_LZ_BMC_MAC="{lz["bmc"]}"',
-        f'export ENCLAVE_LZ_CLUSTER_MAC="{lz["cluster"]}"',
-        f'export ENCLAVE_LZ_UPLINK_MAC="{lz.get("uplink", "")}"',
-        f'export ENCLAVE_LZ_DISK_PATH="{cfg.lz_disk_path}"',
-        f'export ENCLAVE_LZ_DISK_GB="{cfg.lz.disk_gb}"',
-        f'export ENCLAVE_LZ_CLOUD_INIT_ISO="{cfg.lz_cloud_init_iso}"',
+        ("ENCLAVE_LZ_VM_NAME", cfg.lz_vm_name),
+        ("ENCLAVE_LZ_BMC_IP", cfg.lz_bmc_ip),
+        ("ENCLAVE_LZ_CLUSTER_IP", cfg.lz_cluster_ip),
+        ("ENCLAVE_LZ_BMC_MAC", lz["bmc"]),
+        ("ENCLAVE_LZ_CLUSTER_MAC", lz["cluster"]),
+        ("ENCLAVE_LZ_UPLINK_MAC", lz.get("uplink", "")),
+        ("ENCLAVE_LZ_DISK_PATH", str(cfg.lz_disk_path)),
+        ("ENCLAVE_LZ_DISK_GB", str(cfg.lz.disk_gb)),
+        ("ENCLAVE_LZ_CLOUD_INIT_ISO", str(cfg.lz_cloud_init_iso)),
         # Masters
-        f'export ENCLAVE_MASTER_COUNT="{cfg.num_masters}"',
+        ("ENCLAVE_MASTER_COUNT", str(cfg.num_masters)),
     ]
     for i in range(cfg.num_masters):
         name = cfg.master_vm_name(i)
         m = macs[name]
-        lines += [
-            f'export ENCLAVE_MASTER_{i}_NAME="{name}"',
-            f'export ENCLAVE_MASTER_{i}_BMC_MAC="{m["bmc"]}"',
-            f'export ENCLAVE_MASTER_{i}_CLUSTER_MAC="{m["cluster"]}"',
-            f'export ENCLAVE_MASTER_{i}_CLUSTER_IP="{cfg.master_cluster_ip(i)}"',
+        pairs += [
+            (f"ENCLAVE_MASTER_{i}_NAME", name),
+            (f"ENCLAVE_MASTER_{i}_BMC_MAC", m["bmc"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_MAC", m["cluster"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
         ]
-    return lines
+    return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
 
 
 def _write_cluster_env(cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
@@ -929,6 +940,11 @@ def create(cfg: Config) -> None:
             cfg.finalize_working_dir()
             macs = generate_macs(cfg)
             cfg.subnet_id = _resolve_subnet(conn, cfg)
+            # Write + echo cluster-env.sh BEFORE creating any libvirt resources. The
+            # name and the whole plan are fully determined by (name, subnet), so this
+            # records the identity even if a later create step fails — the caller
+            # (and CI cleanup) can then always tear the cluster down by name.
+            _write_cluster_env(cfg, macs)
             _create_networks(conn, cfg, macs)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
@@ -995,8 +1011,6 @@ def create(cfg: Config) -> None:
             ),
             name,
         )
-
-    _write_cluster_env(cfg, macs)
 
     LOG.info("=== Infrastructure created for cluster: %s ===", cfg.cluster_name)
     LOG.info("  BMC bridge:     %s  (%s)", cfg.bmc_bridge, cfg.bmc_gateway)

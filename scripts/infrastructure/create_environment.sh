@@ -24,24 +24,42 @@ info "Step 1: Validating prerequisites..."
 "${ENCLAVE_DIR}/scripts/setup/validate_prerequisites.sh"
 
 info "Step 2: Creating infrastructure (name, networks, pool, VMs) via vm_infra.py..."
-# vm_infra.py logs to stderr; its stdout is the cluster-env.sh content. Capture and
-# export it so the cluster name + WORKING_DIR (possibly just generated) are available
-# to every step below.
+# vm_infra.py logs to stderr; its stdout is the cluster-env.sh content, echoed BEFORE any
+# libvirt resource is created. Capture it without aborting on failure so the generated
+# identity is still recorded (and the cluster can always be torn down) even if a later
+# create step fails.
+set +e
 cluster_env="$(sudo -E python3 "${ENCLAVE_DIR}/scripts/infrastructure/vm_infra.py" create)"
-set -a
-eval "$cluster_env"
-set +a
-info "  Cluster: ${ENCLAVE_CLUSTER_NAME}"
-info "  Working dir: ${WORKING_DIR}"
+create_rc=$?
+set -e
+if [ -n "$cluster_env" ]; then
+    set -a
+    eval "$cluster_env"
+    set +a
+fi
 
 # Thread the identity to later steps (CI: $GITHUB_ENV from the workflow; local ci-flow:
-# a temp file it points GITHUB_ENV at and then sources).
-if [ -n "${GITHUB_ENV:-}" ]; then
+# a temp file it points GITHUB_ENV at and then sources). Do this even on failure so the
+# Cleanup step can tear down a partially-created cluster.
+if [ -n "${GITHUB_ENV:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
     {
         echo "ENCLAVE_CLUSTER_NAME=${ENCLAVE_CLUSTER_NAME}"
         echo "WORKING_DIR=${WORKING_DIR}"
     } >> "$GITHUB_ENV"
 fi
+
+if [ "$create_rc" -ne 0 ]; then
+    error "vm_infra.py create failed (exit ${create_rc})"
+    exit "$create_rc"
+fi
+info "  Cluster: ${ENCLAVE_CLUSTER_NAME}"
+info "  Working dir: ${WORKING_DIR}"
+
+# vm_infra.py runs under sudo and creates WORKING_DIR as root. Hand the directory
+# itself back to the invoking user so the (non-root) steps below and later targets
+# can write into it (pull secret, generated config/). The pool/ subdir stays
+# root-owned for libvirt.
+sudo chown "$(id -u):$(id -g)" "${WORKING_DIR}"
 
 info "Step 3: Writing pull secret..."
 if [ -n "${PULL_SECRET:-}" ]; then

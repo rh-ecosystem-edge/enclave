@@ -159,13 +159,30 @@ make environment
 `vm_infra.py` owns cluster identity: when `ENCLAVE_CLUSTER_NAME` is unset it generates a
 unique `<prefix>-<8hex>` name (override the prefix with `ENCLAVE_CLUSTER_PREFIX`, default
 `eci`) and derives `WORKING_DIR` as `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`.
-To pin a specific cluster, set `ENCLAVE_CLUSTER_NAME` yourself. The chosen identity is
-echoed to stdout and written to `cluster-env.sh`; capture it to drive later steps:
+
+For a multi-step local run where the name is generated, either **pin the name** so every
+step shares it:
 
 ```bash
-eval "$(sudo -E python3 scripts/infrastructure/vm_infra.py create)"
-echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
+export ENCLAVE_CLUSTER_NAME=eci-local
+make environment
+make provision-landing-zone
 ```
+
+or let `make environment` record the generated identity into an env file you then source
+(this is what `make ci-flow-connected` does under the hood — it never runs `create`
+twice):
+
+```bash
+ident=$(mktemp)
+GITHUB_ENV="$ident" make environment
+set -a; . "$ident"; set +a   # exports ENCLAVE_CLUSTER_NAME + WORKING_DIR
+echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
+make provision-landing-zone
+```
+
+> Do **not** run `vm_infra.py create` again to "read back" the name — a second create
+> generates a new name and a whole second cluster.
 
 **What `make environment` does:**
 - Generates the cluster name + working dir (via vm_infra.py)
