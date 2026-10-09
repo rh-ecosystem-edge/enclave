@@ -94,29 +94,13 @@ jobs:
             echo "Only documentation/unrelated files changed - infrastructure verification skipped (required check passes trivially)" | tee -a $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Generate unique cluster name
-        if: steps.gate.outputs.should_run == 'true'
-        id: cluster_name
-        uses: ./.github/actions/setup-cluster-name
-        with:
-          naming-strategy: hash
-          prefix: eci
-          run-id: ${{ github.run_id }}
-
-      - name: Export cluster name to environment
+      - name: Determine cluster identity
         if: steps.gate.outputs.should_run == 'true'
         run: |
-          echo "ENCLAVE_CLUSTER_NAME=${{ steps.cluster_name.outputs.cluster-name }}" >> $GITHUB_ENV
-          echo "Cluster name for this workflow: ${{ steps.cluster_name.outputs.cluster-name }}"
-
-      - name: Setup cluster-specific working directory
-        if: steps.gate.outputs.should_run == 'true'
-        env:
-          BASE_WORKING_DIR: ${{ env.BASE_WORKING_DIR }}
-        run: |
-          echo "Using cluster name: ${ENCLAVE_CLUSTER_NAME}"
-          ./scripts/setup/setup_working_dir.sh
-          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+          # vm_infra.py (run by `make environment`) generates the cluster name from this
+          # prefix + run-id seed and records ENCLAVE_CLUSTER_NAME + WORKING_DIR in $GITHUB_ENV.
+          echo "ENCLAVE_CLUSTER_PREFIX=eci" >> "$GITHUB_ENV"
+          echo "ENCLAVE_CLUSTER_SEED=${{ github.run_id }}" >> "$GITHUB_ENV"
 
           # Create directory for step logs
           mkdir -p step-logs
@@ -148,13 +132,12 @@ jobs:
       - name: Create infrastructure
         if: steps.gate.outputs.should_run == 'true'
         id: create_infra
-        env:
-          WORKING_DIR: ${{ env.WORKING_DIR }}
         run: |
           echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
+          # vm_infra.py generates the cluster name + WORKING_DIR and records them in
+          # $GITHUB_ENV (via create_environment.sh) for later steps.
 
           # Initialize log file with header
           echo "=== Infrastructure Setup Log ===" > step-logs/02-setup-infrastructure.log
