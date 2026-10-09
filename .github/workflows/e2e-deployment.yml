@@ -131,18 +131,25 @@ jobs:
           aws s3 cp "s3://enclave-ci-runner-secret-files/aap-license.zip" "$dest" --region us-east-1
           echo "AAP_LICENSE_FILE=${dest}" >> "$GITHUB_ENV"
 
-      - name: Generate unique cluster name
-        uses: ./.github/actions/setup-cluster-name
-        with:
-          naming-strategy: hash
-          # nc/nd = nightly (schedule), eci/ecd = everything else; c/d = connected/disconnected.
-          prefix: ${{ github.event_name == 'schedule' && (inputs.mode == 'connected' && 'nc' || 'nd') || (inputs.mode == 'connected' && 'eci' || 'ecd') }}
-          run-id: ${{ github.run_id }}
-
-      - name: Setup cluster-specific working directory
+      - name: Determine cluster identity
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          make -f Makefile.ci setup-working-dir
-          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+          # vm_infra.py (run by `make environment`) generates the cluster name and
+          # derives WORKING_DIR; it records both in $GITHUB_ENV for later steps.
+          # nc/nd = nightly (schedule), eci/ecd = everything else; c/d = connected/disconnected.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            # Nightly: one date-stamped cluster per day.
+            PREFIX=$([ "$MODE" = "connected" ] && echo nc || echo nd)
+            echo "ENCLAVE_CLUSTER_NAME=${PREFIX}-$(date +%Y%m%d)" >> "$GITHUB_ENV"
+          else
+            # e2e: let vm_infra.py generate a unique name from this prefix + run-id seed.
+            PREFIX=$([ "$MODE" = "connected" ] && echo eci || echo ecd)
+            echo "ENCLAVE_CLUSTER_PREFIX=${PREFIX}" >> "$GITHUB_ENV"
+            echo "ENCLAVE_CLUSTER_SEED=${RUN_ID}" >> "$GITHUB_ENV"
+          fi
 
       - name: Determine certificate type
         if: inputs.mode == 'disconnected'
@@ -208,21 +215,22 @@ jobs:
         run: ./scripts/verification/sample_resources.sh start artifacts/inflight 15
 
       - name: Create infrastructure
-        env:
-          WORKING_DIR: ${{ env.WORKING_DIR }}
         run: |
           echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
-          echo "Working Directory: ${WORKING_DIR:-not-set}" >> $GITHUB_STEP_SUMMARY
 
-          # vm_infra.py selects the subnet from libvirt and writes cluster-env.sh
+          # vm_infra.py generates the cluster name (unless ENCLAVE_CLUSTER_NAME is set),
+          # derives WORKING_DIR, selects the subnet, and writes cluster-env.sh;
+          # create_environment.sh records ENCLAVE_CLUSTER_NAME + WORKING_DIR in
+          # $GITHUB_ENV so the steps below inherit them.
           make -f Makefile.ci environment
 
-          # cluster-env.sh always exists once create succeeds (else the step
-          # already failed above); report the subnet vm_infra.py selected.
+          # Read back the identity create_environment.sh just recorded, for the summary.
+          WORKING_DIR="$(awk -F= '/^WORKING_DIR=/{v=$2} END{print v}' "$GITHUB_ENV")"
           # shellcheck disable=SC1091
           source "${WORKING_DIR}/cluster-env.sh"
+          echo "Cluster: ${ENCLAVE_CLUSTER_NAME:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "BMC Network: ${ENCLAVE_BMC_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Cluster Network: ${ENCLAVE_CLUSTER_NETWORK:-not-set}" >> $GITHUB_STEP_SUMMARY
           echo "Infrastructure created" >> $GITHUB_STEP_SUMMARY

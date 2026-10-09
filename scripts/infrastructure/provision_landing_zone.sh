@@ -1,9 +1,14 @@
 #!/bin/bash
-# Provision Landing Zone VM (CentOS Stream 10 or RHEL 10)
+# Provision the Landing Zone VM (CentOS Stream 10 or RHEL 10).
 #
-# This script provisions the existing Landing Zone VM
-# with a configurable cloud image (CentOS Stream 10 by default, or RHEL 10)
-# and configures it for Enclave Lab deployment.
+# vm_infra.py already defines the Landing Zone domain (NICs, MACs, memory, vcpu,
+# disk size, pool volume and a cloud-init cdrom pointing at ENCLAVE_LZ_CLOUD_INIT_ISO).
+# This script does the OS provisioning only:
+#   1. build the cloud-init ISO at the path the domain references,
+#   2. populate the LZ root volume with the cloud image,
+#   3. start the (already-defined) domain and wait for it to come up,
+#   4. configure the BMC-network static IP and mirror DNS.
+# It never undefines/recreates the domain or manages the storage pool.
 
 set -euo pipefail
 
@@ -19,43 +24,30 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Validate required environment variables
-
-# Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-
-# Source cluster environment
 load_cluster_env
-
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
-LZ_WORKING_DIR="${WORKING_DIR}/landing-zone/${CLUSTER_NAME}"
+
+# Infrastructure facts (owned/emitted by vm_infra.py in cluster-env.sh)
+LZ_VM_NAME="${ENCLAVE_LZ_VM_NAME}"
+LZ_DISK_PATH="${ENCLAVE_LZ_DISK_PATH}"
+LZ_DISK_GB="${ENCLAVE_LZ_DISK_GB}"
+CLOUD_INIT_ISO="${ENCLAVE_LZ_CLOUD_INIT_ISO}"
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
+BMC_IP="${ENCLAVE_LZ_BMC_IP}"
+BMC_PREFIX="${ENCLAVE_BMC_NETWORK##*/}"
+BMC_GATEWAY="${ENCLAVE_BMC_GATEWAY}"
+BMC_PORT="${ENCLAVE_BMC_PORT}"
+
+# Cloud image / OS configuration
 CLOUD_IMAGE_URL="${LZ_CLOUD_IMAGE_URL:-https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2}"
 CLOUD_IMAGE_NAME="${LZ_CLOUD_IMAGE_NAME:-centos-stream-10-cloud.qcow2}"
 CLOUD_IMAGE_CACHE_DIR="${LZ_CLOUD_IMAGE_CACHE_DIR:-/opt/images}"
-OS_VARIANT="${LZ_OS_VARIANT:-centos-stream10}"
-# Use cluster-specific storage pool for isolation in parallel execution
-# Each cluster gets its own pool in its dedicated working directory
-POOL_NAME="${CLUSTER_NAME}"
-POOL_PATH="${WORKING_DIR}/pool"
 
-# Network configuration
-BMC_NETWORK="${PROVISIONING_NETWORK}"
-BMC_NETWORK_NAME="${PROVISIONING_NETWORK_NAME:-bmc}"
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-cluster}"
+# Staging dir for the downloaded cloud image (ISO + volume live in the pool).
+STAGING_DIR="${WORKING_DIR}/landing-zone/${ENCLAVE_CLUSTER_NAME}"
 
-# Calculate network prefixes for IP detection
-BMC_IP=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}')
-BMC_PREFIX=$(echo "$BMC_NETWORK" | sed 's|.*/||')
-
-# Extract cluster network prefix for dynamic IP detection
-CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")
-CLUSTER_IP="${CLUSTER_NET_PREFIX}.2"  # Initial guess, will be updated from DHCP
-
-# SSH key
+# SSH public key for the cloud-user account.
 if ! SSH_KEY_FILE=$(find_local_ssh_public_key); then
     error "SSH public key not found in ~/.ssh (looked for: $SSH_PUBLIC_KEY_CANDIDATES)"
     error "Please generate an SSH key: ssh-keygen -t ed25519"
@@ -63,43 +55,31 @@ if ! SSH_KEY_FILE=$(find_local_ssh_public_key); then
 fi
 SSH_PUBLIC_KEY=$(cat "$SSH_KEY_FILE")
 
-info "Landing Zone VM Provisioning Configuration:"
-info "  VM Name: $LZ_VM_NAME"
-info "  BMC Network: $BMC_NETWORK (DHCP)"
-info "  Cluster Network: $CLUSTER_NETWORK (DHCP)"
-info "  Working Directory: $LZ_WORKING_DIR"
-info ""
-info "Note: VM will use DHCP for initial boot. Static IPs can be configured later if needed."
+info "Landing Zone VM Provisioning:"
+info "  VM Name:        $LZ_VM_NAME"
+info "  Root disk:      $LZ_DISK_PATH (${LZ_DISK_GB}G)"
+info "  Cloud-init ISO: $CLOUD_INIT_ISO"
+info "  Cluster IP:     $CLUSTER_IP   BMC IP: ${BMC_IP}/${BMC_PREFIX}"
 echo ""
 
-# Create working directory
-info "Creating working directory: $LZ_WORKING_DIR"
-sudo mkdir -p "$LZ_WORKING_DIR"
-sudo chown "$USER":"$USER" "$LZ_WORKING_DIR"
-
-# Copy cloud image from cache or download
-# Each job gets its own copy to avoid I/O conflicts during parallel execution
-if [ -f "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" ]; then
-    info "Copying cloud image from cache: ${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}"
-    cp "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
-elif [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
-    info "Copying cloud image from ${CLOUD_IMAGE_URL}..."
-    cp "${CLOUD_IMAGE_URL#file://}" "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
-else
-    info "Downloading cloud image: ${CLOUD_IMAGE_NAME}..."
-    curl -fL --progress-bar -o "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
+# Confirm the domain exists (vm_infra.py must have run first).
+if ! sudo virsh dominfo "$LZ_VM_NAME" >/dev/null 2>&1; then
+    error "Landing Zone domain '$LZ_VM_NAME' not found."
+    error "Run 'make -f Makefile.ci environment' to define the infrastructure first."
+    exit 1
 fi
-info "✓ Cloud image ready"
 
-# Create cloud-init configuration
-info "Creating cloud-init configuration..."
+sudo mkdir -p "$STAGING_DIR"
+sudo chown "$USER":"$USER" "$STAGING_DIR"
 
-cat > "${LZ_WORKING_DIR}/meta-data" <<EOF
+# --- 1. Build the cloud-init ISO at the path the LZ domain references ----------
+info "Building cloud-init ISO..."
+cat > "${STAGING_DIR}/meta-data" <<EOF
 instance-id: ${LZ_VM_NAME}
 local-hostname: enclave-lz
 EOF
 
-cat > "${LZ_WORKING_DIR}/user-data" <<EOF
+cat > "${STAGING_DIR}/user-data" <<EOF
 #cloud-config
 users:
   - name: cloud-user
@@ -110,7 +90,7 @@ users:
       - ${SSH_PUBLIC_KEY}
 
 hostname: enclave-lz
-fqdn: enclave-lz.${CLUSTER_DOMAIN:-enclave-test.lab}
+fqdn: enclave-lz.${ENCLAVE_BASE_DOMAIN:-lab}
 
 timezone: UTC
 
@@ -120,11 +100,11 @@ disable_root: true
 final_message: "Enclave Landing Zone VM is ready. Time: \$UPTIME"
 EOF
 
-# rh_subscription must appear before runcmd in the file so cloud-init registers
-# the system before the runcmd stage attempts to use subscription-manager
+# rh_subscription must appear before runcmd so cloud-init registers the system
+# before the runcmd stage uses subscription-manager.
 if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
-    info "Adding RHSM subscription to cloud-init configuration..."
-    cat >> "${LZ_WORKING_DIR}/user-data" <<RHSM_EOF
+    info "  Adding RHSM subscription to cloud-init..."
+    cat >> "${STAGING_DIR}/user-data" <<RHSM_EOF
 
 rh_subscription:
   activation-key: "${LZ_RHSM_ACTIVATION_KEY}"
@@ -132,13 +112,13 @@ rh_subscription:
 RHSM_EOF
 fi
 
-cat >> "${LZ_WORKING_DIR}/user-data" <<'EOF'
+cat >> "${STAGING_DIR}/user-data" <<'EOF'
 
 runcmd:
 EOF
 
 if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
-    cat >> "${LZ_WORKING_DIR}/user-data" <<'RUNCMD_EOF'
+    cat >> "${STAGING_DIR}/user-data" <<'RUNCMD_EOF'
   - |
     subscription-manager refresh
     subscription-manager repos --disable='*-eus-*' --disable='*-debug-rpms' --disable='*-source-rpms'
@@ -146,688 +126,115 @@ if [ -n "${LZ_RHSM_ORG:-}" ] && [ -n "${LZ_RHSM_ACTIVATION_KEY:-}" ]; then
 RUNCMD_EOF
 fi
 
-cat >> "${LZ_WORKING_DIR}/user-data" <<'EOF'
+cat >> "${STAGING_DIR}/user-data" <<'EOF'
   - dnf install -y git
   - systemctl disable cloud-init
   - touch /etc/cloud/cloud-init.disabled
 EOF
 
-# Note: Skipping network-config - let cloud-init use DHCP from libvirt networks
-# This ensures the VM gets network connectivity quickly
-# Static IPs can be configured later if needed via Task 3
-
-info "✓ cloud-init configuration created"
-
-# Create cloud-init ISO
-info "Creating cloud-init ISO..."
+# Network config is intentionally omitted: the cluster NIC uses DHCP (static
+# leases from vm_infra.py); the BMC NIC static IP is set via nmcli below.
 sudo xorrisofs -quiet \
-    -output "${LZ_WORKING_DIR}/cloud-init.iso" \
+    -output "${CLOUD_INIT_ISO}" \
     -volid cidata -joliet -rock \
-    "${LZ_WORKING_DIR}/user-data" \
-    "${LZ_WORKING_DIR}/meta-data"
+    "${STAGING_DIR}/user-data" \
+    "${STAGING_DIR}/meta-data"
+# Remove cloud-init files that may contain RHSM credentials.
+rm -f "${STAGING_DIR}/user-data" "${STAGING_DIR}/meta-data"
 info "✓ cloud-init ISO created"
 
-# Remove cloud-init files that may contain RHSM credentials
-rm -f "${LZ_WORKING_DIR}/user-data" "${LZ_WORKING_DIR}/meta-data"
-
-# Stop and remove existing VM if it exists
-if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
-    info "Removing existing Landing Zone VM..."
-    if sudo virsh list --state-running | grep -q "$LZ_VM_NAME"; then
-        sudo virsh destroy "$LZ_VM_NAME"
-    fi
-    sudo virsh undefine "$LZ_VM_NAME" --nvram 2>/dev/null || sudo virsh undefine "$LZ_VM_NAME"
-    info "✓ Existing VM removed"
-fi
-
-# Find or create storage pool for cluster-specific path
-# We'll use whatever pool exists for our path, or create one if needed
-if ! sudo virsh pool-uuid "$POOL_NAME" > /dev/null 2>&1; then
-    info "Pool '$POOL_NAME' not found, checking if any pool uses path $POOL_PATH..."
-
-    # Check if any pool already points to our cluster-specific path
-    EXISTING_POOL=$(sudo virsh pool-list --all --name | while read pool; do
-        if [ -n "$pool" ]; then
-            POOL_PATH_CHECK=$(sudo virsh pool-dumpxml "$pool" 2>/dev/null | grep -oP '(?<=<path>).*(?=</path>)' || echo "")
-            if [ "$POOL_PATH_CHECK" = "$POOL_PATH" ]; then
-                echo "$pool"
-                break
-            fi
-        fi
-    done)
-
-    if [ -n "$EXISTING_POOL" ]; then
-        # A pool exists for our path - use it regardless of name
-        info "Found existing pool '$EXISTING_POOL' using path $POOL_PATH, will use it"
-        POOL_NAME="$EXISTING_POOL"
-
-        # Ensure the pool is active - start it or ignore if already active
-        set +e  # Temporarily disable exit on error
-        START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
-        START_EXIT_CODE=$?
-        set -e  # Re-enable exit on error
-
-        if [ $START_EXIT_CODE -eq 0 ]; then
-            info "✓ Pool '$POOL_NAME' started"
-        elif echo "$START_OUTPUT" | grep -q "already active"; then
-            info "✓ Pool '$POOL_NAME' is already active"
-        else
-            error "Failed to start pool '$POOL_NAME': $START_OUTPUT"
-            exit 1
-        fi
-
-        sudo virsh pool-autostart "$POOL_NAME" 2>/dev/null || true
-        sudo virsh pool-refresh "$POOL_NAME" 2>/dev/null || true
-    else
-        # No pool exists for our path - create one
-        info "No pool found for path $POOL_PATH, creating pool '$POOL_NAME'..."
-
-        # Create the pool directory if it doesn't exist
-        sudo mkdir -p "$POOL_PATH"
-
-        # Define and start the pool
-        sudo virsh pool-define /dev/stdin <<EOF
-<pool type='dir'>
-  <name>$POOL_NAME</name>
-  <target>
-    <path>$POOL_PATH</path>
-    <permissions>
-      <mode>0755</mode>
-      <owner>-1</owner>
-      <group>-1</group>
-    </permissions>
-  </target>
-</pool>
-EOF
-
-        sudo virsh pool-start "$POOL_NAME"
-        sudo virsh pool-autostart "$POOL_NAME"
-        info "✓ Storage pool '$POOL_NAME' created and started"
-    fi
+# --- 2. Populate the LZ root volume with the cloud image ----------------------
+# Each job gets its own copy to avoid I/O conflicts during parallel execution.
+if [ -f "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" ]; then
+    info "Using cached cloud image: ${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}"
+    cp "${CLOUD_IMAGE_CACHE_DIR}/${CLOUD_IMAGE_NAME}" "${STAGING_DIR}/${CLOUD_IMAGE_NAME}"
+elif [[ "$CLOUD_IMAGE_URL" == file://* ]]; then
+    info "Copying cloud image from ${CLOUD_IMAGE_URL}..."
+    cp "${CLOUD_IMAGE_URL#file://}" "${STAGING_DIR}/${CLOUD_IMAGE_NAME}"
 else
-    info "Using existing storage pool: $POOL_NAME"
-    # Ensure the pool is started (it might be inactive)
-    set +e  # Temporarily disable exit on error
-    START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
-    START_EXIT_CODE=$?
-    set -e  # Re-enable exit on error
-
-    if [ $START_EXIT_CODE -eq 0 ]; then
-        info "✓ Pool '$POOL_NAME' started"
-    elif echo "$START_OUTPUT" | grep -q "already active"; then
-        info "✓ Pool '$POOL_NAME' is already active"
-    else
-        error "Failed to start pool '$POOL_NAME': $START_OUTPUT"
-        exit 1
-    fi
-
-    sudo virsh pool-autostart "$POOL_NAME" 2>/dev/null || true
+    info "Downloading cloud image..."
+    curl -fL --progress-bar -o "${STAGING_DIR}/${CLOUD_IMAGE_NAME}" "$CLOUD_IMAGE_URL"
 fi
 
-# Refresh the pool so libvirt sees all volumes (important for sushy-tools)
-info "Refreshing storage pool '$POOL_NAME'..."
-sudo virsh pool-refresh "$POOL_NAME"
-
-# Ensure pool is active after refresh
-set +e  # Temporarily disable exit on error
-FINAL_START_OUTPUT=$(sudo virsh pool-start "$POOL_NAME" 2>&1)
-FINAL_START_EXIT_CODE=$?
-set -e  # Re-enable exit on error
-
-if [ $FINAL_START_EXIT_CODE -eq 0 ]; then
-    info "✓ Pool '$POOL_NAME' started"
-elif echo "$FINAL_START_OUTPUT" | grep -q "already active"; then
-    info "✓ Pool '$POOL_NAME' is active and ready"
-else
-    error "Failed to ensure pool is active: $FINAL_START_OUTPUT"
-    exit 1
+# If the domain is running (re-provision), stop it before rewriting its disk.
+if sudo virsh domstate "$LZ_VM_NAME" 2>/dev/null | grep -q running; then
+    info "Stopping running Landing Zone VM for re-provision..."
+    sudo virsh destroy "$LZ_VM_NAME" || true
 fi
 
-# Get pool path and prepare disk
-info "Preparing VM disk in libvirt pool..."
-POOL_PATH=$(sudo virsh pool-dumpxml "$POOL_NAME" | grep "<path>" | sed 's/.*<path>\(.*\)<\/path>.*/\1/')
-info "Pool path: $POOL_PATH"
+info "Writing cloud image into the LZ volume and resizing to ${LZ_DISK_GB}G..."
+sudo qemu-img convert -f qcow2 -O qcow2 "${STAGING_DIR}/${CLOUD_IMAGE_NAME}" "${LZ_DISK_PATH}"
+sudo qemu-img resize "${LZ_DISK_PATH}" "${LZ_DISK_GB}G"
+rm -f "${STAGING_DIR}/${CLOUD_IMAGE_NAME}"
+sudo virsh pool-refresh "$ENCLAVE_CLUSTER_NAME" >/dev/null 2>&1 || true
+info "✓ Root disk prepared"
 
-# Delete old disk volume if exists
-if sudo virsh vol-list "$POOL_NAME" | grep -q "${LZ_VM_NAME}.qcow2"; then
-    info "Removing old disk volume..."
-    sudo virsh vol-delete "${LZ_VM_NAME}.qcow2" --pool "$POOL_NAME"
-fi
+# --- 3. Start the (already-defined) domain and wait for it to come up ---------
+info "Starting Landing Zone VM..."
+sudo virsh start "$LZ_VM_NAME"
 
-# Convert cloud image to pool location
-info "Converting cloud image to pool volume..."
-sudo qemu-img convert -f qcow2 -O qcow2 \
-    "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}" \
-    "${POOL_PATH}/${LZ_VM_NAME}.qcow2"
-
-# Resize disk. Disconnected mirrors the full release + OLM catalogs locally, so
-# it needs far more than connected. ODF additionally keeps a SECOND copy of the
-# mirror on the LZ: oc-mirror's local container cache (~/.local) plus the Ceph
-# loopback OSD files under /var/lib/ceph-loops that back RadosGW/RBD. ODF needs
-# that Ceph headroom regardless of connectivity, so it is sized first (the CI
-# decision logic only ever pairs odf with disconnected, but keep this correct
-# by construction for manual/standalone connected+odf runs).
-if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
-    LZ_DISK_SIZE="1500G"
-elif is_enclave_disconnected; then
-    LZ_DISK_SIZE="1000G"
-else
-    LZ_DISK_SIZE="600G"
-fi
-# 600GB: Quay ~130GB, oc-mirror ~7GB, ISO ~3GB, binaries ~3GB, OS and buffer
-# 1000GB: extra headroom for full release mirror and OLM catalogs in disconnected env
-# 1500GB (odf): ~900GB raw for the Ceph loopback OSD files (3x OSD_SIZE_GB) plus
-#               ~600GB for the mirror, OS, and buffer
-info "Resizing disk to ${LZ_DISK_SIZE}..."
-sudo qemu-img resize "${POOL_PATH}/${LZ_VM_NAME}.qcow2" "$LZ_DISK_SIZE"
-
-# Remove working copy of cloud image to free disk space
-rm -f "${LZ_WORKING_DIR}/${CLOUD_IMAGE_NAME}"
-
-# Refresh pool so libvirt sees the new volume
-info "Refreshing libvirt pool..."
-_pool_refreshed=false
-for _attempt in 1 2 3; do
-    if sudo virsh pool-refresh "$POOL_NAME" 2>/dev/null; then
-        _pool_refreshed=true
-        break
-    fi
-    warning "Pool refresh failed (attempt $_attempt/3), restarting storage daemon..."
-    sudo systemctl restart virtstoraged 2>/dev/null \
-        || sudo systemctl restart libvirtd 2>/dev/null \
-        || true
-    sleep 5
-    sudo virsh pool-start "$POOL_NAME" 2>/dev/null || true
-done
-if ! $_pool_refreshed; then
-    error "Failed to refresh pool '$POOL_NAME' after 3 attempts"
-    exit 1
-fi
-info "✓ Disk prepared in pool"
-
-# Create VM using virt-install with BIOS boot
-info "Creating Landing Zone VM with virt-install..."
-
-# Read LZ MACs from macs.json (written by vm_infra.py) so that the static
-# DHCP leases and sushy-tools BMC identification remain stable after the
-# placeholder domain created by vm_infra.py is replaced by virt-install.
-BMC_MAC_ARG=""
-CLUSTER_MAC_ARG=""
-UPLINK_NIC_ARG=""
-if [ -f "${WORKING_DIR}/macs.json" ]; then
-    _BMC_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].bmc // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
-    _CLUSTER_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].cluster // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
-    [ -n "$_BMC_MAC" ] && BMC_MAC_ARG=",mac=${_BMC_MAC}"
-    [ -n "$_CLUSTER_MAC" ] && CLUSTER_MAC_ARG=",mac=${_CLUSTER_MAC}"
-fi
-if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
-    UPLINK_NETWORK="${CLUSTER_NAME}-u"
-    UPLINK_MAC=""
-    if [ -f "${WORKING_DIR}/macs.json" ]; then
-        UPLINK_MAC=$(jq -r --arg vm "$LZ_VM_NAME" '.[$vm].uplink // empty' "${WORKING_DIR}/macs.json" 2>/dev/null || true)
-    fi
-    if [ -n "$UPLINK_MAC" ]; then
-        UPLINK_NIC_ARG="--network network=${UPLINK_NETWORK},mac=${UPLINK_MAC}"
-    else
-        UPLINK_NIC_ARG="--network network=${UPLINK_NETWORK}"
-    fi
-    info "Disconnected mode: adding uplink NIC on ${UPLINK_NETWORK}"
-fi
-
-# ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the LZ alongside
-# Quay and oc-mirror; 16 GB is not enough and the guest OOM-kills Quay during the
-# operators phase, so give ODF runs extra headroom. This is where the LZ VM is
-# actually sized: vm_infra.py only defines a placeholder domain that the teardown
-# above destroys and this virt-install recreates.
-if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
-    LZ_MEM_DEFAULT=24576
-else
-    LZ_MEM_DEFAULT=16384
-fi
-
-# shellcheck disable=SC2086
-sudo virt-install \
-    --name "$LZ_VM_NAME" \
-    --memory "${LANDINGZONE_MEMORY:-${LZ_MEM_DEFAULT}}" \
-    --vcpus "${LANDINGZONE_VCPU:-16}" \
-    --disk vol=${POOL_NAME}/${LZ_VM_NAME}.qcow2,bus=virtio \
-    --disk "${LZ_WORKING_DIR}/cloud-init.iso,device=cdrom,bus=sata" \
-    --network network=${BMC_NETWORK_NAME}${BMC_MAC_ARG} \
-    --network network=${CLUSTER_NETWORK_NAME}${CLUSTER_MAC_ARG} \
-    ${UPLINK_NIC_ARG} \
-    --boot hd,cdrom \
-    --os-variant "$OS_VARIANT" \
-    --graphics vnc \
-    --serial file,path=/var/log/libvirt/qemu/${LZ_VM_NAME}-console.log \
-    --noautoconsole \
-    --import
-
-info "✓ Landing Zone VM created and started"
-
-# Wait for VM to boot and get IP via DHCP
-info "Waiting for Landing Zone VM to boot and get IP (this may take 2-5 minutes)..."
+info "Waiting for Landing Zone VM to boot (this may take 2-5 minutes)..."
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 -o BatchMode=yes -q"
 MAX_WAIT=300
 COUNTER=0
 BOOT_COMPLETE=false
-SSH_READY=false
-VM_IP=""
-
 while [ $COUNTER -lt $MAX_WAIT ]; do
-    # Try to get VM IP from libvirt (use dynamic network prefix from allocated subnet)
-    if [ -z "$VM_IP" ]; then
-        VM_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
-        if [ -n "$VM_IP" ]; then
-            info "  VM got IP address: $VM_IP (${COUNTER}s)"
-            CLUSTER_IP="$VM_IP"  # Update with actual IP from DHCP
-        fi
+    # runcmd self-disables cloud-init, so "disabled" is also success once SSH is up.
+    CI_STATUS=$(ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "cloud-init status 2>/dev/null" 2>/dev/null || true)
+    if [[ "$CI_STATUS" == "status: done" ]] || [[ "$CI_STATUS" == "status: disabled" ]]; then
+        BOOT_COMPLETE=true
+        break
     fi
-
-    # Once we have an IP, check if SSH port is open
-    if [ -n "$VM_IP" ] && ! $SSH_READY; then
-        if nc -z -w 2 ${VM_IP} 22 2>/dev/null; then
-            info "  SSH port is now open (${COUNTER}s)"
-            SSH_READY=true
-        fi
-    fi
-
-    # Try to SSH and check for cloud-init completion.
-    # Accept "disabled" as success: runcmd self-disables cloud-init after first boot,
-    # so by the time SSH opens, status may already show "disabled" instead of "done".
-    if [ -n "$VM_IP" ]; then
-        CI_STATUS=$(ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-               -o ConnectTimeout=3 -o BatchMode=yes -q cloud-user@"${VM_IP}" \
-               "cloud-init status 2>/dev/null" 2>/dev/null || true)
-        if [[ "$CI_STATUS" == "status: done" ]] || [[ "$CI_STATUS" == "status: disabled" ]]; then
-            BOOT_COMPLETE=true
-            break
-        fi
-    fi
-
-    # Show progress
     if [ $((COUNTER % 30)) -eq 0 ]; then
-        if [ -z "$VM_IP" ]; then
-            info "  Waiting for VM to get IP address... (${COUNTER}s elapsed)"
-        elif $SSH_READY; then
-            info "  Waiting for cloud-init to complete... (${COUNTER}s elapsed)"
-        else
-            info "  Waiting for SSH service... (${COUNTER}s elapsed)"
-        fi
+        info "  Waiting for cloud-init to complete... (${COUNTER}s elapsed)"
     fi
-
     sleep 3
     COUNTER=$((COUNTER + 3))
 done
 
-if [ "$BOOT_COMPLETE" = true ]; then
-    info "✓ Landing Zone VM boot complete! (${COUNTER}s)"
-
-    # Configure BMC network interface
-    echo ""
-    info "Configuring BMC network interface..."
-    SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -q"
-
-    # Check if BMC interface already has an IP
-    BMC_CHECK=$(ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0 | grep 'inet ${BMC_IP}'" 2>/dev/null || echo "")
-
-    if [ -z "$BMC_CHECK" ]; then
-        info "  Configuring enp1s0 with IP ${BMC_IP}/${BMC_PREFIX}..."
-
-        # Delete any existing cloud-init or DHCP connections on enp1s0
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con show | grep enp1s0 | awk '{print \$1}' | xargs -r -I{} sudo nmcli con delete {} 2>/dev/null || true"
-
-        # Configure BMC interface using nmcli with static IP
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con add type ethernet ifname enp1s0 con-name bmc \
-            ipv4.addresses ${BMC_IP}/${BMC_PREFIX} \
-            ipv4.method manual \
-            connection.autoconnect yes \
-            connection.autoconnect-priority 100" 2>/dev/null || {
-            # Connection may already exist, modify it
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con mod bmc \
-                ipv4.addresses ${BMC_IP}/${BMC_PREFIX} \
-                ipv4.method manual \
-                connection.autoconnect yes \
-                connection.autoconnect-priority 100" 2>/dev/null || true
-        }
-
-        # Ensure interface is up and activate the connection
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip link set enp1s0 up"
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo nmcli con up bmc" 2>/dev/null || {
-            # Fallback to manual IP configuration if nmcli fails
-            warning "  nmcli failed, using manual IP configuration"
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip addr flush dev enp1s0"
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip addr add ${BMC_IP}/${BMC_PREFIX} dev enp1s0"
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "sudo ip link set enp1s0 up"
-        }
-
-        # Wait for interface to stabilize
-        sleep 3
-
-        # Verify configuration
-        if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0 | grep -q '${BMC_IP}'" 2>/dev/null; then
-            info "✓ BMC network configured: enp1s0 (${BMC_IP}/${BMC_PREFIX})"
-        else
-            warning "BMC network configuration may have failed - verify manually"
-        fi
-    else
-        info "✓ BMC network already configured: enp1s0 (${BMC_IP}/${BMC_PREFIX})"
-    fi
-
-    # Verify BMC gateway connectivity (critical for Ironic to work)
-    info "Verifying BMC gateway connectivity..."
-    BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
-    BMC_PORT=$(calculate_bmc_port "$BMC_NETWORK")
-
-    # Before attempting ping, collect diagnostic information
-    info "Collecting network diagnostics..."
-
-    # Define bridge name early for use in diagnostics
-    BRIDGE_NAME="${CLUSTER_NAME}-p"
-
-    # Check for IP/network conflicts on host
-    BMC_SUBNET=$(echo "$BMC_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3}')
-
-    info "  Checking for IP conflicts on host:"
-    CONFLICTING_IPS=$(ip addr show | grep "inet ${BMC_SUBNET}\." | grep -v "${BRIDGE_NAME}" || true)
-    if [ -n "$CONFLICTING_IPS" ]; then
-        warning "    ⚠ Found other interfaces using ${BMC_SUBNET}.0/24:"
-        echo "$CONFLICTING_IPS" | while IFS= read -r line; do
-            warning "      $line"
-        done
-    else
-        info "    ✓ No IP conflicts on other interfaces"
-    fi
-
-    # Check for existing libvirt networks using this subnet
-    info "  Checking for conflicting libvirt networks:"
-    CONFLICTING_NETS=$(sudo virsh net-list --all | grep -v "$BRIDGE_NAME" | awk 'NR>2 {print $1}' | while read net; do
-        if sudo virsh net-dumpxml "$net" 2>/dev/null | grep -q "${BMC_SUBNET}\."; then
-            echo "$net"
-        fi
-    done)
-    if [ -n "$CONFLICTING_NETS" ]; then
-        warning "    ⚠ Found libvirt networks using ${BMC_SUBNET}.0/24:"
-        echo "$CONFLICTING_NETS" | while IFS= read -r net; do
-            NET_IP=$(sudo virsh net-dumpxml "$net" 2>/dev/null | grep -oP '(?<=<ip address=")[^"]*' || echo "unknown")
-            warning "      Network '$net' has IP: $NET_IP"
-        done
-    else
-        info "    ✓ No conflicting libvirt networks"
-    fi
-
-    # Check bridge on host
-    info "  Bridge ${BRIDGE_NAME} status on host:"
-    if sudo ip addr show "$BRIDGE_NAME" 2>/dev/null | grep -q "inet ${BMC_GATEWAY}/"; then
-        info "    ✓ Bridge has IP ${BMC_GATEWAY}"
-    else
-        warning "    ✗ Bridge does NOT have expected IP ${BMC_GATEWAY}"
-        sudo ip addr show "$BRIDGE_NAME" 2>/dev/null | grep "inet " || true
-    fi
-
-    # Check if host can ping the bridge IP
-    if ping -c 1 -W 2 ${BMC_GATEWAY} >/dev/null 2>&1; then
-        info "    ✓ Host can ping bridge IP ${BMC_GATEWAY}"
-    else
-        warning "    ✗ Host CANNOT ping bridge IP ${BMC_GATEWAY}"
-    fi
-
-    # Check VM interface configuration
-    info "  VM interface enp1s0:"
-    ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0" 2>&1 | grep "inet " | while IFS= read -r line; do
-        info "    $line"
-    done
-
-    # Check VM routing table
-    info "  VM routing table:"
-    ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip route show" 2>&1 | grep -E "${BMC_NETWORK%/*}" | while IFS= read -r line; do
-        info "    $line"
-    done
-
-    # Check bridge interface membership
-    info "  Bridge ${BRIDGE_NAME} members:"
-    sudo bridge link show | grep "$BRIDGE_NAME" | while IFS= read -r line; do
-        info "    $line"
-    done
-
-    # Check if VM's vnet interface is attached
-    VM_NAME="${CLUSTER_NAME}_landingzone_0"
-    LZ_VNET_BMC=$(sudo virsh domiflist "$VM_NAME" 2>/dev/null | grep "$BRIDGE_NAME" | awk '{print $1}')
-    if [ -n "$LZ_VNET_BMC" ]; then
-        info "    VM BMC vnet interface: $LZ_VNET_BMC"
-        if sudo bridge link show | grep -q "$LZ_VNET_BMC"; then
-            info "    ✓ $LZ_VNET_BMC is attached to bridge"
-        else
-            warning "    ✗ $LZ_VNET_BMC is NOT attached to bridge"
-        fi
-    else
-        warning "    ✗ Could not find VM's vnet interface for BMC network"
-    fi
-
-    # Check bridge forwarding settings
-    info "  Bridge forwarding settings:"
-    BRIDGE_FWD=$(cat /sys/class/net/${BRIDGE_NAME}/bridge/stp_state 2>/dev/null || echo "unknown")
-    info "    STP state: $BRIDGE_FWD"
-
-    # Check if bridge has proxy_arp enabled
-    PROXY_ARP=$(cat /proc/sys/net/ipv4/conf/${BRIDGE_NAME}/proxy_arp 2>/dev/null || echo "unknown")
-    info "    proxy_arp: $PROXY_ARP"
-
-    # Check firewall zones and ARP filtering
-    info "  Firewall configuration:"
-    if sudo firewall-cmd --state >/dev/null 2>&1; then
-        BMC_ZONE=$(sudo firewall-cmd --get-zone-of-interface="$BRIDGE_NAME" 2>/dev/null || echo "none")
-        info "    Bridge zone: $BMC_ZONE"
-        if [ "$BMC_ZONE" != "none" ]; then
-            if sudo firewall-cmd --zone="$BMC_ZONE" --query-icmp-block=echo-request 2>/dev/null; then
-                warning "    ✗ ICMP echo-request is BLOCKED in zone $BMC_ZONE"
-            else
-                info "    ✓ ICMP echo-request allowed in zone $BMC_ZONE"
-            fi
-        fi
-    else
-        info "    Firewalld not running"
-    fi
-
-    # Check ebtables for ARP filtering (this is the likely culprit)
-    info "  Layer 2 filtering (ebtables):"
-    if command -v ebtables &>/dev/null; then
-        if sudo ebtables -L 2>/dev/null | grep -q "Bridge"; then
-            info "    ebtables rules exist (checking for ARP blocks):"
-            # Use || true to prevent grep failure from exiting script
-            ARP_RULES=$(sudo ebtables -L 2>/dev/null | grep -E "ARP|$BRIDGE_NAME" || true)
-            if [ -n "$ARP_RULES" ]; then
-                echo "$ARP_RULES" | while IFS= read -r line; do
-                    info "      $line"
-                done
-            else
-                info "      No ARP-related rules found"
-            fi
-        else
-            info "    No ebtables rules"
-        fi
-    else
-        info "    ebtables not installed"
-    fi
-
-    # Check nftables for ARP filtering
-    info "  Netfilter bridge filtering:"
-    if sudo nft list tables 2>/dev/null | grep -q "bridge"; then
-        info "    nftables bridge family rules exist:"
-        # Use || true to prevent grep failure from exiting script
-        NFT_ARP_RULES=$(sudo nft list table bridge filter 2>/dev/null | grep -E "arp|ARP" || true)
-        if [ -n "$NFT_ARP_RULES" ]; then
-            echo "$NFT_ARP_RULES" | while IFS= read -r line; do
-                info "      $line"
-            done
-        else
-            info "      No ARP-related nftables rules found"
-        fi
-    else
-        info "    No nftables bridge rules"
-    fi
-
-    # Check br_netfilter settings
-    info "  Bridge netfilter settings:"
-    if [ -f /proc/sys/net/bridge/bridge-nf-call-arptables ]; then
-        BR_NF_ARP=$(cat /proc/sys/net/bridge/bridge-nf-call-arptables)
-        info "    bridge-nf-call-arptables: $BR_NF_ARP"
-        if [ "$BR_NF_ARP" = "1" ]; then
-            warning "    ⚠ ARP packets are being passed to arptables (may be filtered)"
-        fi
-    fi
-
-    # Check if there are any arptables rules
-    if command -v arptables &>/dev/null; then
-        info "  ARP tables:"
-        # Get arptables rules, filtering out headers and empty lines
-        ARPTABLES_RULES=$(sudo arptables -L -n 2>/dev/null | grep -v "^Chain\|^$" || true)
-        if [ -n "$ARPTABLES_RULES" ]; then
-            echo "$ARPTABLES_RULES" | while IFS= read -r line; do
-                info "    $line"
-            done
-        else
-            info "    No arptables rules"
-        fi
-    else
-        info "    arptables not installed"
-    fi
-
-    # Test bidirectional connectivity
-    info "Testing connectivity:"
-    info "  From host to VM's BMC IP (${BMC_IP}):"
-    if ping -c 2 -W 2 ${BMC_IP} >/dev/null 2>&1; then
-        info "    ✓ Host can ping VM's BMC IP ${BMC_IP}"
-    else
-        warning "    ✗ Host CANNOT ping VM's BMC IP ${BMC_IP}"
-        warning "    This suggests ARP is failing in both directions"
-    fi
-
-    # Try enabling proxy_arp as a workaround
-    info "  Attempting to enable proxy_arp on bridge ${BRIDGE_NAME}..."
-    if sudo sysctl -w net.ipv4.conf.${BRIDGE_NAME}.proxy_arp=1 >/dev/null 2>&1; then
-        info "    ✓ proxy_arp enabled"
-        PROXY_ARP_NEW=$(cat /proc/sys/net/ipv4/conf/${BRIDGE_NAME}/proxy_arp 2>/dev/null || echo "unknown")
-        info "    New proxy_arp value: $PROXY_ARP_NEW"
-    else
-        warning "    ✗ Failed to enable proxy_arp"
-    fi
-
-    # Retry ping check
-    MAX_PING_ATTEMPTS=3
-    PING_WAIT_SECONDS=2
-    PING_SUCCESS=false
-
-    info "Attempting to ping BMC gateway ${BMC_GATEWAY} from VM..."
-    for attempt in $(seq 1 $MAX_PING_ATTEMPTS); do
-        if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ping -c 2 -W 2 ${BMC_GATEWAY} >/dev/null 2>&1"; then
-            info "✓ Can ping BMC gateway: ${BMC_GATEWAY} (attempt $attempt)"
-            PING_SUCCESS=true
-            break
-        fi
-
-        if [ $attempt -lt $MAX_PING_ATTEMPTS ]; then
-            info "  Attempt $attempt/$MAX_PING_ATTEMPTS: Cannot ping ${BMC_GATEWAY}, waiting ${PING_WAIT_SECONDS}s..."
-
-            # Check ARP after failed ping
-            info "    Checking ARP table on VM:"
-            ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip neigh show ${BMC_GATEWAY}" 2>&1 | while IFS= read -r line; do
-                info "      $line"
-            done
-
-            sleep $PING_WAIT_SECONDS
-        fi
-    done
-
-    if [ "$PING_SUCCESS" = false ]; then
-        error "Cannot ping BMC gateway: ${BMC_GATEWAY} after $MAX_PING_ATTEMPTS attempts"
-        error ""
-        error "Full diagnostic information:"
-        error "  Host bridge ${BRIDGE_NAME}:"
-        sudo ip addr show "$BRIDGE_NAME" 2>&1 | while IFS= read -r line; do
-            error "    $line"
-        done
-        error ""
-        error "  VM interface enp1s0:"
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip addr show enp1s0" 2>&1 | while IFS= read -r line; do
-            error "    $line"
-        done
-        error ""
-        error "  VM routing table:"
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip route" 2>&1 | while IFS= read -r line; do
-            error "    $line"
-        done
-        error ""
-        error "  VM ARP table:"
-        ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "ip neigh" 2>&1 | while IFS= read -r line; do
-            error "    $line"
-        done
-
-        error ""
-        error "This will cause Ironic deployment to fail"
-        exit 1
-    fi
-
-    # Test sushy-tools endpoint
-    if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems 2>/dev/null | grep -q 200"; then
-        info "✓ Can reach sushy-tools at https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
-    else
-        error "Cannot reach sushy-tools endpoint at https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems"
-        error "This will cause Ironic deployment to fail"
-        error "Check that sushy-tools container is running: sudo podman ps | grep sushy-tools"
-        exit 1
-    fi
-
-    # Add mirror hostnames -> LZ cluster IP so master VMs can resolve both short and FQDN forms
-    MIRROR_SHORT_HOST="mirror"
-    MIRROR_FQDN="mirror.${BASE_DOMAIN:-lab}"
-    info "Adding DNS entry: ${MIRROR_SHORT_HOST}, ${MIRROR_FQDN} -> ${CLUSTER_IP} (Landing Zone) on network ${CLUSTER_NETWORK_NAME}..."
-    if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-        "<host ip='${CLUSTER_IP}'><hostname>${MIRROR_SHORT_HOST}</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
-        --live --config 2>/dev/null; then
-        warning "Could not add mirror DNS entry (network may not support live update)"
-    else
-        info "✓ DNS entry added: ${MIRROR_SHORT_HOST}, ${MIRROR_FQDN} -> ${CLUSTER_IP}"
-    fi
-
-    # In disconnected mode the LZ uses the uplink network's dnsmasq (172.16.N.1) as its
-    # primary DNS because NM dns=default mode does not support routing domains. Add mirror
-    # DNS to the uplink network too so the LZ can resolve mirror hostnames.
-    if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
-        UPLINK_NETWORK_NAME="${CLUSTER_NAME}-u"
-        info "Adding mirror DNS to uplink network (${UPLINK_NETWORK_NAME}) for LZ resolution..."
-        if ! sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
-            "<host ip='${CLUSTER_IP}'><hostname>${MIRROR_SHORT_HOST}</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
-            --live --config 2>/dev/null; then
-            warning "Could not add mirror DNS to uplink network"
-        else
-            info "✓ Mirror DNS also added to uplink network"
-        fi
-    fi
-
-    echo ""
-    info "========================================="
-    info "Landing Zone VM Provisioned Successfully"
-    info "========================================="
-    info ""
-    info "Access Information:"
-    info "  SSH: ssh cloud-user@${CLUSTER_IP}"
-    info "  BMC Network IP: ${BMC_IP} (enp1s0)"
-    info "  Cluster Network IP: ${CLUSTER_IP} (enp2s0)"
-    info ""
-    info "Next steps:"
-    info "  1. Verify connectivity: make verify-landing-zone"
-    info "  2. Install Enclave Lab: make install-enclave (Task 3)"
-    info ""
-else
-    warning "Timeout after ${COUNTER}s - VM is running but SSH not ready"
-    info ""
-    info "Debugging steps:"
-    info "  1. Check console: sudo virsh console $LZ_VM_NAME"
-    info "  2. Check if VM got IP: sudo virsh domifaddr $LZ_VM_NAME"
-    info "  3. Try SSH manually: ssh cloud-user@${CLUSTER_IP}"
-    info "  4. Check network: ping ${CLUSTER_IP}"
-    info ""
-    warning "The VM may need more time to boot. Wait 1-2 minutes and run:"
-    warning "  make verify-landing-zone"
-    info ""
+if [ "$BOOT_COMPLETE" != true ]; then
+    error "Timeout after ${COUNTER}s waiting for the Landing Zone VM."
+    error "Debug: sudo virsh console $LZ_VM_NAME ; ssh cloud-user@${CLUSTER_IP}"
     exit 1
 fi
+info "✓ Landing Zone VM boot complete (${COUNTER}s)"
+
+# --- 4. Configure the BMC-network static IP (enp1s0) --------------------------
+info "Configuring BMC network interface (enp1s0 -> ${BMC_IP}/${BMC_PREFIX})..."
+if ! ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "ip addr show enp1s0 | grep -q 'inet ${BMC_IP}'" 2>/dev/null; then
+    ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "sudo nmcli con show | awk '/enp1s0/{print \$1}' | xargs -r -I{} sudo nmcli con delete {} 2>/dev/null || true"
+    ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "sudo nmcli con add type ethernet ifname enp1s0 con-name bmc \
+        ipv4.addresses ${BMC_IP}/${BMC_PREFIX} ipv4.method manual \
+        connection.autoconnect yes connection.autoconnect-priority 100" 2>/dev/null \
+      || ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "sudo nmcli con mod bmc \
+        ipv4.addresses ${BMC_IP}/${BMC_PREFIX} ipv4.method manual" 2>/dev/null || true
+    ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "sudo nmcli con up bmc" 2>/dev/null || true
+    sleep 3
+fi
+if ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "ip addr show enp1s0 | grep -q '${BMC_IP}'" 2>/dev/null; then
+    info "✓ BMC network configured"
+else
+    warning "BMC network configuration may have failed — verify manually"
+fi
+
+# Verify the LZ can reach the sushy-tools BMC endpoint (required for Ironic).
+if ssh $SSH_OPTS cloud-user@"${CLUSTER_IP}" "curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems 2>/dev/null | grep -q 200"; then
+    info "✓ sushy-tools reachable from the Landing Zone"
+else
+    error "Cannot reach sushy-tools at https://${BMC_GATEWAY}:${BMC_PORT}/redfish/v1/Systems from the LZ"
+    error "Check the sushy-tools container: sudo podman ps | grep sushy-tools"
+    exit 1
+fi
+
+# Cluster DNS (mirror / api / *.apps) is baked into the libvirt networks by vm_infra.py
+# (see Config.cluster_dns_addresses), so there is no runtime net-update here.
+
+echo ""
+info "========================================="
+info "Landing Zone VM Provisioned Successfully"
+info "========================================="
+info "  SSH:         ssh cloud-user@${CLUSTER_IP}"
+info "  BMC IP:      ${BMC_IP} (enp1s0)"
+info "  Cluster IP:  ${CLUSTER_IP} (enp2s0)"
+info ""
+info "Next: make install-enclave"

@@ -2,7 +2,7 @@
 # Generate Enclave Lab config/global.yaml, config/certificates.yaml and
 # config/cloud_infra.yaml from infrastructure metadata
 #
-# This script reads environment.json (created in Task 1) and generates
+# This script reads cluster-env.sh (written by vm_infra.py) and generates
 # config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml
 # configuration files for Enclave Lab deployment.
 
@@ -18,65 +18,33 @@ source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Validate required environment variables
-require_command "jq"
-
-# Determine cluster name for dynamic config file
-ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-
-# Source cluster environment
+# Source cluster environment (vm_infra.py's cluster-env.sh is the single source of truth)
 load_cluster_env
-require_env_var "BASE_DOMAIN"
-
-# Configuration
 ensure_working_dir
-CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+require_env_var "ENCLAVE_BASE_DOMAIN"
 
-# Try cluster-specific environment file first, fall back to legacy location
-ENVIRONMENT_JSON="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
-fi
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
 
 GLOBAL_VARS_OUTPUT="${WORKING_DIR}/config/global.yaml"
 CERTS_VARS_OUTPUT="${WORKING_DIR}/config/certificates.yaml"
 CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
 
-info "Generating Enclave Lab configuration from infrastructure metadata..."
+info "Generating Enclave Lab configuration from cluster-env.sh..."
 
-# Check if environment.json exists
-require_file "$ENVIRONMENT_JSON" "Environment metadata not found: $ENVIRONMENT_JSON - Run 'make environment' first to create infrastructure"
-
-# Extract information from environment.json
-BMC_CIDR=$(jq -r '.networks.bmc.cidr' "$ENVIRONMENT_JSON")
-CLUSTER_CIDR=$(jq -r '.networks.cluster.cidr' "$ENVIRONMENT_JSON")
-BMC_ENDPOINT=$(jq -r '.bmc_emulation.sushy_tools.endpoint' "$ENVIRONMENT_JSON")
-
-# Extract BMC base URI (host:port) from full endpoint URL
-# BMC_ENDPOINT is like "http://100.64.1.1:8000", we need "100.64.1.1:8000"
-BMC_BASEURI=$(echo "$BMC_ENDPOINT" | sed 's|http://||' | sed 's|https://||')
-
-# Calculate network parameters
-CLUSTER_PREFIX=$(echo "$CLUSTER_CIDR" | sed 's|.*/||')
-CLUSTER_NETWORK=$(echo "$CLUSTER_CIDR" | sed 's|/.*||')
-CLUSTER_GATEWAY=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".1"}')
-
-# Calculate VIPs (use higher IPs to avoid conflicts)
-API_VIP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".100"}')
-INGRESS_VIP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".101"}')
-
-# Calculate Landing Zone BMC IP (.2 in BMC network)
-LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}')
-
-# Get master count
-MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
-
-# Get first master IP as rendezvous IP (bootstrap) before generating config
-RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")
-if [ "$RENDEZVOUS_IP" = "null" ] || [ -z "$RENDEZVOUS_IP" ] || [ "$RENDEZVOUS_IP" = "unknown" ]; then
-    # If IP not available, calculate it (starting from .20 to avoid conflicts with VIPs and LZ)
-    RENDEZVOUS_IP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".20"}')
-fi
+# Infrastructure facts — all owned and emitted by vm_infra.py in cluster-env.sh.
+BMC_CIDR="${ENCLAVE_BMC_NETWORK}"
+CLUSTER_CIDR="${ENCLAVE_CLUSTER_NETWORK}"
+# Redfish base URI is host:port (strip the scheme from the full endpoint).
+BMC_BASEURI="${ENCLAVE_BMC_ENDPOINT#*://}"
+CLUSTER_PREFIX="${ENCLAVE_CLUSTER_PREFIX_LEN}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK%/*}"
+CLUSTER_GATEWAY="${ENCLAVE_CLUSTER_GATEWAY}"
+API_VIP="${ENCLAVE_API_VIP}"
+INGRESS_VIP="${ENCLAVE_INGRESS_VIP}"
+LZ_BMC_IP="${ENCLAVE_LZ_BMC_IP}"
+MASTER_COUNT="${ENCLAVE_MASTER_COUNT}"
+RENDEZVOUS_IP="${ENCLAVE_RENDEZVOUS_IP}"
 
 info "Configuration parameters:"
 info "  Cluster Name: $CLUSTER_NAME"
@@ -172,24 +140,16 @@ EOF
 for i in $(seq 0 $((MASTER_COUNT - 1))); do
     info "Processing master $i..."
 
-    # Get master information from environment.json
-    MASTER_NAME=$(jq -r ".vms.masters[$i].name" "$ENVIRONMENT_JSON")
-    MASTER_MAC=$(jq -r ".vms.masters[$i].networks.cluster.mac" "$ENVIRONMENT_JSON")
-    MASTER_IP=$(jq -r ".vms.masters[$i].networks.cluster.ip" "$ENVIRONMENT_JSON")
+    # Master facts from cluster-env.sh (ENCLAVE_MASTER_<i>_*), via indirect expansion.
+    name_var="ENCLAVE_MASTER_${i}_NAME";        MASTER_NAME="${!name_var}"
+    mac_var="ENCLAVE_MASTER_${i}_CLUSTER_MAC";  MASTER_MAC="${!mac_var}"
+    ip_var="ENCLAVE_MASTER_${i}_CLUSTER_IP";    MASTER_IP="${!ip_var}"
 
     # Get libvirt domain UUID (sushy-tools uses libvirt UUIDs as system IDs)
     MASTER_UUID=$(sudo virsh domuuid "$MASTER_NAME" 2>/dev/null || echo "")
     if [ -z "$MASTER_UUID" ]; then
         error "Could not get UUID for VM: $MASTER_NAME"
         exit 1
-    fi
-
-    # Redfish base URI (host:port only, no protocol or path)
-    # sushy-tools uses libvirt domain UUID as system ID in the path
-
-    # If IP not available from DHCP, calculate it (starting from .20)
-    if [ "$MASTER_IP" = "null" ] || [ -z "$MASTER_IP" ] || [ "$MASTER_IP" = "unknown" ]; then
-        MASTER_IP=$(echo "$CLUSTER_NETWORK" | awk -F. -v i=$i '{print $1"."$2"."$3"."20+i}')
     fi
 
     # Normalize master name (remove cluster prefix if present)

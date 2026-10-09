@@ -77,17 +77,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Generate unique cluster name
-        uses: ./.github/actions/setup-cluster-name
-        with:
-          naming-strategy: hash
-          prefix: eci
-          run-id: ${{ github.run_id }}
-
-      - name: Setup cluster-specific working directory
+      - name: Determine cluster identity
         run: |
-          make -f Makefile.ci setup-working-dir
-          echo "WORKING_DIR=$(cat /tmp/working_dir)" >> $GITHUB_ENV
+          # vm_infra.py (run by `make environment`) generates the cluster name from this
+          # prefix + run-id seed and records ENCLAVE_CLUSTER_NAME + WORKING_DIR in $GITHUB_ENV.
+          echo "ENCLAVE_CLUSTER_PREFIX=ecd" >> "$GITHUB_ENV"
+          echo "ENCLAVE_CLUSTER_SEED=${{ github.run_id }}" >> "$GITHUB_ENV"
 
       - name: Pre-flight checks
         uses: ./.github/actions/preflight-checks
@@ -108,13 +103,13 @@ jobs:
         run: make -f Makefile.ci reap-stale-vms
 
       - name: Create infrastructure
-        env:
-          WORKING_DIR: ${{ env.WORKING_DIR }}
         run: |
           echo "## Creating Infrastructure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Creating VMs, networks, and BMC emulation..." >> $GITHUB_STEP_SUMMARY
 
+          # vm_infra.py generates the cluster name + WORKING_DIR and records them in
+          # $GITHUB_ENV (via create_environment.sh) for later steps.
           make -f Makefile.ci environment
           echo "✅ Infrastructure created" >> $GITHUB_STEP_SUMMARY
 

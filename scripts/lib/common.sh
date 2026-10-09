@@ -51,7 +51,7 @@ ensure_working_dir() {
 
     # Try to auto-construct
     if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME:-}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+        WORKING_DIR="${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}"
         export WORKING_DIR
         return 0
     fi
@@ -66,17 +66,4 @@ ensure_working_dir() {
 # Example: CLUSTER_NAME=$(get_cluster_name)
 get_cluster_name() {
     echo "${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-}
-
-# Get environment.json path for the current cluster
-# Args: $1 = Cluster name (optional, uses ENCLAVE_CLUSTER_NAME if not provided)
-# Returns: Path to environment.json
-# Example: ENV_FILE=$(get_environment_json_path)
-get_environment_json_path() {
-    local cluster_name="${1:-${ENCLAVE_CLUSTER_NAME:-enclave-test}}"
-
-    # Ensure WORKING_DIR is set
-    ensure_working_dir
-
-    echo "${WORKING_DIR}/environment-${cluster_name}.json"
 }

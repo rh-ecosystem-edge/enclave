@@ -80,11 +80,8 @@ fi
 # Source cluster environment
 load_cluster_env
 
-LZ_VM_NAME="${ENCLAVE_CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-LZ_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+LZ_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$LZ_IP" ]; then
     error "Could not determine Landing Zone IP address"

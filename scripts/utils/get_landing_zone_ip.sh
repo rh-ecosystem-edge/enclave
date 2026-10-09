@@ -1,58 +1,35 @@
 #!/usr/bin/env bash
-# Get Landing Zone VM IP address with dynamic subnet detection
+# Get the Landing Zone VM IP address.
 #
-# This script attempts to find the Landing Zone IP using multiple methods:
-# 1. Read from environment.json (cluster network first, then BMC network)
-# 2. Query virsh with dynamic subnet detection
+# Prefers the authoritative static-lease IP from cluster-env.sh
+# (ENCLAVE_LZ_CLUSTER_IP, owned by vm_infra.py); falls back to a live virsh lookup
+# on the cluster network if cluster-env.sh is not available.
 #
 # Usage:
-#   ./get_landing_zone_ip.sh [environment_file]
+#   ./get_landing_zone_ip.sh
 #
 # Environment variables:
 #   ENCLAVE_CLUSTER_NAME - Cluster name (default: enclave-test)
-#   WORKING_DIR - Working directory (default: /opt/clusters)
+#   WORKING_DIR / BASE_WORKING_DIR - Used to locate cluster-env.sh
 
 set -euo pipefail
 
-# Determine environment file
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+try_load_cluster_env || true
 
-# Auto-construct WORKING_DIR if not set
-if [ -z "${WORKING_DIR:-}" ]; then
-    if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
-    else
-        echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME" >&2
-        exit 1
-    fi
+# Authoritative static-lease IP from cluster-env.sh.
+if [ -n "${ENCLAVE_LZ_CLUSTER_IP:-}" ]; then
+    echo "${ENCLAVE_LZ_CLUSTER_IP}"
+    exit 0
 fi
 
-if [ $# -gt 0 ]; then
-    ENV_FILE="$1"
-else
-    ENV_FILE="${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json"
-fi
-
-# Try to get IP from environment file (cluster network first, then BMC)
-LZ_IP=$(jq -r '.vms.landing_zone.networks.cluster.ip // .vms.landing_zone.networks.bmc.ip // empty' "$ENV_FILE" 2>/dev/null | grep -v "unknown" || true)
-
-# If not found in env file, try virsh with dynamic subnet detection
-if [ -z "$LZ_IP" ]; then
-    # Get VM name from env file or construct default
-    LZ_VM_NAME=$(jq -r '.vms.landing_zone.name // empty' "$ENV_FILE" 2>/dev/null || echo "${ENCLAVE_CLUSTER_NAME}_landingzone_0")
-
-    # Extract cluster network from environment file for dynamic detection
-    CLUSTER_NETWORK=$(jq -r '.networks.cluster.cidr // empty' "$ENV_FILE" 2>/dev/null || echo "192.168.2.0/24")
-
-    # Extract network prefix (e.g., "192.168.4" from "192.168.4.0/24")
-    CLUSTER_NET_PREFIX=$(echo "$CLUSTER_NETWORK" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3}')
-
-    # Escape dots for grep regex
-    ESCAPED_PREFIX=$(echo "$CLUSTER_NET_PREFIX" | sed 's/\./\\./g')
-
-    # Query virsh for VM IP on the cluster network
-    LZ_IP=$(sudo virsh domifaddr "$LZ_VM_NAME" 2>/dev/null | grep -E "${ESCAPED_PREFIX}\." | awk '{print $4}' | cut -d'/' -f1 | head -1 || true)
-fi
-
-# Output the IP (empty string if not found)
-echo "$LZ_IP"
+# Fallback: query libvirt directly on the cluster network.
+LZ_VM_NAME="${ENCLAVE_LZ_VM_NAME:-${ENCLAVE_CLUSTER_NAME}_landingzone_0}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK:-192.168.2.0/24}"
+get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK"

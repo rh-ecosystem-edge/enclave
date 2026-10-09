@@ -41,13 +41,8 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 # Source cluster environment
 load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -155,7 +150,6 @@ if [ -n "${ENCLAVE_IRONIC_KEY:-}" ]; then
 "
     done < <(printf '%s\n' "${ENCLAVE_IRONIC_KEY}")
 fi
-
 
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT

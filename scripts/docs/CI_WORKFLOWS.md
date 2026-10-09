@@ -114,11 +114,11 @@ make validate
 1. Go to Actions tab
 2. Click on the workflow run
 3. View step-by-step progress
-4. Download artifacts (logs, environment.json)
+4. Download artifacts (logs, cluster-env.sh)
 
 ### Artifacts Collected
 
-- `environment.json` - Infrastructure metadata
+- `cluster-env.sh` - Infrastructure metadata (single source of truth)
 - `vm-status.txt` - Virtual machine status
 - `network-status.txt` - Network configuration
 - `deployment.log` - Enclave Lab installation log

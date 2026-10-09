@@ -5,6 +5,30 @@ by Enclave CI e2e runs, replacing the previous dependency on
 [dev-scripts](https://github.com/openshift-metal3/dev-scripts) and
 [metal3-dev-env](https://github.com/metal3-io/metal3-dev-env).
 
+## Design principle: single source of truth
+
+`vm_infra.py` is the **single source of truth** for the test environment. It generates the
+cluster identity (name, `WORKING_DIR`), creates and owns every libvirt resource — networks,
+bridges, DNS, storage pool, volumes, disks, and all VM domains including the Landing Zone —
+and writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh` (also
+echoed to stdout).
+
+The rules that keep this design intact:
+
+- **All environment setup lives here.** New infrastructure or derived values (IPs, MACs,
+  gateways, ports, endpoints, DNS records, …) are created/computed in `vm_infra.py` and
+  emitted in `cluster-env.sh`.
+- **No out-of-band modification from other scripts.** `provision` / `install` / `deploy` /
+  `verify` / `cleanup` consume `cluster-env.sh`; they must not create or mutate libvirt
+  resources (`virsh net-update`, `virt-install`, pool/volume creation, `net-start`, …) or
+  re-derive values `vm_infra.py` already provides.
+- **Exceptions, by design:** OS-level provisioning *inside* a guest (cloud-init, on-guest
+  `nmcli`) stays in `provision_landing_zone.sh`; shared-host safety (subnet `flock`,
+  `reap`/cleanup, per-cluster namespacing) stays and must be preserved for a possible return
+  to shared baremetal/hybrid hosts.
+
+When in doubt, add it to `vm_infra.py` and emit it — don't compute or mutate it elsewhere.
+
 ## Network topology
 
 All subnets share the same third octet N (e.g. N=5 → BMC `100.64.5.0/24`,
@@ -32,7 +56,8 @@ N can be pinned manually with `ENCLAVE_SUBNET_ID` (or the third octet of
 
 {CLUSTER}-e  NAT       192.168.N.0/24  Cluster — all VMs have internet
   host:  192.168.N.1
-  DHCP with static leases: LZ → .2, master-0 → .11, master-1 → .12, …
+  DHCP with static leases: LZ → .2, master-0 → .20, master-1 → .21, …
+  (the leases reserve the exact IPs the agent installer assigns statically)
 ```
 
 ### Disconnected mode — 3 bridges
@@ -52,7 +77,20 @@ N can be pinned manually with `ENCLAVE_SUBNET_ID` (or the third octet of
 The isolated cluster bridge in disconnected mode closes a gap in the old
 dev-scripts setup where masters had unintended internet access via NAT.
 
-## VM layout
+### DNS records
+
+Cluster DNS is baked into each network's dnsmasq at create time (via
+`<dnsmasq:options>` in the network XML; see `Config.cluster_dns_addresses`), so there is
+no runtime `virsh net-update`:
+
+```text
+mirror, mirror.<base_domain>        -> Landing Zone (192.168.N.2, mirror-registry/Quay)
+api.<cluster>.<base_domain>         -> API VIP      (192.168.N.100)
+*.apps.<cluster>.<base_domain>      -> ingress VIP  (192.168.N.101, true wildcard)
+```
+
+These are added to the **cluster** network (masters resolve via its dnsmasq) and, in
+disconnected mode, also to the **uplink** network (the LZ resolves via that one).
 
 ### NIC assignments
 
@@ -80,11 +118,13 @@ libvirt API. Per-device `<boot order='N'/>` attributes on disk elements must NOT
 be used — libvirt rejects mixing the two styles and sushy-tools' Redfish boot
 order change fails with a 500 error.
 
-The Landing Zone VM is **not** started by vm_infra.py. `provision_landing_zone.sh`
-tears down the placeholder LZ domain created by vm_infra.py and recreates it with
-`virt-install` using a RHEL cloud image and a cloud-init ISO. In disconnected mode
-`provision_landing_zone.sh` attaches the uplink NIC (`{cluster}-u`) and reads the
-uplink MAC from `macs.json` so the static DHCP lease applies.
+vm_infra.py defines the **real** Landing Zone domain (NICs, MACs, memory, vcpu,
+disk size, pool volume, and a cloud-init cdrom pointing at `ENCLAVE_LZ_CLOUD_INIT_ISO`)
+but does not start it. `provision_landing_zone.sh` does the OS provisioning only: it
+builds the cloud-init ISO at that path, writes the cloud image into the existing LZ
+volume (and resizes it), then `virsh start`s the already-defined domain — it never
+undefines/recreates it or manages the pool. The uplink NIC (`{cluster}-u`) is part of
+the domain definition in disconnected mode.
 
 ## Parallelism and isolation
 
@@ -97,33 +137,43 @@ The one shared resource is the subnet third octet N. `create` serializes subnet
 selection and network creation across all concurrent runs on the host with an
 exclusive `flock` on `/run/lock/enclave-subnet.lock` (see *Network topology*).
 
-## State files
+## State file
 
-`create` writes two files to `$WORKING_DIR`:
+`create` writes a single file, `$WORKING_DIR/cluster-env.sh`, and also echoes its
+contents to stdout (all logging goes to stderr). It is the single source of truth
+consumed by every downstream script via `load_cluster_env` in `scripts/lib/config.sh`.
 
-### `cluster-env.sh`
+Because `create` also *generates* the cluster name (when `ENCLAVE_CLUSTER_NAME` is
+unset) and derives `WORKING_DIR`, the stdout echo lets the caller capture the chosen
+identity before it can locate the file on disk — `eval "$(sudo -E python3
+vm_infra.py create)"` locally, or append it to `$GITHUB_ENV` in CI.
 
-Sourced by `scripts/lib/config.sh` in all downstream scripts:
+`cluster-env.sh` carries the full infrastructure contract: cluster name and base
+domain, deployment mode, `WORKING_DIR`, pool path, bridges, CIDRs, gateways, the BMC
+endpoint/port, service IPs (API/ingress VIPs, rendezvous), and the Landing Zone and
+enumerated master names, IPs and MACs. For example:
 
 ```bash
-export ENCLAVE_CLUSTER_NAME="..."
-export ENCLAVE_BMC_BRIDGE="{cluster}-p"
-export ENCLAVE_CLUSTER_BRIDGE="{cluster}-e"
+export ENCLAVE_CLUSTER_NAME="eci-ab12cd34"
+export ENCLAVE_BASE_DOMAIN="eci-ab12cd34.lab"
+export WORKING_DIR="/opt/clusters/eci-ab12cd34"
 export ENCLAVE_BMC_NETWORK="100.64.N.0/24"
 export ENCLAVE_CLUSTER_NETWORK="192.168.N.0/24"
-export ENCLAVE_LZ_NETWORK="172.16.N.0/24"   # empty string in connected mode
-export ENCLAVE_DEPLOYMENT_MODE="connected|disconnected"
+export ENCLAVE_BMC_ENDPOINT="https://100.64.N.1:800N"
+export ENCLAVE_LZ_CLUSTER_IP="192.168.N.2"
+export ENCLAVE_MASTER_COUNT="3"
+export ENCLAVE_MASTER_0_CLUSTER_MAC="52:54:00:…"
+export ENCLAVE_MASTER_0_CLUSTER_IP="192.168.N.20"
+# … and so on
 ```
 
-`scripts/lib/config.sh` also exports compat aliases (`CLUSTER_NAME`,
-`PROVISIONING_NETWORK`, `EXTERNAL_SUBNET_V4`, etc.) so scripts that used
-dev-scripts variable names continue to work unchanged.
+### MAC addresses
 
-### `macs.json`
-
-MAC address map keyed by VM name. Persisted so that `destroy` + `create` reuses
-the same MACs, preserving static DHCP leases and any Ironic node configuration
-that references them.
+MACs are **deterministic** — `52:54:00:` + the first three bytes of
+`sha256(cluster_name:vm:nic)` — so `destroy` + `create` of the same cluster always
+reproduces the same addresses with no persisted file, and distinct cluster names
+keep addresses unique across concurrent clusters on a shared host. (This replaces the
+old random-MACs-plus-`macs.json` scheme.)
 
 ## Python tool
 
@@ -131,8 +181,12 @@ that references them.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ENCLAVE_CLUSTER_NAME` | yes | — | Unique cluster identifier (e.g. `eci-abc123`) |
-| `WORKING_DIR` | yes | — | Per-cluster working directory |
+| `ENCLAVE_CLUSTER_NAME` | no (create) / yes (destroy) | generated | Cluster identifier. On `create`, generated as `<prefix>-<8hex>` (checked unique against libvirt) when unset; `destroy` requires it. |
+| `ENCLAVE_CLUSTER_PREFIX` | no | `eci` | Prefix for a generated name; must be one of `eci`/`ecd`/`nc`/`nd` (the set `reap` recognizes) |
+| `ENCLAVE_CLUSTER_SEED` | no | time+pid | Seed for the generated-name hash (CI passes the run id for traceability) |
+| `WORKING_DIR` | no | derived | Per-cluster working directory; derived as `$BASE_WORKING_DIR/<name>` when unset |
+| `BASE_WORKING_DIR` | no | — | Base dir used to derive `WORKING_DIR` when it is not set |
+| `ENCLAVE_BASE_DOMAIN` | no | `<cluster>.lab` | Cluster base domain |
 | `ENCLAVE_SUBNET_ID` | no | auto | Pin the shared third octet N (2–254); auto-selected from libvirt when unset |
 | `ENCLAVE_BMC_NETWORK` | no | derived | Alternative way to pin N via its third octet (e.g. `100.64.5.0/24`); ignored if `ENCLAVE_SUBNET_ID` is set |
 | `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
@@ -142,9 +196,9 @@ that references them.
 | `MASTER_VCPU` | no | 12 / 16 (odf) | Master vCPU count |
 | `MASTER_DISK` | no | 120 | Master primary disk in GiB |
 | `MASTER_EXTRA_DISK` | derived | 1200 (disconnected+lvms) / 60 | Master extra disk in GiB; not directly overridable — derived from `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE` |
-| `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB. The running LZ is sized by `provision_landing_zone.sh` (it destroys the placeholder domain vm_infra.py defines and recreates it via `virt-install`); the odf default gives Ceph-on-LZ headroom |
-| `LANDINGZONE_DISK` | no | 60 / 500 (odf) | Landing Zone disk in GiB for the vm_infra.py **placeholder only**. The running LZ disk is sized by `provision_landing_zone.sh` (which recreates the LZ): 600 (connected) / 1000 (disconnected) / 1500 (disconnected + odf, for the Ceph loopback OSD files) |
-| `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count. The running LZ is sized by `provision_landing_zone.sh` (`--vcpus "${LANDINGZONE_VCPU:-16}"`); the 4 vCPU in `vm_infra.py` only applies to the throwaway placeholder domain |
+| `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB; the odf default gives Ceph-on-LZ headroom |
+| `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (odf) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; odf additionally needs ~900 GB for the Ceph loopback OSD files |
+| `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count |
 
 ### XML templates
 

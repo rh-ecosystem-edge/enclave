@@ -3,12 +3,11 @@
 # Overrides deploy targets to use SSH-based scripts for remote Landing Zone execution
 # Adds CI-only infrastructure, validation, and image build targets
 
-# CI Configuration (set before include so these defaults take precedence)
-WORKING_DIR ?= /opt/clusters
-
-# Cluster name for parallel execution isolation (can be overridden)
-ENCLAVE_CLUSTER_NAME ?= enclave-test
-ENVIRONMENT_JSON := $(WORKING_DIR)/environment-$(ENCLAVE_CLUSTER_NAME).json
+# Cluster identity (ENCLAVE_CLUSTER_NAME, WORKING_DIR) is owned by vm_infra.py: it
+# generates the name when ENCLAVE_CLUSTER_NAME is unset and derives WORKING_DIR from
+# BASE_WORKING_DIR. Both are threaded to later steps via $GITHUB_ENV (CI) or the
+# temp env file in ci-flow (local). They may still be set in the environment to pin
+# a specific cluster.
 
 # CI Image
 CI_IMAGE_NAME ?= quay.io/edge-infrastructure/enclave-lab-ci
@@ -28,7 +27,7 @@ include Makefile
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph verify-ceph \
         verify clean verify-cluster osac-smoke verify-cleanup \
-        generate-cluster-name setup-working-dir collect-step-logs \
+        collect-step-logs \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
 	generate-ironic-cert clean-infra reap-stale-vms start-stopped-runners \
@@ -87,8 +86,6 @@ help:
 	@echo "  make -f Makefile.ci clean-infra                      - Tear down infrastructure"
 	@echo "  make -f Makefile.ci reap-stale-vms                   - Reap leaked CI VMs older than REAP_AGE_HOURS (default 12h)"
 	@echo "  make -f Makefile.ci start-stopped-runners            - Start stopped runner services on this host"
-	@echo "  make -f Makefile.ci generate-cluster-name            - Generate unique cluster name"
-	@echo "  make -f Makefile.ci setup-working-dir                - Setup cluster-specific working directory"
 	@echo "  make -f Makefile.ci collect-step-logs                - Collect logs from cluster"
 	@echo "  make -f Makefile.ci preflight-checks                 - Run pre-flight environment checks"
 	@echo "  make -f Makefile.ci collect-artifacts-basic          - Collect basic artifacts"
@@ -356,53 +353,11 @@ start-stopped-runners:
 
 # --- CI Infrastructure targets ---
 
-# Create test infrastructure
+# Create test infrastructure. vm_infra.py owns cluster identity (it generates the
+# cluster name when ENCLAVE_CLUSTER_NAME is unset and derives WORKING_DIR from
+# BASE_WORKING_DIR); create_environment.sh captures that and appends it to $GITHUB_ENV.
 environment:
-	@echo "=========================================="
-	@echo "Creating Enclave test environment"
-	@echo "=========================================="
-	@echo ""
-	@echo "Step 1: Validating prerequisites..."
-	@./scripts/setup/validate_prerequisites.sh
-	@echo ""
-	@echo "Step 2: Writing pull secret..."
-	@mkdir -p "$(WORKING_DIR)" && \
-	 if [ -n "$${PULL_SECRET:-}" ]; then \
-	   printf '%s' "$$PULL_SECRET" > "$(WORKING_DIR)/pull_secret.json"; \
-	   chmod 600 "$(WORKING_DIR)/pull_secret.json"; \
-	   echo "Pull secret written to $(WORKING_DIR)/pull_secret.json"; \
-	 else \
-	   echo "PULL_SECRET not set — skipping (must exist at $(WORKING_DIR)/pull_secret.json)"; \
-	 fi
-	@echo ""
-	@echo "Step 3: Creating infrastructure (VMs, networks)..."
-	@sudo -E python3 ./scripts/infrastructure/vm_infra.py create
-	@echo ""
-	@echo "Step 4: Configuring GPU passthrough (if applicable)..."
-	@./scripts/infrastructure/configure_gpu_passthrough.sh || true
-	@echo ""
-	@echo "Step 5: Verifying networks..."
-	@./scripts/infrastructure/verify_networks.sh
-	@echo ""
-	@if [ "$${ENCLAVE_IRONIC_HTTPS}" = "true" ]; then \
-		echo "Step 6: Generating Ironic ISO server CA..."; \
-		./scripts/deployment/generate_ironic_ca.sh; \
-	else \
-		echo "Step 6: Skipping Ironic ISO server CA (HTTPS not configured)"; \
-	fi
-	@echo ""
-	@echo "Step 7: Starting BMC emulation (sushy-tools)..."
-	@./scripts/infrastructure/start_sushy_tools.sh
-	@echo ""
-	@echo "Step 8: Generating environment metadata..."
-	@./scripts/infrastructure/generate_environment_json.sh
-	@echo ""
-	@echo "Step 9: Verifying infrastructure..."
-	@$(MAKE) -f Makefile.ci verify
-	@echo ""
-	@echo "=========================================="
-	@echo "Environment creation complete!"
-	@echo "=========================================="
+	@./scripts/infrastructure/create_environment.sh
 
 # Provision Landing Zone VM with CentOS Stream 10
 provision-landing-zone:
@@ -495,12 +450,6 @@ verify-cleanup:
 	@./scripts/cleanup/verify_cleanup.sh
 
 # Helper targets
-generate-cluster-name:
-	@./scripts/setup/generate_cluster_name.sh
-
-setup-working-dir:
-	@./scripts/setup/setup_working_dir.sh
-
 collect-step-logs:
 	@./scripts/verification/collect_step_logs.sh step-logs
 
@@ -518,19 +467,28 @@ collect-artifacts-full:
 	@./scripts/verification/collect_ci_artifacts.sh full artifacts
 
 # Full CI flow for local testing
+# Full flow for local runs. `environment` runs vm_infra.py, which generates the cluster
+# name (when ENCLAVE_CLUSTER_NAME is unset) and derives WORKING_DIR. We point GITHUB_ENV
+# at a temp file so create_environment.sh records the chosen identity there, then source
+# it and export so every subsequent sub-make inherits ENCLAVE_CLUSTER_NAME + WORKING_DIR.
 ci-flow-connected:
 	@echo "=========================================="
 	@echo "Running full CI flow (connected mode)"
 	@echo "=========================================="
-	@echo ""
-	@$(MAKE) -f Makefile.ci preflight-checks
-	@$(MAKE) -f Makefile.ci setup-working-dir
-	@$(MAKE) -f Makefile.ci environment
-	@$(MAKE) -f Makefile.ci provision-landing-zone
-	@$(MAKE) -f Makefile.ci install-enclave
-	@$(MAKE) -f Makefile.ci setup-ceph
-	@$(MAKE) -f Makefile.ci deploy-cluster
-	@$(MAKE) -f Makefile.ci verify-cluster
+	@set -e; \
+	 ident_env="$$(mktemp)"; \
+	 trap 'rc=$$?; if [ "$$rc" -eq 0 ]; then rm -f "$$ident_env"; else echo "ci-flow failed (exit $$rc); cluster identity kept for cleanup at $$ident_env:" >&2; cat "$$ident_env" >&2; fi; exit "$$rc"' EXIT; \
+	 $(MAKE) -f Makefile.ci preflight-checks; \
+	 GITHUB_ENV="$$ident_env" $(MAKE) -f Makefile.ci environment; \
+	 ENCLAVE_CLUSTER_NAME="$$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$$ident_env")"; \
+	 WORKING_DIR="$$(sed -n 's/^WORKING_DIR=//p' "$$ident_env")"; \
+	 export ENCLAVE_CLUSTER_NAME WORKING_DIR; \
+	 echo "Using cluster: $$ENCLAVE_CLUSTER_NAME ($$WORKING_DIR)"; \
+	 $(MAKE) -f Makefile.ci provision-landing-zone; \
+	 $(MAKE) -f Makefile.ci install-enclave; \
+	 $(MAKE) -f Makefile.ci setup-ceph; \
+	 $(MAKE) -f Makefile.ci deploy-cluster; \
+	 $(MAKE) -f Makefile.ci verify-cluster
 	@echo ""
 	@echo "=========================================="
 	@echo "CI flow complete!"

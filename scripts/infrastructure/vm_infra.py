@@ -6,7 +6,14 @@ Creates/destroys libvirt networks and KVM VMs for e2e test runs.
 All configuration is read from environment variables; no pip dependencies
 beyond the system-provided libvirt and jinja2 packages.
 
-See scripts/docs/vm-infra.md for details.
+This is the single source of truth for the test environment: it generates the cluster
+identity (name, WORKING_DIR), creates and owns every libvirt resource (networks, DNS,
+pool, volumes, domains including the Landing Zone), and emits everything downstream needs
+to $WORKING_DIR/cluster-env.sh (also echoed to stdout). Downstream scripts must consume
+that file and must NOT create or mutate libvirt resources out-of-band. Add new
+infrastructure/derived values here and emit them — do not compute them in consumers.
+
+See scripts/docs/vm-infra.md for details (incl. the design principle).
 
 This script currently needs to be run in a RHEL9 Hypervisor with Python 3.9.
 
@@ -20,12 +27,12 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import json
+import hashlib
 import logging
 import math
 import os
 import re
-import secrets
+import shlex
 import subprocess
 import sys
 import time
@@ -49,6 +56,30 @@ SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
 MIN_SUBNET = 2
 MAX_SUBNET = 254
 
+# Cluster-name prefixes. `eci`/`ecd` (e2e connected/disconnected) and `nc`/`nd`
+# (nightly) are the sanctioned set; CI selects the right one via
+# ENCLAVE_CLUSTER_PREFIX, defaulting to `eci`. This is the single source of the
+# prefix allow-list: both name generation and the reap regexes derive from it, so
+# a cluster can never be created with a prefix reap would fail to recognize (which
+# would leak it forever on a shared host).
+CLUSTER_PREFIXES = ("eci", "ecd", "nc", "nd")
+DEFAULT_CLUSTER_PREFIX = "eci"
+_PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
+
+# ENCLAVE_BASE_DOMAIN validation. Downstream builds hostnames like
+# <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
+# cap the configured zone well below that to leave room for the generated prefixes.
+_MAX_BASE_DOMAIN_LEN = 200
+# A single RFC 1035 label: 1–63 chars, alphanumeric, internal hyphens only.
+_DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _is_valid_base_domain(domain: str) -> bool:
+    """True if domain is a syntactically valid dotted DNS name within our length cap."""
+    if not domain or len(domain) > _MAX_BASE_DOMAIN_LEN:
+        return False
+    return all(_DNS_LABEL_RE.fullmatch(label) for label in domain.split("."))
+
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -70,24 +101,32 @@ class Config:
     cluster_name: str
     deployment_mode: str
     num_masters: int
-    working_dir: Path
     master: VMSpec
     lz: VMSpec
     storage_plugin: str
+    # Working dir. None until finalized: on `create` with a generated name it is
+    # derived from base_working_dir once the name is known (see finalize_working_dir).
+    working_dir: Optional[Path] = None
+    # Base dir for deriving working_dir as {base}/{cluster_name}.
+    base_working_dir: Optional[Path] = None
+    # Cluster-name prefix (from the CLUSTER_PREFIXES allow-list) used when
+    # generating a name; ignored when a name is supplied explicitly.
+    prefix: str = DEFAULT_CLUSTER_PREFIX
+    # Cluster base domain override (ENCLAVE_BASE_DOMAIN); empty means derive
+    # {cluster_name}.lab (see the base_domain property).
+    base_domain_override: str = ""
     # Third octet shared by all per-cluster subnets. None until selected at
     # create time (or supplied via ENCLAVE_SUBNET_ID / ENCLAVE_BMC_NETWORK).
     subnet_id: Optional[int] = None
 
     @classmethod
-    def from_env(cls) -> "Config":
-        """Build Config from environment variables; exits with an error message on any missing required var."""
+    def from_env(cls, *, generate_name: bool = False) -> "Config":
+        """Build Config from environment variables; exits with an error on any missing required var.
 
-        def req(name: str) -> str:
-            """Return env var value or exit with an error if unset/empty."""
-            v = os.environ.get(name, "")
-            if not v:
-                sys.exit(f"ERROR: {name} environment variable is required")
-            return v
+        generate_name=True (create) makes ENCLAVE_CLUSTER_NAME optional — when unset,
+        create() generates a unique name under the subnet lock. generate_name=False
+        (destroy) requires the name.
+        """
 
         def optint(name: str, default: int) -> int:
             """Return env var as int, falling back to default if unset."""
@@ -148,7 +187,10 @@ class Config:
             default_master_mem = 49152
             default_master_vcpu = 16
             default_master_extra = 60
-            default_lz_disk = 500
+            # ODF additionally keeps a second copy of the mirror on the LZ: oc-mirror's
+            # local container cache plus the Ceph loopback OSD files (~900 GB raw, 3x
+            # OSD_SIZE_GB) that back RadosGW/RBD, on top of the mirror/OS/buffer.
+            default_lz_disk = 1500
             # ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the
             # LZ alongside Quay and oc-mirror; 8 GB (and even 16 GB) is not enough
             # and the guest OOM-kills Quay during the operators phase, so give ODF
@@ -158,24 +200,82 @@ class Config:
             default_master_mem = 32768
             default_master_vcpu = 12
             default_master_extra = 1200 if deployment_mode == "disconnected" else 60
-            default_lz_disk = 60
+            # Disconnected mirrors the full release + OLM catalogs locally, so the LZ
+            # needs far more than connected (Quay ~130 GB, oc-mirror, ISOs, OS, buffer).
+            default_lz_disk = 1000 if deployment_mode == "disconnected" else 600
             # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
             default_lz_mem = 16384
 
-        cluster_name = validate(
-            "ENCLAVE_CLUSTER_NAME",
-            req("ENCLAVE_CLUSTER_NAME"),
-            r"[a-z][a-z0-9-]{0,62}",
-        )
-        working_dir_str = req("WORKING_DIR")
-        if any(c in working_dir_str for c in "<>&\"'"):
-            sys.exit(f"ERROR: WORKING_DIR contains XML-unsafe characters: {working_dir_str!r}")
+        # Cluster name: required for destroy; optional for create, where it is
+        # generated under the subnet lock when absent. An explicitly supplied name
+        # is always honored (re-create / destroy of a known cluster).
+        raw_name = os.environ.get("ENCLAVE_CLUSTER_NAME", "")
+        if raw_name:
+            cluster_name = validate("ENCLAVE_CLUSTER_NAME", raw_name, r"[a-z][a-z0-9-]{0,62}")
+        elif generate_name:
+            cluster_name = ""  # filled in by create() under the lock
+        else:
+            sys.exit("ERROR: ENCLAVE_CLUSTER_NAME environment variable is required")
+
+        prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
+        if prefix not in CLUSTER_PREFIXES:
+            sys.exit(
+                f"ERROR: ENCLAVE_CLUSTER_PREFIX={prefix!r} must be one of "
+                f"{', '.join(CLUSTER_PREFIXES)}"
+            )
+
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
+
+        def check_xml_safe(label: str, value: str) -> None:
+            """Reject path values that would break the libvirt XML they are embedded in."""
+            if any(c in value for c in "<>&\"'"):
+                sys.exit(f"ERROR: {label} contains XML-unsafe characters: {value!r}")
+
+        raw_wd = os.environ.get("WORKING_DIR", "")
+        raw_base = os.environ.get("BASE_WORKING_DIR", "")
+        check_xml_safe("WORKING_DIR", raw_wd)
+        check_xml_safe("BASE_WORKING_DIR", raw_base)
+        base_working_dir = Path(raw_base) if raw_base else None
+
+        # Resolve working_dir. A generated name must derive its own directory from
+        # BASE_WORKING_DIR so two generated clusters can never share one dir; pinning
+        # WORKING_DIR while the name is generated is ambiguous and would allow exactly
+        # that (distinct names, same dir — colliding pools and cluster-env.sh), so reject
+        # it. Deferral (None) happens only for the generated-name case.
+        working_dir: Optional[Path]
+        if not cluster_name:
+            if raw_wd:
+                sys.exit(
+                    "ERROR: set ENCLAVE_CLUSTER_NAME when WORKING_DIR is pinned; a "
+                    "generated name derives its own directory from BASE_WORKING_DIR"
+                )
+            if base_working_dir is None:
+                sys.exit(
+                    "ERROR: set BASE_WORKING_DIR so a generated cluster name gets its "
+                    "own working directory"
+                )
+            working_dir = None  # finalize_working_dir() derives it after name generation
+        elif raw_wd:
+            working_dir = Path(raw_wd)
+        elif base_working_dir is not None:
+            working_dir = base_working_dir / cluster_name
+        else:
+            sys.exit(
+                "ERROR: set WORKING_DIR, or BASE_WORKING_DIR together with "
+                "ENCLAVE_CLUSTER_NAME, to locate the working directory"
+            )
 
         return cls(
             cluster_name=cluster_name,
             deployment_mode=deployment_mode,
             num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
-            working_dir=Path(working_dir_str),
             master=VMSpec(
                 memory_mb=optint("MASTER_MEMORY", default_master_mem),
                 vcpu=optint("MASTER_VCPU", default_master_vcpu),
@@ -184,11 +284,15 @@ class Config:
             ),
             lz=VMSpec(
                 memory_mb=optint("LANDINGZONE_MEMORY", default_lz_mem),
-                vcpu=optint("LANDINGZONE_VCPU", 4),
+                vcpu=optint("LANDINGZONE_VCPU", 16),
                 disk_gb=optint("LANDINGZONE_DISK", default_lz_disk),
                 extra_disk_gb=0,
             ),
             storage_plugin=storage_plugin,
+            working_dir=working_dir,
+            base_working_dir=base_working_dir,
+            prefix=prefix,
+            base_domain_override=base_domain,
             subnet_id=subnet_override(),
         )
 
@@ -198,6 +302,21 @@ class Config:
         if self.subnet_id is None:
             raise RuntimeError("subnet_id has not been selected yet")
         return self.subnet_id
+
+    @property
+    def _wd(self) -> Path:
+        """Finalized working_dir; raises if accessed before it is resolved."""
+        if self.working_dir is None:
+            raise RuntimeError("working_dir has not been finalized yet")
+        return self.working_dir
+
+    def finalize_working_dir(self) -> None:
+        """Derive working_dir from base_working_dir + cluster_name if not already set."""
+        if self.working_dir is not None:
+            return
+        if self.base_working_dir is None:
+            sys.exit("ERROR: set WORKING_DIR or BASE_WORKING_DIR to locate the working directory")
+        self.working_dir = self.base_working_dir / self.cluster_name
 
     @property
     def bmc_network(self) -> str:
@@ -245,19 +364,97 @@ class Config:
         return f"172.16.{self._subnet}.1" if self.deployment_mode == "disconnected" else None
 
     @property
-    def pool_dir(self) -> Path:
-        """Libvirt dir-type storage pool backing directory."""
-        return self.working_dir / "pool"
+    def cluster_prefix_len(self) -> int:
+        """Network prefix length for the cluster subnet (a /24)."""
+        return 24
 
     @property
-    def macs_file(self) -> Path:
-        """Persists MAC addresses so destroy+create cycles reuse the same MACs."""
-        return self.working_dir / "macs.json"
+    def bmc_port(self) -> int:
+        """sushy-tools BMC port for this cluster (8000 + N); matches calculate_bmc_port in network.sh."""
+        return 8000 + self._subnet
+
+    @property
+    def bmc_endpoint(self) -> str:
+        """Redfish/sushy-tools base endpoint served on the BMC bridge."""
+        return f"https://{self.bmc_gateway}:{self.bmc_port}"
+
+    @property
+    def lz_bmc_ip(self) -> str:
+        """Landing Zone static IP on the BMC bridge (100.64.N.2; set via nmcli after first boot)."""
+        return f"100.64.{self._subnet}.2"
+
+    @property
+    def lz_cluster_ip(self) -> str:
+        """Landing Zone static-lease IP on the cluster bridge (192.168.N.2)."""
+        return f"192.168.{self._subnet}.2"
+
+    def master_cluster_ip(self, i: int) -> str:
+        """Master i static IP on the cluster bridge (192.168.N.{20+i}).
+
+        This is the address the agent installer assigns via static NMState
+        networkConfig (see templates/agent-config.yaml.j2); the matching static
+        DHCP lease reserves it so no dynamic client can claim it.
+        """
+        return f"192.168.{self._subnet}.{20 + i}"
+
+    @property
+    def rendezvous_ip(self) -> str:
+        """Agent-install rendezvous node IP (master 0)."""
+        return self.master_cluster_ip(0)
+
+    @property
+    def api_vip(self) -> str:
+        """OpenShift API virtual IP (192.168.N.100; floats on control plane, outside the DHCP range)."""
+        return f"192.168.{self._subnet}.100"
+
+    @property
+    def ingress_vip(self) -> str:
+        """OpenShift ingress virtual IP (192.168.N.101; floats on control plane, outside the DHCP range)."""
+        return f"192.168.{self._subnet}.101"
+
+    @property
+    def base_domain(self) -> str:
+        """Cluster base domain: ENCLAVE_BASE_DOMAIN override, else {cluster_name}.lab."""
+        return self.base_domain_override or f"{self.cluster_name}.lab"
+
+    @property
+    def cluster_dns_addresses(self) -> List[str]:
+        """dnsmasq `address=` options mapping cluster hostnames to their IPs, baked into the
+        libvirt network's dnsmasq. Masters resolve via the cluster network's resolver; the LZ
+        resolves via the uplink's (disconnected) — so both networks get these records.
+
+        - mirror (short + FQDN) -> the LZ (where mirror-registry/Quay runs)
+        - api.<cluster>.<base> -> the OpenShift API VIP
+        - *.apps.<cluster>.<base> -> the ingress VIP (true wildcard; covers every route)
+        """
+        b = self.base_domain
+        c = self.cluster_name
+        return [
+            f"address=/mirror/{self.lz_cluster_ip}",
+            f"address=/mirror.{b}/{self.lz_cluster_ip}",
+            f"address=/api.{c}.{b}/{self.api_vip}",
+            f"address=/apps.{c}.{b}/{self.ingress_vip}",
+        ]
+
+    @property
+    def pool_dir(self) -> Path:
+        """Libvirt dir-type storage pool backing directory."""
+        return self._wd / "pool"
+
+    @property
+    def lz_disk_path(self) -> Path:
+        """Landing Zone root qcow2 volume (vm_infra.py creates it; provision populates it)."""
+        return self.pool_dir / f"{self.lz_vm_name}.qcow2"
+
+    @property
+    def lz_cloud_init_iso(self) -> Path:
+        """Landing Zone cloud-init ISO path referenced by the LZ domain's cdrom; written by provision."""
+        return self.pool_dir / f"{self.lz_vm_name}-cloud-init.iso"
 
     @property
     def cluster_env_file(self) -> Path:
         """Shell env file written on create and sourced by scripts/lib/config.sh."""
-        return self.working_dir / "cluster-env.sh"
+        return self._wd / "cluster-env.sh"
 
     @property
     def lz_vm_name(self) -> str:
@@ -280,67 +477,47 @@ class Config:
 # ─── MAC addresses ────────────────────────────────────────────────────────────
 
 
-def _mac() -> str:
-    """Generate a random QEMU-standard MAC address in the 52:54:00:* range."""
-    b = secrets.token_bytes(3)
+def _mac(cluster_name: str, vm: str, nic: str, salt: int = 0) -> str:
+    """Deterministic QEMU-standard MAC (52:54:00:*) derived from cluster/vm/nic.
+
+    Deterministic so destroy+create reuse the same MAC without persisting a file:
+    the same (cluster, vm, nic) always yields the same address, and the cluster
+    name (unique per run) keeps addresses distinct across concurrent clusters on a
+    shared host. `salt` lets the caller perturb the hash to resolve the rare
+    within-cluster 24-bit collision.
+    """
+    seed = f"{cluster_name}:{vm}:{nic}:{salt}".encode()
+    b = hashlib.sha256(seed).digest()
     return f"52:54:00:{b[0]:02x}:{b[1]:02x}:{b[2]:02x}"
 
 
 def generate_macs(cfg: Config) -> Dict[str, Dict[str, str]]:
-    """Generate a fresh per-NIC MAC map for all VMs in the cluster."""
-    macs: Dict[str, Dict[str, str]] = {
-        cfg.lz_vm_name: {"bmc": _mac(), "cluster": _mac()},
-    }
+    """Deterministic per-NIC MAC map for all VMs; stable across destroy+create.
+
+    Collisions (two NICs hashing to the same 24-bit tail) are resolved by
+    re-salting so every MAC in the cluster is unique.
+    """
+    seen: set = set()
+
+    def assign(vm: str, nic: str) -> str:
+        salt = 0
+        mac = _mac(cfg.cluster_name, vm, nic, salt)
+        while mac in seen:
+            salt += 1
+            mac = _mac(cfg.cluster_name, vm, nic, salt)
+        seen.add(mac)
+        return mac
+
+    lz_nics = ["bmc", "cluster"]
     if cfg.deployment_mode == "disconnected":
-        macs[cfg.lz_vm_name]["uplink"] = _mac()
-    for i in range(cfg.num_masters):
-        macs[cfg.master_vm_name(i)] = {"bmc": _mac(), "cluster": _mac()}
-    return macs
-
-
-def load_or_generate_macs(cfg: Config) -> Dict[str, Dict[str, str]]:
-    """Load persisted MACs so BMC/DHCP addressing stays stable across destroy+create cycles."""
-    if not cfg.macs_file.exists():
-        LOG.info("Generating new MAC addresses")
-        return generate_macs(cfg)
-
-    LOG.info("Loading existing MACs from %s", cfg.macs_file)
-    with open(cfg.macs_file) as f:
-        macs: Dict[str, Dict[str, str]] = json.load(f)
-
-    _MAC_RE = re.compile(r"^([0-9a-f]{2}:){5}[0-9a-f]{2}$")
-    for vm, nics in macs.items():
-        for nic, mac in nics.items():
-            if not _MAC_RE.fullmatch(mac):
-                sys.exit(f"ERROR: {cfg.macs_file}: {vm}/{nic} MAC {mac!r} is not a valid lowercase MAC address")
-
-    # Patch in MACs for any VMs missing from the persisted map (e.g. num_masters increased).
-    added = []
-    if cfg.lz_vm_name not in macs:
-        macs[cfg.lz_vm_name] = {"bmc": _mac(), "cluster": _mac()}
-        if cfg.deployment_mode == "disconnected":
-            macs[cfg.lz_vm_name]["uplink"] = _mac()
-        added.append(cfg.lz_vm_name)
-    elif cfg.deployment_mode == "disconnected" and "uplink" not in macs[cfg.lz_vm_name]:
-        macs[cfg.lz_vm_name]["uplink"] = _mac()
-        added.append(f"{cfg.lz_vm_name}(uplink)")
+        lz_nics.append("uplink")
+    macs: Dict[str, Dict[str, str]] = {
+        cfg.lz_vm_name: {nic: assign(cfg.lz_vm_name, nic) for nic in lz_nics},
+    }
     for i in range(cfg.num_masters):
         name = cfg.master_vm_name(i)
-        if name not in macs:
-            macs[name] = {"bmc": _mac(), "cluster": _mac()}
-            added.append(name)
-    if added:
-        LOG.info("Generated MACs for new VMs: %s", ", ".join(added))
+        macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
     return macs
-
-
-def save_macs(cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
-    """Persist the MAC map to disk so the next create reuses the same addresses."""
-    cfg.working_dir.mkdir(parents=True, exist_ok=True)
-    with open(cfg.macs_file, "w") as f:
-        json.dump(macs, f, indent=2)
-        f.write("\n")
-    LOG.info("Saved MACs to %s", cfg.macs_file)
 
 
 # ─── Jinja2 rendering ─────────────────────────────────────────────────────────
@@ -556,6 +733,43 @@ def _resolve_subnet(conn: libvirt.virConnect, cfg: Config) -> int:
     sys.exit(f"ERROR: no free subnet in [{MIN_SUBNET}, {MAX_SUBNET}] (all in use)")
 
 
+# ─── Cluster-name generation ───────────────────────────────────────────────────
+
+
+def _name_in_use(conn: libvirt.virConnect, name: str) -> bool:
+    """True if any libvirt domain, network, or storage pool already belongs to this cluster name."""
+    if any(dom.name().startswith(name + "_") for dom in conn.listAllDomains()):
+        return True
+    if any(net.name().startswith(name + "-") for net in conn.listAllNetworks()):
+        return True
+    for pool in conn.listAllStoragePools():
+        pname = pool.name()
+        if pname == name or pname.startswith(name + "-"):
+            return True
+    return False
+
+
+def _generate_cluster_name(conn: libvirt.virConnect, cfg: Config) -> str:
+    """Pick a unique <prefix>-<8hex> cluster name; caller must hold SUBNET_LOCK.
+
+    Uniqueness is checked against live libvirt state and any existing working dir, so
+    concurrent runs on a shared host can never collide. The 8-hex token matches the
+    reap naming convention (_CI_DOMAIN_RE). Seeded from ENCLAVE_CLUSTER_SEED (e.g. a CI
+    run id) for traceability, else from time+pid.
+    """
+    seed_base = os.environ.get("ENCLAVE_CLUSTER_SEED", "") or f"{time.time()}-{os.getpid()}"
+    for salt in range(100000):
+        token = hashlib.sha256(f"{seed_base}:{salt}".encode()).hexdigest()[:8]
+        name = f"{cfg.prefix}-{token}"
+        wd_taken = (
+            cfg.base_working_dir is not None
+            and (cfg.base_working_dir / name).exists()
+        )
+        if not _name_in_use(conn, name) and not wd_taken:
+            return name
+    sys.exit("ERROR: could not find a free cluster name")
+
+
 # ─── Create ───────────────────────────────────────────────────────────────────
 
 
@@ -627,21 +841,79 @@ def _define_domain(conn: libvirt.virConnect, xml: str, name: str) -> None:
     LOG.info("Defined domain: %s", name)
 
 
-def _write_cluster_env(cfg: Config) -> None:
-    """Write ENCLAVE_* exports to cluster-env.sh so scripts/lib/config.sh can source them."""
-    cfg.working_dir.mkdir(parents=True, exist_ok=True)
-    lines = [
-        f'export ENCLAVE_CLUSTER_NAME="{cfg.cluster_name}"',
-        f'export ENCLAVE_BMC_BRIDGE="{cfg.bmc_bridge}"',
-        f'export ENCLAVE_CLUSTER_BRIDGE="{cfg.cluster_bridge}"',
-        f'export ENCLAVE_BMC_NETWORK="{cfg.bmc_network}"',
-        f'export ENCLAVE_CLUSTER_NETWORK="{cfg.cluster_network}"',
-        f'export ENCLAVE_LZ_NETWORK="{cfg.lz_network or ""}"',
-        f'export ENCLAVE_DEPLOYMENT_MODE="{cfg.deployment_mode}"',
+def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str]:
+    """Build the `export` lines for cluster-env.sh — the single source of truth consumed
+    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs and MACs).
+
+    Every value is shell-quoted with shlex.quote: cluster-env.sh is sourced and `eval`'d
+    downstream, so an unexpected character in a value must never become shell code.
+    """
+    lz = macs[cfg.lz_vm_name]
+    pairs: List[tuple] = [
+        ("ENCLAVE_CLUSTER_NAME", cfg.cluster_name),
+        ("ENCLAVE_BASE_DOMAIN", cfg.base_domain),
+        ("ENCLAVE_DEPLOYMENT_MODE", cfg.deployment_mode),
+        ("WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_POOL_PATH", str(cfg.pool_dir)),
+        # Networks
+        ("ENCLAVE_BMC_BRIDGE", cfg.bmc_bridge),
+        ("ENCLAVE_CLUSTER_BRIDGE", cfg.cluster_bridge),
+        ("ENCLAVE_UPLINK_BRIDGE", cfg.uplink_bridge or ""),
+        ("ENCLAVE_BMC_NETWORK", cfg.bmc_network),
+        ("ENCLAVE_CLUSTER_NETWORK", cfg.cluster_network),
+        ("ENCLAVE_LZ_NETWORK", cfg.lz_network or ""),
+        ("ENCLAVE_BMC_GATEWAY", cfg.bmc_gateway),
+        ("ENCLAVE_CLUSTER_GATEWAY", cfg.cluster_gateway),
+        ("ENCLAVE_UPLINK_GATEWAY", cfg.uplink_gateway or ""),
+        ("ENCLAVE_CLUSTER_PREFIX_LEN", str(cfg.cluster_prefix_len)),
+        ("ENCLAVE_BMC_PORT", str(cfg.bmc_port)),
+        ("ENCLAVE_BMC_ENDPOINT", cfg.bmc_endpoint),
+        # Cluster service IPs
+        ("ENCLAVE_API_VIP", cfg.api_vip),
+        ("ENCLAVE_INGRESS_VIP", cfg.ingress_vip),
+        ("ENCLAVE_RENDEZVOUS_IP", cfg.rendezvous_ip),
+        # Landing Zone
+        ("ENCLAVE_LZ_VM_NAME", cfg.lz_vm_name),
+        ("ENCLAVE_LZ_BMC_IP", cfg.lz_bmc_ip),
+        ("ENCLAVE_LZ_CLUSTER_IP", cfg.lz_cluster_ip),
+        ("ENCLAVE_LZ_BMC_MAC", lz["bmc"]),
+        ("ENCLAVE_LZ_CLUSTER_MAC", lz["cluster"]),
+        ("ENCLAVE_LZ_UPLINK_MAC", lz.get("uplink", "")),
+        ("ENCLAVE_LZ_DISK_PATH", str(cfg.lz_disk_path)),
+        ("ENCLAVE_LZ_DISK_GB", str(cfg.lz.disk_gb)),
+        ("ENCLAVE_LZ_CLOUD_INIT_ISO", str(cfg.lz_cloud_init_iso)),
+        # Masters
+        ("ENCLAVE_MASTER_COUNT", str(cfg.num_masters)),
     ]
+    for i in range(cfg.num_masters):
+        name = cfg.master_vm_name(i)
+        m = macs[name]
+        pairs += [
+            (f"ENCLAVE_MASTER_{i}_NAME", name),
+            (f"ENCLAVE_MASTER_{i}_BMC_MAC", m["bmc"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_MAC", m["cluster"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
+        ]
+    return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
+
+
+def _write_cluster_env(cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
+    """Write cluster-env.sh (the single source of truth) and echo it to stdout.
+
+    All logging goes to stderr, so stdout carries only the env. Callers capture it to
+    bootstrap the (possibly generated) cluster name and WORKING_DIR —
+    `eval "$(sudo -E python3 vm_infra.py create)"` locally, or append to $GITHUB_ENV
+    in CI — before any later step can locate cluster-env.sh on disk.
+    """
+    cfg._wd.mkdir(parents=True, exist_ok=True)
+    content = "\n".join(_cluster_env_lines(cfg, macs)) + "\n"
     with open(cfg.cluster_env_file, "w") as f:
-        f.write("\n".join(lines) + "\n")
+        f.write(content)
     LOG.info("Wrote cluster-env.sh: %s", cfg.cluster_env_file)
+    # Echo to stdout so the caller can capture the generated name + WORKING_DIR.
+    sys.stdout.write(content)
+    sys.stdout.flush()
 
 
 def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
@@ -655,14 +927,17 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
         cfg.bmc_bridge,
     )
 
-    # Cluster network: isolated (disconnected) or NAT (connected), with DHCP and static leases
+    # Cluster network: isolated (disconnected) or NAT (connected), with DHCP and static leases.
+    # Master leases reserve the exact IPs the agent installer configures statically
+    # (192.168.N.{20+i}, see Config.master_cluster_ip) so a dynamic DHCP client can
+    # never be handed a master's address.
     cluster_hosts = [
-        {"mac": macs[cfg.lz_vm_name]["cluster"], "name": "lz", "ip": f"192.168.{n}.2"},
+        {"mac": macs[cfg.lz_vm_name]["cluster"], "name": "lz", "ip": cfg.lz_cluster_ip},
     ] + [
         {
             "mac": macs[cfg.master_vm_name(i)]["cluster"],
             "name": f"master-{i}",
-            "ip": f"192.168.{n}.{11 + i}",
+            "ip": cfg.master_cluster_ip(i),
         }
         for i in range(cfg.num_masters)
     ]
@@ -674,6 +949,8 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
         dhcp_start=f"192.168.{n}.10",
         dhcp_end=f"192.168.{n}.99",
         static_hosts=cluster_hosts,
+        # Masters resolve mirror/api/*.apps via this network's dnsmasq.
+        dnsmasq_addresses=cfg.cluster_dns_addresses,
     )
     if cfg.deployment_mode == "disconnected" and cfg.uplink_gateway:
         cluster_net_kwargs["dns_forwarder"] = cfg.uplink_gateway
@@ -698,6 +975,8 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
                 static_hosts=[
                     {"mac": macs[cfg.lz_vm_name]["uplink"], "name": "lz-uplink", "ip": f"172.16.{n}.2"},
                 ],
+                # The LZ resolves mirror/api/*.apps via the uplink dnsmasq in disconnected mode.
+                dnsmasq_addresses=cfg.cluster_dns_addresses,
             ),
             cfg.uplink_bridge,
         )
@@ -705,23 +984,32 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
 
 def create(cfg: Config) -> None:
     """Create all networks, storage, and VM definitions for the cluster; idempotent on re-run."""
-    LOG.info("=== Creating infrastructure for cluster: %s ===", cfg.cluster_name)
-
-    macs = load_or_generate_macs(cfg)
-    save_macs(cfg, macs)
-
     conn = _connect()
 
-    # Select the subnet and create the networks atomically under a host-wide lock so
-    # concurrent CI runs on the same hypervisor never race onto the same subnet. Holding
-    # the lock across select→create closes the TOCTOU gap the old separate allocator had.
+    # Generate the cluster name (if not supplied), finalize the working dir, pick the
+    # subnet, and create the networks atomically under a host-wide lock so concurrent CI
+    # runs on the same hypervisor never race onto the same name or subnet. Holding the
+    # lock across name+subnet selection → network creation closes the TOCTOU gap.
+    macs: Dict[str, Dict[str, str]] = {}
     with open(SUBNET_LOCK, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
+            if not cfg.cluster_name:
+                cfg.cluster_name = _generate_cluster_name(conn, cfg)
+                LOG.info("Generated cluster name: %s", cfg.cluster_name)
+            cfg.finalize_working_dir()
+            macs = generate_macs(cfg)
             cfg.subnet_id = _resolve_subnet(conn, cfg)
+            # Write + echo cluster-env.sh BEFORE creating any libvirt resources. The
+            # name and the whole plan are fully determined by (name, subnet), so this
+            # records the identity even if a later create step fails — the caller
+            # (and CI cleanup) can then always tear the cluster down by name.
+            _write_cluster_env(cfg, macs)
             _create_networks(conn, cfg, macs)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
+
+    LOG.info("=== Creating infrastructure for cluster: %s ===", cfg.cluster_name)
 
     _update_bridge_conf(cfg.all_bridges)
     _create_pool(conn, cfg)
@@ -746,6 +1034,10 @@ def create(cfg: Config) -> None:
             vol_name=lz_vol,
             nics=lz_nics,
             extra_disk_path="",
+            # The LZ boots its populated root disk; provision_landing_zone.sh writes
+            # the cloud-init ISO at this path and starts the (already-defined) domain.
+            cdrom_path=str(cfg.lz_cloud_init_iso),
+            boot_order=["hd", "cdrom"],
         ),
         cfg.lz_vm_name,
     )
@@ -773,11 +1065,12 @@ def create(cfg: Config) -> None:
                 vol_name=vol,
                 nics=master_nics,
                 extra_disk_path=str(extra_path),
+                # Masters boot the ABI ISO sushy-tools inserts into the empty cdrom.
+                cdrom_path="",
+                boot_order=["cdrom", "hd"],
             ),
             name,
         )
-
-    _write_cluster_env(cfg)
 
     LOG.info("=== Infrastructure created for cluster: %s ===", cfg.cluster_name)
     LOG.info("  BMC bridge:     %s  (%s)", cfg.bmc_bridge, cfg.bmc_gateway)
@@ -883,7 +1176,7 @@ def destroy(cfg: Config) -> None:
 # 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is
 # the dev-scripts VM naming convention (landingzone_0 / master_N).
 _CI_DOMAIN_RE = re.compile(
-    r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))_(?:landingzone_0|master_\d+)$"
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+)$"
 )
 # A CI storage pool: the exact cluster token, optionally followed by a numeric
 # suffix (virt-install appends "-1", "-2", … when it auto-creates a pool for the
@@ -893,7 +1186,7 @@ _CI_DOMAIN_RE = re.compile(
 # suffix is deliberately restricted to digits so an unrelated, deliberately named
 # pool (e.g. "eci-12345678-backup") is never a reap candidate.
 _CI_POOL_RE = re.compile(
-    r"^((?:eci|ecd|nc|nd)-(?:[0-9a-f]{8}|\d{8}))(?:-\d+)?$"
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))(?:-\d+)?$"
 )
 # Volumes CI drops into the shared "default" pool (agent installer + node boot
 # ISOs). They are never owned by a cluster pool, so cluster teardown never removes
@@ -953,12 +1246,12 @@ def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
 def _reap_working_dir(
     conn: libvirt.virConnect, cluster: str, base_working_dir: Optional[Path]
 ) -> Path:
-    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/clusters/<cluster>."""
+    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/<cluster>."""
     pool_path = _pool_target_path(conn, cluster)
     if pool_path is not None:
         return pool_path.parent  # _create_pool backs the pool at working_dir/pool
     if base_working_dir is not None:
-        return base_working_dir / "clusters" / cluster
+        return base_working_dir / cluster
     # No pool and no base dir: return a path whose file-removals are all no-ops;
     # the libvirt teardown (domains/networks/pool) in destroy() still runs.
     return Path("/nonexistent") / cluster
@@ -1423,14 +1716,13 @@ def main() -> None:
         reap(age_hours, Path(base_raw) if base_raw else None, dry_run=args.dry_run)
         return
 
-    cfg = Config.from_env()
-
+    # create may generate the cluster name; print_subnet and destroy require it.
     if args.print_subnet:
-        print_subnet(cfg)
+        print_subnet(Config.from_env(generate_name=False))
     elif args.command == "create":
-        create(cfg)
+        create(Config.from_env(generate_name=True))
     else:
-        destroy(cfg)
+        destroy(Config.from_env(generate_name=False))
 
 
 def _reap_age_from_env() -> float:

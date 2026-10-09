@@ -119,6 +119,31 @@ artifact map and step-by-step recipes.
   e.g. `defaults/catalogs.yaml` → `schemas/catalogs.yaml`) in the same PR
 - Run `make -f Makefile.ci validate-json-schema` before opening a PR to catch missing schema entries
 
+## CI test environment — `vm_infra.py` is the single source of truth
+
+`scripts/infrastructure/vm_infra.py` owns the entire CI test environment: the cluster
+identity (generates the name, derives `WORKING_DIR`), libvirt networks and bridges, DNS
+records, the storage pool, volumes, disks, and all VM domains (including the Landing
+Zone). It writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh`
+(also echoed to stdout), which every other script consumes via `load_cluster_env`.
+
+When changing the environment, follow this philosophy so the design holds:
+
+- **Create and own infrastructure only in `vm_infra.py`.** Networks, DNS, pools, volumes,
+  domains, MACs, IPs, gateways, endpoints — define them there and emit them in
+  `cluster-env.sh`. Do **not** create or mutate libvirt resources out-of-band from other
+  scripts (no `virsh net-update`, `virt-install`, pool/volume creation, `net-start`, etc.).
+- **Downstream scripts consume, never derive.** `provision`, `install`, `deploy`, `verify`
+  and `cleanup` read values from `cluster-env.sh`; they must not recompute gateways/ports/IPs
+  or re-scrape libvirt for something `vm_infra.py` already knows. If you need a new value,
+  add it to `vm_infra.py` and emit it — don't compute it in a consumer.
+- **Legitimate exceptions:** OS-level provisioning *inside* a guest (cloud-init, on-guest
+  `nmcli`) stays in `provision_landing_zone.sh`; shared-host safety (the subnet `flock`,
+  `reap`/cleanup, per-cluster resource namespacing) stays and must be preserved — the host
+  may be shared/persistent again (baremetal/hybrid), not only ephemeral AWS.
+
+See [scripts/docs/vm-infra.md](scripts/docs/vm-infra.md) for the full design.
+
 ## Git workflow
 
 - **NEVER push commits directly to `main`** — all changes must go through pull requests

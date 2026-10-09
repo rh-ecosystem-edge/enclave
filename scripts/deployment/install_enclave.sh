@@ -29,22 +29,12 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
-CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Try cluster-specific environment file first, fall back to legacy location
-ENVIRONMENT_JSON="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
-fi
-
-# Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-
-# Get Landing Zone IP - dynamic subnet detection
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -75,16 +65,7 @@ if ! ssh_test_connection; then
 fi
 success "Landing Zone VM is accessible"
 
-# Step 2: Check if environment.json exists
-info "Step 2: Checking environment metadata..."
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    error "Environment metadata not found: $ENVIRONMENT_JSON"
-    error "Run 'make environment' to create infrastructure first"
-    exit 1
-fi
-success "Environment metadata found"
-
-# Step 3: Copy Enclave Lab to Landing Zone
+# Step 2: Copy Enclave Lab to Landing Zone
 info "Step 3: Copying Enclave Lab repository to Landing Zone..."
 
 # Create directory on Landing Zone
@@ -128,88 +109,9 @@ scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_D
 
 success "Configuration generated and copied to Landing Zone"
 
-# Step 5.5: Configure DNS resolution for cluster endpoints via libvirt dnsmasq
-info "Step 5.5: Configuring DNS resolution..."
-
-# Extract values from generated config/global.yaml
-BASE_DOMAIN=$(grep '^baseDomain:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-CLUSTER_CFG_NAME=$(grep '^clusterName:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-API_VIP=$(grep '^apiVIP:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-INGRESS_VIP=$(grep '^ingressVIP:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-
-# Validate required values are present
-if [[ -z "$BASE_DOMAIN" || -z "$CLUSTER_CFG_NAME" || -z "$API_VIP" || -z "$INGRESS_VIP" ]]; then
-    error "Missing required configuration values in config/global.yaml"
-    error "  baseDomain: ${BASE_DOMAIN:-<missing>}"
-    error "  clusterName: ${CLUSTER_CFG_NAME:-<missing>}"
-    error "  apiVIP: ${API_VIP:-<missing>}"
-    error "  ingressVIP: ${INGRESS_VIP:-<missing>}"
-    exit 1
-fi
-
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-${ENCLAVE_CLUSTER_NAME}-e}"
-
-# Add cluster DNS entries to libvirt network dnsmasq (same approach as mirror entry in provision_landing_zone.sh)
-# Note: virsh net-update only allows one host entry per IP, so all hostnames for the same IP must be grouped
-
-# API endpoint
-info "Adding DNS entry: api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${API_VIP} on network ${CLUSTER_NETWORK_NAME}..."
-if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${API_VIP}'><hostname>api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname></host>" \
-    --live --config 2>/dev/null; then
-    warning "Could not add API DNS entry (may already exist)"
-else
-    info "✓ DNS entry added: api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${API_VIP}"
-fi
-
-# Ingress endpoints (grouped under single IP)
-# Uses virsh net-update to add DNS host entries to the running network (no restart needed).
-# Includes a catch-all "something" entry for wildcard DNS validation.
-INGRESS_APPS=(
-    something
-    console-openshift-console
-    oauth-openshift
-    downloads-openshift-console
-    alertmanager-main-openshift-monitoring
-    grafana-openshift-monitoring
-    prometheus-k8s-openshift-monitoring
-    thanos-querier-openshift-monitoring
-    registry-quay-quay-enterprise
-)
-INGRESS_HOSTNAMES_XML=""
-for APP in "${INGRESS_APPS[@]}"; do
-    INGRESS_HOSTNAMES_XML="${INGRESS_HOSTNAMES_XML}<hostname>${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname>"
-done
-info "Adding DNS entries: *.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP} on network ${CLUSTER_NETWORK_NAME}..."
-if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${INGRESS_VIP}'>${INGRESS_HOSTNAMES_XML}</host>" \
-    --live --config 2>/dev/null; then
-    warning "Could not add ingress DNS entries (may already exist)"
-else
-    for APP in "${INGRESS_APPS[@]}"; do
-        info "✓ DNS entry added: ${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP}"
-    done
-fi
-
-success "DNS resolution configured for cluster endpoints"
-
-# In disconnected mode the LZ uses the uplink network's dnsmasq (172.16.N.1) as its
-# primary DNS because NM dns=default mode does not support routing domains. Duplicate
-# the API and ingress DNS entries into the uplink network so the LZ can resolve them.
-if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ]; then
-    UPLINK_NETWORK_NAME="${CLUSTER_NAME}-u"
-    info "Adding cluster DNS entries to uplink network (${UPLINK_NETWORK_NAME}) for LZ resolution..."
-    sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
-        "<host ip='${API_VIP}'><hostname>api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname></host>" \
-        --live --config 2>/dev/null \
-        && info "✓ API DNS added to uplink network" \
-        || warning "Could not add API DNS to uplink network (may already exist)"
-    sudo virsh net-update "${UPLINK_NETWORK_NAME}" add dns-host \
-        "<host ip='${INGRESS_VIP}'>${INGRESS_HOSTNAMES_XML}</host>" \
-        --live --config 2>/dev/null \
-        && info "✓ Ingress DNS added to uplink network" \
-        || warning "Could not add ingress DNS to uplink network (may already exist)"
-fi
+# Cluster DNS (api.<cluster>.<base>, *.apps.<cluster>.<base>, mirror) is baked into the
+# libvirt networks' dnsmasq by vm_infra.py (see Config.cluster_dns_addresses), so there
+# is no runtime net-update here.
 
 # Step 6: Copy pull secret
 info "Step 6: Setting up pull secret..."

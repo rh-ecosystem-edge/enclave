@@ -27,7 +27,7 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 # Auto-construct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+        WORKING_DIR="${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}"
     else
         echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME" >&2
         exit 1
@@ -50,8 +50,8 @@ LZ_IP=$("${SCRIPT_DIR}/../utils/get_landing_zone_ip.sh")
 if [ -z "$LZ_IP" ]; then
     output "❌ Cannot find Landing Zone IP"
     echo -e "${RED}ERROR:${NC} Cannot find Landing Zone IP" >&2
-    echo "Environment file: ${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json" >&2
-    cat "${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json" 2>/dev/null || echo "Environment file not found" >&2
+    echo "Cluster env file: ${WORKING_DIR}/cluster-env.sh" >&2
+    cat "${WORKING_DIR}/cluster-env.sh" 2>/dev/null || echo "cluster-env.sh not found" >&2
     echo "" >&2
     echo "Trying virsh domifaddr:" >&2
     sudo virsh domifaddr "${ENCLAVE_CLUSTER_NAME}_landingzone_0" 2>&1 || true

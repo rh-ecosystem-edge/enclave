@@ -20,7 +20,7 @@ info "=========================================="
 # Reconstruct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ]; then
-        export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+        export WORKING_DIR="${BASE_WORKING_DIR}/${CLUSTER_NAME}"
         info "Reconstructed WORKING_DIR: ${WORKING_DIR}"
     else
         error "Neither WORKING_DIR nor BASE_WORKING_DIR is set"
@@ -109,20 +109,32 @@ for bridge in $(ip link show type bridge 2>/dev/null | grep -oE "${CLUSTER_NAME}
 done
 
 # ─── Working directory cleanup ────────────────────────────────────────────────
+# Validate the directory before rm -rf: canonicalize it and require a non-root path
+# that ends in the cluster name, so a misconfigured CLUSTER_NAME / WORKING_DIR can never
+# delete a parent (e.g. all of BASE_WORKING_DIR).
 CLUSTER_DIR_TO_REMOVE=""
-if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
-    CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
-elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
-    CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+if [ -n "${CLUSTER_NAME}" ]; then
+    for candidate in "${WORKING_DIR:-}" "${BASE_WORKING_DIR:+${BASE_WORKING_DIR}/${CLUSTER_NAME}}"; do
+        [ -n "$candidate" ] && [ -d "$candidate" ] || continue
+        real="$(readlink -f -- "$candidate" 2>/dev/null)" || continue
+        [ -n "$real" ] || continue
+        case "$real" in
+            */"${CLUSTER_NAME}") ;;                      # must end in the cluster name
+            *) continue ;;
+        esac
+        [ "$(dirname -- "$real")" != "/" ] || continue   # never a root-level directory
+        CLUSTER_DIR_TO_REMOVE="$real"
+        break
+    done
 fi
 
-if [ -n "${CLUSTER_DIR_TO_REMOVE:-}" ] && [ -d "$CLUSTER_DIR_TO_REMOVE" ]; then
+if [ -n "$CLUSTER_DIR_TO_REMOVE" ]; then
     info "Removing cluster working directory: $CLUSTER_DIR_TO_REMOVE"
     sudo rm -rf "$CLUSTER_DIR_TO_REMOVE" || warning "Failed to remove cluster directory"
 fi
 
 # ─── Landing-zone directory ───────────────────────────────────────────────────
-BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/clusters/${CLUSTER_NAME}}}"
+BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/${CLUSTER_NAME}}}"
 LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
 if [ -d "$LZ_DIR" ]; then
     info "Removing landing-zone directory: $LZ_DIR"
@@ -178,8 +190,8 @@ else
     success "No leftover networks"
 fi
 
-if [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
-    warning "Leftover cluster working directory: ${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+if [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/${CLUSTER_NAME}" ]; then
+    warning "Leftover cluster working directory: ${BASE_WORKING_DIR}/${CLUSTER_NAME}"
 else
     success "No leftover cluster working directory"
 fi
