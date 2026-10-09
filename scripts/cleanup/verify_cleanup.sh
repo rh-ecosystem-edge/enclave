@@ -92,9 +92,9 @@ output ""
 output "### Checking for Leftover Files"
 LEFTOVER_FILES=""
 
-# Check for environment file
-if [ -f "${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json" ]; then
-    LEFTOVER_FILES="${LEFTOVER_FILES}${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json\n"
+# Check for cluster-env.sh (destroy removes it; its presence means teardown was incomplete)
+if [ -f "${WORKING_DIR}/cluster-env.sh" ]; then
+    LEFTOVER_FILES="${LEFTOVER_FILES}${WORKING_DIR}/cluster-env.sh\n"
 fi
 
 # Check for cluster-specific working directory

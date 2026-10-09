@@ -34,12 +34,6 @@ LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Try cluster-specific environment file first, fall back to legacy location
-ENVIRONMENT_JSON="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
-fi
-
 # Extract cluster network prefix for dynamic IP detection
 CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 
@@ -75,16 +69,7 @@ if ! ssh_test_connection; then
 fi
 success "Landing Zone VM is accessible"
 
-# Step 2: Check if environment.json exists
-info "Step 2: Checking environment metadata..."
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    error "Environment metadata not found: $ENVIRONMENT_JSON"
-    error "Run 'make environment' to create infrastructure first"
-    exit 1
-fi
-success "Environment metadata found"
-
-# Step 3: Copy Enclave Lab to Landing Zone
+# Step 2: Copy Enclave Lab to Landing Zone
 info "Step 3: Copying Enclave Lab repository to Landing Zone..."
 
 # Create directory on Landing Zone

@@ -67,16 +67,3 @@ ensure_working_dir() {
 get_cluster_name() {
     echo "${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 }
-
-# Get environment.json path for the current cluster
-# Args: $1 = Cluster name (optional, uses ENCLAVE_CLUSTER_NAME if not provided)
-# Returns: Path to environment.json
-# Example: ENV_FILE=$(get_environment_json_path)
-get_environment_json_path() {
-    local cluster_name="${1:-${ENCLAVE_CLUSTER_NAME:-enclave-test}}"
-
-    # Ensure WORKING_DIR is set
-    ensure_working_dir
-
-    echo "${WORKING_DIR}/environment-${cluster_name}.json"
-}

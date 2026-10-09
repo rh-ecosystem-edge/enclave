@@ -50,8 +50,8 @@ LZ_IP=$("${SCRIPT_DIR}/../utils/get_landing_zone_ip.sh")
 if [ -z "$LZ_IP" ]; then
     output "❌ Cannot find Landing Zone IP"
     echo -e "${RED}ERROR:${NC} Cannot find Landing Zone IP" >&2
-    echo "Environment file: ${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json" >&2
-    cat "${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json" 2>/dev/null || echo "Environment file not found" >&2
+    echo "Cluster env file: ${WORKING_DIR}/cluster-env.sh" >&2
+    cat "${WORKING_DIR}/cluster-env.sh" 2>/dev/null || echo "cluster-env.sh not found" >&2
     echo "" >&2
     echo "Trying virsh domifaddr:" >&2
     sudo virsh domifaddr "${ENCLAVE_CLUSTER_NAME}_landingzone_0" 2>&1 || true

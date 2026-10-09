@@ -34,6 +34,11 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 
 # Source shared utilities
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
+source "${ENCLAVE_DIR}/scripts/lib/config.sh"
+source "${ENCLAVE_DIR}/scripts/lib/network.sh"
+
+# Load cluster-env.sh (non-fatal) so ENCLAVE_* facts are available for diagnostics.
+try_load_cluster_env || true
 
 # Track collection warnings/errors
 COLLECTION_WARNINGS=0
@@ -285,36 +290,13 @@ collect_network_dns() {
 collect_bmc_status() {
     info "Collecting BMC emulation status..."
 
-    # Determine BMC endpoint from environment.json
-    local bmc_endpoint=""
-    local env_file=""
-
-    # Try to find environment.json in multiple locations
-    if [ -n "${ENCLAVE_CLUSTER_NAME:-}" ] && [ -n "${WORKING_DIR:-}" ]; then
-        # New structure: cluster-specific working directory
-        local cluster_env="$WORKING_DIR/environment-${ENCLAVE_CLUSTER_NAME}.json"
-        if [ -f "$cluster_env" ]; then
-            env_file="$cluster_env"
-        fi
-    fi
-
-    # Fallback: search in WORKING_DIR
-    if [ -z "$env_file" ] && [ -n "${WORKING_DIR:-}" ]; then
-        env_file=$(find "$WORKING_DIR" -maxdepth 1 -name "environment*.json" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
-    fi
-
-    # Extract BMC endpoint if we found the file
-    if [ -n "$env_file" ] && [ -f "$env_file" ]; then
-        bmc_endpoint=$(jq -r '.bmc_emulation.sushy_tools.endpoint // empty' "$env_file" 2>/dev/null || true)
-        if [ -n "$bmc_endpoint" ]; then
-            info "Found BMC endpoint from $env_file: $bmc_endpoint"
-        fi
-    fi
-
-    # Fallback to common default if not found
-    if [ -z "$bmc_endpoint" ]; then
-        bmc_endpoint="http://100.64.1.1:8000"
-        warn "Could not determine BMC endpoint from environment.json, using default: $bmc_endpoint"
+    # BMC endpoint comes from cluster-env.sh (ENCLAVE_BMC_ENDPOINT), emitted by vm_infra.py.
+    local bmc_endpoint="${ENCLAVE_BMC_ENDPOINT:-}"
+    if [ -n "$bmc_endpoint" ]; then
+        info "BMC endpoint from cluster-env.sh: $bmc_endpoint"
+    else
+        bmc_endpoint="https://100.64.1.1:8001"
+        warn "ENCLAVE_BMC_ENDPOINT not set, using default: $bmc_endpoint"
     fi
 
     {
@@ -381,62 +363,20 @@ scp_lz() {
 #####################################
 
 get_landing_zone_vm_name() {
-    local lz_vm_name=""
-
-    if [ -n "${WORKING_DIR:-}" ]; then
-        local env_file
-        env_file=$(ls -t "$WORKING_DIR"/environment*.json 2>/dev/null | head -1)
-
-        if [ -f "$env_file" ]; then
-            lz_vm_name=$(jq -r '.vms.landing_zone.name // empty' "$env_file" 2>/dev/null || true)
-        fi
-    fi
-
-    # Fallback to constructed name
-    if [ -z "$lz_vm_name" ]; then
-        lz_vm_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0"
-    fi
-
-    echo "$lz_vm_name"
+    # From cluster-env.sh, else the naming convention.
+    echo "${ENCLAVE_LZ_VM_NAME:-${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0}"
 }
 
 get_landing_zone_ip() {
-    local lz_ip=""
-
-    if [ -n "${WORKING_DIR:-}" ]; then
-        local env_file
-        env_file=$(ls -t "$WORKING_DIR"/environment*.json 2>/dev/null | head -1)
-
-        if [ -f "$env_file" ]; then
-            lz_ip=$(jq -r '[
-              .vms.landing_zone.networks.cluster.ip,
-              .vms.landing_zone.networks.bmc.ip,
-              .landing_zone.ip
-            ] | map(select(. != null and . != "unknown")) | .[0] // empty' "$env_file" 2>/dev/null || true)
-
-            if [ -z "$lz_ip" ]; then
-                local lz_vm_name
-                lz_vm_name=$(get_landing_zone_vm_name)
-
-                local cluster_network
-                cluster_network=$(jq -r '.networks.cluster.cidr // empty' "$env_file" 2>/dev/null || true)
-                [ -z "$cluster_network" ] && cluster_network="192.168.2.0/24"
-
-                local cluster_net_prefix
-                cluster_net_prefix=$(echo "$cluster_network" | cut -d'/' -f1 | awk -F. '{print $1"."$2"."$3}')
-                local escaped_prefix
-                escaped_prefix=$(echo "$cluster_net_prefix" | sed 's/\./\\./g')
-
-                lz_ip=$(sudo virsh domifaddr "$lz_vm_name" 2>/dev/null \
-                    | grep -E "${escaped_prefix}\.[0-9]+" \
-                    | awk '{print $4}' \
-                    | cut -d'/' -f1 \
-                    | head -1)
-            fi
-        fi
+    # Authoritative static-lease IP from cluster-env.sh, with a live virsh fallback.
+    if [ -n "${ENCLAVE_LZ_CLUSTER_IP:-}" ]; then
+        echo "${ENCLAVE_LZ_CLUSTER_IP}"
+        return
     fi
-
-    echo "$lz_ip"
+    local lz_vm_name cluster_network
+    lz_vm_name=$(get_landing_zone_vm_name)
+    cluster_network="${ENCLAVE_CLUSTER_NETWORK:-192.168.2.0/24}"
+    get_vm_ip_on_network "$lz_vm_name" "$cluster_network"
 }
 
 test_lz_ssh() {

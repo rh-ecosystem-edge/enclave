@@ -8,7 +8,6 @@ WORKING_DIR ?= /opt/clusters
 
 # Cluster name for parallel execution isolation (can be overridden)
 ENCLAVE_CLUSTER_NAME ?= enclave-test
-ENVIRONMENT_JSON := $(WORKING_DIR)/environment-$(ENCLAVE_CLUSTER_NAME).json
 
 # CI Image
 CI_IMAGE_NAME ?= quay.io/edge-infrastructure/enclave-lab-ci
@@ -394,10 +393,7 @@ environment:
 	@echo "Step 7: Starting BMC emulation (sushy-tools)..."
 	@./scripts/infrastructure/start_sushy_tools.sh
 	@echo ""
-	@echo "Step 8: Generating environment metadata..."
-	@./scripts/infrastructure/generate_environment_json.sh
-	@echo ""
-	@echo "Step 9: Verifying infrastructure..."
+	@echo "Step 8: Verifying infrastructure..."
 	@$(MAKE) -f Makefile.ci verify
 	@echo ""
 	@echo "=========================================="

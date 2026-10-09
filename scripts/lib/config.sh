@@ -1,19 +1,16 @@
 #!/bin/bash
 # Shared configuration utilities
 #
-# Provides functions for loading cluster environment files and
-# parsing environment.json files.
+# Provides functions for loading the cluster-env.sh file written by vm_infra.py.
 #
 # Usage:
 #   source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 #   load_cluster_env
-#   value=$(get_env_json_value "networks.cluster.cidr")
 #
 # Functions:
 #   load_cluster_env [CLUSTER_NAME]     - Load cluster-env.sh (required)
 #   try_load_cluster_env [CLUSTER_NAME] - Load cluster-env.sh (optional, no error)
 #   is_enclave_disconnected             - True if ENCLAVE_DEPLOYMENT_MODE=disconnected
-#   get_env_json_value PATH [ENV_FILE]  - Extract value from environment.json using jq
 
 # Load cluster-env.sh for a cluster
 # Args: $1 = Cluster name (optional, defaults to ENCLAVE_CLUSTER_NAME or "enclave-test")
@@ -87,32 +84,4 @@ _set_compat_vars() {
 is_enclave_disconnected() {
     local deployment_mode="${ENCLAVE_DEPLOYMENT_MODE:-}"
     [[ "${deployment_mode,,}" == "disconnected" ]]
-}
-
-# Extract a value from environment.json using jq
-# Args: $1 = JSON path (e.g., "networks.cluster.cidr")
-#       $2 = Environment file path (optional, auto-constructed if not provided)
-get_env_json_value() {
-    local json_path="$1"
-    local env_file="${2:-}"
-
-    if [ -z "$env_file" ]; then
-        local cluster_name="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-
-        if [ -n "${WORKING_DIR:-}" ]; then
-            env_file="${WORKING_DIR}/environment-${cluster_name}.json"
-        elif [ -n "${BASE_WORKING_DIR:-}" ]; then
-            env_file="${BASE_WORKING_DIR}/clusters/${cluster_name}/environment-${cluster_name}.json"
-        else
-            echo "ERROR: Cannot determine environment.json path (WORKING_DIR not set)" >&2
-            return 1
-        fi
-    fi
-
-    if [ ! -f "$env_file" ]; then
-        echo "ERROR: Environment file not found: $env_file" >&2
-        return 1
-    fi
-
-    jq -r ".$json_path // empty" "$env_file" 2>/dev/null || true
 }
