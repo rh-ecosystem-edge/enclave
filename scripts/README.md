@@ -59,13 +59,15 @@ Scripts for initial environment setup, prerequisite validation, and configuratio
 |--------|---------|
 | `preflight_checks.sh` | Validate environment variables and system resources before workflow execution |
 | `validate_prerequisites.sh` | Check all required tools are installed (jq, ansible, virsh, etc.) |
-| `setup_working_dir.sh` | Create and initialize cluster working directory structure |
-| `generate_cluster_name.sh` | Generate unique cluster name based on environment |
+
+The cluster name and working directory are owned by `vm_infra.py` (it generates the
+name when `ENCLAVE_CLUSTER_NAME` is unset and derives `WORKING_DIR` from
+`BASE_WORKING_DIR`); there is no separate name/working-dir setup step.
 
 **Typical Workflow:**
 ```bash
 make preflight-checks        # Validate environment
-make setup-working-dir       # Create working directory
+make environment             # Create infrastructure (generates name + working dir)
 ```
 
 ---
@@ -76,16 +78,18 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 | Script | Purpose |
 |--------|---------|
-| `provision_landing_zone.sh` | Create Landing Zone VM |
+| `create_environment.sh` | Orchestrate `make environment`: vm_infra.py create + pull secret + GPU + verify + sushy |
+| `provision_landing_zone.sh` | Populate and boot the Landing Zone VM defined by vm_infra.py |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
-| `generate_environment_json.sh` | Generate infrastructure metadata (IPs, MACs, networks) |
 | `generate_enclave_vars.sh` | Generate Enclave Lab configuration files (global.yaml, certificates.yaml, cloud_infra.yaml) |
 
 **Key Concepts:**
 - **Landing Zone**: VM that runs Enclave Lab ansible playbooks
 - **BMC Emulation**: sushy-tools provides Redfish API for VM power control
-- **environment.json**: Contains all infrastructure metadata (networks, VMs, IPs)
+- **cluster-env.sh**: The single source of truth for infrastructure metadata (networks,
+  gateways, endpoints, VM names, IPs and MACs), written by vm_infra.py and sourced via
+  `load_cluster_env`
 
 **Typical Workflow:**
 ```bash

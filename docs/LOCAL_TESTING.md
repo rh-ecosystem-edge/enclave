@@ -148,34 +148,7 @@ make preflight-checks
 ./scripts/setup/preflight_checks.sh --title "My Custom Checks"
 ```
 
-### 2. Generate Cluster Name
-
-Create unique cluster name (usually auto-called):
-
-```bash
-make generate-cluster-name
-```
-
-**Strategies:**
-```bash
-# Hash-based (default) - uses timestamp + PID
-./scripts/setup/generate_cluster_name.sh --strategy hash --prefix eci
-
-# Date-based - for nightly runs
-./scripts/setup/generate_cluster_name.sh --strategy date --prefix nc
-```
-
-### 3. Setup Working Directory
-
-Create cluster-specific directories:
-
-```bash
-make setup-working-dir
-```
-
-Creates: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
-
-### 4. Create Infrastructure
+### 2. Create Infrastructure
 
 Create VMs, networks, and BMC emulation:
 
@@ -183,11 +156,23 @@ Create VMs, networks, and BMC emulation:
 make environment
 ```
 
-**What it does:**
+`vm_infra.py` owns cluster identity: when `ENCLAVE_CLUSTER_NAME` is unset it generates a
+unique `<prefix>-<8hex>` name (override the prefix with `ENCLAVE_CLUSTER_PREFIX`, default
+`eci`) and derives `WORKING_DIR` as `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`.
+To pin a specific cluster, set `ENCLAVE_CLUSTER_NAME` yourself. The chosen identity is
+echoed to stdout and written to `cluster-env.sh`; capture it to drive later steps:
+
+```bash
+eval "$(sudo -E python3 scripts/infrastructure/vm_infra.py create)"
+echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
+```
+
+**What `make environment` does:**
+- Generates the cluster name + working dir (via vm_infra.py)
 - Creates 3 master VMs + 1 Landing Zone VM
 - Sets up BMC and cluster networks
 - Starts BMC emulator (sushy-tools)
-- Generates environment metadata
+- Writes cluster-env.sh (the single source of truth)
 
 **Verify:**
 ```bash
@@ -196,7 +181,7 @@ virsh net-list                      # Check networks active
 sudo podman ps | grep sushy-tools   # Check BMC emulator
 ```
 
-### 5. Provision Landing Zone
+### 3. Provision Landing Zone
 
 Install OS and configure Landing Zone VM:
 
@@ -221,7 +206,7 @@ virsh list | grep landingzone       # VM running
 ssh cloud-user@<landing-zone-ip>    # SSH access works
 ```
 
-### 6. Install Enclave Lab
+### 4. Install Enclave Lab
 
 Install Enclave Lab software on Landing Zone:
 
@@ -249,7 +234,7 @@ make verify-enclave-installation
 ssh cloud-user@<landing-zone-ip> ls -la /home/cloud-user/enclave
 ```
 
-### 7. Deploy Cluster
+### 5. Deploy Cluster
 
 Deploy OpenShift cluster:
 
@@ -268,7 +253,7 @@ make deploy-cluster-day2             # Day-2 operations
 make deploy-cluster-discovery        # Hardware discovery
 ```
 
-### 8. Verify Cluster
+### 6. Verify Cluster
 
 Verify cluster deployment and health:
 
@@ -285,7 +270,7 @@ make verify-cluster
 
 **Output:** Both terminal (with colors) and GitHub Actions summary format
 
-### 9. Cleanup
+### 7. Cleanup
 
 Remove all infrastructure:
 
@@ -308,8 +293,8 @@ make verify-cleanup
 
 ### BASE_WORKING_DIR
 
-**Required**: Yes (for `ci-flow-*` and `setup-working-dir`)
-**Description**: Base directory for cluster-specific data
+**Required**: Yes (for `make environment` / `ci-flow-*`)
+**Description**: Base directory for cluster-specific data; vm_infra.py derives WORKING_DIR from it
 **Default**: `/opt/clusters` (in some scripts)
 **Example**: `/opt/clusters`
 
@@ -353,12 +338,12 @@ export ENCLAVE_DEPLOYMENT_MODE=disconnected
 
 ### WORKING_DIR
 
-**Required**: Some scripts
+**Required**: No
 **Description**: Cluster-specific working directory
-**Auto-set by**: `make setup-working-dir`
+**Auto-set by**: `vm_infra.py` (via `make environment`), recorded in `cluster-env.sh` / `$GITHUB_ENV`
 **Format**: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
 
-Usually don't set manually - let `setup-working-dir` handle it.
+Usually don't set manually - let `vm_infra.py` derive it from `BASE_WORKING_DIR`.
 
 ### PULL_SECRET
 
@@ -699,7 +684,6 @@ make validate
 export BASE_WORKING_DIR=/opt/clusters
 export ENCLAVE_DEPLOYMENT_MODE=connected
 make preflight-checks
-make setup-working-dir
 make environment
 make provision-landing-zone
 make install-enclave

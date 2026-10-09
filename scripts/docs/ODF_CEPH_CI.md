@@ -111,9 +111,9 @@ crashlooping during the operators/mirror phase, check Ceph health first.
 
 ### Landing Zone disk sizing
 
-The **running** LZ disk is sized by `provision_landing_zone.sh` (which recreates
-the LZ via `virt-install`), **not** by `vm_infra.py` (whose value only sizes the
-throwaway placeholder domain). For disconnected+odf it is **1500GB**.
+The LZ disk is sized by `vm_infra.py` (via `LANDINGZONE_DISK`), which creates the LZ
+volume; `provision_landing_zone.sh` writes the cloud image into it and resizes to that
+size. For disconnected+odf it is **1500GB**.
 
 It must be that large because the mirror lands on the LZ **twice**:
 

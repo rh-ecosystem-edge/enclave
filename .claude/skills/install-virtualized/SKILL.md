@@ -361,8 +361,10 @@ from the workflow `env:` block for non-secret values. Only ask the user for
 host-specific or secret values that cannot be derived from the workflow.
 
 **Fixed variable allowlist** (do NOT scan or expose other CI env vars):
-- `BASE_WORKING_DIR` (default: `/opt/clusters`, required by `setup-working-dir`)
-- `ENCLAVE_CLUSTER_NAME` (default: `enclave-test`, ask user)
+- `BASE_WORKING_DIR` (default: `/opt/clusters`; `vm_infra.py` derives `WORKING_DIR` from it)
+- `ENCLAVE_CLUSTER_NAME` (ask user; set it explicitly so `WORKING_DIR` is deterministic.
+  If left unset, `vm_infra.py` generates a unique name — but this skill sets it so every
+  SSH step shares the same identity.)
 - `ENCLAVE_DEPLOYMENT_MODE` (set from Step 6: `connected` or `disconnected`)
 - `STORAGE_PLUGIN` (set from Step 8: `lvms`)
 - `ENABLED_PLUGINS` (default: same as `STORAGE_PLUGIN`, updated in Step 9 day-2 selection)
@@ -476,12 +478,13 @@ After each step completes, display a progress bar:
 
 Before the first step, show the full step list:
 ```
-Deployment plan (22 steps):
-  1. setup-working-dir
-  2. environment
+Deployment plan (21 steps):
+  1. environment
   ...
-  22. verify-cluster
+  21. verify-cluster
 ```
+`WORKING_DIR` is `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}` — set it in the
+env block for all steps (no separate working-dir step; `environment` creates it).
 
 ### Make Target to LZ Log File Mapping
 
@@ -504,7 +507,7 @@ to bootstrap step name (and therefore log file) is:
 | `deploy-cluster-discovery` | `discovery` | `deployment_bootstrap_discovery.log` |
 | `deploy-plugin PLUGIN=<name>` | (plugin) | `deployment_plugin_<name>.log` |
 
-Steps that run directly on the hypervisor (e.g., `setup-working-dir`, `environment`,
+Steps that run directly on the hypervisor (e.g., `environment`,
 `provision-landing-zone`, `generate-ironic-cert`, `setup-ceph`) do not produce a
 log file — their output is only in the SSH session stdout. For these steps, show
 "(output in SSH session)" instead of a log path.
@@ -531,8 +534,8 @@ For each step:
 Handle conditional steps as the CI workflow does (e.g., skip `setup-ceph` since
 this skill uses lvms only).
 
-After `setup-working-dir`, capture WORKING_DIR: `cat /tmp/working_dir` and add it
-to the env block for all subsequent commands.
+`WORKING_DIR` is `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}` — include it in
+the env block for all steps (`make environment` creates the directory).
 
 After `provision-landing-zone`, capture the LZ IP for log monitoring:
 ```bash
