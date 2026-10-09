@@ -82,7 +82,7 @@ output ""
 output "### Environment Variables"
 
 # Check for BASE_WORKING_DIR or WORKING_DIR
-# BASE_WORKING_DIR is used for initial setup, WORKING_DIR is set later by setup-working-dir
+# BASE_WORKING_DIR is the base; vm_infra.py derives WORKING_DIR from it at create time.
 if [ -z "${BASE_WORKING_DIR:-}" ] && [ -z "${WORKING_DIR:-}" ]; then
     output "${RED}❌ Neither BASE_WORKING_DIR nor WORKING_DIR is set${NC}"
     FAILED=1
