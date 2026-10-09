@@ -793,6 +793,24 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
    - Verify pull secrets are correctly configured
    - Check oc-mirror logs: `{{ workingDir }}/logs/oc-mirror.progress.log`
 
+6. **Rerun stops with a release-image mismatch**:
+   - A deployment rerun (`bootstrap.sh` or the `03-deploy` playbook) stops during
+     ISO generation reporting that the Landing Zone was already built for a
+     different OpenShift release. `openshift-install` cannot reuse an existing
+     cluster directory across releases, so a rerun after the OpenShift version
+     changed is refused up front.
+   - **To upgrade** the management cluster to a new OpenShift version, use the
+     day-2 workflow instead (see [UPGRADE.md](UPGRADE.md)):
+     ```bash
+     ./sync.sh      # mirror the new content
+     ./upgrade.sh   # upgrade Landing Zone + management cluster + operators
+     ```
+   - **To destroy and redeploy** from scratch with the new version, remove the
+     cluster directory first, then rerun `bootstrap.sh`:
+     ```bash
+     rm -rf {{ workingDir }}/ocp-cluster
+     ```
+
 ### Log Files
 
 - **Bootstrap logs**: `logs/<timestamp>`
@@ -981,6 +999,7 @@ oc get baremetalhosts -n infraenv
 ## Notes
 
 - The deployment is **destructive** - running bootstrap.sh will destroy and recreate the entire environment
+- A rerun that changes the OpenShift version is refused during ISO generation; use `./sync.sh` + `./upgrade.sh` to change versions, or remove `{{ workingDir }}/ocp-cluster` to redeploy from scratch (see Troubleshooting)
 - Some steps reuse local caches (downloaded binaries, images) for faster re-runs
 - The deployment host must have internet access for initial downloads
 - After mirror registry setup, the cluster operates in a disconnected/air-gapped mode
