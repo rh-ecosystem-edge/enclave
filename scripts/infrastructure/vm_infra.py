@@ -411,6 +411,25 @@ class Config:
         return self.base_domain_override or f"{self.cluster_name}.lab"
 
     @property
+    def cluster_dns_addresses(self) -> List[str]:
+        """dnsmasq `address=` options mapping cluster hostnames to their IPs, baked into the
+        libvirt network's dnsmasq. Masters resolve via the cluster network's resolver; the LZ
+        resolves via the uplink's (disconnected) — so both networks get these records.
+
+        - mirror (short + FQDN) -> the LZ (where mirror-registry/Quay runs)
+        - api.<cluster>.<base> -> the OpenShift API VIP
+        - *.apps.<cluster>.<base> -> the ingress VIP (true wildcard; covers every route)
+        """
+        b = self.base_domain
+        c = self.cluster_name
+        return [
+            f"address=/mirror/{self.lz_cluster_ip}",
+            f"address=/mirror.{b}/{self.lz_cluster_ip}",
+            f"address=/api.{c}.{b}/{self.api_vip}",
+            f"address=/apps.{c}.{b}/{self.ingress_vip}",
+        ]
+
+    @property
     def pool_dir(self) -> Path:
         """Libvirt dir-type storage pool backing directory."""
         return self._wd / "pool"
@@ -923,6 +942,8 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
         dhcp_start=f"192.168.{n}.10",
         dhcp_end=f"192.168.{n}.99",
         static_hosts=cluster_hosts,
+        # Masters resolve mirror/api/*.apps via this network's dnsmasq.
+        dnsmasq_addresses=cfg.cluster_dns_addresses,
     )
     if cfg.deployment_mode == "disconnected" and cfg.uplink_gateway:
         cluster_net_kwargs["dns_forwarder"] = cfg.uplink_gateway
@@ -947,6 +968,8 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
                 static_hosts=[
                     {"mac": macs[cfg.lz_vm_name]["uplink"], "name": "lz-uplink", "ip": f"172.16.{n}.2"},
                 ],
+                # The LZ resolves mirror/api/*.apps via the uplink dnsmasq in disconnected mode.
+                dnsmasq_addresses=cfg.cluster_dns_addresses,
             ),
             cfg.uplink_bridge,
         )

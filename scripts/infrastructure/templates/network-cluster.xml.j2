@@ -1,4 +1,4 @@
-<network>
+<network{% if dnsmasq_addresses %} xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'{% endif %}>
   <name>{{ name }}</name>
   <bridge name="{{ name }}"/>
 {% if forward_mode != 'none' %}
@@ -17,4 +17,11 @@
 {% endfor %}
     </dhcp>
   </ip>
+{% if dnsmasq_addresses %}
+  <dnsmasq:options>
+{% for opt in dnsmasq_addresses %}
+    <dnsmasq:option value="{{ opt }}"/>
+{% endfor %}
+  </dnsmasq:options>
+{% endif %}
 </network>

@@ -53,7 +53,20 @@ N can be pinned manually with `ENCLAVE_SUBNET_ID` (or the third octet of
 The isolated cluster bridge in disconnected mode closes a gap in the old
 dev-scripts setup where masters had unintended internet access via NAT.
 
-## VM layout
+### DNS records
+
+Cluster DNS is baked into each network's dnsmasq at create time (via
+`<dnsmasq:options>` in the network XML; see `Config.cluster_dns_addresses`), so there is
+no runtime `virsh net-update`:
+
+```text
+mirror, mirror.<base_domain>        -> Landing Zone (192.168.N.2, mirror-registry/Quay)
+api.<cluster>.<base_domain>         -> API VIP      (192.168.N.100)
+*.apps.<cluster>.<base_domain>      -> ingress VIP  (192.168.N.101, true wildcard)
+```
+
+These are added to the **cluster** network (masters resolve via its dnsmasq) and, in
+disconnected mode, also to the **uplink** network (the LZ resolves via that one).
 
 ### NIC assignments
 

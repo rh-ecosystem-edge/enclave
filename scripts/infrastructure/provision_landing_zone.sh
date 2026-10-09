@@ -38,7 +38,6 @@ BMC_IP="${ENCLAVE_LZ_BMC_IP}"
 BMC_PREFIX="${ENCLAVE_BMC_NETWORK##*/}"
 BMC_GATEWAY="${ENCLAVE_BMC_GATEWAY}"
 BMC_PORT="${ENCLAVE_BMC_PORT}"
-CLUSTER_NETWORK_NAME="${ENCLAVE_CLUSTER_BRIDGE}"
 
 # Cloud image / OS configuration
 CLOUD_IMAGE_URL="${LZ_CLOUD_IMAGE_URL:-https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2}"
@@ -227,25 +226,8 @@ else
     exit 1
 fi
 
-# --- 5. Add mirror DNS so cluster nodes resolve the mirror to the LZ ----------
-MIRROR_FQDN="mirror.${ENCLAVE_BASE_DOMAIN:-lab}"
-info "Adding mirror DNS: mirror, ${MIRROR_FQDN} -> ${CLUSTER_IP} on ${CLUSTER_NETWORK_NAME}..."
-sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${CLUSTER_IP}'><hostname>mirror</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
-    --live --config 2>/dev/null \
-  && info "✓ Mirror DNS added" \
-  || warning "Could not add mirror DNS entry (may already exist)"
-
-# In disconnected mode the LZ resolves via the uplink network's dnsmasq, so add
-# the mirror entry there too.
-if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "disconnected" ] && [ -n "${ENCLAVE_UPLINK_BRIDGE:-}" ]; then
-    info "Adding mirror DNS to uplink network (${ENCLAVE_UPLINK_BRIDGE})..."
-    sudo virsh net-update "${ENCLAVE_UPLINK_BRIDGE}" add dns-host \
-        "<host ip='${CLUSTER_IP}'><hostname>mirror</hostname><hostname>${MIRROR_FQDN}</hostname></host>" \
-        --live --config 2>/dev/null \
-      && info "✓ Mirror DNS added to uplink network" \
-      || warning "Could not add mirror DNS to uplink network"
-fi
+# Cluster DNS (mirror / api / *.apps) is baked into the libvirt networks by vm_infra.py
+# (see Config.cluster_dns_addresses), so there is no runtime net-update here.
 
 echo ""
 info "========================================="
