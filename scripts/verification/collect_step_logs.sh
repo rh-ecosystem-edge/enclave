@@ -23,7 +23,7 @@ NC='\033[0m'
 if [ -z "${WORKING_DIR:-}" ]; then
     ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
     if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+        WORKING_DIR="${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}"
     else
         echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME"
         exit 1

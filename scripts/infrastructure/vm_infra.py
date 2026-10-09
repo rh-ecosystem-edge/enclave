@@ -100,7 +100,7 @@ class Config:
     # Working dir. None until finalized: on `create` with a generated name it is
     # derived from base_working_dir once the name is known (see finalize_working_dir).
     working_dir: Optional[Path] = None
-    # Base dir for deriving working_dir as {base}/clusters/{cluster_name}.
+    # Base dir for deriving working_dir as {base}/{cluster_name}.
     base_working_dir: Optional[Path] = None
     # Cluster-name prefix (from the CLUSTER_PREFIXES allow-list) used when
     # generating a name; ignored when a name is supplied explicitly.
@@ -258,7 +258,7 @@ class Config:
         elif raw_wd:
             working_dir = Path(raw_wd)
         elif base_working_dir is not None:
-            working_dir = base_working_dir / "clusters" / cluster_name
+            working_dir = base_working_dir / cluster_name
         else:
             sys.exit(
                 "ERROR: set WORKING_DIR, or BASE_WORKING_DIR together with "
@@ -309,7 +309,7 @@ class Config:
             return
         if self.base_working_dir is None:
             sys.exit("ERROR: set WORKING_DIR or BASE_WORKING_DIR to locate the working directory")
-        self.working_dir = self.base_working_dir / "clusters" / self.cluster_name
+        self.working_dir = self.base_working_dir / self.cluster_name
 
     @property
     def bmc_network(self) -> str:
@@ -737,7 +737,7 @@ def _generate_cluster_name(conn: libvirt.virConnect, cfg: Config) -> str:
         name = f"{cfg.prefix}-{token}"
         wd_taken = (
             cfg.base_working_dir is not None
-            and (cfg.base_working_dir / "clusters" / name).exists()
+            and (cfg.base_working_dir / name).exists()
         )
         if not _name_in_use(conn, name) and not wd_taken:
             return name
@@ -1216,12 +1216,12 @@ def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
 def _reap_working_dir(
     conn: libvirt.virConnect, cluster: str, base_working_dir: Optional[Path]
 ) -> Path:
-    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/clusters/<cluster>."""
+    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/<cluster>."""
     pool_path = _pool_target_path(conn, cluster)
     if pool_path is not None:
         return pool_path.parent  # _create_pool backs the pool at working_dir/pool
     if base_working_dir is not None:
-        return base_working_dir / "clusters" / cluster
+        return base_working_dir / cluster
     # No pool and no base dir: return a path whose file-removals are all no-ops;
     # the libvirt teardown (domains/networks/pool) in destroy() still runs.
     return Path("/nonexistent") / cluster

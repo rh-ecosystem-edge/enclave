@@ -125,7 +125,7 @@ If it fails, stop and tell the user to set up passwordless SSH (e.g., `ssh-copy-
 After verifying SSH, check for existing enclave deployments on the host:
 
 ```bash
-ssh <host> "sudo -n virsh list --all --name 2>/dev/null | grep -vE '^$' || true; ls -d \${BASE_WORKING_DIR:-/opt/clusters}/clusters/* 2>/dev/null || true"
+ssh <host> "sudo -n virsh list --all --name 2>/dev/null | grep -vE '^$' || true; ls -d \${BASE_WORKING_DIR:-/opt/clusters}/* 2>/dev/null || true"
 ```
 
 If enclave VMs (e.g. `*_landingzone_0` / `*_master_*`) or per-cluster working
@@ -482,7 +482,7 @@ Deployment plan (21 steps):
   ...
   21. verify-cluster
 ```
-`WORKING_DIR` is `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}` — set it in the
+`WORKING_DIR` is `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}` — set it in the
 env block for all steps (no separate working-dir step; `environment` creates it).
 
 ### Make Target to LZ Log File Mapping
@@ -533,7 +533,7 @@ For each step:
 Handle conditional steps as the CI workflow does (e.g., skip `setup-ceph` since
 this skill uses lvms only).
 
-`WORKING_DIR` is `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}` — include it in
+`WORKING_DIR` is `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}` — include it in
 the env block for all steps (`make environment` creates the directory).
 
 After `provision-landing-zone`, capture the LZ IP for log monitoring:

@@ -158,7 +158,7 @@ make -f Makefile.ci environment
 
 `vm_infra.py` owns cluster identity: when `ENCLAVE_CLUSTER_NAME` is unset it generates a
 unique `<prefix>-<8hex>` name (override the prefix with `ENCLAVE_CLUSTER_PREFIX`, default
-`eci`) and derives `WORKING_DIR` as `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`.
+`eci`) and derives `WORKING_DIR` as `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`.
 
 For a multi-step local run where the name is generated, either **pin the name** so every
 step shares it:
@@ -322,7 +322,7 @@ make -f Makefile.ci verify-cleanup
 export BASE_WORKING_DIR=/opt/clusters
 ```
 
-Each cluster gets: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
+Each cluster gets: `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`
 
 ### ENCLAVE_CLUSTER_NAME
 
@@ -361,7 +361,7 @@ export ENCLAVE_DEPLOYMENT_MODE=disconnected
 **Required**: No
 **Description**: Cluster-specific working directory
 **Auto-set by**: `vm_infra.py` (via `make -f Makefile.ci environment`), recorded in `cluster-env.sh` / `$GITHUB_ENV`
-**Format**: `${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}`
+**Format**: `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`
 
 Usually don't set manually - let `vm_infra.py` derive it from `BASE_WORKING_DIR`.
 
@@ -663,7 +663,7 @@ virsh list --all | wc -l
 
 ```bash
 # Remove old clusters
-ls ${BASE_WORKING_DIR}/clusters/
+ls ${BASE_WORKING_DIR}/
 
 # Remove specific cluster
 export ENCLAVE_CLUSTER_NAME=old-cluster

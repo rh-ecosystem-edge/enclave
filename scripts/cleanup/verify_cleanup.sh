@@ -25,7 +25,7 @@ NC='\033[0m'
 # Auto-construct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+        WORKING_DIR="${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}"
     else
         # Fallback to default for backward compatibility
         WORKING_DIR="/opt/clusters"
@@ -97,9 +97,9 @@ if [ -f "${WORKING_DIR}/cluster-env.sh" ]; then
     LEFTOVER_FILES="${LEFTOVER_FILES}${WORKING_DIR}/cluster-env.sh\n"
 fi
 
-# Check for cluster-specific working directory
-if [ -d "${WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}" ]; then
-    LEFTOVER_FILES="${LEFTOVER_FILES}${WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}/\n"
+# Check for the per-cluster working directory itself (WORKING_DIR == ${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME})
+if [ -d "${WORKING_DIR}" ]; then
+    LEFTOVER_FILES="${LEFTOVER_FILES}${WORKING_DIR}/\n"
 fi
 
 if [ -n "$LEFTOVER_FILES" ]; then

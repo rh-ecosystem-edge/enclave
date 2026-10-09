@@ -21,7 +21,7 @@ load_cluster_env() {
     local working_dir="${WORKING_DIR:-}"
     if [ -z "$working_dir" ]; then
         if [ -n "${BASE_WORKING_DIR:-}" ]; then
-            working_dir="${BASE_WORKING_DIR}/clusters/${cluster_name}"
+            working_dir="${BASE_WORKING_DIR}/${cluster_name}"
         else
             echo "ERROR: WORKING_DIR not set" >&2
             exit 1
@@ -48,7 +48,7 @@ try_load_cluster_env() {
     local working_dir="${WORKING_DIR:-}"
     if [ -z "$working_dir" ]; then
         [ -n "${BASE_WORKING_DIR:-}" ] || return 1
-        working_dir="${BASE_WORKING_DIR}/clusters/${cluster_name}"
+        working_dir="${BASE_WORKING_DIR}/${cluster_name}"
     fi
 
     local env_file="${working_dir}/cluster-env.sh"

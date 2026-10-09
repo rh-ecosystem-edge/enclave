@@ -20,7 +20,7 @@ info "=========================================="
 # Reconstruct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ]; then
-        export WORKING_DIR="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+        export WORKING_DIR="${BASE_WORKING_DIR}/${CLUSTER_NAME}"
         info "Reconstructed WORKING_DIR: ${WORKING_DIR}"
     else
         error "Neither WORKING_DIR nor BASE_WORKING_DIR is set"
@@ -110,10 +110,10 @@ done
 
 # ─── Working directory cleanup ────────────────────────────────────────────────
 CLUSTER_DIR_TO_REMOVE=""
-if [[ "${WORKING_DIR}" == *"/clusters/${CLUSTER_NAME}" ]]; then
+if [[ "${WORKING_DIR}" == *"/${CLUSTER_NAME}" ]]; then
     CLUSTER_DIR_TO_REMOVE="${WORKING_DIR}"
-elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
-    CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+elif [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/${CLUSTER_NAME}" ]; then
+    CLUSTER_DIR_TO_REMOVE="${BASE_WORKING_DIR}/${CLUSTER_NAME}"
 fi
 
 if [ -n "${CLUSTER_DIR_TO_REMOVE:-}" ] && [ -d "$CLUSTER_DIR_TO_REMOVE" ]; then
@@ -122,7 +122,7 @@ if [ -n "${CLUSTER_DIR_TO_REMOVE:-}" ] && [ -d "$CLUSTER_DIR_TO_REMOVE" ]; then
 fi
 
 # ─── Landing-zone directory ───────────────────────────────────────────────────
-BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/clusters/${CLUSTER_NAME}}}"
+BASE_DIR="${BASE_WORKING_DIR:-${WORKING_DIR%/${CLUSTER_NAME}}}"
 LZ_DIR="${BASE_DIR}/landing-zone/${CLUSTER_NAME}"
 if [ -d "$LZ_DIR" ]; then
     info "Removing landing-zone directory: $LZ_DIR"
@@ -178,8 +178,8 @@ else
     success "No leftover networks"
 fi
 
-if [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}" ]; then
-    warning "Leftover cluster working directory: ${BASE_WORKING_DIR}/clusters/${CLUSTER_NAME}"
+if [ -n "${BASE_WORKING_DIR:-}" ] && [ -d "${BASE_WORKING_DIR}/${CLUSTER_NAME}" ]; then
+    warning "Leftover cluster working directory: ${BASE_WORKING_DIR}/${CLUSTER_NAME}"
 else
     success "No leftover cluster working directory"
 fi

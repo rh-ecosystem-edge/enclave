@@ -119,7 +119,7 @@ enumerated master names, IPs and MACs. For example:
 ```bash
 export ENCLAVE_CLUSTER_NAME="eci-ab12cd34"
 export ENCLAVE_BASE_DOMAIN="eci-ab12cd34.lab"
-export WORKING_DIR="/opt/clusters/clusters/eci-ab12cd34"
+export WORKING_DIR="/opt/clusters/eci-ab12cd34"
 export ENCLAVE_BMC_NETWORK="100.64.N.0/24"
 export ENCLAVE_CLUSTER_NETWORK="192.168.N.0/24"
 export ENCLAVE_BMC_ENDPOINT="https://100.64.N.1:800N"
@@ -147,7 +147,7 @@ old random-MACs-plus-`macs.json` scheme.)
 | `ENCLAVE_CLUSTER_NAME` | no (create) / yes (destroy) | generated | Cluster identifier. On `create`, generated as `<prefix>-<8hex>` (checked unique against libvirt) when unset; `destroy` requires it. |
 | `ENCLAVE_CLUSTER_PREFIX` | no | `eci` | Prefix for a generated name; must be one of `eci`/`ecd`/`nc`/`nd` (the set `reap` recognizes) |
 | `ENCLAVE_CLUSTER_SEED` | no | time+pid | Seed for the generated-name hash (CI passes the run id for traceability) |
-| `WORKING_DIR` | no | derived | Per-cluster working directory; derived as `$BASE_WORKING_DIR/clusters/<name>` when unset |
+| `WORKING_DIR` | no | derived | Per-cluster working directory; derived as `$BASE_WORKING_DIR/<name>` when unset |
 | `BASE_WORKING_DIR` | no | — | Base dir used to derive `WORKING_DIR` when it is not set |
 | `ENCLAVE_BASE_DOMAIN` | no | `<cluster>.lab` | Cluster base domain |
 | `ENCLAVE_SUBNET_ID` | no | auto | Pin the shared third octet N (2–254); auto-selected from libvirt when unset |

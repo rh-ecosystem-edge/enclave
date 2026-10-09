@@ -27,7 +27,7 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 # Auto-construct WORKING_DIR if not set
 if [ -z "${WORKING_DIR:-}" ]; then
     if [ -n "${BASE_WORKING_DIR:-}" ] && [ -n "${ENCLAVE_CLUSTER_NAME}" ]; then
-        WORKING_DIR="${BASE_WORKING_DIR}/clusters/${ENCLAVE_CLUSTER_NAME}"
+        WORKING_DIR="${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}"
     else
         echo "ERROR: WORKING_DIR not set and cannot construct from BASE_WORKING_DIR + ENCLAVE_CLUSTER_NAME" >&2
         exit 1
