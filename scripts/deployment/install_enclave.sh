@@ -34,7 +34,7 @@ LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
 
 # Landing Zone IP (static DHCP lease, from cluster-env.sh)
-CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP}"
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"

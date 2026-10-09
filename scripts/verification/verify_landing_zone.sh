@@ -44,7 +44,7 @@ CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")
 BMC_NET_PREFIX=$(get_network_prefix "$BMC_NETWORK")
 
 # Landing Zone IP (static DHCP lease, from cluster-env.sh)
-CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP}"
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"

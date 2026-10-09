@@ -81,7 +81,7 @@ fi
 load_cluster_env
 
 # Landing Zone IP (static DHCP lease, from cluster-env.sh)
-LZ_IP="${ENCLAVE_LZ_CLUSTER_IP}"
+LZ_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$LZ_IP" ]; then
     error "Could not determine Landing Zone IP address"
