@@ -39,13 +39,9 @@ load_cluster_env
 
 # Configuration
 CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 
-# Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
-
-# Get Landing Zone IP - dynamic subnet detection
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
