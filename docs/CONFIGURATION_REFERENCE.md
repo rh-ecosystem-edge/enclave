@@ -898,6 +898,14 @@ odfExternalConfig: >-
 **Notes**:
 - Only required when `storage_plugin` is set to `odf`
 - Validated by `plugins/odf/schemas/config.yaml` at CI time
+- The `ceph-external-cluster-details-exporter.py` script ships with the ODF operator
+  (console "Download Script" link, or the `ocs-operator` CSV annotation). When it is not
+  available before the cluster exists, the upstream equivalent is
+  [`create-external-cluster-resources.py`](https://github.com/rook/rook/blob/master/deploy/examples/create-external-cluster-resources.py)
+  in the rook repo. Use the branch matching the rook release bundled in your ODF version
+  (not `master`), as the output schema can differ between releases. See the
+  [provider-export guide](https://rook.io/docs/rook/latest-release/CRDs/Cluster/external-cluster/provider-export/)
+  for usage.
 
 ##### `odfDefaults`
 
