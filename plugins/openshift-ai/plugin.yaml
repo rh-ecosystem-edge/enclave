@@ -52,6 +52,8 @@ registries:
     mirror: "rhelai1"
   - location: "registry.redhat.io/rhaiis"
     mirror: "rhaiis"
+  - location: "registry.redhat.io/rhaii"
+    mirror: "rhaii"
   - location: "registry.redhat.io/openshift-service-mesh"
     mirror: "openshift-service-mesh"
   - location: "registry.redhat.io/openshift-service-mesh-tech-preview"
