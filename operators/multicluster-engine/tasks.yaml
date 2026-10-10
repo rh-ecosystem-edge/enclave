@@ -256,6 +256,12 @@
 
           [[registry]]
             prefix = ""
+            location = "registry.redhat.io/rhaii"
+          [[registry.mirror]]
+            location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhaii"
+
+          [[registry]]
+            prefix = ""
             location = "registry.redhat.io/rhods"
           [[registry.mirror]]
             location = "registry-quay-quay-enterprise.apps.{{ clusterName }}.{{ baseDomain }}/rhods"
