@@ -70,6 +70,7 @@ def cli(log_level: str) -> None:
 @click.option("--name", help="Operator package name")
 @click.option("--version", help="Operator version")
 @click.option("--namespace", help="Operator namespace")
+@click.option("--channel", help="Subscription channel to reconcile")
 @click.option(
     "--csv-name",
     "csv_names",
@@ -80,20 +81,25 @@ def cli(log_level: str) -> None:
     "--use-defaults",
     is_flag=True,
     default=False,
-    help="Load all operators from defaults/operators.yaml (mutually exclusive with --name, --version, --namespace, --csv-name)",
+    help=(
+        "Load all operators from defaults/operators.yaml (mutually exclusive "
+        "with --name, --version, --namespace, --channel, --csv-name)"
+    ),
 )
 @click.option("--dry-run/--no-dry-run", default=False)
 def operator_versions(
     name: str,
     version: str,
     namespace: str,
+    channel: str | None,
     csv_names: tuple[str, ...],
     use_defaults: bool,
     dry_run: bool,
 ) -> None:
-    if use_defaults and any([name, version, namespace, csv_names]):
+    if use_defaults and any([name, version, namespace, channel, csv_names]):
         raise click.UsageError(
-            "--use-defaults is mutually exclusive with --name, --version, --namespace, --csv-name"
+            "--use-defaults is mutually exclusive with --name, --version, "
+            "--namespace, --channel, --csv-name"
         )
 
     if not use_defaults:
@@ -104,9 +110,19 @@ def operator_versions(
         ]
         if missing:
             raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
-        operator_versions_reconcile(
-            version, namespace, list(csv_names) or [name], dry_run
-        )
+        if channel is None:
+            operator_versions_reconcile(
+                version, namespace, list(csv_names) or [name], dry_run
+            )
+        else:
+            operator_versions_reconcile(
+                version,
+                namespace,
+                list(csv_names) or [name],
+                dry_run,
+                channel=channel,
+                subscription_name=name,
+            )
         return
 
     defaults_file = defaults_path("operators.yaml")
@@ -125,7 +141,12 @@ def operator_versions(
         op_name: str = op["name"]
         op_csv_names: list[str] = op.get("csvNames") or [op_name]
         operator_versions_reconcile(
-            op["version"], op["namespace"], op_csv_names, dry_run
+            op["version"],
+            op["namespace"],
+            op_csv_names,
+            dry_run,
+            channel=op.get("channel"),
+            subscription_name=op_name,
         )
 
 

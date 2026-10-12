@@ -116,6 +116,8 @@ def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> Non
         quay_op["namespace"],
         quay_op.get("csvNames") or [quay_op["name"]],
         dry_run,
+        channel=quay_op["channel"],
+        subscription_name=quay_op["name"],
     )
 
 

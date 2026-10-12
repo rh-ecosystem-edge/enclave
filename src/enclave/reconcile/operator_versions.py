@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 
 from enclave.utils import (
     log_subprocess_output,
@@ -9,6 +10,93 @@ from enclave.utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _update_subscription_channel(
+    dry_run: bool,
+    namespace: str,
+    subscription_name: str,
+    channel: str,
+) -> bool:
+    """Update a Subscription's channel, returning whether it needs changing."""
+    result = run_oc_command([
+        "oc",
+        "get",
+        "subscription.operators.coreos.com",
+        subscription_name,
+        "-n",
+        namespace,
+        "-o",
+        "json",
+    ])
+    if result.returncode != 0:
+        log_subprocess_output(
+            f"oc get subscription/{subscription_name} failed "
+            f"(exit {result.returncode})",
+            result.stderr or "",
+        )
+        raise RuntimeError(
+            f"oc get subscription/{subscription_name} in {namespace} failed "
+            f"(exit {result.returncode})"
+        )
+    try:
+        subscription = json.loads(result.stdout)
+        current_channel = subscription.get("spec", {}).get("channel")
+    except (json.JSONDecodeError, AttributeError) as exc:
+        raise RuntimeError(
+            f"oc get subscription/{subscription_name} in {namespace} "
+            "returned unexpected output"
+        ) from exc
+
+    if current_channel == channel:
+        logger.info(
+            "Subscription %s in namespace %s already uses channel %s.",
+            subscription_name,
+            namespace,
+            channel,
+        )
+        return False
+
+    logger.info(
+        "Updating Subscription %s in namespace %s from channel %s to %s.",
+        subscription_name,
+        namespace,
+        current_channel,
+        channel,
+    )
+    logger.info("[UPDATE] %s/%s channel=%s", namespace, subscription_name, channel)
+    if dry_run:
+        return True
+
+    patch_result = run_oc_command([
+        "oc",
+        "patch",
+        "subscription.operators.coreos.com",
+        subscription_name,
+        "-n",
+        namespace,
+        "--type",
+        "merge",
+        "-p",
+        json.dumps({"spec": {"channel": channel}}),
+    ])
+    if patch_result.returncode != 0:
+        log_subprocess_output(
+            f"oc patch subscription/{subscription_name} failed "
+            f"(exit {patch_result.returncode})",
+            patch_result.stderr or "",
+        )
+        raise RuntimeError(
+            f"oc patch subscription/{subscription_name} in {namespace} failed "
+            f"(exit {patch_result.returncode})"
+        )
+    logger.info(
+        "Updated Subscription %s in namespace %s to channel %s.",
+        subscription_name,
+        namespace,
+        channel,
+    )
+    return True
 
 
 def _plan_version_ok(
@@ -110,6 +198,8 @@ def approve_install_plans(
     dry_run: bool,
     namespace: str,
     approved_op_version_map: dict[str, str],
+    *,
+    wait_for_csvs: set[str] | None = None,
 ) -> None:
     """Approve pending InstallPlans whose CSV versions are within the approved range.
 
@@ -119,31 +209,62 @@ def approve_install_plans(
     exceed the desired version. Plans in other phases or with unmanaged /
     too-new CSVs are skipped with an info log.
 
-    Raises RuntimeError on oc command failures or unexpected API output.
+    When wait_for_csvs is set, waits until InstallPlans contain all of those CSV
+    names before processing plans. This is used after changing a Subscription
+    channel, which can take OLM time to resolve into a plan.
+
+    Raises RuntimeError on oc command failures or unexpected API output, and
+    TimeoutError if a channel change does not produce the target InstallPlans.
     """
-    result = run_oc_command([
-        "oc",
-        "get",
-        "installplan.operators.coreos.com",
-        "-n",
-        namespace,
-        "-o",
-        "json",
-    ])
-    if result.returncode != 0:
-        log_subprocess_output(
-            f"oc get installplan failed (exit {result.returncode})",
-            result.stderr or "",
-        )
-        raise RuntimeError(
-            f"oc get installplan in {namespace} failed (exit {result.returncode})"
-        )
-    try:
-        install_plans = json.loads(result.stdout)["items"]
-    except (json.JSONDecodeError, KeyError) as exc:
-        raise RuntimeError(
-            f"oc get installplan in {namespace} returned unexpected output"
-        ) from exc
+    deadline = time.monotonic() + 30 * 60
+    while True:
+        result = run_oc_command([
+            "oc",
+            "get",
+            "installplan.operators.coreos.com",
+            "-n",
+            namespace,
+            "-o",
+            "json",
+        ])
+        if result.returncode != 0:
+            log_subprocess_output(
+                f"oc get installplan failed (exit {result.returncode})",
+                result.stderr or "",
+            )
+            raise RuntimeError(
+                f"oc get installplan in {namespace} failed (exit {result.returncode})"
+            )
+        try:
+            install_plans = json.loads(result.stdout)["items"]
+        except (json.JSONDecodeError, KeyError) as exc:
+            raise RuntimeError(
+                f"oc get installplan in {namespace} returned unexpected output"
+            ) from exc
+
+        if wait_for_csvs is not None:
+            plan_csv_names = {
+                csv_name
+                for install_plan in install_plans
+                for csv_name in install_plan["spec"]["clusterServiceVersionNames"]
+            }
+            if not wait_for_csvs.issubset(plan_csv_names):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        f"No InstallPlan containing target CSVs "
+                        f"{sorted(wait_for_csvs)} appeared in namespace "
+                        f"{namespace} within 30 minutes"
+                    )
+                logger.info(
+                    "Waiting for InstallPlans containing target CSVs %s in "
+                    "namespace %s.",
+                    sorted(wait_for_csvs),
+                    namespace,
+                )
+                time.sleep(10)
+                continue
+        break
+
     for install_plan in install_plans:
         install_plan_name = install_plan["metadata"]["name"]
         install_plan_status_phase = install_plan["status"]["phase"]
@@ -170,16 +291,38 @@ def reconcile(
     namespace: str,
     csv_names: list[str],
     dry_run: bool,
+    channel: str | None = None,
+    subscription_name: str | None = None,
 ) -> None:
-    """Approve pending InstallPlans and wait for each CSV to reach Succeeded.
+    """Reconcile an operator Subscription and wait for each CSV to reach Succeeded.
 
     Normalises the version string ('+' → '-') to match the format OLM uses
-    in CSV names, then delegates approval to approve_install_plans. For each
-    CSV, waits up to 30 minutes (polling every 10 s) for its phase to become
-    Succeeded. The wait is skipped in dry-run mode.
+    in CSV names. When a channel is provided, updates the Subscription before
+    approving InstallPlans. After a channel change, waits for InstallPlans with
+    the desired CSVs before processing approvals. For each CSV, waits up to 30
+    minutes (polling every 10 s) for its phase to become Succeeded. The writes
+    and CSV wait are skipped in dry-run mode.
     """
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
-    approve_install_plans(dry_run, namespace, op_version_map)
+    wait_for_csvs: set[str] | None = None
+    if channel is not None:
+        name = subscription_name or (csv_names[0] if csv_names else "")
+        if not name:
+            raise ValueError("A Subscription name is required when a channel is set")
+        channel_changed = _update_subscription_channel(
+            dry_run, namespace, name, channel
+        )
+        if channel_changed and not dry_run:
+            wait_for_csvs = {
+                f"{csv_name}.v{csv_version}"
+                for csv_name, csv_version in op_version_map.items()
+            }
+    if wait_for_csvs is None:
+        approve_install_plans(dry_run, namespace, op_version_map)
+    else:
+        approve_install_plans(
+            dry_run, namespace, op_version_map, wait_for_csvs=wait_for_csvs
+        )
     for csv_name, csv_version in op_version_map.items():
         if not dry_run:
             logger.info(

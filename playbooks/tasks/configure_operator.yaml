@@ -153,6 +153,7 @@
       --name "{{ operator.name }}" \
       --version "{{ operator.version }}" \
       --namespace "{{ operator.namespace }}" \
+      --channel "{{ operator.channel }}" \
       {% for csv in (operator.csvNames | default([operator.name])) %}--csv-name "{{ csv }}" {% endfor %}\
       --no-dry-run
   register: operator_update_result
