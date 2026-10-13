@@ -81,7 +81,7 @@ if ssh_exec "test -d $LZ_ENCLAVE_DIR"; then
     fi
 else
     fail "Enclave Lab directory not found: $LZ_ENCLAVE_DIR"
-    info "Run 'make install-enclave' to install Enclave Lab"
+    info "Run 'make -f Makefile.ci install-enclave' to install Enclave Lab"
     exit 1
 fi
 
@@ -124,7 +124,7 @@ if ssh_file_exists "$GLOBAL_YAML"; then
     fi
 else
     fail "config/global.yaml not found"
-    info "Run 'make install-enclave' to generate configuration"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
 fi
 
 if ssh_file_exists "$CERTS_YAML"; then
@@ -138,7 +138,7 @@ if ssh_file_exists "$CERTS_YAML"; then
     fi
 else
     fail "config/certificates.yaml not found"
-    info "Run 'make install-enclave' to generate configuration"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
 fi
 
 if ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
@@ -152,7 +152,7 @@ if ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
     fi
 else
     fail "config/cloud_infra.yaml not found"
-    info "Run 'make install-enclave' to generate configuration"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
 fi
 
 # Test 4: Required tools installed
@@ -224,7 +224,7 @@ else
 fi
 
 if [ $COLLECTIONS_MISSING -eq 1 ]; then
-    info "  Run 'make install-enclave' to install missing collections"
+    info "  Run 'make -f Makefile.ci install-enclave' to install missing collections"
 fi
 
 # Test 7: SSH key
@@ -244,7 +244,7 @@ if ssh $SSH_OPTS "$LZ_SSH" "python3 -c \"import yaml; d=yaml.safe_load(open('$LZ
     success "Pull secret is embedded in config/global.yaml"
 else
     fail "Pull secret not found in config/global.yaml"
-    info "  Re-run 'make install-enclave' to embed the pull secret"
+    info "  Re-run 'make -f Makefile.ci install-enclave' to embed the pull secret"
 fi
 
 # Test 9: Directory structure
@@ -275,7 +275,7 @@ if [ -n "$BASE_DOMAIN" ]; then
             success "${HOSTNAME} resolves to ${RESOLVED_IP}"
         else
             fail "${HOSTNAME} does NOT resolve"
-            info "  Run 'make install-enclave' to configure DNS resolution"
+            info "  Run 'make -f Makefile.ci install-enclave' to configure DNS resolution"
         fi
     done
 else
@@ -332,7 +332,7 @@ echo ""
 info "To run Enclave Lab:"
 info "  ssh $LZ_SSH"
 info "  cd $LZ_ENCLAVE_DIR"
-info "  ansible-playbook playbooks/main.yaml"
+info "  ./bootstrap.sh
 echo ""
 
 # Exit with failure if any tests failed
@@ -341,6 +341,6 @@ if [ $VERIFICATION_FAILED -eq 1 ]; then
     error "========================================="
     error "Verification FAILED - Issues Detected"
     error "========================================="
-    error "Please review the failures above and run 'make install-enclave' to fix missing dependencies"
+    error "Please review the failures above and run 'make -f Makefile.ci install-enclave' to fix missing dependencies"
     exit 1
 fi

@@ -245,7 +245,7 @@ sudo podman ps --format 'table {{.Names}}\t{{.Status}}' | grep ceph
 
 ### Teardown
 
-For standalone installations (CI runs clean up automatically via `make clean`):
+For standalone installations (CI runs clean up automatically via `make -f Makefile.ci clean`):
 
 ```bash
 FSID=$(sudo cephadm shell -- ceph fsid)

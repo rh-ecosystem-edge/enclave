@@ -77,7 +77,7 @@ fi
 # Verify bootstrap.sh exists on Landing Zone
 if ! ssh_file_exists "$LZ_ENCLAVE_DIR/bootstrap.sh"; then
     error "bootstrap.sh not found at $LZ_ENCLAVE_DIR"
-    error "Run 'make install-enclave' first"
+    error "Run 'make -f Makefile.ci install-enclave' first"
     exit 1
 fi
 

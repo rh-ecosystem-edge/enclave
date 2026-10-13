@@ -255,7 +255,7 @@ validate_osac_values() {
 validate_mirror() {
     print_header "Validating mirror artifacts on Landing Zone"
 
-    if make validate-mirror; then
+    if make -f Makefile.ci validate-mirror; then
         print_success "Mirror artifact validation passed"
         return 0
     else

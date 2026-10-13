@@ -38,7 +38,7 @@ CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
-    error "Is the Landing Zone VM running? Run: make verify-landing-zone"
+    error "Is the Landing Zone VM running? Run: make -f Makefile.ci verify-landing-zone"
     exit 1
 fi
 
@@ -60,7 +60,7 @@ info ""
 info "Step 1: Verifying Landing Zone VM is accessible..."
 if ! ssh_test_connection; then
     error "Cannot connect to Landing Zone VM at $CLUSTER_IP"
-    error "Run 'make verify-landing-zone' to check VM status"
+    error "Run 'make -f Makefile.ci verify-landing-zone' to check VM status"
     exit 1
 fi
 success "Landing Zone VM is accessible"
@@ -178,7 +178,7 @@ else
     info "  Please:"
     info "    1. Download pull secret from https://console.redhat.com/openshift/install/pull-secret"
     info "    2. Save it to one of the locations above"
-    info "    3. Re-run 'make install-enclave'"
+    info "    3. Re-run 'make -f Makefile.ci install-enclave'"
     exit 1
 fi
 
@@ -216,5 +216,5 @@ info "  3. Edit config/global.yaml, config/certificates.yaml and config/cloud_in
 info "  4. Run Enclave Lab: cd $LZ_ENCLAVE_DIR && ansible-playbook playbooks/main.yaml"
 echo ""
 info "To verify installation:"
-info "  make verify-enclave-installation"
+info "  make -f Makefile.ci verify-enclave-installation"
 echo ""

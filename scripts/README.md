@@ -66,8 +66,8 @@ name when `ENCLAVE_CLUSTER_NAME` is unset and derives `WORKING_DIR` from
 
 **Typical Workflow:**
 ```bash
-make preflight-checks        # Validate environment
-make environment             # Create infrastructure (generates name + working dir)
+make -f Makefile.ci preflight-checks        # Validate environment
+make -f Makefile.ci environment             # Create infrastructure (generates name + working dir)
 ```
 
 ---
@@ -78,7 +78,7 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 | Script | Purpose |
 |--------|---------|
-| `create_environment.sh` | Orchestrate `make environment`: vm_infra.py create + pull secret + GPU + verify + sushy |
+| `create_environment.sh` | Orchestrate `make -f Makefile.ci environment`: vm_infra.py create + pull secret + GPU + verify + sushy |
 | `provision_landing_zone.sh` | Populate and boot the Landing Zone VM defined by vm_infra.py |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
@@ -93,7 +93,7 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 **Typical Workflow:**
 ```bash
-make environment             # Create all infrastructure
+make -f Makefile.ci environment             # Create all infrastructure
 make verify-networks         # Validate network configuration
 make start-sushy-tools       # Start BMC emulator
 ```
@@ -117,7 +117,7 @@ Scripts for deploying OpenShift clusters on the provisioned infrastructure.
 
 **Typical Workflow:**
 ```bash
-make install-enclave         # Install Enclave Lab on Landing Zone
+make -f Makefile.ci install-enclave         # Install Enclave Lab on Landing Zone
 make deploy-cluster          # Deploy cluster (full workflow)
 # OR for phased deployment:
 make deploy-cluster-prepare  # Download binaries
@@ -143,9 +143,9 @@ Scripts for verifying deployments, collecting logs, and running validation check
 **Usage:**
 ```bash
 make verify-infrastructure   # Check VMs and networks
-make verify-landing-zone     # Check Landing Zone
-make verify-cluster          # Check cluster deployment
-make verify                  # Run all verification checks
+make -f Makefile.ci verify-landing-zone     # Check Landing Zone
+make -f Makefile.ci verify-cluster          # Check cluster deployment
+make -f Makefile.ci verify                  # Run all verification checks
 ```
 
 ---
@@ -169,8 +169,8 @@ Scripts for cleaning up clusters, VMs, and allocated resources.
 
 **Usage:**
 ```bash
-make clean                   # Full cleanup
-make verify-cleanup          # Verify cleanup succeeded
+make -f Makefile.ci clean                   # Full cleanup
+make -f Makefile.ci verify-cleanup          # Verify cleanup succeeded
 ```
 
 ---

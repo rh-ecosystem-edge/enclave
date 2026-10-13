@@ -4,7 +4,6 @@ This guide explains how to run the complete CI workflow locally using Makefile t
 
 ## Table of Contents
 
-- [Quick Start](#quick-start)
 - [Prerequisites](#prerequisites)
 - [Full CI Flow](#full-ci-flow)
 - [Individual Components](#individual-components)
@@ -12,30 +11,6 @@ This guide explains how to run the complete CI workflow locally using Makefile t
 - [Verification Commands](#verification-commands)
 - [Troubleshooting](#troubleshooting)
 - [Best Practices](#best-practices)
-
-## Quick Start
-
-Run the complete CI workflow locally in one command:
-
-```bash
-# Set required environment variables
-export BASE_WORKING_DIR=/opt/clusters
-
-# Run full CI flow (connected mode - faster)
-make -f Makefile.ci ci-flow-connected
-
-# Or disconnected mode (full validation)
-make -f Makefile.ci ci-flow-disconnected
-```
-
-The flow automatically:
-- Generates a unique cluster name
-- Runs preflight checks
-- Creates infrastructure
-- Provisions Landing Zone
-- Installs Enclave Lab
-- Deploys OpenShift cluster
-- Verifies cluster deployment
 
 ## Prerequisites
 
@@ -56,186 +31,99 @@ The flow automatically:
 
 #### Required
 ```bash
-export BASE_WORKING_DIR=/opt/clusters           # Base directory for cluster data
+export BASE_WORKING_DIR=/opt/clusters                                 # Base directory for cluster data
+export PULL_SECRET=$(cat /path/to/pull-secret.json)                   # Red Hat pull secret
+export LZ_CLOUD_IMAGE_URL=file:///path/to/rhel-10.2-x86_64-kvm.qcow2  # RHEL 10 installation image
+export LZ_RHSM_ORG=<rhsm org id>
+export LZ_RHSM_ACTIVATION_KEY=<rhsm activation key>
 ```
 
 #### Optional
 ```bash
 export ENCLAVE_CLUSTER_NAME=my-cluster         # Custom cluster name (auto-generated if not set)
 export ENCLAVE_DEPLOYMENT_MODE=connected       # "connected" or "disconnected" (default)
-export PULL_SECRET=/path/to/pull-secret.json   # Red Hat pull secret
 ```
 
 ## Full CI Flow
 
-### Connected Mode (Recommended for Development)
+### Connected Mode
 
 Fastest option - skips mirror registry setup:
 
 ```bash
-export BASE_WORKING_DIR=/opt/clusters
-
 make -f Makefile.ci ci-flow-connected
 ```
-
-**What happens:**
-1. Preflight checks validate environment
-2. Generates unique cluster name (e.g., `eci-a28be7f5`)
-3. Creates cluster-specific working directory
-4. Creates VMs, networks, and BMC emulation
-5. Provisions Landing Zone VM with CentOS Stream 10
-6. Installs Enclave Lab on Landing Zone
-7. Deploys OpenShift cluster (pulls from upstream registries)
-8. Verifies cluster health (nodes, operators, version)
-
-**Duration:** ~45-60 minutes
-
-### Disconnected Mode (Production Validation)
+### Disconnected Mode
 
 Full air-gapped deployment with local mirror registry:
 
 ```bash
-export BASE_WORKING_DIR=/opt/clusters
-
 make -f Makefile.ci ci-flow-disconnected
-```
-
-**Additional steps:**
-- Creates local Quay registry
-- Mirrors all required container images (~30-40GB)
-- Uses local registry for cluster deployment
-
-**Duration:** ~90-120 minutes (extra time for mirroring)
-
-### Custom Cluster Name
-
-Override automatic cluster name generation:
-
-```bash
-export ENCLAVE_CLUSTER_NAME=dev-test-cluster
-export BASE_WORKING_DIR=/opt/clusters
-
-make -f Makefile.ci ci-flow-connected
 ```
 
 ## Individual Components
 
 You can run each phase of the CI flow independently for faster iteration:
 
+### 0. Set common env variables
+
+```bash
+export BASE_WORKING_DIR=/opt/clusters    # the place to store VMs files, etc... make it big :)
+export ENCLAVE_CLUSTER_NAME=eci-local01  # In this example we pin a unique name manually
+export PULL_SECRET=$(cat /path/to/pull-secret.json)
+export LZ_CLOUD_IMAGE_URL=file:///path/to/rhel-10.2-x86_64-kvm.qcow2
+export LZ_RHSM_ORG=<rhsm org id>
+export LZ_RHSM_ACTIVATION_KEY=<rhsm activation key>
+```
+
 ### 1. Preflight Checks
 
 Validate environment before starting:
 
 ```bash
-make -f Makefile.ci preflight-checks
-```
-
-**Checks:**
-- WORKING_DIR is set
-- System has sufficient RAM
-- Libvirt is accessible
-- Disk space is available
-
-**Options:**
-```bash
-# With all checks
 ./scripts/setup/preflight_checks.sh \
   --check-pull-secret \
   --check-system-resources \
   --check-libvirt
-
-# Custom title
-./scripts/setup/preflight_checks.sh --title "My Custom Checks"
 ```
 
 ### 2. Create Infrastructure
 
-Create VMs, networks, and BMC emulation:
-
 ```bash
 make -f Makefile.ci environment
 ```
-
-`vm_infra.py` owns cluster identity: when `ENCLAVE_CLUSTER_NAME` is unset it generates a
-unique `<prefix>-<8hex>` name (override the prefix with `ENCLAVE_CLUSTER_PREFIX`, default
-`eci`) and derives `WORKING_DIR` as `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`.
-
-For a multi-step local run where the name is generated, either **pin the name** so every
-step shares it:
-
-```bash
-export ENCLAVE_CLUSTER_NAME=eci-local
-make -f Makefile.ci environment
-make -f Makefile.ci provision-landing-zone
-```
-
-or let `make -f Makefile.ci environment` record the generated identity into an env file and read the two
-values back **as data** (this is what `make -f Makefile.ci ci-flow-connected` does under the hood — it
-never runs `create` twice):
-
-```bash
-ident=$(mktemp)
-GITHUB_ENV="$ident" make -f Makefile.ci environment
-# Read the values literally (do NOT `source` the file — it is GitHub's KEY=value format,
-# not shell-quoted, so a path with spaces would break sourcing).
-export ENCLAVE_CLUSTER_NAME="$(sed -n 's/^ENCLAVE_CLUSTER_NAME=//p' "$ident")"
-export WORKING_DIR="$(sed -n 's/^WORKING_DIR=//p' "$ident")"
-echo "$ENCLAVE_CLUSTER_NAME $WORKING_DIR"
-make -f Makefile.ci provision-landing-zone
-```
-
-> Do **not** run `vm_infra.py create` again to "read back" the name — a second create
-> generates a new name and a whole second cluster.
 
 **What `make -f Makefile.ci environment` does:**
-- Generates the cluster name + working dir (via vm_infra.py)
 - Creates 3 master VMs + 1 Landing Zone VM
 - Sets up BMC and cluster networks
 - Starts BMC emulator (sushy-tools)
-- Writes cluster-env.sh (the single source of truth)
-
-**Verify:**
-```bash
-virsh list --all                    # Check VMs created
-virsh net-list                      # Check networks active
-sudo podman ps | grep sushy-tools   # Check BMC emulator
-```
+- Writes under `$BASE_WORKING_DIR/$CLUSTER_NAME/cluster-env.sh` (the single source of truth)
 
 ### 3. Provision Landing Zone
 
-Install OS and configure Landing Zone VM:
+Install RHEL 10 and configure Landing Zone VM:
 
 ```bash
 make -f Makefile.ci provision-landing-zone
 ```
 
 **What it does:**
-- Downloads CentOS Stream 10 cloud image
 - Creates cloud-init configuration
 - Provisions VM with OS
 - Configures BMC network (100.64.X.2)
 - Configures cluster network (192.168.X.Y)
 - Verifies connectivity to BMC emulator
 
-**Verify:**
-```bash
-make -f Makefile.ci verify-landing-zone
-
-# Or manually:
-virsh list | grep landingzone       # VM running
-ssh cloud-user@<landing-zone-ip>    # SSH access works
-```
-
 ### 4. Install Enclave Lab
 
 Install Enclave Lab software on Landing Zone:
 
 ```bash
-# Connected mode (faster)
+# Connected mode
 ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave
 
-# Disconnected mode (default)
-make -f Makefile.ci install-enclave
+# Disconnected mode
+ENCLAVE_DEPLOYMENT_MODE=disconnected make -f Makefile.ci install-enclave
 ```
 
 **What it does:**
@@ -245,14 +133,6 @@ make -f Makefile.ci install-enclave
 - Sets up Ansible collections
 - Configures pull secret
 - Starts httpd service
-
-**Verify:**
-```bash
-make -f Makefile.ci verify-enclave-installation
-
-# Or manually:
-ssh cloud-user@<landing-zone-ip> ls -la /home/cloud-user/enclave
-```
 
 ### 5. Deploy Cluster
 
@@ -308,74 +188,6 @@ make -f Makefile.ci verify-cleanup
 - Networks
 - Storage pools
 - Environment files
-
-## Environment Variables
-
-### BASE_WORKING_DIR
-
-**Required**: Yes (for `make -f Makefile.ci environment` / `ci-flow-*`)
-**Description**: Base directory for cluster-specific data; vm_infra.py derives WORKING_DIR from it
-**Default**: `/opt/clusters` (in some scripts)
-**Example**: `/opt/clusters`
-
-```bash
-export BASE_WORKING_DIR=/opt/clusters
-```
-
-Each cluster gets: `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`
-
-### ENCLAVE_CLUSTER_NAME
-
-**Required**: No (auto-generated if not set)
-**Description**: Unique cluster name
-**Auto-generated format**: `eci-XXXXXXXX` (hash of timestamp + PID)
-**Example**: `eci-a28be7f5` or `my-test-cluster`
-
-```bash
-# Auto-generate (recommended for local testing)
-unset ENCLAVE_CLUSTER_NAME
-make -f Makefile.ci ci-flow-connected
-
-# Custom name
-export ENCLAVE_CLUSTER_NAME=dev-cluster-1
-make -f Makefile.ci ci-flow-connected
-```
-
-### ENCLAVE_DEPLOYMENT_MODE
-
-**Required**: No
-**Description**: Deployment mode
-**Values**: `connected` or `disconnected`
-**Default**: `disconnected`
-
-```bash
-# Connected mode (faster, uses upstream registries)
-export ENCLAVE_DEPLOYMENT_MODE=connected
-
-# Disconnected mode (mirrors to local registry)
-export ENCLAVE_DEPLOYMENT_MODE=disconnected
-```
-
-### WORKING_DIR
-
-**Required**: No
-**Description**: Cluster-specific working directory
-**Auto-set by**: `vm_infra.py` (via `make -f Makefile.ci environment`), recorded in `cluster-env.sh` / `$GITHUB_ENV`
-**Format**: `${BASE_WORKING_DIR}/${ENCLAVE_CLUSTER_NAME}`
-
-Usually don't set manually - let `vm_infra.py` derive it from `BASE_WORKING_DIR`.
-
-### PULL_SECRET
-
-**Required**: For cluster deployment
-**Description**: Red Hat pull secret for image downloads
-**Obtain from**: https://console.redhat.com/openshift/install/pull-secret
-
-```bash
-export PULL_SECRET=/path/to/pull-secret.json
-# Or inline:
-export PULL_SECRET='{"auths":{"cloud.openshift.com":...}}'
-```
 
 ## Verification Commands
 
@@ -470,38 +282,6 @@ export ENCLAVE_CLUSTER_NAME=my-new-cluster-$(date +%s)
 make -f Makefile.ci ci-flow-connected
 ```
 
-### Storage Pool Already Active
-
-**Error**: `storage pool 'oooq_pool' is already active`
-
-**Fix**: This should be handled automatically now. If you still see it:
-```bash
-# Check pool status
-sudo virsh pool-info oooq_pool
-
-# Refresh pool
-sudo virsh pool-refresh oooq_pool
-```
-
-### Landing Zone IP Not Found
-
-**Error**: `Cannot find Landing Zone IP`
-
-**Debug**:
-```bash
-# Check environment file
-cat ${WORKING_DIR}/environment-${ENCLAVE_CLUSTER_NAME}.json
-
-# Check VM
-sudo virsh domifaddr ${ENCLAVE_CLUSTER_NAME}_landingzone_0
-
-# Check VM is running
-virsh list | grep landingzone
-
-# Check VM console
-virsh console ${ENCLAVE_CLUSTER_NAME}_landingzone_0  # Ctrl+] to exit
-```
-
 ### SSH Connection Refused
 
 **Error**: `ssh: connect to host X.X.X.X port 22: Connection refused`
@@ -584,228 +364,3 @@ virsh pool-list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $1}' | \
 virsh pool-list --all | grep ${ENCLAVE_CLUSTER_NAME} | awk '{print $1}' | \
   xargs -I {} virsh pool-undefine {}
 ```
-
-## Best Practices
-
-### Development Workflow
-
-1. **Always validate before commit**:
-   ```bash
-   make -f Makefile.ci validate
-   ```
-
-2. **Use connected mode for development**:
-   ```bash
-   ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci ci-flow-connected
-   ```
-
-3. **Test disconnected mode before PR**:
-   ```bash
-   make -f Makefile.ci ci-flow-disconnected
-   ```
-
-4. **Clean up after testing**:
-   ```bash
-   make -f Makefile.ci clean
-   make -f Makefile.ci verify-cleanup
-   ```
-
-### Efficient Testing
-
-**Test specific components instead of full flow:**
-
-Pin `ENCLAVE_CLUSTER_NAME` first (e.g. `export ENCLAVE_CLUSTER_NAME=eci-local`) so each
-target operates on the same cluster; otherwise `make -f Makefile.ci environment` generates a name that
-the later standalone targets won't know.
-
-```bash
-# Just infrastructure
-make -f Makefile.ci environment
-make -f Makefile.ci verify
-
-# Just Landing Zone
-make -f Makefile.ci provision-landing-zone
-make -f Makefile.ci verify-landing-zone
-
-# Just Enclave installation
-ENCLAVE_DEPLOYMENT_MODE=connected make -f Makefile.ci install-enclave
-make -f Makefile.ci verify-enclave-installation
-```
-
-**Use custom cluster names for parallel testing:**
-
-```bash
-# Terminal 1
-export ENCLAVE_CLUSTER_NAME=test-feature-a
-make -f Makefile.ci ci-flow-connected
-
-# Terminal 2
-export ENCLAVE_CLUSTER_NAME=test-feature-b
-make -f Makefile.ci ci-flow-connected
-```
-
-### Resource Management
-
-**Monitor resource usage:**
-
-```bash
-# RAM
-free -h
-
-# Disk
-df -h ${BASE_WORKING_DIR}
-
-# VMs
-virsh list --all | wc -l
-```
-
-**Clean up regularly:**
-
-```bash
-# Remove old clusters
-ls ${BASE_WORKING_DIR}/
-
-# Remove specific cluster
-export ENCLAVE_CLUSTER_NAME=old-cluster
-make -f Makefile.ci clean
-```
-
-### Debugging
-
-**Enable verbose output:**
-
-```bash
-# For Makefile
-make -f Makefile.ci -n ci-flow-connected     # Dry run (show commands)
-
-# For scripts
-bash -x ./scripts/infrastructure/provision_landing_zone.sh
-
-# For Ansible (on Landing Zone)
-ssh cloud-user@$LZ_IP
-cd /home/cloud-user/enclave
-ansible-playbook -vvv playbooks/main.yaml
-```
-
-**Collect logs for troubleshooting:**
-
-```bash
-# Step logs
-make -f Makefile.ci collect-step-logs
-
-# Full artifacts
-make -f Makefile.ci collect-artifacts-full
-ls artifacts/
-```
-
-### CI Consistency
-
-**Test the same way CI does:**
-
-```bash
-# Mimic e2e-deployment.yml workflow
-make -f Makefile.ci validate
-export BASE_WORKING_DIR=/opt/clusters
-export ENCLAVE_DEPLOYMENT_MODE=connected
-# Pin the cluster name so every target below shares the same identity. (Leave it unset
-# and vm_infra.py generates one — but then use `make -f Makefile.ci ci-flow-connected`, or the
-# identity-capture shown in "Create Infrastructure" above, so later targets can find it.)
-export ENCLAVE_CLUSTER_NAME=eci-local
-make -f Makefile.ci preflight-checks
-make -f Makefile.ci environment
-make -f Makefile.ci provision-landing-zone
-make -f Makefile.ci install-enclave
-make -f Makefile.ci deploy-cluster
-make -f Makefile.ci verify-cluster
-make -f Makefile.ci clean
-make -f Makefile.ci verify-cleanup
-```
-
-**Or use the one-liner:**
-
-```bash
-make -f Makefile.ci ci-flow-connected
-```
-
-## Advanced Usage
-
-### Custom Scripts Location
-
-If scripts are updated, use them directly:
-
-```bash
-# Instead of: make -f Makefile.ci verify-cluster
-./scripts/verification/verify_cluster.sh
-
-# With custom arguments
-./scripts/setup/preflight_checks.sh --check-all --title "Custom Checks"
-```
-
-### Parallel Testing
-
-Test multiple configurations simultaneously:
-
-```bash
-# Terminal 1: Connected mode
-export ENCLAVE_CLUSTER_NAME=test-connected-$(date +%s)
-export ENCLAVE_DEPLOYMENT_MODE=connected
-make -f Makefile.ci ci-flow-connected
-
-# Terminal 2: Disconnected mode
-export ENCLAVE_CLUSTER_NAME=test-disconnected-$(date +%s)
-export ENCLAVE_DEPLOYMENT_MODE=disconnected
-make -f Makefile.ci ci-flow-disconnected
-```
-
-### Custom Working Directory
-
-Use different base directories:
-
-```bash
-# Project-specific directory
-export BASE_WORKING_DIR=/opt/my-project/clusters
-mkdir -p $BASE_WORKING_DIR
-
-make -f Makefile.ci ci-flow-connected
-```
-
-### Integration with Your Workflow
-
-Add to your shell profile:
-
-```bash
-# ~/.bashrc or ~/.zshrc
-export BASE_WORKING_DIR=/opt/clusters
-
-alias enclave-test='make -f Makefile.ci ci-flow-connected'
-alias enclave-clean='make -f Makefile.ci clean && make -f Makefile.ci verify-cleanup'
-alias enclave-verify='make -f Makefile.ci verify-cluster'
-```
-
-## Summary
-
-The local CI testing workflow provides:
-
-✅ **Consistency**: Same commands locally and in CI
-✅ **Speed**: Test locally before pushing
-✅ **Flexibility**: Run full flow or individual components
-✅ **Debugging**: Full control and visibility
-✅ **Confidence**: Verify changes before PR
-
-**Key commands to remember:**
-
-```bash
-# Full flow
-make -f Makefile.ci ci-flow-connected
-
-# Verify
-make -f Makefile.ci verify-cluster
-
-# Clean up
-make -f Makefile.ci clean
-```
-
-For more information:
-- **README.md**: Overview and quick start
-- **docs/CI_WORKFLOWS.md**: GitHub Actions workflows
-- **Makefile**: All available targets (`make -f Makefile.ci help`)
