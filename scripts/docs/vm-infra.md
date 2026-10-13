@@ -1,0 +1,287 @@
+# VM Infrastructure
+
+`scripts/infrastructure/vm_infra.py` owns the libvirt networks and KVM VMs used
+by Enclave CI e2e runs, replacing the previous dependency on
+[dev-scripts](https://github.com/openshift-metal3/dev-scripts) and
+[metal3-dev-env](https://github.com/metal3-io/metal3-dev-env).
+
+## Design principle: single source of truth
+
+`vm_infra.py` is the **single source of truth** for the test environment. It generates the
+cluster identity (name, `WORKING_DIR`), creates and owns every libvirt resource — networks,
+bridges, DNS, storage pool, volumes, disks, and all VM domains including the Landing Zone —
+and writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh` (also
+echoed to stdout).
+
+The rules that keep this design intact:
+
+- **All environment setup lives here.** New infrastructure or derived values (IPs, MACs,
+  gateways, ports, endpoints, DNS records, …) are created/computed in `vm_infra.py` and
+  emitted in `cluster-env.sh`.
+- **No out-of-band modification from other scripts.** `provision` / `install` / `deploy` /
+  `verify` / `cleanup` consume `cluster-env.sh`; they must not create or mutate libvirt
+  resources (`virsh net-update`, `virt-install`, pool/volume creation, `net-start`, …) or
+  re-derive values `vm_infra.py` already provides.
+- **Exceptions, by design:** OS-level provisioning *inside* a guest (cloud-init, on-guest
+  `nmcli`) stays in `provision_landing_zone.sh`; shared-host safety (subnet `flock`,
+  `reap`/cleanup, per-cluster namespacing) stays and must be preserved for a possible return
+  to shared baremetal/hybrid hosts.
+
+When in doubt, add it to `vm_infra.py` and emit it — don't compute or mutate it elsewhere.
+
+## Network topology
+
+All subnets share the same third octet N (e.g. N=5 → BMC `100.64.5.0/24`,
+cluster `192.168.5.0/24`, LZ uplink `172.16.5.0/24`).
+
+`vm_infra.py` selects N itself at create time, using **libvirt as the source of
+truth**: under a host-wide lock (`/run/lock/enclave-subnet.lock`) it enumerates
+the subnets already in use by any defined libvirt network (active or inactive)
+and by any host interface, then picks the lowest free N in `[2, 254]`. Holding
+the lock across select→create means concurrent CI runs on the same hypervisor
+can never race onto the same subnet, and a re-run of the same cluster reuses its
+existing subnet (read back from the `{cluster}-p` network). This replaces the old
+`allocate_subnet.sh` JSON allocation ledger, which could drift from reality and
+hand out a subnet a leftover network still used.
+
+N can be pinned manually with `ENCLAVE_SUBNET_ID` (or the third octet of
+`ENCLAVE_BMC_NETWORK`); when neither is set, N is auto-selected.
+
+### Connected mode — 2 bridges
+
+```text
+{CLUSTER}-p  isolated  100.64.N.0/24   BMC / provisioning
+  host:  100.64.N.1  (libvirt assigns synchronously — no polling needed)
+  LZ:    100.64.N.2  (static, configured via nmcli after first boot)
+
+{CLUSTER}-e  NAT       192.168.N.0/24  Cluster — all VMs have internet
+  host:  192.168.N.1
+  DHCP with static leases: LZ → .2, master-0 → .20, master-1 → .21, …
+  (the leases reserve the exact IPs the agent installer assigns statically)
+```
+
+### Disconnected mode — 3 bridges
+
+```text
+{CLUSTER}-p  isolated  100.64.N.0/24   BMC / provisioning (same as connected)
+
+{CLUSTER}-e  isolated  192.168.N.0/24  Cluster — NO internet for any VM
+  host:  192.168.N.1
+  DHCP with static leases (same assignments as connected)
+
+{CLUSTER}-u  NAT       172.16.N.0/24   LZ uplink — Landing Zone third NIC only
+  host:  172.16.N.1
+  DHCP: LZ uplink MAC → 172.16.N.2
+```
+
+The isolated cluster bridge in disconnected mode closes a gap in the old
+dev-scripts setup where masters had unintended internet access via NAT.
+
+### DNS records
+
+Cluster DNS is baked into each network's dnsmasq at create time (via
+`<dnsmasq:options>` in the network XML; see `Config.cluster_dns_addresses`), so there is
+no runtime `virsh net-update`:
+
+```text
+mirror, mirror.<base_domain>        -> Landing Zone (192.168.N.2, mirror-registry/Quay)
+api.<cluster>.<base_domain>         -> API VIP      (192.168.N.100)
+*.apps.<cluster>.<base_domain>      -> ingress VIP  (192.168.N.101, true wildcard)
+```
+
+These are added to the **cluster** network (masters resolve via its dnsmasq) and, in
+disconnected mode, also to the **uplink** network (the LZ resolves via that one).
+
+### NIC assignments
+
+| VM | NIC 1 — BMC | NIC 2 — cluster | NIC 3 — uplink |
+|---|---|---|---|
+| `{cluster}_landingzone_0` (connected) | `{cluster}-p` | `{cluster}-e` | — |
+| `{cluster}_landingzone_0` (disconnected) | `{cluster}-p` | `{cluster}-e` | `{cluster}-u` |
+| `{cluster}_master_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
+
+Masters have no IP on the BMC bridge — they are identified by MAC address for
+Redfish (`SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID=True`).
+
+VM names follow the dev-scripts convention (`{cluster}_landingzone_0`,
+`{cluster}_master_{i}`) so no downstream scripts need to change.
+
+### Boot order
+
+Master VMs (`{cluster}_master_N`) are defined with `<os><boot dev='cdrom'/><boot dev='hd'/></os>`:
+
+1. SATA CD-ROM (first) — sushy-tools mounts the ABI ISO here via Redfish VirtualMedia
+2. virtio primary disk (second) — boots RHCOS after installation
+
+sushy-tools changes the boot device by modifying `<os><boot>` elements via the
+libvirt API. Per-device `<boot order='N'/>` attributes on disk elements must NOT
+be used — libvirt rejects mixing the two styles and sushy-tools' Redfish boot
+order change fails with a 500 error.
+
+vm_infra.py defines the **real** Landing Zone domain (NICs, MACs, memory, vcpu,
+disk size, pool volume, and a cloud-init cdrom pointing at `ENCLAVE_LZ_CLOUD_INIT_ISO`)
+but does not start it. `provision_landing_zone.sh` does the OS provisioning only: it
+builds the cloud-init ISO at that path, writes the cloud image into the existing LZ
+volume (and resizes it), then `virsh start`s the already-defined domain — it never
+undefines/recreates it or manages the pool. The uplink NIC (`{cluster}-u`) is part of
+the domain definition in disconnected mode.
+
+## Parallelism and isolation
+
+All resource names (bridges, IP ranges, sushy-tools port, storage pool, VM names)
+embed the cluster name, so multiple CI runs on the same host never conflict.
+
+The libvirt API is safe for concurrent operations on distinct resources.
+
+The one shared resource is the subnet third octet N. `create` serializes subnet
+selection and network creation across all concurrent runs on the host with an
+exclusive `flock` on `/run/lock/enclave-subnet.lock` (see *Network topology*).
+
+## State file
+
+`create` writes a single file, `$WORKING_DIR/cluster-env.sh`, and also echoes its
+contents to stdout (all logging goes to stderr). It is the single source of truth
+consumed by every downstream script via `load_cluster_env` in `scripts/lib/config.sh`.
+
+Because `create` also *generates* the cluster name (when `ENCLAVE_CLUSTER_NAME` is
+unset) and derives `WORKING_DIR`, the stdout echo lets the caller capture the chosen
+identity before it can locate the file on disk — `eval "$(sudo -E python3
+vm_infra.py create)"` locally, or append it to `$GITHUB_ENV` in CI.
+
+`cluster-env.sh` carries the full infrastructure contract: cluster name and base
+domain, deployment mode, `WORKING_DIR`, pool path, bridges, CIDRs, gateways, the BMC
+endpoint/port, service IPs (API/ingress VIPs, rendezvous), and the Landing Zone and
+enumerated master names, IPs and MACs. For example:
+
+```bash
+export ENCLAVE_CLUSTER_NAME="eci-ab12cd34"
+export ENCLAVE_BASE_DOMAIN="eci-ab12cd34.lab"
+export WORKING_DIR="/opt/clusters/eci-ab12cd34"
+export ENCLAVE_BMC_NETWORK="100.64.N.0/24"
+export ENCLAVE_CLUSTER_NETWORK="192.168.N.0/24"
+export ENCLAVE_BMC_ENDPOINT="https://100.64.N.1:800N"
+export ENCLAVE_LZ_CLUSTER_IP="192.168.N.2"
+export ENCLAVE_MASTER_COUNT="3"
+export ENCLAVE_MASTER_0_CLUSTER_MAC="52:54:00:…"
+export ENCLAVE_MASTER_0_CLUSTER_IP="192.168.N.20"
+# … and so on
+```
+
+### MAC addresses
+
+MACs are **deterministic** — `52:54:00:` + the first three bytes of
+`sha256(cluster_name:vm:nic)` — so `destroy` + `create` of the same cluster always
+reproduces the same addresses with no persisted file, and distinct cluster names
+keep addresses unique across concurrent clusters on a shared host. (This replaces the
+old random-MACs-plus-`macs.json` scheme.)
+
+## Python tool
+
+### Environment variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `ENCLAVE_CLUSTER_NAME` | no (create) / yes (destroy) | generated | Cluster identifier. On `create`, generated as `<prefix>-<8hex>` (checked unique against libvirt) when unset; `destroy` requires it. |
+| `ENCLAVE_CLUSTER_PREFIX` | no | `eci` | Prefix for a generated name; must be one of `eci`/`ecd`/`nc`/`nd` (the set `reap` recognizes) |
+| `ENCLAVE_CLUSTER_SEED` | no | time+pid | Seed for the generated-name hash (CI passes the run id for traceability) |
+| `WORKING_DIR` | no | derived | Per-cluster working directory; derived as `$BASE_WORKING_DIR/<name>` when unset |
+| `BASE_WORKING_DIR` | no | — | Base dir used to derive `WORKING_DIR` when it is not set |
+| `ENCLAVE_BASE_DOMAIN` | no | `<cluster>.lab` | Cluster base domain |
+| `ENCLAVE_SUBNET_ID` | no | auto | Pin the shared third octet N (2–254); auto-selected from libvirt when unset |
+| `ENCLAVE_BMC_NETWORK` | no | derived | Alternative way to pin N via its third octet (e.g. `100.64.5.0/24`); ignored if `ENCLAVE_SUBNET_ID` is set |
+| `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
+| `ENCLAVE_NUM_MASTERS` | no | `3` | Number of master VMs |
+| `STORAGE_PLUGIN` | no | `lvms` | `lvms` or `odf` — affects VM sizing defaults |
+| `MASTER_MEMORY` | no | 32768 / 49152 (odf) | Master RAM in MiB. ODF masters get 48 GB for the ODF/ACM/MCE control plane and Ceph consumers; more does not help (the operators-phase Quay CrashLoop is a Quay-backend health-probe issue, not master memory) |
+| `MASTER_VCPU` | no | 12 / 16 (odf) | Master vCPU count |
+| `MASTER_DISK` | no | 120 | Master primary disk in GiB |
+| `MASTER_EXTRA_DISK` | derived | 1200 (disconnected+lvms) / 60 | Master extra disk in GiB; not directly overridable — derived from `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE` |
+| `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB; the odf default gives Ceph-on-LZ headroom |
+| `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (odf) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; odf additionally needs ~900 GB for the Ceph loopback OSD files |
+| `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count |
+
+### XML templates
+
+Network and domain XML definitions live in `scripts/infrastructure/templates/`
+as Jinja2 templates (Jinja2 3.1+ is present as a system RPM on RHEL 9):
+
+| Template | Used for |
+|---|---|
+| `network-bmc.xml.j2` | BMC isolated network (no DHCP) |
+| `network-cluster.xml.j2` | Cluster network (isolated or NAT) and LZ uplink |
+| `domain.xml.j2` | VM domain definition (q35, UEFI, virtio) |
+
+### Usage
+
+```bash
+# Create infrastructure (requires root for libvirt and bridge.conf access)
+sudo python3 scripts/infrastructure/vm_infra.py create
+
+# Destroy infrastructure
+sudo python3 scripts/infrastructure/vm_infra.py destroy
+
+# Verbose output
+sudo python3 scripts/infrastructure/vm_infra.py create -v
+
+# Dry-run: print the subnet create would select (creating nothing)
+sudo python3 scripts/infrastructure/vm_infra.py create --print-subnet
+
+# Reap: tear down ALL CI clusters older than a threshold (cross-run GC)
+sudo REAP_AGE_HOURS=12 python3 scripts/infrastructure/vm_infra.py reap
+sudo python3 scripts/infrastructure/vm_infra.py reap --age-hours 12
+```
+
+`--print-subnet` runs the same locked selection logic as `create` and prints
+`subnet_id=`, `bmc_network=`, `cluster_network=` and `lz_network=` without
+defining any networks or VMs — useful for verifying allocation on a host.
+
+`create` and `destroy` are idempotent: `create` skips resources that already
+exist; `destroy` skips resources already gone.
+
+### Reaping leaked clusters
+
+`destroy` only tears down the one cluster named by `ENCLAVE_CLUSTER_NAME`, so VMs
+left behind by a cancelled, timed-out or killed job are never reclaimed by any
+later run (each run has a different `<prefix>-<hash>` name). `reap` closes that
+gap: it discovers **every** CI cluster on the host (`eci-`/`ecd-`/`nc-`/`nd-`)
+and calls `destroy` on each one whose libvirt definition is older than the
+threshold. Age is taken from the domain-definition XML mtime (the cluster's
+create time), never the qcow2 disk mtime — a leaked-but-running VM keeps writing
+to disk and would otherwise never age out. Only clusters matching the CI naming
+pattern are ever touched, and each cluster is best-effort (a failure on one does
+not abort the sweep).
+
+Beyond clusters that still have domains, `reap` also sweeps two leaks the
+per-cluster teardown never reclaims, using the same age threshold and in-flight
+safety:
+
+- **Orphan storage pools** — `destroy` only removes the pool named exactly
+  `cluster_name`, so landing-zone `<cluster>-1` pools and any pool whose domains
+  were already undefined survive forever. `reap` removes every CI-named pool that
+  has no defined domain and whose definition XML is older than the threshold.
+- **Unreferenced default-pool ISOs** — each run drops per-node `boot-*` and an
+  `agent-x86_64-iso-*` volume into the shared `default` pool (~1.3 GiB each), which
+  no cluster pool owns. `reap` deletes those not referenced by any defined domain
+  and older than the threshold.
+
+The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, safely above
+the longest e2e job timeout of 600 minutes). A destructive reap refuses a
+threshold below the safety floor (`11h`, just above that timeout) unless `--force`
+is given, so a misconfigured value cannot tear down an in-flight run sharing the
+host; `--dry-run` is exempt. Non-numeric or non-finite thresholds are rejected.
+Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
+directory when its storage pool is already gone.
+
+In CI, the `environment` Makefile target calls `create`, `clean-infra` calls
+`destroy` (via `cleanup.sh`), and `reap-stale-vms` invokes `vm_infra.py reap`
+directly. The
+scheduled `cleanup.yml` workflow reaps at every level, and the e2e / dry-run
+workflows reap before each run. Two **repository variables** control the pre-job
+reap, with distinct effects:
+
+- `ENABLE_PREJOB_REAP` — the on/off switch. Set it to `false` to disable pre-job
+  reaping entirely; any other value (or unset) leaves it enabled.
+- `REAP_AGE_HOURS` — the numeric age threshold in hours (default `12`). This
+  **tunes** the threshold; it never disables reaping. Do **not** set it to
+  `false` — it is forwarded to `vm_infra.py`, which rejects a non-numeric value
+  and fails the step. Use `ENABLE_PREJOB_REAP=false` to turn reaping off.

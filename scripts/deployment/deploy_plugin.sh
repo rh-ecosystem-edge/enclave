@@ -47,21 +47,15 @@ if [ ! -f "${ENCLAVE_DIR}/plugins/${PLUGIN_NAME}/plugin.yaml" ]; then
 fi
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -98,7 +92,7 @@ if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
 fi
 
 # Build ansible-playbook command with extra vars
-EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
 plugin_name: ${PLUGIN_NAME}
 "
 
@@ -131,6 +125,41 @@ if [ -n "${ENABLED_PLUGINS:-}" ]; then
     info "Enabled plugins: $ENABLED_PLUGINS"
 fi
 
+# Copy AAP license file to Landing Zone if AAP_LICENSE_FILE is set
+if [ -n "${AAP_LICENSE_FILE:-}" ] && { [ "$PLUGIN_NAME" = "aap" ] || [ "$PLUGIN_NAME" = "osac" ]; }; then
+    if [ ! -f "$AAP_LICENSE_FILE" ]; then
+        error "AAP license file not found: $AAP_LICENSE_FILE"
+        exit 1
+    fi
+    LZ_AAP_LICENSE="${LZ_HOME}/aap-license.zip"
+    info "Copying AAP license file to Landing Zone: $LZ_AAP_LICENSE"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    ssh $SSH_OPTS "$LZ_SSH" "chmod 600 '$LZ_AAP_LICENSE'"
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}osacAapLicenseFile: ${LZ_AAP_LICENSE}
+"
+    # Generate OSAC plugin config on LZ if it doesn't exist (CI environments)
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/config/plugins/osac.yaml"; then
+        info "Generating config/plugins/osac.yaml on Landing Zone"
+        if [ -n "${OSAC_CHART_VERSION:-}" ]; then
+            if [[ ! "$OSAC_CHART_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+                error "Invalid OSAC_CHART_VERSION: '$OSAC_CHART_VERSION'"
+                error "Version must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                exit 1
+            fi
+        fi
+        # shellcheck disable=SC2086,SC2087  # SSH_OPTS needs word splitting, we want client-side expansion
+        ssh $SSH_OPTS "$LZ_SSH" "mkdir -p $LZ_ENCLAVE_DIR/config/plugins && cat > $LZ_ENCLAVE_DIR/config/plugins/osac.yaml" <<OSAC_EOF
+---
+osacAapLicenseFile: "${LZ_AAP_LICENSE}"
+${OSAC_CHART_VERSION:+osacChartVersion: "${OSAC_CHART_VERSION}"}
+osacTestUsers: true
+OSAC_EOF
+    fi
+fi
+
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
@@ -142,7 +171,7 @@ LOG_FILE="deployment_plugin_${PLUGIN_NAME}.log"
 info "Running playbook (logging to $LOG_FILE)..."
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 set +e
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 PLUGIN_EXIT_CODE=$?
 set -e
 

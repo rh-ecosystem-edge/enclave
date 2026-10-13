@@ -28,7 +28,7 @@ if [ $# -lt 1 ]; then
     error "Example: $0 build-cache"
     error ""
     error "Available steps: setup validate download-content build-cache"
-    error "  acquire-hardware deploy post-install operators day2 discovery"
+    error "  acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
     exit 1
 fi
 
@@ -36,31 +36,25 @@ STEP_NAME="$1"
 
 # Validate step name against allowed values
 case "$STEP_NAME" in
-    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay)
+    setup|validate|download-content|build-cache|acquire-hardware|deploy|post-install|operators|day2|discovery|partner-overlay|write-migration-tasks)
         ;;
     *)
         error "Unknown bootstrap step: $STEP_NAME"
-        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay"
+        error "Valid steps: setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
         exit 1
         ;;
 esac
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"

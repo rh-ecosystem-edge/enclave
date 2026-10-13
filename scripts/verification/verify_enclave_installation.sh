@@ -30,23 +30,18 @@ fail() {
 VERIFICATION_FAILED=0
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster configuration
+load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-
-# Get Landing Zone IP - dynamic subnet detection
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -234,10 +229,11 @@ fi
 
 # Test 7: SSH key
 info "Test 7: Checking SSH key on Landing Zone..."
-if ssh $SSH_OPTS "$LZ_SSH" "test -f ~/.ssh/id_rsa.pub"; then
+if SSH_KEY_PATH=$(find_lz_ssh_public_key); then
     success "SSH public key exists"
-    SSH_KEY=$(ssh $SSH_OPTS "$LZ_SSH" "cat ~/.ssh/id_rsa.pub" 2>/dev/null | head -c 50)
-    info "  Key: ${SSH_KEY}..."
+    # shellcheck disable=SC2086
+    SSH_KEY=$(ssh $SSH_OPTS "$LZ_SSH" "cat '$SSH_KEY_PATH'" 2>/dev/null | head -c 50)
+    info "  Key: ${SSH_KEY}... (${SSH_KEY_PATH})"
 else
     warning "SSH key not found (will be generated during Enclave Lab run)"
 fi
@@ -288,7 +284,7 @@ fi
 
 # Test 11: Check network connectivity from Landing Zone to BMC
 info "Test 11: Testing network connectivity from Landing Zone..."
-BMC_NETWORK="${PROVISIONING_NETWORK}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
 BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
 SUSHY_ENDPOINT="http://${BMC_GATEWAY}:8000/redfish/v1/Systems"
 

@@ -2,7 +2,7 @@
 # Generate Enclave Lab config/global.yaml, config/certificates.yaml and
 # config/cloud_infra.yaml from infrastructure metadata
 #
-# This script reads environment.json (created in Task 1) and generates
+# This script reads cluster-env.sh (written by vm_infra.py) and generates
 # config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml
 # configuration files for Enclave Lab deployment.
 
@@ -18,68 +18,33 @@ source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
-require_command "jq"
-
-# Determine cluster name for dynamic config file
-ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
-
-# Source dev-scripts configuration
-load_devscripts_config
-
-# Configuration
+# Source cluster environment (vm_infra.py's cluster-env.sh is the single source of truth)
+load_cluster_env
 ensure_working_dir
-CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+require_env_var "ENCLAVE_BASE_DOMAIN"
 
-# Try cluster-specific environment file first, fall back to legacy location
-ENVIRONMENT_JSON="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
-fi
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
 
 GLOBAL_VARS_OUTPUT="${WORKING_DIR}/config/global.yaml"
 CERTS_VARS_OUTPUT="${WORKING_DIR}/config/certificates.yaml"
 CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
 
-info "Generating Enclave Lab configuration from infrastructure metadata..."
+info "Generating Enclave Lab configuration from cluster-env.sh..."
 
-# Check if environment.json exists
-require_file "$ENVIRONMENT_JSON" "Environment metadata not found: $ENVIRONMENT_JSON - Run 'make environment' first to create infrastructure"
-
-# Extract information from environment.json
-BMC_CIDR=$(jq -r '.networks.bmc.cidr' "$ENVIRONMENT_JSON")
-CLUSTER_CIDR=$(jq -r '.networks.cluster.cidr' "$ENVIRONMENT_JSON")
-BMC_ENDPOINT=$(jq -r '.bmc_emulation.sushy_tools.endpoint' "$ENVIRONMENT_JSON")
-
-# Extract BMC base URI (host:port) from full endpoint URL
-# BMC_ENDPOINT is like "http://100.64.1.1:8000", we need "100.64.1.1:8000"
-BMC_BASEURI=$(echo "$BMC_ENDPOINT" | sed 's|http://||' | sed 's|https://||')
-
-# Calculate network parameters
-CLUSTER_PREFIX=$(echo "$CLUSTER_CIDR" | sed 's|.*/||')
-CLUSTER_NETWORK=$(echo "$CLUSTER_CIDR" | sed 's|/.*||')
-CLUSTER_GATEWAY=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".1"}')
-
-# Calculate VIPs (use higher IPs to avoid conflicts)
-API_VIP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".100"}')
-INGRESS_VIP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".101"}')
-
-# Calculate Landing Zone BMC IP (.2 in BMC network)
-LZ_BMC_IP=$(echo "$BMC_CIDR" | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".2"}')
-
-# Get master count
-MASTER_COUNT=$(jq -r '.vms.masters | length' "$ENVIRONMENT_JSON")
-
-# Get base domain from config or use default
-BASE_DOMAIN="${CLUSTER_DOMAIN:-${CLUSTER_NAME}.lab}"
-
-# Get first master IP as rendezvous IP (bootstrap) before generating config
-RENDEZVOUS_IP=$(jq -r '.vms.masters[0].networks.cluster.ip' "$ENVIRONMENT_JSON")
-if [ "$RENDEZVOUS_IP" = "null" ] || [ -z "$RENDEZVOUS_IP" ] || [ "$RENDEZVOUS_IP" = "unknown" ]; then
-    # If IP not available, calculate it (starting from .20 to avoid conflicts with VIPs and LZ)
-    RENDEZVOUS_IP=$(echo "$CLUSTER_NETWORK" | awk -F. '{print $1"."$2"."$3".20"}')
-fi
+# Infrastructure facts — all owned and emitted by vm_infra.py in cluster-env.sh.
+BMC_CIDR="${ENCLAVE_BMC_NETWORK}"
+CLUSTER_CIDR="${ENCLAVE_CLUSTER_NETWORK}"
+# Redfish base URI is host:port (strip the scheme from the full endpoint).
+BMC_BASEURI="${ENCLAVE_BMC_ENDPOINT#*://}"
+CLUSTER_PREFIX="${ENCLAVE_CLUSTER_PREFIX_LEN}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK%/*}"
+CLUSTER_GATEWAY="${ENCLAVE_CLUSTER_GATEWAY}"
+API_VIP="${ENCLAVE_API_VIP}"
+INGRESS_VIP="${ENCLAVE_INGRESS_VIP}"
+LZ_BMC_IP="${ENCLAVE_LZ_BMC_IP}"
+MASTER_COUNT="${ENCLAVE_MASTER_COUNT}"
+RENDEZVOUS_IP="${ENCLAVE_RENDEZVOUS_IP}"
 
 info "Configuration parameters:"
 info "  Cluster Name: $CLUSTER_NAME"
@@ -102,7 +67,7 @@ cat > "$GLOBAL_VARS_OUTPUT" <<EOF
 # ============================================================================
 # Base Configuration
 # ============================================================================
-workingDir: "/home/cloud-user"
+workingDir: "/home/cloud-user/sessions/1"
 schemaValidationNoLog: true
 
 # ============================================================================
@@ -175,24 +140,16 @@ EOF
 for i in $(seq 0 $((MASTER_COUNT - 1))); do
     info "Processing master $i..."
 
-    # Get master information from environment.json
-    MASTER_NAME=$(jq -r ".vms.masters[$i].name" "$ENVIRONMENT_JSON")
-    MASTER_MAC=$(jq -r ".vms.masters[$i].networks.cluster.mac" "$ENVIRONMENT_JSON")
-    MASTER_IP=$(jq -r ".vms.masters[$i].networks.cluster.ip" "$ENVIRONMENT_JSON")
+    # Master facts from cluster-env.sh (ENCLAVE_MASTER_<i>_*), via indirect expansion.
+    name_var="ENCLAVE_MASTER_${i}_NAME";        MASTER_NAME="${!name_var}"
+    mac_var="ENCLAVE_MASTER_${i}_CLUSTER_MAC";  MASTER_MAC="${!mac_var}"
+    ip_var="ENCLAVE_MASTER_${i}_CLUSTER_IP";    MASTER_IP="${!ip_var}"
 
     # Get libvirt domain UUID (sushy-tools uses libvirt UUIDs as system IDs)
     MASTER_UUID=$(sudo virsh domuuid "$MASTER_NAME" 2>/dev/null || echo "")
     if [ -z "$MASTER_UUID" ]; then
         error "Could not get UUID for VM: $MASTER_NAME"
         exit 1
-    fi
-
-    # Redfish base URI (host:port only, no protocol or path)
-    # sushy-tools uses libvirt domain UUID as system ID in the path
-
-    # If IP not available from DHCP, calculate it (starting from .20)
-    if [ "$MASTER_IP" = "null" ] || [ -z "$MASTER_IP" ] || [ "$MASTER_IP" = "unknown" ]; then
-        MASTER_IP=$(echo "$CLUSTER_NETWORK" | awk -F. -v i=$i '{print $1"."$2"."$3"."20+i}')
     fi
 
     # Normalize master name (remove cluster prefix if present)
@@ -203,7 +160,7 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
 
     cat >> "$GLOBAL_VARS_OUTPUT" <<EOF
   - name: ${CLUSTER_NAME}-${MASTER_SHORT_NAME}
-    macAddress: ${MASTER_MAC}
+    macAddress: "${MASTER_MAC}"
     ipAddress: ${MASTER_IP}
     redfish: ${BMC_BASEURI}
     bmcSystemId: ${MASTER_UUID}
@@ -213,42 +170,57 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
 EOF
 done
 
-# Generate self-signed SSL certificates for CI
+# Generate SSL certificates for CI
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
-CERT_DIR=$(mktemp -d)
-trap 'rm -rf "$CERT_DIR"' EXIT
 
-info "Generating self-signed SSL certificates for ${CLUSTER_FQDN}..."
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
+    CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
+    trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
+    uv run --group cert-gen enclave-cert-gen ingress-api \
+        --san "api.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --san "*.apps.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
+        --type "${ENCLAVE_CERT_TYPE}" \
+        > "${CERTS_VARS_TEMP}"
+    chmod 600 "${CERTS_VARS_TEMP}"
+    mv "${CERTS_VARS_TEMP}" "${CERTS_VARS_OUTPUT}"
+    trap - EXIT
+    info "✓ Real CA certificates written for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+else
+    CERT_DIR=$(mktemp -d)
+    trap 'rm -rf "$CERT_DIR"' EXIT
 
-# Generate CA
-openssl req -x509 -newkey rsa:2048 -keyout "${CERT_DIR}/ca.key" -out "${CERT_DIR}/ca.crt" \
-    -days 365 -nodes -subj "/CN=${CLUSTER_FQDN} CA" 2>/dev/null
+    info "Generating self-signed SSL certificates for ${CLUSTER_FQDN}..."
 
-# Generate API certificate (api.<cluster>.<domain>)
-openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/api.key" -out "${CERT_DIR}/api.csr" \
-    -nodes -subj "/CN=api.${CLUSTER_FQDN}" \
-    -addext "subjectAltName=DNS:api.${CLUSTER_FQDN}" 2>/dev/null
-openssl x509 -req -in "${CERT_DIR}/api.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
-    -CAcreateserial -out "${CERT_DIR}/api.crt" -days 365 \
-    -copy_extensions copyall 2>/dev/null
+    # Generate CA
+    openssl req -x509 -newkey rsa:2048 -keyout "${CERT_DIR}/ca.key" -out "${CERT_DIR}/ca.crt" \
+        -days 365 -nodes -subj "/CN=${CLUSTER_FQDN} CA" 2>/dev/null
 
-# Generate Ingress certificate (*.apps.<cluster>.<domain>)
-openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/ingress.key" -out "${CERT_DIR}/ingress.csr" \
-    -nodes -subj "/CN=*.apps.${CLUSTER_FQDN}" \
-    -addext "subjectAltName=DNS:*.apps.${CLUSTER_FQDN}" 2>/dev/null
-openssl x509 -req -in "${CERT_DIR}/ingress.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
-    -CAcreateserial -out "${CERT_DIR}/ingress.crt" -days 365 \
-    -copy_extensions copyall 2>/dev/null
+    # Generate API certificate (api.<cluster>.<domain>)
+    openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/api.key" -out "${CERT_DIR}/api.csr" \
+        -nodes -subj "/CN=api.${CLUSTER_FQDN}" \
+        -addext "subjectAltName=DNS:api.${CLUSTER_FQDN}" 2>/dev/null
+    openssl x509 -req -in "${CERT_DIR}/api.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
+        -CAcreateserial -out "${CERT_DIR}/api.crt" -days 365 \
+        -copy_extensions copyall 2>/dev/null
 
-# Read cert contents for YAML embedding
-API_KEY=$(cat "${CERT_DIR}/api.key")
-API_CERT=$(cat "${CERT_DIR}/api.crt")
-INGRESS_KEY=$(cat "${CERT_DIR}/ingress.key")
-INGRESS_CERT=$(cat "${CERT_DIR}/ingress.crt")
-CA_CERT=$(cat "${CERT_DIR}/ca.crt")
+    # Generate Ingress certificate (*.apps.<cluster>.<domain>)
+    openssl req -newkey rsa:2048 -keyout "${CERT_DIR}/ingress.key" -out "${CERT_DIR}/ingress.csr" \
+        -nodes -subj "/CN=*.apps.${CLUSTER_FQDN}" \
+        -addext "subjectAltName=DNS:*.apps.${CLUSTER_FQDN}" 2>/dev/null
+    openssl x509 -req -in "${CERT_DIR}/ingress.csr" -CA "${CERT_DIR}/ca.crt" -CAkey "${CERT_DIR}/ca.key" \
+        -CAcreateserial -out "${CERT_DIR}/ingress.crt" -days 365 \
+        -copy_extensions copyall 2>/dev/null
 
-# Generate config/certificates.yaml file
-cat > "$CERTS_VARS_OUTPUT" <<EOF
+    # Read cert contents for YAML embedding
+    API_KEY=$(cat "${CERT_DIR}/api.key")
+    API_CERT=$(cat "${CERT_DIR}/api.crt")
+    INGRESS_KEY=$(cat "${CERT_DIR}/ingress.key")
+    INGRESS_CERT=$(cat "${CERT_DIR}/ingress.crt")
+    CA_CERT=$(cat "${CERT_DIR}/ca.crt")
+
+    # Generate config/certificates.yaml file
+    cat > "$CERTS_VARS_OUTPUT" <<EOF
 ---
 # SSL Certificates Configuration
 # Auto-generated self-signed certificates for CI/testing
@@ -276,7 +248,8 @@ sslCACertificate: |
 $(echo "$CA_CERT" | sed 's/^/  /')
 EOF
 
-info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+    info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
+fi
 
 # Generate config/cloud_infra.yaml file
 cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
@@ -299,6 +272,42 @@ if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
     sed -i 's/^storage_plugin: lvms$/storage_plugin: odf/' "$GLOBAL_VARS_OUTPUT"
     sed -i 's/^quayBackend: LocalStorage$/quayBackend: RadosGWStorage/' "$GLOBAL_VARS_OUTPUT"
     info "Storage plugin overridden to ODF with RadosGWStorage backend"
+fi
+
+# Tune Quay app resources for the LVMS backend in CI only (OSAC-4957). The
+# node-local RWO PV pins the Quay app to a single node, so a rolling update must
+# briefly run a second pod there; on constrained CI masters the default 6Gi
+# request leaves the surge pod unschedulable. Lower the memory request so the
+# rollout can complete.
+if [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
+    LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
+    mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
+    # Tolerate unquoted, double-quoted and single-quoted keys (matching
+    # delimiters) plus whitespace before the colon (all valid YAML forms).
+    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*("lvmsQuayAppResources"|'\''lvmsQuayAppResources'\''|lvmsQuayAppResources)[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
+        info "LVMS plugin config already defines lvmsQuayAppResources; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
+    else
+        # Append as a new top-level key so any existing lvmsConfig (e.g.
+        # deviceSelector.optionalPaths) is preserved rather than overwritten.
+        if [ ! -f "$LVMS_PLUGIN_CONFIG" ]; then
+            printf -- '---\n' > "$LVMS_PLUGIN_CONFIG"
+        elif [ -s "$LVMS_PLUGIN_CONFIG" ]; then
+            # Ensure a terminal newline so the appended key starts on its own line.
+            printf '\n' >> "$LVMS_PLUGIN_CONFIG"
+        fi
+        cat >> "$LVMS_PLUGIN_CONFIG" <<EOF
+# Auto-generated CI override (OSAC-4957): lower the Quay app memory request so the
+# rolling-update surge pod fits on the node-pinned LVMS RWO PV.
+lvmsQuayAppResources:
+  requests:
+    cpu: "2"
+    memory: "2Gi"
+  limits:
+    cpu: "4"
+    memory: "12Gi"
+EOF
+        info "Added tuned Quay app resources to LVMS plugin config: $LVMS_PLUGIN_CONFIG"
+    fi
 fi
 
 info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
@@ -327,7 +336,11 @@ info "  - Worker IPs: ${WORKER_IP_START}-${WORKER_IP_END} (will be assigned duri
 info "  - Storage: ${ACTIVE_STORAGE} with /dev/vda root disk"
 info "  - Registry: ${ACTIVE_REGISTRY}"
 info "  - Pull secret: Embedded in config/global.yaml (written to pullSecretPath at runtime)"
-info "  - SSL certificates: Self-signed (generated for CI/testing)"
+if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
+    info "  - SSL certificates: Real CA (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen"
+else
+    info "  - SSL certificates: Self-signed (generated for CI/testing)"
+fi
 echo ""
 info "Review config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml"
 info "and adjust if needed before running Enclave Lab"

@@ -6,7 +6,6 @@
 #
 # Usage: ./verify_ceph_on_lz.sh
 # Environment:
-#   DEV_SCRIPTS_PATH       - Path to dev-scripts (required)
 #   ENCLAVE_CLUSTER_NAME   - Cluster name (default: enclave-test)
 
 set -euo pipefail
@@ -23,21 +22,15 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"

@@ -13,8 +13,6 @@ ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 # Source shared utilities
 source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 
-# Configuration
-DEV_SCRIPTS_PATH="${DEV_SCRIPTS_PATH:-}"
 MIN_RAM_GB=48
 
 # Required disk depends on deployment mode
@@ -63,48 +61,25 @@ check_service() {
 echo "Validating prerequisites for environment creation..."
 echo ""
 
-# 0. Check if DEV_SCRIPTS_PATH is set
-if [ -z "$DEV_SCRIPTS_PATH" ]; then
-    error "DEV_SCRIPTS_PATH environment variable is not set"
-    echo ""
-    echo "Please set DEV_SCRIPTS_PATH to your dev-scripts installation:"
-    echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
-    echo ""
-    echo "Example:"
-    echo "  export DEV_SCRIPTS_PATH=/path/to/dev-scripts"
-    echo "  ./scripts/validate_prerequisites.sh"
-    echo ""
-    exit 1
-fi
-
-# 1. Check dev-scripts installation
-echo "1. Checking dev-scripts installation..."
-if [ -d "$DEV_SCRIPTS_PATH" ]; then
-    success "dev-scripts found at $DEV_SCRIPTS_PATH"
-
-    # Check for infra_only target in Makefile
-    if grep -q "^infra_only:" "$DEV_SCRIPTS_PATH/Makefile" 2>/dev/null; then
-        success "dev-scripts has infra_only target"
-    else
-        error "dev-scripts Makefile missing 'infra_only' target"
-        info_indent "Please ensure you have dev-scripts with infra_only support"
-        info_indent "Clone or update dev-scripts:"
-        info_indent "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
-    fi
+# 1. Check Python and required modules
+echo "1. Checking Python and VM infrastructure dependencies..."
+check_command "python3" "python3"
+if python3 -c "import libvirt" 2>/dev/null; then
+    success "python3-libvirt is available"
 else
-    error "dev-scripts not found at $DEV_SCRIPTS_PATH"
-    info_indent "Clone dev-scripts:"
-    info_indent "  git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
+    error "python3-libvirt not found (install: sudo dnf install python3-libvirt)"
+fi
+if python3 -c "import jinja2" 2>/dev/null; then
+    success "python3-jinja2 is available"
+else
+    error "python3-jinja2 not found (install: sudo dnf install python3-jinja2)"
 fi
 echo ""
 
 # 2. Check required commands
 echo "2. Checking required commands..."
 check_command "virsh" "libvirt-client"
-check_command "virt-install" "virt-install"
-check_command "ansible" "ansible"
 check_command "jq" "jq"
-check_command "git" "git"
 check_command "make" "make"
 echo ""
 
@@ -166,18 +141,30 @@ else
     info_indent "You may need to reduce VM specs in configuration"
 fi
 
-# Check disk space on /opt (where WORKING_DIR is)
-if [ -d "/opt" ]; then
-    AVAILABLE_GB=$(df -BG /opt | tail -1 | awk '{print $4}' | sed 's/G//')
+# Check disk space on the filesystem that will hold the cluster working directory.
+# WORKING_DIR may not exist yet (vm_infra.py derives/creates it from BASE_WORKING_DIR at
+# create time), so resolve the nearest existing ancestor, follow symlinks, and let df
+# report whatever filesystem/mount actually backs that path — never hardcode /opt.
+CHECK_DIR="${WORKING_DIR:-${BASE_WORKING_DIR:-/opt/clusters}}"
+while [ ! -d "$CHECK_DIR" ] && [ "$CHECK_DIR" != "/" ]; do
+    CHECK_DIR="$(dirname "$CHECK_DIR")"
+done
+CHECK_DIR="$(readlink -f "$CHECK_DIR" 2>/dev/null || echo "$CHECK_DIR")"
+
+DF_LINE="$(df -BG -P "$CHECK_DIR" 2>/dev/null | awk 'NR==2')"
+AVAILABLE_GB="$(echo "$DF_LINE" | awk '{gsub(/G/, "", $4); print $4}')"
+MOUNT_POINT="$(echo "$DF_LINE" | awk '{print $6}')"
+
+if [ -n "$AVAILABLE_GB" ]; then
     if [ "$AVAILABLE_GB" -ge "$MIN_DISK_GB" ]; then
-        success "Sufficient disk space on /opt: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
+        success "Sufficient disk space on ${MOUNT_POINT:-$CHECK_DIR}: ${AVAILABLE_GB}GB (minimum: ${MIN_DISK_GB}GB)"
     else
-        warning "Low disk space on /opt: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+ for ${DEPLOYMENT_MODE} mode)"
+        warning "Low disk space on ${MOUNT_POINT:-$CHECK_DIR}: ${AVAILABLE_GB}GB (recommended: ${MIN_DISK_GB}GB+ for ${DEPLOYMENT_MODE} mode)"
         info_indent "Disconnected: ~1200GB+ (VM extra disks 1200G for mirroring + masters + Landing Zone)"
         info_indent "Connected: ~200GB (3 masters x 120GB + Landing Zone 60GB)"
     fi
 else
-    warning "/opt directory does not exist (will be created)"
+    warning "Could not determine available disk space for ${CHECK_DIR}"
 fi
 echo ""
 
@@ -186,20 +173,20 @@ echo "6. Checking network configuration..."
 if ip link show virbr0 &> /dev/null; then
     success "Default libvirt network (virbr0) exists"
 else
-    info_indent "Default libvirt network not found (will be created by dev-scripts)"
+    info_indent "Default libvirt network not found (will be created by vm_infra.py)"
 fi
 
-# Check if firewalld is running (required by dev-scripts)
+# Check if firewalld is running (used by sushy-tools port management)
 if command -v firewalld &> /dev/null; then
     if systemctl is-active --quiet firewalld; then
         success "firewalld is running"
     else
         warning "firewalld is installed but not running"
-        info_indent "dev-scripts will start it automatically"
+        info_indent "sushy-tools port rules will be skipped"
     fi
 else
     warning "firewalld is not installed"
-    info_indent "dev-scripts requires firewalld for network setup"
+    info_indent "sushy-tools port rules will be skipped"
 fi
 echo ""
 
@@ -214,10 +201,9 @@ else
     echo -e "${RED}❌ Validation failed - please fix errors above${NC}"
     echo ""
     echo "Common fixes:"
-    echo "  - Install missing packages: sudo dnf install -y libvirt virt-install ansible jq git"
+    echo "  - Install missing packages: sudo dnf install -y libvirt virt-install jq git"
     echo "  - Start libvirt: sudo systemctl start libvirtd"
     echo "  - Add user to libvirt group: sudo usermod -a -G libvirt \$USER && newgrp libvirt"
-    echo "  - Clone dev-scripts: git clone https://github.com/openshift-metal3/dev-scripts.git $DEV_SCRIPTS_PATH"
-    echo ""
+      echo ""
     exit 1
 fi

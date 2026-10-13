@@ -1,0 +1,27 @@
+<network{% if dnsmasq_addresses %} xmlns:dnsmasq='http://libvirt.org/schemas/network/dnsmasq/1.0'{% endif %}>
+  <name>{{ name }}</name>
+  <bridge name="{{ name }}"/>
+{% if forward_mode != 'none' %}
+  <forward mode='{{ forward_mode }}'/>
+{% endif %}
+{% if dns_forwarder is defined %}
+  <dns>
+    <forwarder addr='{{ dns_forwarder }}'/>
+  </dns>
+{% endif %}
+  <ip address="{{ address }}" prefix="{{ prefix }}">
+    <dhcp>
+      <range start="{{ dhcp_start }}" end="{{ dhcp_end }}"/>
+{% for host in static_hosts %}
+      <host mac="{{ host.mac }}" name="{{ host.name }}" ip="{{ host.ip }}"/>
+{% endfor %}
+    </dhcp>
+  </ip>
+{% if dnsmasq_addresses %}
+  <dnsmasq:options>
+{% for opt in dnsmasq_addresses %}
+    <dnsmasq:option value="{{ opt }}"/>
+{% endfor %}
+  </dnsmasq:options>
+{% endif %}
+</network>

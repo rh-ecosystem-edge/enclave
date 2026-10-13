@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# Clean up orphaned dev-scripts resources before creating new environment
+# Clean up orphaned resources before creating new environment
 # This handles leftover resources from previous runs with different cluster names
 #
-# WARNING: This script removes hardcoded dev-scripts network names and should
-# only be run when you're sure no other dev-scripts processes are using them.
 # It is NOT safe for parallel execution and will interfere with other jobs.
 #
 # Usage: Only run this manually if environment creation fails due to network conflicts.
@@ -23,9 +21,9 @@ warning() {
     echo -e "${YELLOW}WARNING:${NC} $1"
 }
 
-info "Checking for orphaned dev-scripts resources..."
+info "Checking for orphaned vm resources..."
 
-# Common dev-scripts network names that might conflict
+# Common network names that might conflict
 KNOWN_NETWORKS=(
     "baremetal"
     "provisioning"

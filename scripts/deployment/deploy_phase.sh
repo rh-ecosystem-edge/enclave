@@ -34,21 +34,15 @@ shift
 ANSIBLE_EXTRA_ARGS="$*"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -85,7 +79,7 @@ if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
 fi
 
 # Build ansible-playbook command with extra vars
-EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
 "
 
 # Set disconnected mode based on DEPLOYMENT_MODE
@@ -157,7 +151,6 @@ if [ -n "${ENCLAVE_IRONIC_KEY:-}" ]; then
     done < <(printf '%s\n' "${ENCLAVE_IRONIC_KEY}")
 fi
 
-
 # Create the extra vars file on Landing Zone
 # shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
 ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
@@ -168,7 +161,7 @@ EOF
 LOG_FILE="deployment_$(basename "$PLAYBOOK_FILE" .yaml).log"
 info "Running playbook (logging to $LOG_FILE)..."
 # shellcheck disable=SC2086  # SSH_OPTS and ANSIBLE_EXTRA_ARGS need word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
 
 PHASE_EXIT_CODE=$?
 

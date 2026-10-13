@@ -6,8 +6,8 @@
 #
 # Usage:
 #   source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
-#   require_env_var "DEV_SCRIPTS_PATH"
-#   require_env_vars "DEV_SCRIPTS_PATH" "WORKING_DIR" "ENCLAVE_CLUSTER_NAME"
+#   require_env_var "WORKING_DIR"
+#   require_env_vars "WORKING_DIR" "ENCLAVE_CLUSTER_NAME"
 #   require_command "jq"
 #   require_file "/path/to/required/file"
 #
@@ -17,14 +17,13 @@
 #   require_command COMMAND [ERROR_MSG]       - Require command to be available in PATH
 #   require_file FILE_PATH [ERROR_MSG]        - Require file to exist
 #   require_dir DIR_PATH [ERROR_MSG]          - Require directory to exist
-#   require_path_within CHILD PARENT          - Require child path resolves inside parent
 #   validate_ip IP_ADDRESS                    - Validate IP address format
 
 # Require an environment variable to be set
 # Args: $1 = Variable name
 #       $2 = Custom error message (optional)
 # Exits with error if variable is not set or empty
-# Example: require_env_var "DEV_SCRIPTS_PATH"
+# Example: require_env_var "WORKING_DIR"
 require_env_var() {
     local var_name="$1"
     local error_msg="${2:-${var_name} environment variable is not set}"
@@ -39,7 +38,7 @@ require_env_var() {
 # Require multiple environment variables to be set
 # Args: $@ = Variable names
 # Exits with error if any variable is not set or empty
-# Example: require_env_vars "DEV_SCRIPTS_PATH" "WORKING_DIR" "CLUSTER_NAME"
+# Example: require_env_vars "WORKING_DIR" "CLUSTER_NAME"
 require_env_vars() {
     local failed=0
 
@@ -89,7 +88,7 @@ require_file() {
 # Args: $1 = Directory path
 #       $2 = Custom error message (optional)
 # Exits with error if directory does not exist
-# Example: require_dir "/opt/dev-scripts"
+# Example: require_dir "/opt/clusters"
 require_dir() {
     local dir_path="$1"
     local error_msg="${2:-Required directory not found: ${dir_path}}"
@@ -98,22 +97,6 @@ require_dir() {
         echo "ERROR: $error_msg" >&2
         exit 1
     fi
-}
-
-# Require child_path to resolve strictly inside parent_path
-# Uses realpath -m so the child need not exist yet (covers setup before clone)
-# Args: $1 = child path   $2 = parent path
-# Exits with error if child is outside parent
-# Example: require_path_within "${DEV_SCRIPTS_PATH}" "${WORKING_DIR}"
-require_path_within() {
-    local child_path="$1" parent_path="$2"
-    local child_real parent_real
-    parent_real="$(realpath "${parent_path}")"
-    child_real="$(realpath -m "${child_path}")"
-    case "${child_real}" in
-        "${parent_real}/"*) ;;
-        *) echo "ERROR: ${child_path} is outside ${parent_path}" >&2; exit 1 ;;
-    esac
 }
 
 # Validate IP address format

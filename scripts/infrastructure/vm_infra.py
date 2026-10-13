@@ -1,0 +1,1740 @@
+#!/usr/bin/env python3
+"""
+VM infrastructure management for Enclave CI.
+
+Creates/destroys libvirt networks and KVM VMs for e2e test runs.
+All configuration is read from environment variables; no pip dependencies
+beyond the system-provided libvirt and jinja2 packages.
+
+This is the single source of truth for the test environment: it generates the cluster
+identity (name, WORKING_DIR), creates and owns every libvirt resource (networks, DNS,
+pool, volumes, domains including the Landing Zone), and emits everything downstream needs
+to $WORKING_DIR/cluster-env.sh (also echoed to stdout). Downstream scripts must consume
+that file and must NOT create or mutate libvirt resources out-of-band. Add new
+infrastructure/derived values here and emit them — do not compute them in consumers.
+
+See scripts/docs/vm-infra.md for details (incl. the design principle).
+
+This script currently needs to be run in a RHEL9 Hypervisor with Python 3.9.
+
+Usage:
+    sudo python3 vm_infra.py create
+    sudo python3 vm_infra.py destroy
+    sudo REAP_AGE_HOURS=12 python3 vm_infra.py reap   # GC stale cross-run VMs
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import logging
+import math
+import os
+import re
+import shlex
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import jinja2
+import libvirt
+
+LOG = logging.getLogger(__name__)
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
+BRIDGE_CONF = "/etc/qemu-kvm/bridge.conf"
+BRIDGE_LOCK = "/run/lock/enclave-bridge-conf.lock"
+
+# Host-wide lock serializing subnet selection + network creation across all
+# concurrent CI runs on the same hypervisor (libvirt is the source of truth).
+SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
+# Usable subnet third-octet range (avoids 0, 1, and 255).
+MIN_SUBNET = 2
+MAX_SUBNET = 254
+
+# Cluster-name prefixes. `eci`/`ecd` (e2e connected/disconnected) and `nc`/`nd`
+# (nightly) are the sanctioned set; CI selects the right one via
+# ENCLAVE_CLUSTER_PREFIX, defaulting to `eci`. This is the single source of the
+# prefix allow-list: both name generation and the reap regexes derive from it, so
+# a cluster can never be created with a prefix reap would fail to recognize (which
+# would leak it forever on a shared host).
+CLUSTER_PREFIXES = ("eci", "ecd", "nc", "nd")
+DEFAULT_CLUSTER_PREFIX = "eci"
+_PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
+
+# ENCLAVE_BASE_DOMAIN validation. Downstream builds hostnames like
+# <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
+# cap the configured zone well below that to leave room for the generated prefixes.
+_MAX_BASE_DOMAIN_LEN = 200
+# A single RFC 1035 label: 1–63 chars, alphanumeric, internal hyphens only.
+_DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _is_valid_base_domain(domain: str) -> bool:
+    """True if domain is a syntactically valid dotted DNS name within our length cap."""
+    if not domain or len(domain) > _MAX_BASE_DOMAIN_LEN:
+        return False
+    return all(_DNS_LABEL_RE.fullmatch(label) for label in domain.split("."))
+
+
+# ─── Configuration ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class VMSpec:
+    """Hardware sizing for one VM class (LZ or master)."""
+
+    memory_mb: int
+    vcpu: int
+    disk_gb: int
+    extra_disk_gb: int
+
+
+@dataclass
+class Config:
+    """All infrastructure configuration for one cluster, sourced from environment variables."""
+
+    cluster_name: str
+    deployment_mode: str
+    num_masters: int
+    master: VMSpec
+    lz: VMSpec
+    storage_plugin: str
+    # Working dir. None until finalized: on `create` with a generated name it is
+    # derived from base_working_dir once the name is known (see finalize_working_dir).
+    working_dir: Optional[Path] = None
+    # Base dir for deriving working_dir as {base}/{cluster_name}.
+    base_working_dir: Optional[Path] = None
+    # Cluster-name prefix (from the CLUSTER_PREFIXES allow-list) used when
+    # generating a name; ignored when a name is supplied explicitly.
+    prefix: str = DEFAULT_CLUSTER_PREFIX
+    # Cluster base domain override (ENCLAVE_BASE_DOMAIN); empty means derive
+    # {cluster_name}.lab (see the base_domain property).
+    base_domain_override: str = ""
+    # Third octet shared by all per-cluster subnets. None until selected at
+    # create time (or supplied via ENCLAVE_SUBNET_ID / ENCLAVE_BMC_NETWORK).
+    subnet_id: Optional[int] = None
+
+    @classmethod
+    def from_env(cls, *, generate_name: bool = False) -> "Config":
+        """Build Config from environment variables; exits with an error on any missing required var.
+
+        generate_name=True (create) makes ENCLAVE_CLUSTER_NAME optional — when unset,
+        create() generates a unique name under the subnet lock. generate_name=False
+        (destroy) requires the name.
+        """
+
+        def optint(name: str, default: int) -> int:
+            """Return env var as int, falling back to default if unset."""
+            raw = os.environ.get(name, "")
+            if not raw:
+                return default
+            try:
+                return int(raw)
+            except ValueError:
+                sys.exit(f"ERROR: {name} must be an integer, got {raw!r}")
+
+        def validate(name: str, value: str, pattern: str) -> str:
+            """Reject values that don't match an allow-list regex; exits on mismatch."""
+            if not re.fullmatch(pattern, value):
+                sys.exit(f"ERROR: {name}={value!r} does not match expected pattern {pattern!r}")
+            return value
+
+        def subnet_override() -> Optional[int]:
+            """Optional manual subnet: ENCLAVE_SUBNET_ID, else the third octet of
+            ENCLAVE_BMC_NETWORK. None means auto-select from libvirt at create time."""
+            raw_id = os.environ.get("ENCLAVE_SUBNET_ID", "")
+            if raw_id:
+                try:
+                    sid = int(raw_id)
+                except ValueError:
+                    sys.exit(f"ERROR: ENCLAVE_SUBNET_ID must be an integer, got {raw_id!r}")
+            else:
+                raw_bmc = os.environ.get("ENCLAVE_BMC_NETWORK", "")
+                if not raw_bmc:
+                    return None
+                m = re.fullmatch(r"\d{1,3}\.\d{1,3}\.(\d{1,3})\.\d{1,3}/\d{1,2}", raw_bmc)
+                if not m:
+                    sys.exit(f"ERROR: ENCLAVE_BMC_NETWORK={raw_bmc!r} is not a valid CIDR")
+                sid = int(m.group(1))
+            if not MIN_SUBNET <= sid <= MAX_SUBNET:
+                sys.exit(
+                    f"ERROR: subnet id {sid} is out of range "
+                    f"[{MIN_SUBNET}, {MAX_SUBNET}]"
+                )
+            return sid
+
+        deployment_mode = os.environ.get("ENCLAVE_DEPLOYMENT_MODE", "disconnected")
+        if deployment_mode not in ("connected", "disconnected"):
+            sys.exit(f"ERROR: ENCLAVE_DEPLOYMENT_MODE must be 'connected' or 'disconnected', got {deployment_mode!r}")
+
+        storage_plugin = os.environ.get("STORAGE_PLUGIN", "lvms")
+        if storage_plugin not in ("lvms", "odf"):
+            sys.exit(f"ERROR: STORAGE_PLUGIN must be 'lvms' or 'odf', got {storage_plugin!r}")
+
+        if storage_plugin == "odf":
+            # ODF runs solo per host. Masters need more than the lvms 32 GB for
+            # the ODF/ACM/MCE control plane and Ceph consumers, but the Quay
+            # CrashLoop during the operators phase is NOT a master-memory
+            # problem: at 64 GB the masters showed no OOM/eviction and every
+            # cluster operator stayed healthy, yet Quay still failed identically.
+            # The real cause is Quay's health probe timing out on its external
+            # RadosGW/Postgres backend, so keep masters at 48 GB.
+            default_master_mem = 49152
+            default_master_vcpu = 16
+            default_master_extra = 60
+            # ODF additionally keeps a second copy of the mirror on the LZ: oc-mirror's
+            # local container cache plus the Ceph loopback OSD files (~900 GB raw, 3x
+            # OSD_SIZE_GB) that back RadosGW/RBD, on top of the mirror/OS/buffer.
+            default_lz_disk = 1500
+            # ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the
+            # LZ alongside Quay and oc-mirror; 8 GB (and even 16 GB) is not enough
+            # and the guest OOM-kills Quay during the operators phase, so give ODF
+            # runs extra headroom.
+            default_lz_mem = 24576
+        else:
+            default_master_mem = 32768
+            default_master_vcpu = 12
+            default_master_extra = 1200 if deployment_mode == "disconnected" else 60
+            # Disconnected mirrors the full release + OLM catalogs locally, so the LZ
+            # needs far more than connected (Quay ~130 GB, oc-mirror, ISOs, OS, buffer).
+            default_lz_disk = 1000 if deployment_mode == "disconnected" else 600
+            # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
+            default_lz_mem = 16384
+
+        # Cluster name: required for destroy; optional for create, where it is
+        # generated under the subnet lock when absent. An explicitly supplied name
+        # is always honored (re-create / destroy of a known cluster).
+        raw_name = os.environ.get("ENCLAVE_CLUSTER_NAME", "")
+        if raw_name:
+            cluster_name = validate("ENCLAVE_CLUSTER_NAME", raw_name, r"[a-z][a-z0-9-]{0,62}")
+        elif generate_name:
+            cluster_name = ""  # filled in by create() under the lock
+        else:
+            sys.exit("ERROR: ENCLAVE_CLUSTER_NAME environment variable is required")
+
+        prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
+        if prefix not in CLUSTER_PREFIXES:
+            sys.exit(
+                f"ERROR: ENCLAVE_CLUSTER_PREFIX={prefix!r} must be one of "
+                f"{', '.join(CLUSTER_PREFIXES)}"
+            )
+
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
+
+        def check_xml_safe(label: str, value: str) -> None:
+            """Reject path values that would break the libvirt XML they are embedded in."""
+            if any(c in value for c in "<>&\"'"):
+                sys.exit(f"ERROR: {label} contains XML-unsafe characters: {value!r}")
+
+        raw_wd = os.environ.get("WORKING_DIR", "")
+        raw_base = os.environ.get("BASE_WORKING_DIR", "")
+        check_xml_safe("WORKING_DIR", raw_wd)
+        check_xml_safe("BASE_WORKING_DIR", raw_base)
+        base_working_dir = Path(raw_base) if raw_base else None
+
+        # Resolve working_dir. A generated name must derive its own directory from
+        # BASE_WORKING_DIR so two generated clusters can never share one dir; pinning
+        # WORKING_DIR while the name is generated is ambiguous and would allow exactly
+        # that (distinct names, same dir — colliding pools and cluster-env.sh), so reject
+        # it. Deferral (None) happens only for the generated-name case.
+        working_dir: Optional[Path]
+        if not cluster_name:
+            if raw_wd:
+                sys.exit(
+                    "ERROR: set ENCLAVE_CLUSTER_NAME when WORKING_DIR is pinned; a "
+                    "generated name derives its own directory from BASE_WORKING_DIR"
+                )
+            if base_working_dir is None:
+                sys.exit(
+                    "ERROR: set BASE_WORKING_DIR so a generated cluster name gets its "
+                    "own working directory"
+                )
+            working_dir = None  # finalize_working_dir() derives it after name generation
+        elif raw_wd:
+            working_dir = Path(raw_wd)
+        elif base_working_dir is not None:
+            working_dir = base_working_dir / cluster_name
+        else:
+            sys.exit(
+                "ERROR: set WORKING_DIR, or BASE_WORKING_DIR together with "
+                "ENCLAVE_CLUSTER_NAME, to locate the working directory"
+            )
+
+        return cls(
+            cluster_name=cluster_name,
+            deployment_mode=deployment_mode,
+            num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
+            master=VMSpec(
+                memory_mb=optint("MASTER_MEMORY", default_master_mem),
+                vcpu=optint("MASTER_VCPU", default_master_vcpu),
+                disk_gb=optint("MASTER_DISK", 120),
+                extra_disk_gb=default_master_extra,
+            ),
+            lz=VMSpec(
+                memory_mb=optint("LANDINGZONE_MEMORY", default_lz_mem),
+                vcpu=optint("LANDINGZONE_VCPU", 16),
+                disk_gb=optint("LANDINGZONE_DISK", default_lz_disk),
+                extra_disk_gb=0,
+            ),
+            storage_plugin=storage_plugin,
+            working_dir=working_dir,
+            base_working_dir=base_working_dir,
+            prefix=prefix,
+            base_domain_override=base_domain,
+            subnet_id=subnet_override(),
+        )
+
+    @property
+    def _subnet(self) -> int:
+        """Selected subnet id; raises if accessed before selection."""
+        if self.subnet_id is None:
+            raise RuntimeError("subnet_id has not been selected yet")
+        return self.subnet_id
+
+    @property
+    def _wd(self) -> Path:
+        """Finalized working_dir; raises if accessed before it is resolved."""
+        if self.working_dir is None:
+            raise RuntimeError("working_dir has not been finalized yet")
+        return self.working_dir
+
+    def finalize_working_dir(self) -> None:
+        """Derive working_dir from base_working_dir + cluster_name if not already set."""
+        if self.working_dir is not None:
+            return
+        if self.base_working_dir is None:
+            sys.exit("ERROR: set WORKING_DIR or BASE_WORKING_DIR to locate the working directory")
+        self.working_dir = self.base_working_dir / self.cluster_name
+
+    @property
+    def bmc_network(self) -> str:
+        """{cluster}-p CIDR: isolated BMC/provisioning subnet 100.64.N.0/24."""
+        return f"100.64.{self._subnet}.0/24"
+
+    @property
+    def cluster_network(self) -> str:
+        """{cluster}-e CIDR: cluster subnet 192.168.N.0/24."""
+        return f"192.168.{self._subnet}.0/24"
+
+    @property
+    def bmc_bridge(self) -> str:
+        """{cluster}-p: isolated bridge for BMC/provisioning traffic, no internet."""
+        return f"{self.cluster_name}-p"
+
+    @property
+    def cluster_bridge(self) -> str:
+        """{cluster}-e: NAT (connected) or isolated (disconnected) bridge for cluster VMs."""
+        return f"{self.cluster_name}-e"
+
+    @property
+    def uplink_bridge(self) -> Optional[str]:
+        """{cluster}-u: NAT uplink for LZ internet access in disconnected mode; None otherwise."""
+        return f"{self.cluster_name}-u" if self.deployment_mode == "disconnected" else None
+
+    @property
+    def lz_network(self) -> Optional[str]:
+        """172.16.N.0/24 LZ uplink CIDR in disconnected mode; empty string written to cluster-env.sh when None."""
+        return f"172.16.{self._subnet}.0/24" if self.deployment_mode == "disconnected" else None
+
+    @property
+    def bmc_gateway(self) -> str:
+        """Host IP assigned to the BMC isolated bridge by libvirt (100.64.N.1)."""
+        return f"100.64.{self._subnet}.1"
+
+    @property
+    def cluster_gateway(self) -> str:
+        """Host IP assigned to the cluster bridge by libvirt (192.168.N.1)."""
+        return f"192.168.{self._subnet}.1"
+
+    @property
+    def uplink_gateway(self) -> Optional[str]:
+        """Host IP assigned to the LZ uplink NAT bridge (172.16.N.1); None in connected mode."""
+        return f"172.16.{self._subnet}.1" if self.deployment_mode == "disconnected" else None
+
+    @property
+    def cluster_prefix_len(self) -> int:
+        """Network prefix length for the cluster subnet (a /24)."""
+        return 24
+
+    @property
+    def bmc_port(self) -> int:
+        """sushy-tools BMC port for this cluster (8000 + N); matches calculate_bmc_port in network.sh."""
+        return 8000 + self._subnet
+
+    @property
+    def bmc_endpoint(self) -> str:
+        """Redfish/sushy-tools base endpoint served on the BMC bridge."""
+        return f"https://{self.bmc_gateway}:{self.bmc_port}"
+
+    @property
+    def lz_bmc_ip(self) -> str:
+        """Landing Zone static IP on the BMC bridge (100.64.N.2; set via nmcli after first boot)."""
+        return f"100.64.{self._subnet}.2"
+
+    @property
+    def lz_cluster_ip(self) -> str:
+        """Landing Zone static-lease IP on the cluster bridge (192.168.N.2)."""
+        return f"192.168.{self._subnet}.2"
+
+    def master_cluster_ip(self, i: int) -> str:
+        """Master i static IP on the cluster bridge (192.168.N.{20+i}).
+
+        This is the address the agent installer assigns via static NMState
+        networkConfig (see templates/agent-config.yaml.j2); the matching static
+        DHCP lease reserves it so no dynamic client can claim it.
+        """
+        return f"192.168.{self._subnet}.{20 + i}"
+
+    @property
+    def rendezvous_ip(self) -> str:
+        """Agent-install rendezvous node IP (master 0)."""
+        return self.master_cluster_ip(0)
+
+    @property
+    def api_vip(self) -> str:
+        """OpenShift API virtual IP (192.168.N.100; floats on control plane, outside the DHCP range)."""
+        return f"192.168.{self._subnet}.100"
+
+    @property
+    def ingress_vip(self) -> str:
+        """OpenShift ingress virtual IP (192.168.N.101; floats on control plane, outside the DHCP range)."""
+        return f"192.168.{self._subnet}.101"
+
+    @property
+    def base_domain(self) -> str:
+        """Cluster base domain: ENCLAVE_BASE_DOMAIN override, else {cluster_name}.lab."""
+        return self.base_domain_override or f"{self.cluster_name}.lab"
+
+    @property
+    def cluster_dns_addresses(self) -> List[str]:
+        """dnsmasq `address=` options mapping cluster hostnames to their IPs, baked into the
+        libvirt network's dnsmasq. Masters resolve via the cluster network's resolver; the LZ
+        resolves via the uplink's (disconnected) — so both networks get these records.
+
+        - mirror (short + FQDN) -> the LZ (where mirror-registry/Quay runs)
+        - api.<cluster>.<base> -> the OpenShift API VIP
+        - *.apps.<cluster>.<base> -> the ingress VIP (true wildcard; covers every route)
+        """
+        b = self.base_domain
+        c = self.cluster_name
+        return [
+            f"address=/mirror/{self.lz_cluster_ip}",
+            f"address=/mirror.{b}/{self.lz_cluster_ip}",
+            f"address=/api.{c}.{b}/{self.api_vip}",
+            f"address=/apps.{c}.{b}/{self.ingress_vip}",
+        ]
+
+    @property
+    def pool_dir(self) -> Path:
+        """Libvirt dir-type storage pool backing directory."""
+        return self._wd / "pool"
+
+    @property
+    def lz_disk_path(self) -> Path:
+        """Landing Zone root qcow2 volume (vm_infra.py creates it; provision populates it)."""
+        return self.pool_dir / f"{self.lz_vm_name}.qcow2"
+
+    @property
+    def lz_cloud_init_iso(self) -> Path:
+        """Landing Zone cloud-init ISO path referenced by the LZ domain's cdrom; written by provision."""
+        return self.pool_dir / f"{self.lz_vm_name}-cloud-init.iso"
+
+    @property
+    def cluster_env_file(self) -> Path:
+        """Shell env file written on create and sourced by scripts/lib/config.sh."""
+        return self._wd / "cluster-env.sh"
+
+    @property
+    def lz_vm_name(self) -> str:
+        """Matches dev-scripts naming convention so downstream scripts need no changes."""
+        return f"{self.cluster_name}_landingzone_0"
+
+    def master_vm_name(self, i: int) -> str:
+        """Matches dev-scripts naming convention so downstream scripts need no changes."""
+        return f"{self.cluster_name}_master_{i}"
+
+    @property
+    def all_bridges(self) -> List[str]:
+        """All bridge names that require allow entries in /etc/qemu-kvm/bridge.conf."""
+        bridges = [self.bmc_bridge, self.cluster_bridge]
+        if self.uplink_bridge:
+            bridges.append(self.uplink_bridge)
+        return bridges
+
+
+# ─── MAC addresses ────────────────────────────────────────────────────────────
+
+
+def _mac(cluster_name: str, vm: str, nic: str, salt: int = 0) -> str:
+    """Deterministic QEMU-standard MAC (52:54:00:*) derived from cluster/vm/nic.
+
+    Deterministic so destroy+create reuse the same MAC without persisting a file:
+    the same (cluster, vm, nic) always yields the same address, and the cluster
+    name (unique per run) keeps addresses distinct across concurrent clusters on a
+    shared host. `salt` lets the caller perturb the hash to resolve the rare
+    within-cluster 24-bit collision.
+    """
+    seed = f"{cluster_name}:{vm}:{nic}:{salt}".encode()
+    b = hashlib.sha256(seed).digest()
+    return f"52:54:00:{b[0]:02x}:{b[1]:02x}:{b[2]:02x}"
+
+
+def generate_macs(cfg: Config) -> Dict[str, Dict[str, str]]:
+    """Deterministic per-NIC MAC map for all VMs; stable across destroy+create.
+
+    Collisions (two NICs hashing to the same 24-bit tail) are resolved by
+    re-salting so every MAC in the cluster is unique.
+    """
+    seen: set = set()
+
+    def assign(vm: str, nic: str) -> str:
+        salt = 0
+        mac = _mac(cfg.cluster_name, vm, nic, salt)
+        while mac in seen:
+            salt += 1
+            mac = _mac(cfg.cluster_name, vm, nic, salt)
+        seen.add(mac)
+        return mac
+
+    lz_nics = ["bmc", "cluster"]
+    if cfg.deployment_mode == "disconnected":
+        lz_nics.append("uplink")
+    macs: Dict[str, Dict[str, str]] = {
+        cfg.lz_vm_name: {nic: assign(cfg.lz_vm_name, nic) for nic in lz_nics},
+    }
+    for i in range(cfg.num_masters):
+        name = cfg.master_vm_name(i)
+        macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
+    return macs
+
+
+# ─── Jinja2 rendering ─────────────────────────────────────────────────────────
+
+
+def _jinja() -> jinja2.Environment:
+    """Return a Jinja2 environment loading templates from the templates/ directory."""
+    return jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+        autoescape=False,
+        keep_trailing_newline=True,
+    )
+
+
+def render(template: str, **ctx) -> str:
+    """Render a Jinja2 template by filename from the templates/ directory."""
+    return _jinja().get_template(template).render(**ctx)
+
+
+# ─── bridge.conf management ───────────────────────────────────────────────────
+
+
+def _update_bridge_conf(bridges: List[str], remove: bool = False) -> None:
+    """Add or remove 'allow <bridge>' entries in bridge.conf under an exclusive file lock."""
+    with open(BRIDGE_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            try:
+                with open(BRIDGE_CONF) as f:
+                    lines = f.readlines()
+            except FileNotFoundError:
+                lines = []
+
+            if remove:
+                removes = {f"allow {b}" for b in bridges}
+                new_lines = [ln for ln in lines if ln.rstrip() not in removes]
+            else:
+                existing = {ln.rstrip() for ln in lines}
+                new_lines = list(lines)
+                for bridge in bridges:
+                    entry = f"allow {bridge}"
+                    if entry not in existing:
+                        new_lines.append(f"{entry}\n")
+
+            os.makedirs(os.path.dirname(BRIDGE_CONF), exist_ok=True)
+            tmp_path = f"{BRIDGE_CONF}.tmp"
+            with open(tmp_path, "w") as f:
+                f.writelines(new_lines)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_path, BRIDGE_CONF)
+            LOG.info(
+                "%s bridge.conf entries: %s",
+                "Removed" if remove else "Added",
+                ", ".join(bridges),
+            )
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+# ─── libvirt helpers ──────────────────────────────────────────────────────────
+
+
+def _connect() -> libvirt.virConnect:
+    """Open a connection to the local QEMU/KVM libvirt daemon."""
+    # Suppress libvirt's own stderr error messages — Python catches exceptions instead.
+    libvirt.registerErrorHandler(lambda *_: None, None)
+    try:
+        conn = libvirt.open("qemu:///system")
+    except libvirt.libvirtError as exc:
+        sys.exit(f"ERROR: Failed to connect to libvirt at qemu:///system: {exc}")
+    if conn is None:
+        sys.exit("ERROR: Failed to connect to libvirt at qemu:///system")
+    return conn
+
+
+def _net_exists(conn: libvirt.virConnect, name: str) -> bool:
+    """Return True if a libvirt network with this name is already defined."""
+    try:
+        conn.networkLookupByName(name)
+        return True
+    except libvirt.libvirtError:
+        return False
+
+
+def _dom_exists(conn: libvirt.virConnect, name: str) -> bool:
+    """Return True if a libvirt domain with this name is already defined."""
+    try:
+        conn.lookupByName(name)
+        return True
+    except libvirt.libvirtError:
+        return False
+
+
+def _pool_exists(conn: libvirt.virConnect, name: str) -> bool:
+    """Return True if a libvirt storage pool with this name is already defined."""
+    try:
+        conn.storagePoolLookupByName(name)
+        return True
+    except libvirt.libvirtError:
+        return False
+
+
+# ─── Subnet selection ─────────────────────────────────────────────────────────
+#
+# All per-cluster subnets share one third octet N: BMC 100.64.N.0/24,
+# cluster 192.168.N.0/24, LZ uplink 172.16.N.0/24. libvirt is the source of
+# truth for which N values are taken; the JSON allocation ledger this replaces
+# could drift from reality and hand out an N a leftover network still used.
+
+_SUBNET_PREFIXES = ("100.64.", "192.168.", "172.16.")
+_XML_IP_RE = re.compile(r"<ip[^>]*\baddress=['\"]([0-9.]+)['\"]")
+
+
+def _subnet_of_address(address: str) -> Optional[int]:
+    """Return the third octet of an IPv4 address in an Enclave subnet range, else None."""
+    for prefix in _SUBNET_PREFIXES:
+        if address.startswith(prefix):
+            octet = address[len(prefix) :].split(".", 1)[0]
+            try:
+                return int(octet)
+            except ValueError:
+                return None
+    return None
+
+
+def _network_subnets(conn: libvirt.virConnect) -> set:
+    """Third octets used by any defined libvirt network (active or inactive)."""
+    used: set = set()
+    for net in conn.listAllNetworks():
+        try:
+            xml = net.XMLDesc(0)
+        except libvirt.libvirtError:
+            continue
+        for m in _XML_IP_RE.finditer(xml):
+            sid = _subnet_of_address(m.group(1))
+            if sid is not None:
+                used.add(sid)
+    return used
+
+
+def _host_subnets() -> set:
+    """Third octets already present on host interfaces (leftover/non-libvirt bridges)."""
+    try:
+        out = subprocess.run(
+            ["ip", "-o", "-4", "addr", "show"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        # Fail closed: an empty set here would let selection pick a subnet already
+        # on a host interface, creating overlapping libvirt networks.
+        sys.exit(f"ERROR: failed to enumerate host interfaces via 'ip': {exc}")
+    used: set = set()
+    for m in re.finditer(r"\binet (\d+\.\d+\.\d+\.\d+)/", out):
+        sid = _subnet_of_address(m.group(1))
+        if sid is not None:
+            used.add(sid)
+    return used
+
+
+def _existing_cluster_subnet(conn: libvirt.virConnect, cfg: Config) -> Optional[int]:
+    """Return the cluster's own subnet if its BMC network already exists (idempotent re-run)."""
+    if not _net_exists(conn, cfg.bmc_bridge):
+        return None
+    try:
+        xml = conn.networkLookupByName(cfg.bmc_bridge).XMLDesc(0)
+    except libvirt.libvirtError:
+        return None
+    m = _XML_IP_RE.search(xml)
+    return _subnet_of_address(m.group(1)) if m else None
+
+
+def _resolve_subnet(conn: libvirt.virConnect, cfg: Config) -> int:
+    """Determine the subnet third octet for this cluster; caller must hold SUBNET_LOCK.
+
+    An existing cluster's own subnet always wins: on an idempotent re-run the
+    networks are kept by name, so honoring a conflicting override would write a
+    mismatched value to cluster-env.sh while the VMs stay on the old subnet.
+    Resolution order: reuse the existing subnet (erroring if a manual override
+    conflicts with it), else honor a manual override (erroring if it is already
+    in use), else pick the lowest free id in [MIN_SUBNET, MAX_SUBNET]. Both the
+    override and automatic paths validate against the same set of subnets already
+    used by any libvirt network or host interface.
+    """
+    existing = _existing_cluster_subnet(conn, cfg)
+    if existing is not None:
+        if cfg.subnet_id is not None and cfg.subnet_id != existing:
+            sys.exit(
+                f"ERROR: cluster {cfg.cluster_name} already uses subnet {existing}, "
+                f"but subnet {cfg.subnet_id} was requested; "
+                f"destroy it first to change subnets"
+            )
+        LOG.info("Reusing existing subnet %d for cluster %s", existing, cfg.cluster_name)
+        return existing
+
+    used = _network_subnets(conn) | _host_subnets()
+
+    if cfg.subnet_id is not None:
+        if cfg.subnet_id in used:
+            sys.exit(
+                f"ERROR: requested subnet {cfg.subnet_id} for cluster "
+                f"{cfg.cluster_name} is already in use by another libvirt "
+                f"network or host interface"
+            )
+        return cfg.subnet_id
+
+    for sid in range(MIN_SUBNET, MAX_SUBNET + 1):
+        if sid not in used:
+            LOG.info("Selected subnet %d for cluster %s", sid, cfg.cluster_name)
+            return sid
+    sys.exit(f"ERROR: no free subnet in [{MIN_SUBNET}, {MAX_SUBNET}] (all in use)")
+
+
+# ─── Cluster-name generation ───────────────────────────────────────────────────
+
+
+def _name_in_use(conn: libvirt.virConnect, name: str) -> bool:
+    """True if any libvirt domain, network, or storage pool already belongs to this cluster name."""
+    if any(dom.name().startswith(name + "_") for dom in conn.listAllDomains()):
+        return True
+    if any(net.name().startswith(name + "-") for net in conn.listAllNetworks()):
+        return True
+    for pool in conn.listAllStoragePools():
+        pname = pool.name()
+        if pname == name or pname.startswith(name + "-"):
+            return True
+    return False
+
+
+def _generate_cluster_name(conn: libvirt.virConnect, cfg: Config) -> str:
+    """Pick a unique <prefix>-<8hex> cluster name; caller must hold SUBNET_LOCK.
+
+    Uniqueness is checked against live libvirt state and any existing working dir, so
+    concurrent runs on a shared host can never collide. The 8-hex token matches the
+    reap naming convention (_CI_DOMAIN_RE). Seeded from ENCLAVE_CLUSTER_SEED (e.g. a CI
+    run id) for traceability, else from time+pid.
+    """
+    seed_base = os.environ.get("ENCLAVE_CLUSTER_SEED", "") or f"{time.time()}-{os.getpid()}"
+    for salt in range(100000):
+        token = hashlib.sha256(f"{seed_base}:{salt}".encode()).hexdigest()[:8]
+        name = f"{cfg.prefix}-{token}"
+        wd_taken = (
+            cfg.base_working_dir is not None
+            and (cfg.base_working_dir / name).exists()
+        )
+        if not _name_in_use(conn, name) and not wd_taken:
+            return name
+    sys.exit("ERROR: could not find a free cluster name")
+
+
+# ─── Create ───────────────────────────────────────────────────────────────────
+
+
+def _define_network(conn: libvirt.virConnect, xml: str, name: str) -> None:
+    """Define, autostart, and activate a libvirt network; skip if it already exists."""
+    if _net_exists(conn, name):
+        LOG.info("Network %s already exists, skipping", name)
+        return
+    net = conn.networkDefineXML(xml)
+    net.setAutostart(1)
+    net.create()
+    LOG.info("Created network: %s", name)
+
+
+def _create_pool(conn: libvirt.virConnect, cfg: Config) -> None:
+    """Define a dir-type storage pool backed by the cluster's pool_dir; skip if already present."""
+    name = cfg.cluster_name
+    if _pool_exists(conn, name):
+        LOG.info("Storage pool %s already exists, skipping", name)
+        return
+    cfg.pool_dir.mkdir(parents=True, exist_ok=True)
+    xml = (
+        f"<pool type='dir'>"
+        f"<name>{name}</name>"
+        f"<target><path>{cfg.pool_dir}</path></target>"
+        f"</pool>"
+    )
+    pool = conn.storagePoolDefineXML(xml)
+    pool.build(0)
+    pool.create(0)
+    pool.setAutostart(1)
+    LOG.info("Created storage pool: %s → %s", name, cfg.pool_dir)
+
+
+def _create_volume(conn: libvirt.virConnect, cfg: Config, vol_name: str, size_gb: int) -> None:
+    """Create a thin-provisioned qcow2 volume in the cluster pool; skip if already present."""
+    pool = conn.storagePoolLookupByName(cfg.cluster_name)
+    try:
+        pool.storageVolLookupByName(vol_name)
+        LOG.info("Volume %s already exists, skipping", vol_name)
+        return
+    except libvirt.libvirtError:
+        pass
+    xml = (
+        f"<volume>"
+        f"<name>{vol_name}</name>"
+        f"<capacity unit='G'>{size_gb}</capacity>"
+        f"<allocation unit='G'>0</allocation>"
+        f"<target><format type='qcow2'/></target>"
+        f"</volume>"
+    )
+    pool.createXML(xml, 0)
+    LOG.info("Created volume: %s (%d GB)", vol_name, size_gb)
+
+
+def _create_sparse_file(path: Path, size_gb: int) -> None:
+    """Create a sparse raw image via truncate; no disk space consumed until data is written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["truncate", "-s", f"{size_gb}G", str(path)], check=True)
+    LOG.info("Created sparse extra disk: %s (%d GB)", path, size_gb)
+
+
+def _define_domain(conn: libvirt.virConnect, xml: str, name: str) -> None:
+    """Define a libvirt domain (VM) without starting it; skip if already defined."""
+    if _dom_exists(conn, name):
+        LOG.info("Domain %s already exists, skipping", name)
+        return
+    conn.defineXML(xml)
+    LOG.info("Defined domain: %s", name)
+
+
+def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str]:
+    """Build the `export` lines for cluster-env.sh — the single source of truth consumed
+    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs and MACs).
+
+    Every value is shell-quoted with shlex.quote: cluster-env.sh is sourced and `eval`'d
+    downstream, so an unexpected character in a value must never become shell code.
+    """
+    lz = macs[cfg.lz_vm_name]
+    pairs: List[tuple] = [
+        ("ENCLAVE_CLUSTER_NAME", cfg.cluster_name),
+        ("ENCLAVE_BASE_DOMAIN", cfg.base_domain),
+        ("ENCLAVE_DEPLOYMENT_MODE", cfg.deployment_mode),
+        ("WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_WORKING_DIR", str(cfg._wd)),
+        ("ENCLAVE_POOL_PATH", str(cfg.pool_dir)),
+        # Networks
+        ("ENCLAVE_BMC_BRIDGE", cfg.bmc_bridge),
+        ("ENCLAVE_CLUSTER_BRIDGE", cfg.cluster_bridge),
+        ("ENCLAVE_UPLINK_BRIDGE", cfg.uplink_bridge or ""),
+        ("ENCLAVE_BMC_NETWORK", cfg.bmc_network),
+        ("ENCLAVE_CLUSTER_NETWORK", cfg.cluster_network),
+        ("ENCLAVE_LZ_NETWORK", cfg.lz_network or ""),
+        ("ENCLAVE_BMC_GATEWAY", cfg.bmc_gateway),
+        ("ENCLAVE_CLUSTER_GATEWAY", cfg.cluster_gateway),
+        ("ENCLAVE_UPLINK_GATEWAY", cfg.uplink_gateway or ""),
+        ("ENCLAVE_CLUSTER_PREFIX_LEN", str(cfg.cluster_prefix_len)),
+        ("ENCLAVE_BMC_PORT", str(cfg.bmc_port)),
+        ("ENCLAVE_BMC_ENDPOINT", cfg.bmc_endpoint),
+        # Cluster service IPs
+        ("ENCLAVE_API_VIP", cfg.api_vip),
+        ("ENCLAVE_INGRESS_VIP", cfg.ingress_vip),
+        ("ENCLAVE_RENDEZVOUS_IP", cfg.rendezvous_ip),
+        # Landing Zone
+        ("ENCLAVE_LZ_VM_NAME", cfg.lz_vm_name),
+        ("ENCLAVE_LZ_BMC_IP", cfg.lz_bmc_ip),
+        ("ENCLAVE_LZ_CLUSTER_IP", cfg.lz_cluster_ip),
+        ("ENCLAVE_LZ_BMC_MAC", lz["bmc"]),
+        ("ENCLAVE_LZ_CLUSTER_MAC", lz["cluster"]),
+        ("ENCLAVE_LZ_UPLINK_MAC", lz.get("uplink", "")),
+        ("ENCLAVE_LZ_DISK_PATH", str(cfg.lz_disk_path)),
+        ("ENCLAVE_LZ_DISK_GB", str(cfg.lz.disk_gb)),
+        ("ENCLAVE_LZ_CLOUD_INIT_ISO", str(cfg.lz_cloud_init_iso)),
+        # Masters
+        ("ENCLAVE_MASTER_COUNT", str(cfg.num_masters)),
+    ]
+    for i in range(cfg.num_masters):
+        name = cfg.master_vm_name(i)
+        m = macs[name]
+        pairs += [
+            (f"ENCLAVE_MASTER_{i}_NAME", name),
+            (f"ENCLAVE_MASTER_{i}_BMC_MAC", m["bmc"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_MAC", m["cluster"]),
+            (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
+        ]
+    return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
+
+
+def _write_cluster_env(cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
+    """Write cluster-env.sh (the single source of truth) and echo it to stdout.
+
+    All logging goes to stderr, so stdout carries only the env. Callers capture it to
+    bootstrap the (possibly generated) cluster name and WORKING_DIR —
+    `eval "$(sudo -E python3 vm_infra.py create)"` locally, or append to $GITHUB_ENV
+    in CI — before any later step can locate cluster-env.sh on disk.
+    """
+    cfg._wd.mkdir(parents=True, exist_ok=True)
+    content = "\n".join(_cluster_env_lines(cfg, macs)) + "\n"
+    with open(cfg.cluster_env_file, "w") as f:
+        f.write(content)
+    LOG.info("Wrote cluster-env.sh: %s", cfg.cluster_env_file)
+    # Echo to stdout so the caller can capture the generated name + WORKING_DIR.
+    sys.stdout.write(content)
+    sys.stdout.flush()
+
+
+def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict[str, str]]) -> None:
+    """Create the BMC/cluster/uplink networks; caller must hold SUBNET_LOCK and have set cfg.subnet_id."""
+    n = cfg.subnet_id
+
+    # BMC network: isolated, host IP, no DHCP (masters are L2 only; LZ gets static IP via nmcli)
+    _define_network(
+        conn,
+        render("network-bmc.xml.j2", name=cfg.bmc_bridge, address=cfg.bmc_gateway),
+        cfg.bmc_bridge,
+    )
+
+    # Cluster network: isolated (disconnected) or NAT (connected), with DHCP and static leases.
+    # Master leases reserve the exact IPs the agent installer configures statically
+    # (192.168.N.{20+i}, see Config.master_cluster_ip) so a dynamic DHCP client can
+    # never be handed a master's address.
+    cluster_hosts = [
+        {"mac": macs[cfg.lz_vm_name]["cluster"], "name": "lz", "ip": cfg.lz_cluster_ip},
+    ] + [
+        {
+            "mac": macs[cfg.master_vm_name(i)]["cluster"],
+            "name": f"master-{i}",
+            "ip": cfg.master_cluster_ip(i),
+        }
+        for i in range(cfg.num_masters)
+    ]
+    cluster_net_kwargs: dict = dict(
+        name=cfg.cluster_bridge,
+        forward_mode="none" if cfg.deployment_mode == "disconnected" else "nat",
+        address=cfg.cluster_gateway,
+        prefix=24,
+        dhcp_start=f"192.168.{n}.10",
+        dhcp_end=f"192.168.{n}.99",
+        static_hosts=cluster_hosts,
+        # Masters resolve mirror/api/*.apps via this network's dnsmasq.
+        dnsmasq_addresses=cfg.cluster_dns_addresses,
+    )
+    if cfg.deployment_mode == "disconnected" and cfg.uplink_gateway:
+        cluster_net_kwargs["dns_forwarder"] = cfg.uplink_gateway
+    _define_network(
+        conn,
+        render("network-cluster.xml.j2", **cluster_net_kwargs),
+        cfg.cluster_bridge,
+    )
+
+    # LZ uplink network: NAT, only in disconnected mode (LZ third NIC for internet access)
+    if cfg.uplink_bridge:
+        _define_network(
+            conn,
+            render(
+                "network-cluster.xml.j2",
+                name=cfg.uplink_bridge,
+                forward_mode="nat",
+                address=cfg.uplink_gateway,
+                prefix=24,
+                dhcp_start=f"172.16.{n}.10",
+                dhcp_end=f"172.16.{n}.20",
+                static_hosts=[
+                    {"mac": macs[cfg.lz_vm_name]["uplink"], "name": "lz-uplink", "ip": f"172.16.{n}.2"},
+                ],
+                # The LZ resolves mirror/api/*.apps via the uplink dnsmasq in disconnected mode.
+                dnsmasq_addresses=cfg.cluster_dns_addresses,
+            ),
+            cfg.uplink_bridge,
+        )
+
+
+def create(cfg: Config) -> None:
+    """Create all networks, storage, and VM definitions for the cluster; idempotent on re-run."""
+    conn = _connect()
+
+    # Generate the cluster name (if not supplied), finalize the working dir, pick the
+    # subnet, and create the networks atomically under a host-wide lock so concurrent CI
+    # runs on the same hypervisor never race onto the same name or subnet. Holding the
+    # lock across name+subnet selection → network creation closes the TOCTOU gap.
+    macs: Dict[str, Dict[str, str]] = {}
+    with open(SUBNET_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            if not cfg.cluster_name:
+                cfg.cluster_name = _generate_cluster_name(conn, cfg)
+                LOG.info("Generated cluster name: %s", cfg.cluster_name)
+            cfg.finalize_working_dir()
+            macs = generate_macs(cfg)
+            cfg.subnet_id = _resolve_subnet(conn, cfg)
+            # Write + echo cluster-env.sh BEFORE creating any libvirt resources. The
+            # name and the whole plan are fully determined by (name, subnet), so this
+            # records the identity even if a later create step fails — the caller
+            # (and CI cleanup) can then always tear the cluster down by name.
+            _write_cluster_env(cfg, macs)
+            _create_networks(conn, cfg, macs)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+    LOG.info("=== Creating infrastructure for cluster: %s ===", cfg.cluster_name)
+
+    _update_bridge_conf(cfg.all_bridges)
+    _create_pool(conn, cfg)
+
+    # Landing Zone VM
+    lz_vol = f"{cfg.lz_vm_name}.qcow2"
+    _create_volume(conn, cfg, lz_vol, cfg.lz.disk_gb)
+    lz_nics = [
+        {"mac": macs[cfg.lz_vm_name]["bmc"], "network": cfg.bmc_bridge},
+        {"mac": macs[cfg.lz_vm_name]["cluster"], "network": cfg.cluster_bridge},
+    ]
+    if cfg.deployment_mode == "disconnected" and cfg.uplink_bridge:
+        lz_nics.append({"mac": macs[cfg.lz_vm_name]["uplink"], "network": cfg.uplink_bridge})
+    _define_domain(
+        conn,
+        render(
+            "domain.xml.j2",
+            name=cfg.lz_vm_name,
+            memory_kb=cfg.lz.memory_mb * 1024,
+            vcpu=cfg.lz.vcpu,
+            pool_path=str(cfg.pool_dir),
+            vol_name=lz_vol,
+            nics=lz_nics,
+            extra_disk_path="",
+            # The LZ boots its populated root disk; provision_landing_zone.sh writes
+            # the cloud-init ISO at this path and starts the (already-defined) domain.
+            cdrom_path=str(cfg.lz_cloud_init_iso),
+            boot_order=["hd", "cdrom"],
+        ),
+        cfg.lz_vm_name,
+    )
+
+    # Master VMs
+    for i in range(cfg.num_masters):
+        name = cfg.master_vm_name(i)
+        vol = f"{name}.qcow2"
+        extra_path = cfg.pool_dir / f"{name}-extra.img"
+        _create_volume(conn, cfg, vol, cfg.master.disk_gb)
+        if not extra_path.exists():
+            _create_sparse_file(extra_path, cfg.master.extra_disk_gb)
+        master_nics = [
+            {"mac": macs[name]["bmc"], "network": cfg.bmc_bridge},
+            {"mac": macs[name]["cluster"], "network": cfg.cluster_bridge},
+        ]
+        _define_domain(
+            conn,
+            render(
+                "domain.xml.j2",
+                name=name,
+                memory_kb=cfg.master.memory_mb * 1024,
+                vcpu=cfg.master.vcpu,
+                pool_path=str(cfg.pool_dir),
+                vol_name=vol,
+                nics=master_nics,
+                extra_disk_path=str(extra_path),
+                # Masters boot the ABI ISO sushy-tools inserts into the empty cdrom.
+                cdrom_path="",
+                boot_order=["cdrom", "hd"],
+            ),
+            name,
+        )
+
+    LOG.info("=== Infrastructure created for cluster: %s ===", cfg.cluster_name)
+    LOG.info("  BMC bridge:     %s  (%s)", cfg.bmc_bridge, cfg.bmc_gateway)
+    LOG.info("  Cluster bridge: %s  (%s)", cfg.cluster_bridge, cfg.cluster_gateway)
+    if cfg.uplink_bridge:
+        LOG.info("  Uplink bridge:  %s  (%s)", cfg.uplink_bridge, cfg.uplink_gateway)
+    LOG.info("  VMs: 1 LZ + %d masters (all defined, not started)", cfg.num_masters)
+
+
+# ─── Destroy ──────────────────────────────────────────────────────────────────
+
+
+def destroy(cfg: Config) -> None:
+    """Tear down all cluster VMs, volumes, pool, and networks; logs warnings on per-resource failures."""
+    LOG.info("=== Destroying infrastructure for cluster: %s ===", cfg.cluster_name)
+    conn = _connect()
+
+    # Undefine all domains matching the cluster prefix (cluster_name + "_" to avoid partial matches)
+    for dom in conn.listAllDomains():
+        if not dom.name().startswith(cfg.cluster_name + "_"):
+            continue
+        name = dom.name()
+        try:
+            if dom.isActive():
+                dom.destroy()
+            flags = (
+                libvirt.VIR_DOMAIN_UNDEFINE_NVRAM
+                | libvirt.VIR_DOMAIN_UNDEFINE_MANAGED_SAVE
+            )
+            try:
+                dom.undefineFlags(flags)
+            except libvirt.libvirtError:
+                dom.undefine()
+            LOG.info("Undefined domain: %s", name)
+        except libvirt.libvirtError as exc:
+            LOG.warning("Failed to undefine domain %s: %s", name, exc)
+
+    # Remove storage pool and all its volumes
+    if _pool_exists(conn, cfg.cluster_name):
+        pool = conn.storagePoolLookupByName(cfg.cluster_name)
+        try:
+            for vol_name in pool.listVolumes():
+                try:
+                    pool.storageVolLookupByName(vol_name).delete(0)
+                    LOG.info("Deleted volume: %s", vol_name)
+                except libvirt.libvirtError as exc:
+                    LOG.warning("Failed to delete volume %s: %s", vol_name, exc)
+        except libvirt.libvirtError as exc:
+            LOG.warning("Failed to list volumes: %s", exc)
+
+        try:
+            if pool.isActive():
+                pool.destroy()
+            pool.undefine()
+            LOG.info("Removed storage pool: %s", cfg.cluster_name)
+        except libvirt.libvirtError as exc:
+            LOG.warning("Failed to remove pool: %s", exc)
+
+    # Remove sparse extra disk files not tracked by the pool (run even if pool is
+    # already gone). Enumerate them from the pool dir rather than deriving names
+    # from num_masters: create() writes master_N-extra.img before defining the
+    # master domain, so a cancelled/failed create can leave an orphan whose domain
+    # never existed — and reap() counts domains, not files, to size the cluster.
+    if cfg.pool_dir.is_dir():
+        for extra in sorted(cfg.pool_dir.glob("*-extra.img")):
+            try:
+                extra.unlink()
+                LOG.info("Removed extra disk: %s", extra)
+            except OSError as exc:
+                LOG.warning("Failed to remove extra disk %s: %s", extra, exc)
+
+    # Destroy/undefine all networks matching the cluster prefix (cluster_name + "-" to avoid partial matches)
+    for net in conn.listAllNetworks():
+        if not net.name().startswith(cfg.cluster_name + "-"):
+            continue
+        name = net.name()
+        try:
+            if net.isActive():
+                net.destroy()
+            net.undefine()
+            LOG.info("Removed network: %s", name)
+        except libvirt.libvirtError as exc:
+            LOG.warning("Failed to remove network %s: %s", name, exc)
+
+    _update_bridge_conf(cfg.all_bridges, remove=True)
+
+    if cfg.cluster_env_file.exists():
+        cfg.cluster_env_file.unlink()
+        LOG.info("Removed cluster-env.sh")
+
+    LOG.info("=== Destroy complete for cluster: %s ===", cfg.cluster_name)
+
+
+# ─── Reap (cross-run garbage collection) ──────────────────────────────────────
+#
+# Per-job cleanup only ever matches its own run's cluster name (grep
+# "^${CLUSTER_NAME}_"), so VMs left by a cancelled/timed-out/killed job are never
+# reclaimed by any later run and accumulate forever. reap sweeps ALL CI clusters
+# on the host and tears down every one whose definition is older than a threshold
+# (default 12h, safely above the longest e2e job timeout of 600 minutes).
+
+# CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
+# 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is
+# the dev-scripts VM naming convention (landingzone_0 / master_N).
+_CI_DOMAIN_RE = re.compile(
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+)$"
+)
+# A CI storage pool: the exact cluster token, optionally followed by a numeric
+# suffix (virt-install appends "-1", "-2", … when it auto-creates a pool for the
+# landing-zone disk and the cluster-named pool already exists). destroy() only ever
+# removes the pool named exactly cluster_name, so these numbered pools — and any
+# pool whose domains were already undefined — leak past the domain-based reap. The
+# suffix is deliberately restricted to digits so an unrelated, deliberately named
+# pool (e.g. "eci-12345678-backup") is never a reap candidate.
+_CI_POOL_RE = re.compile(
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))(?:-\d+)?$"
+)
+# Volumes CI drops into the shared "default" pool (agent installer + node boot
+# ISOs). They are never owned by a cluster pool, so cluster teardown never removes
+# them; each run leaks ~1.3 GiB per node until the root filesystem fills.
+_DEFAULT_POOL_ISO_RE = re.compile(r"^(?:boot-.*|agent-x86_64-iso-.*)$")
+DEFAULT_POOL_NAME = "default"
+
+DEFAULT_REAP_AGE_HOURS = 12.0
+# A cluster's define-age exceeding the longest possible job runtime is what proves
+# it is leaked rather than in-flight: the e2e jobs cap out at 600 minutes (10h) via
+# timeout-minutes, so any cluster older than that cannot belong to a running job.
+# Destructive reaps refuse thresholds below this floor (use --force to override on
+# a host you know is idle); --dry-run is always allowed for inspection.
+MIN_REAP_AGE_HOURS = 11.0
+# Persistent domain definitions; their mtime is the cluster's create time and is
+# untouched by start/stop, unlike the qcow2 disks (which a running VM keeps
+# writing to, so a leaked-but-running VM would never age out by disk mtime).
+LIBVIRT_QEMU_CONFIG_DIR = Path("/etc/libvirt/qemu")
+# Persistent storage-pool definitions; the pool's define-time (used to age it out)
+# is the mtime of this XML, mirroring how domains are aged from their qemu XML.
+LIBVIRT_STORAGE_CONFIG_DIR = Path("/etc/libvirt/storage")
+
+
+def _cluster_of_domain(name: str) -> Optional[str]:
+    """Return the CI cluster a domain belongs to, or None if it is not a CI domain."""
+    m = _CI_DOMAIN_RE.match(name)
+    return m.group(1) if m else None
+
+
+def _domain_define_mtime(name: str) -> Optional[float]:
+    """mtime of a domain's persistent definition XML (its create time), or None if unreadable."""
+    try:
+        return (LIBVIRT_QEMU_CONFIG_DIR / f"{name}.xml").stat().st_mtime
+    except OSError:
+        return None
+
+
+def _pool_target_path_from_xml(pool: libvirt.virStoragePool) -> Optional[Path]:
+    """Backing directory declared in a pool's <target><path>, or None if unreadable."""
+    try:
+        xml = pool.XMLDesc(0)
+    except libvirt.libvirtError:
+        return None
+    m = re.search(r"<path>([^<]+)</path>", xml)
+    return Path(m.group(1)) if m else None
+
+
+def _pool_target_path(conn: libvirt.virConnect, name: str) -> Optional[Path]:
+    """Backing directory of a cluster's storage pool (== working_dir/pool), or None."""
+    try:
+        pool = conn.storagePoolLookupByName(name)
+    except libvirt.libvirtError:
+        return None
+    return _pool_target_path_from_xml(pool)
+
+
+def _reap_working_dir(
+    conn: libvirt.virConnect, cluster: str, base_working_dir: Optional[Path]
+) -> Path:
+    """Best-effort working_dir for a cluster: pool parent, else BASE_WORKING_DIR/<cluster>."""
+    pool_path = _pool_target_path(conn, cluster)
+    if pool_path is not None:
+        return pool_path.parent  # _create_pool backs the pool at working_dir/pool
+    if base_working_dir is not None:
+        return base_working_dir / cluster
+    # No pool and no base dir: return a path whose file-removals are all no-ops;
+    # the libvirt teardown (domains/networks/pool) in destroy() still runs.
+    return Path("/nonexistent") / cluster
+
+
+def _cluster_age_seconds(
+    conn: libvirt.virConnect,
+    cluster: str,
+    domains: List[str],
+    base_working_dir: Optional[Path],
+    now: float,
+) -> Optional[float]:
+    """Age of the most recently defined domain in the cluster, in seconds; None if undeterminable.
+
+    Uses the newest domain define-time so a cluster is only reaped once even its
+    most recent evidence of activity is stale — never while a run is in flight.
+    """
+    mtimes = [m for d in domains if (m := _domain_define_mtime(d)) is not None]
+    if not mtimes:
+        try:
+            mtimes = [_reap_working_dir(conn, cluster, base_working_dir).stat().st_mtime]
+        except OSError:
+            return None
+    return now - max(mtimes)
+
+
+def _reap_config(
+    conn: libvirt.virConnect,
+    cluster: str,
+    domains: List[str],
+    base_working_dir: Optional[Path],
+) -> Config:
+    """Reconstruct the minimal Config destroy() needs for a discovered cluster.
+
+    VMSpec sizing is irrelevant to teardown, so placeholders are used; num_masters
+    is counted from the live domains and deployment_mode is inferred from whether
+    the disconnected-only uplink network still exists.
+    """
+    master_re = re.compile(rf"^{re.escape(cluster)}_master_\d+$")
+    num_masters = sum(1 for d in domains if master_re.match(d))
+    mode = "disconnected" if _net_exists(conn, f"{cluster}-u") else "connected"
+    placeholder = VMSpec(memory_mb=0, vcpu=0, disk_gb=0, extra_disk_gb=0)
+    return Config(
+        cluster_name=cluster,
+        deployment_mode=mode,
+        num_masters=num_masters,
+        working_dir=_reap_working_dir(conn, cluster, base_working_dir),
+        master=placeholder,
+        lz=placeholder,
+        storage_plugin="lvms",
+    )
+
+
+def _pool_define_mtime(name: str) -> Optional[float]:
+    """mtime of a pool's persistent definition XML (its create time), or None."""
+    try:
+        return (LIBVIRT_STORAGE_CONFIG_DIR / f"{name}.xml").stat().st_mtime
+    except OSError:
+        return None
+
+
+def _referenced_volume_paths(conn: libvirt.virConnect) -> tuple:
+    """Every disk/cdrom source path referenced by any defined domain, and a
+    "fully readable" flag.
+
+    Used to protect in-use default-pool ISOs: a volume attached to a domain (even a
+    shut-off one) is off-limits, so only genuinely orphaned ISOs are reclaimed.
+    Both the file form (<source file='...'/>) and the pool-backed form
+    (<source pool='...' volume='...'/>) are resolved to a path. If any domain's XML
+    cannot be read — or a pool-backed source cannot be resolved — the set is
+    incomplete, so the flag is False and the caller must not delete anything.
+    """
+    referenced: set = set()
+    all_readable = True
+    for dom in conn.listAllDomains():
+        try:
+            xml = dom.XMLDesc(0)
+        except libvirt.libvirtError:
+            all_readable = False  # may reference an ISO we would otherwise reap
+            continue
+        # Parse each <source> element and read its attributes by name, so both the
+        # file form and the pool-backed form are matched regardless of attribute
+        # order (e.g. <source index='1' file='...'/> or volume= before pool=).
+        for source in re.findall(r"<source\b[^>]*>", xml):
+            file_m = re.search(r"\bfile=[\"']([^\"']+)[\"']", source)
+            if file_m is not None:
+                referenced.add(file_m.group(1))
+            pool_m = re.search(r"\bpool=[\"']([^\"']+)[\"']", source)
+            vol_m = re.search(r"\bvolume=[\"']([^\"']+)[\"']", source)
+            if pool_m is None or vol_m is None:
+                continue
+            try:
+                pool = conn.storagePoolLookupByName(pool_m.group(1))
+                referenced.add(pool.storageVolLookupByName(vol_m.group(1)).path())
+            except libvirt.libvirtError:
+                all_readable = False
+    return referenced, all_readable
+
+
+def _pool_is_active(pool: libvirt.virStoragePool) -> Optional[bool]:
+    """The pool's running state, or None if libvirt cannot report it.
+
+    isActive() can raise on a stale handle or a transient libvirt failure. A caller
+    that gets None cannot know whether the pool is running, so it must not act on it
+    (keep the definition, retry on a later sweep) rather than abort the whole reap.
+    """
+    try:
+        return bool(pool.isActive())
+    except libvirt.libvirtError as exc:
+        LOG.warning("Cannot query state of pool %s: %s", pool.name(), exc)
+        return None
+
+
+def _delete_pool(pool: libvirt.virStoragePool) -> bool:
+    """Delete every volume in a pool, then stop and undefine it; best-effort throughout.
+
+    Inactive pools are started first so their volumes can be enumerated and their
+    backing bytes reclaimed. A pool whose backing directory is already gone has
+    nothing to reclaim, so it is undefined to clear the stale definition; but a pool
+    that fails to start while its backing directory still exists is left defined (the
+    failure is transient or unexplained, and undefining would orphan the data).
+
+    Returns True only when the pool was fully removed (all volumes deleted, stopped,
+    and undefined — or a backing-gone pool was undefined); False if any step failed
+    and the definition or its bytes may remain, so the caller must not count it.
+    """
+    name = pool.name()
+    failed = False
+    active = _pool_is_active(pool)
+    if active is None:
+        return False  # cannot determine state; keep the definition and retry later
+    if not active:
+        try:
+            pool.create(0)
+        except libvirt.libvirtError as exc:
+            # Could not start it. Only undefine when the backing directory is *confirmed*
+            # gone (nothing to reclaim); if we cannot prove that, keep the definition so
+            # a later sweep retries rather than orphaning any data.
+            target = _pool_target_path_from_xml(pool)
+            if target is None:
+                # Target path unreadable — cannot confirm the backing dir is gone.
+                LOG.warning(
+                    "Failed to start pool %s and cannot read its target path; "
+                    "keeping definition: %s", name, exc,
+                )
+                return False
+            try:
+                target.stat()
+            except FileNotFoundError:
+                pass  # backing dir genuinely gone; safe to undefine below
+            except OSError as os_exc:
+                # e.g. PermissionError — cannot prove the dir is gone; keep and retry.
+                LOG.warning(
+                    "Failed to start pool %s and cannot stat %s (%s); keeping definition",
+                    name, target, os_exc,
+                )
+                return False
+            else:
+                LOG.warning("Failed to start pool %s (backing dir present): %s", name, exc)
+                return False
+        active = _pool_is_active(pool)
+        if active is None:
+            return False  # started but cannot confirm; keep the definition
+    if active:
+        try:
+            for vol_name in pool.listVolumes():
+                try:
+                    pool.storageVolLookupByName(vol_name).delete(0)
+                except libvirt.libvirtError as exc:
+                    failed = True
+                    LOG.warning("Failed to delete volume %s in pool %s: %s", vol_name, name, exc)
+        except libvirt.libvirtError as exc:
+            failed = True
+            LOG.warning("Failed to list volumes in pool %s: %s", name, exc)
+        try:
+            pool.destroy()
+        except libvirt.libvirtError as exc:
+            failed = True
+            LOG.warning("Failed to stop pool %s: %s", name, exc)
+    # An active pool whose volumes or destroy() failed still owns bytes — keep its
+    # definition so a later sweep retries instead of orphaning the volumes with no
+    # pool to reach them through.
+    if failed:
+        LOG.warning("Not undefining pool %s: volume reclamation incomplete", name)
+        return False
+    try:
+        pool.undefine()
+    except libvirt.libvirtError as exc:
+        LOG.warning("Failed to undefine pool %s: %s", name, exc)
+        return False
+    return True
+
+
+def _reap_orphan_pools(
+    conn: libvirt.virConnect,
+    threshold: float,
+    now: float,
+    defined_clusters: set,
+    dry_run: bool,
+) -> int:
+    """Remove CI storage pools with no defined domain and older than the threshold.
+
+    destroy() only removes the pool named exactly cluster_name, so landing-zone
+    "-1" pools and any pool whose domains were already undefined survive the
+    domain-based reap forever. Pools of clusters that still have a domain are
+    skipped (in flight or handled elsewhere); the age gate protects a pool created
+    by a run that has not defined its domains yet.
+    """
+    prefix = "[dry-run] " if dry_run else ""
+    reaped = 0
+    for pool in conn.listAllStoragePools():
+        name = pool.name()
+        m = _CI_POOL_RE.match(name)
+        if m is None:
+            continue
+        if m.group(1) in defined_clusters:
+            continue
+        mtime = _pool_define_mtime(name)
+        if mtime is None:
+            LOG.warning("Cannot determine age of pool %s; skipping to be safe", name)
+            continue
+        age = now - mtime
+        if age < threshold:
+            LOG.info("Keeping pool %s (age %.1fh < %.1fh)", name, age / 3600, threshold / 3600)
+            continue
+        LOG.info("%sReaping orphan pool %s (age %.1fh)", prefix, name, age / 3600)
+        if dry_run:
+            reaped += 1
+        elif _delete_pool(pool):
+            reaped += 1
+    return reaped
+
+
+def _reap_default_pool_isos(
+    conn: libvirt.virConnect, threshold: float, now: float, dry_run: bool
+) -> int:
+    """Remove unreferenced, aged-out boot/agent ISOs from the shared default pool.
+
+    Each run drops per-node boot ISOs and an agent installer ISO into the default
+    pool; cluster teardown never owns them, so they leak ~1.3 GiB per node. A volume
+    is deleted only if no defined domain references it and it is older than the
+    threshold — the same in-flight safety the cluster reap uses.
+    """
+    prefix = "[dry-run] " if dry_run else ""
+    try:
+        pool = conn.storagePoolLookupByName(DEFAULT_POOL_NAME)
+    except libvirt.libvirtError:
+        return 0  # no default pool on this host; nothing to sweep
+
+    referenced, all_readable = _referenced_volume_paths(conn)
+    if not all_readable:
+        # An unreadable domain (or unresolvable pool-backed source) may reference an
+        # ISO we would otherwise treat as orphaned. Deleting on a partial reference
+        # set risks pulling a volume out from under a live VM, so sweep nothing.
+        LOG.warning(
+            "Skipping default-pool ISO sweep: could not resolve all domain volume "
+            "references (a domain XML or pool-backed volume was unreadable)"
+        )
+        return 0
+
+    reaped = 0
+    try:
+        vol_names = pool.listVolumes()
+    except libvirt.libvirtError as exc:
+        LOG.warning("Failed to list default-pool volumes: %s", exc)
+        return 0
+    for vol_name in vol_names:
+        if _DEFAULT_POOL_ISO_RE.match(vol_name) is None:
+            continue
+        try:
+            vol = pool.storageVolLookupByName(vol_name)
+            path = vol.path()
+        except libvirt.libvirtError:
+            continue
+        if path in referenced:
+            continue
+        try:
+            mtime = os.stat(path).st_mtime
+        except OSError:
+            LOG.warning("Cannot stat %s; skipping to be safe", path)
+            continue
+        age = now - mtime
+        if age < threshold:
+            continue
+        LOG.info("%sReaping orphan default-pool ISO %s (age %.1fh)", prefix, vol_name, age / 3600)
+        if not dry_run:
+            try:
+                vol.delete(0)
+            except libvirt.libvirtError as exc:
+                LOG.warning("Failed to delete ISO %s: %s", vol_name, exc)
+                continue
+        reaped += 1
+    return reaped
+
+
+def reap(age_hours: float, base_working_dir: Optional[Path], dry_run: bool = False) -> None:
+    """Tear down every CI cluster on the host older than age_hours; best-effort per cluster.
+
+    Also sweeps two leaks the per-cluster teardown never reclaims: orphan CI storage
+    pools (including landing-zone "-1" pools and pools whose domains are already
+    gone) and unreferenced boot/agent ISOs in the shared default pool.
+
+    With dry_run=True nothing is destroyed: the sweep only reports which clusters
+    would be reaped or kept, for safe verification on a live host.
+    """
+    threshold = age_hours * 3600
+    now = time.time()
+    prefix = "[dry-run] " if dry_run else ""
+    LOG.info("=== %sReaping CI clusters older than %.1fh ===", prefix, age_hours)
+
+    conn = _connect()
+    clusters: Dict[str, List[str]] = {}
+    for dom in conn.listAllDomains():
+        cluster = _cluster_of_domain(dom.name())
+        if cluster is not None:
+            clusters.setdefault(cluster, []).append(dom.name())
+
+    # Clusters that still have a defined domain: in flight, or reaped just below.
+    # The pool/ISO sweeps must never touch these out from under a running job.
+    defined_clusters = set(clusters)
+
+    reaped = kept = 0
+    for cluster, domains in sorted(clusters.items()):
+        age = _cluster_age_seconds(conn, cluster, domains, base_working_dir, now)
+        if age is None:
+            LOG.warning("Cannot determine age of %s; skipping to be safe", cluster)
+            kept += 1
+            continue
+        if age < threshold:
+            LOG.info("Keeping %s (age %.1fh < %.1fh)", cluster, age / 3600, age_hours)
+            kept += 1
+            continue
+        if dry_run:
+            LOG.info(
+                "%sWould reap stale cluster %s (age %.1fh, %d domains)",
+                prefix, cluster, age / 3600, len(domains),
+            )
+            defined_clusters.discard(cluster)  # its pools become sweep candidates
+            reaped += 1
+            continue
+        LOG.info("Reaping stale cluster %s (age %.1fh)", cluster, age / 3600)
+        try:
+            destroy(_reap_config(conn, cluster, domains, base_working_dir))
+            defined_clusters.discard(cluster)  # domains gone; sweep its leftover pools
+            reaped += 1
+        except Exception as exc:  # noqa: BLE001 — one bad cluster must not abort the sweep
+            LOG.warning("Failed to reap %s: %s", cluster, exc)
+            kept += 1
+
+    # Re-derive the protected set from libvirt ground truth before sweeping pools.
+    # destroy() is best-effort and can return without having undefined every domain
+    # (it logs and swallows teardown errors), so a cluster discarded above may still
+    # have a live domain; trusting the bookkeeping alone could delete a pool still in
+    # use. A fresh scan protects any cluster that still has a defined domain. In
+    # dry_run nothing was destroyed, so the simulated set above is what shows which
+    # pools would become candidates once the stale clusters are reaped.
+    if not dry_run:
+        defined_clusters = {
+            c
+            for c in (_cluster_of_domain(d.name()) for d in conn.listAllDomains())
+            if c is not None
+        }
+    # Sweep leaks the per-cluster teardown never reclaims. These run even when no CI
+    # domains exist (the classic leak: domains already undefined, pools/ISOs remain).
+    pools_reaped = _reap_orphan_pools(conn, threshold, now, defined_clusters, dry_run)
+    isos_reaped = _reap_default_pool_isos(conn, threshold, now, dry_run)
+
+    LOG.info(
+        "=== %sReap complete: %d %s, %d kept; %d orphan pools, %d default-pool ISOs ===",
+        prefix, reaped, "would be reaped" if dry_run else "reaped", kept,
+        pools_reaped, isos_reaped,
+    )
+
+
+# ─── Entry point ──────────────────────────────────────────────────────────────
+
+
+def print_subnet(cfg: Config) -> None:
+    """Select (or honor the override for) the subnet create would use and print it, creating nothing.
+
+    Runs the exact selection logic of create() under SUBNET_LOCK but defines no
+    networks/VMs, so it is a safe dry-run for verifying subnet allocation.
+    """
+    conn = _connect()
+    with open(SUBNET_LOCK, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            cfg.subnet_id = _resolve_subnet(conn, cfg)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+    print(f"subnet_id={cfg.subnet_id}")
+    print(f"bmc_network={cfg.bmc_network}")
+    print(f"cluster_network={cfg.cluster_network}")
+    print(f"lz_network={cfg.lz_network or ''}")
+
+
+def main() -> None:
+    """Parse CLI args, configure logging, and dispatch to create or destroy."""
+    parser = argparse.ArgumentParser(
+        description="Manage libvirt VM infrastructure for Enclave CI runs"
+    )
+    parser.add_argument("command", choices=["create", "destroy", "reap"])
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--print-subnet",
+        action="store_true",
+        help="Dry-run: print the subnet create would use (creating nothing), then exit. "
+        "Only valid with the create command.",
+    )
+    parser.add_argument(
+        "--age-hours",
+        type=float,
+        default=None,
+        help="reap: only tear down CI clusters older than this many hours "
+        f"(default: $REAP_AGE_HOURS or {DEFAULT_REAP_AGE_HOURS:g}). Only valid with reap.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="reap: report which clusters would be reaped without destroying "
+        "anything. Only valid with reap.",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=f"reap: allow a threshold below the {MIN_REAP_AGE_HOURS:g}h safety "
+        "floor for a destructive run (only on a host known to be idle). Only "
+        "valid with reap.",
+    )
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    if args.print_subnet and args.command != "create":
+        parser.error("--print-subnet is only valid with the create command")
+    for flag in ("age_hours", "dry_run", "force"):
+        if getattr(args, flag) not in (None, False) and args.command != "reap":
+            parser.error(f"--{flag.replace('_', '-')} is only valid with the reap command")
+
+    # reap discovers clusters from libvirt; it needs neither a cluster name nor a
+    # working dir, so it must not go through Config.from_env().
+    if args.command == "reap":
+        age_hours = args.age_hours if args.age_hours is not None else _reap_age_from_env()
+        # Allow-list the threshold: it must be a finite positive number. NaN would
+        # slip past a bare `<= 0` check and make `age < threshold` always false, so
+        # every discovered cluster — including active ones — would be reaped.
+        if not math.isfinite(age_hours) or age_hours <= 0:
+            parser.error("reap age must be a finite positive number of hours")
+        # Below the safety floor a destructive sweep could tear down an in-flight
+        # run sharing the host; only --dry-run or an explicit --force may go lower.
+        if age_hours < MIN_REAP_AGE_HOURS and not args.dry_run and not args.force:
+            parser.error(
+                f"reap age {age_hours:g}h is below the {MIN_REAP_AGE_HOURS:g}h safety "
+                f"floor (longest job timeout); pass --force to override on an idle host"
+            )
+        base_raw = os.environ.get("BASE_WORKING_DIR", "")
+        reap(age_hours, Path(base_raw) if base_raw else None, dry_run=args.dry_run)
+        return
+
+    # create may generate the cluster name; print_subnet and destroy require it.
+    if args.print_subnet:
+        print_subnet(Config.from_env(generate_name=False))
+    elif args.command == "create":
+        create(Config.from_env(generate_name=True))
+    else:
+        destroy(Config.from_env(generate_name=False))
+
+
+def _reap_age_from_env() -> float:
+    """Reap threshold in hours from REAP_AGE_HOURS, falling back to the default."""
+    raw = os.environ.get("REAP_AGE_HOURS", "")
+    if not raw:
+        return DEFAULT_REAP_AGE_HOURS
+    try:
+        return float(raw)
+    except ValueError:
+        sys.exit(f"ERROR: REAP_AGE_HOURS must be a number, got {raw!r}")
+
+
+if __name__ == "__main__":
+    main()

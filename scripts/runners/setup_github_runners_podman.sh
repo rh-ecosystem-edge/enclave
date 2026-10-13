@@ -88,22 +88,56 @@ fi
 # Step 4: Configure socket permissions
 heading "Step 4: Configuring Socket Permissions"
 
+info "Creating runners group for socket access..."
+APPROVED_RUNNER_ACCOUNTS=("github-runner")
+if getent group runners > /dev/null 2>&1; then
+    info "Group 'runners' already exists — validating members..."
+    RUNNERS_GID=$(getent group runners | cut -d: -f3)
+
+    # Check supplementary members (getent group field 4)
+    CURRENT_MEMBERS=$(getent group runners | cut -d: -f4)
+    IFS=',' read -ra MEMBERS <<< "$CURRENT_MEMBERS"
+
+    # Also check accounts whose primary GID is the runners GID — those
+    # processes match the socket group permission even though they are not
+    # listed in the group's member field.
+    while IFS=: read -r acct _ _ pgid _; do
+        [[ "$pgid" == "$RUNNERS_GID" ]] && MEMBERS+=("$acct")
+    done < /etc/passwd
+
+    for member in "${MEMBERS[@]}"; do
+        [[ -z "$member" ]] && continue
+        approved=0
+        for approved_account in "${APPROVED_RUNNER_ACCOUNTS[@]}"; do
+            [[ "$member" == "$approved_account" ]] && approved=1 && break
+        done
+        if [[ $approved -eq 0 ]]; then
+            error "Unapproved account '$member' found in 'runners' group — aborting"
+            exit 1
+        fi
+    done
+    success "All 'runners' group members are approved"
+else
+    groupadd --system runners
+fi
+
 info "Creating systemd override for socket permissions..."
 mkdir -p /etc/systemd/system/podman.socket.d
 
 cat > /etc/systemd/system/podman.socket.d/override.conf <<'EOF'
 [Socket]
-# Make socket world-accessible for GitHub Actions
-SocketMode=0666
+SocketMode=0660
+SocketGroup=runners
 EOF
 
 info "Setting directory permissions..."
-chmod 755 /run/podman
+chown root:runners /run/podman
+chmod 750 /run/podman
 
 # Persist directory permissions across reboots and socket restarts.
 # Without this, systemd recreates /run/podman with 0700 (root-only),
-# blocking non-root users from accessing the socket even if SocketMode=0666.
-echo 'd /run/podman 0755 root root -' > /etc/tmpfiles.d/podman-socket.conf
+# blocking members of the runners group from accessing the socket.
+echo 'd /run/podman 0750 root runners -' > /etc/tmpfiles.d/podman-socket.conf
 
 info "Restarting podman.socket with new permissions..."
 systemctl daemon-reload
@@ -111,7 +145,6 @@ systemctl restart podman.socket
 sleep 2
 
 info "Verifying permissions..."
-chmod 666 /run/podman/podman.sock
 ls -la /run/podman/podman.sock
 
 success "Socket permissions configured"
@@ -167,7 +200,8 @@ if id github-runner &>/dev/null; then
     info "Enabling linger for github-runner..."
     loginctl enable-linger github-runner 2>/dev/null || true
 
-    info "Adding github-runner to libvirt and qemu groups..."
+    info "Adding github-runner to runners, libvirt, and qemu groups..."
+    usermod -aG runners github-runner
     usermod -aG libvirt github-runner 2>/dev/null || true
     usermod -aG qemu github-runner 2>/dev/null || true
 

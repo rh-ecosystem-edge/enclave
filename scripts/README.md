@@ -45,7 +45,6 @@ source "${ENCLAVE_DIR}/scripts/lib/output.sh"
 source "${ENCLAVE_DIR}/scripts/lib/validation.sh"
 
 # Use utility functions
-require_env_var "DEV_SCRIPTS_PATH"
 info "Starting process..."
 success "Operation completed"
 ```
@@ -60,16 +59,15 @@ Scripts for initial environment setup, prerequisite validation, and configuratio
 |--------|---------|
 | `preflight_checks.sh` | Validate environment variables and system resources before workflow execution |
 | `validate_prerequisites.sh` | Check all required tools are installed (jq, ansible, virsh, etc.) |
-| `setup_working_dir.sh` | Create and initialize cluster working directory structure |
-| `configure_devscripts.sh` | Generate dev-scripts configuration file with network settings |
-| `allocate_subnet.sh` | Atomic subnet allocation for parallel CI runs (file locking) |
-| `generate_cluster_name.sh` | Generate unique cluster name based on environment |
+
+The cluster name and working directory are owned by `vm_infra.py` (it generates the
+name when `ENCLAVE_CLUSTER_NAME` is unset and derives `WORKING_DIR` from
+`BASE_WORKING_DIR`); there is no separate name/working-dir setup step.
 
 **Typical Workflow:**
 ```bash
 make preflight-checks        # Validate environment
-make setup-working-dir       # Create working directory
-make configure-devscripts    # Generate dev-scripts config
+make environment             # Create infrastructure (generates name + working dir)
 ```
 
 ---
@@ -80,16 +78,18 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 | Script | Purpose |
 |--------|---------|
-| `provision_landing_zone.sh` | Create Landing Zone VM using dev-scripts |
+| `create_environment.sh` | Orchestrate `make environment`: vm_infra.py create + pull secret + GPU + verify + sushy |
+| `provision_landing_zone.sh` | Populate and boot the Landing Zone VM defined by vm_infra.py |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
-| `generate_environment_json.sh` | Generate infrastructure metadata (IPs, MACs, networks) |
 | `generate_enclave_vars.sh` | Generate Enclave Lab configuration files (global.yaml, certificates.yaml, cloud_infra.yaml) |
 
 **Key Concepts:**
 - **Landing Zone**: VM that runs Enclave Lab ansible playbooks
 - **BMC Emulation**: sushy-tools provides Redfish API for VM power control
-- **environment.json**: Contains all infrastructure metadata (networks, VMs, IPs)
+- **cluster-env.sh**: The single source of truth for infrastructure metadata (networks,
+  gateways, endpoints, VM names, IPs and MACs), written by vm_infra.py and sourced via
+  `load_cluster_env`
 
 **Typical Workflow:**
 ```bash
@@ -109,6 +109,7 @@ Scripts for deploying OpenShift clusters on the provisioned infrastructure.
 | `install_enclave.sh` | Install Enclave Lab on Landing Zone VM and generate configuration |
 | `deploy_cluster.sh` | Deploy full OpenShift cluster (connected or disconnected mode) |
 | `deploy_phase.sh` | Deploy specific phase of deployment (for phased workflows) |
+| `generate_ironic_cert.sh` | Generate TLS certificate for the Ironic ISO server; self-signed (local CA) by default, or a real DNS-01 certificate from a public CA when `ENCLAVE_CERT_TYPE` is set |
 
 **Deployment Modes:**
 - **Connected**: Pull images directly from quay.io/registry.redhat.io (~55 min)
@@ -238,13 +239,15 @@ Common environment variables used across scripts:
 | Variable | Purpose |
 |----------|---------|
 | `ENCLAVE_CLUSTER_NAME` | Cluster name (default: `enclave-test`) |
-| `DEV_SCRIPTS_PATH` | Path to dev-scripts installation |
 | `WORKING_DIR` | Cluster working directory |
 | `BASE_WORKING_DIR` | Base directory for all clusters |
 | `ENCLAVE_DEPLOYMENT_MODE` | Deployment mode: `connected` or `disconnected` |
-| `ENCLAVE_SUBNET_ID` | Allocated subnet ID (for parallel CI) |
-| `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`) |
-| `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`) |
+| `ENCLAVE_SUBNET_ID` | Optionally pin the subnet third octet N (auto-selected by `vm_infra.py` from libvirt when unset) |
+| `ENCLAVE_BMC_NETWORK` | BMC network CIDR (e.g., `100.64.3.0/24`); written to `cluster-env.sh` by `vm_infra.py` |
+| `ENCLAVE_CLUSTER_NETWORK` | Cluster network CIDR (e.g., `192.168.3.0/24`); written to `cluster-env.sh` by `vm_infra.py` |
+| `ENCLAVE_CERT_TYPE` | TLS certificate type; unset = self-signed, `zerossl-ecdsa` = real cert via DNS-01 |
+| `ENCLAVE_BASE_DOMAIN` | Public DNS domain for SAN generation when `ENCLAVE_CERT_TYPE` is set |
+| `ENCLAVE_IRONIC_HTTPS` | Enable HTTPS on the Ironic ISO server; always `true` in disconnected mode |
 
 ### Error Handling
 
@@ -259,10 +262,9 @@ Scripts use `set -euo pipefail` for strict error handling:
 
 Scripts are used by GitHub Actions workflows:
 
-- `.github/workflows/e2e-deployment.yml` - End-to-end deployment workflow (connected and disconnected modes)
+- `.github/workflows/e2e-connected.yml` / `.github/workflows/e2e-disconnected.yml` - End-to-end deployment workflows (one per mode), both calling the reusable `.github/workflows/e2e-deployment.yml`
 
 Custom GitHub Actions in `.github/actions/`:
-- `allocate-subnet` - Allocate unique subnet for parallel runs
 - `preflight-checks` - Run pre-flight validation
 - `collect-artifacts` - Collect logs and artifacts
 

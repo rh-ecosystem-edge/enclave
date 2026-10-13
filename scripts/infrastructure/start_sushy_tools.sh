@@ -16,11 +16,10 @@ source "${ENCLAVE_DIR}/scripts/lib/config.sh"
 source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Get cluster name from environment or dev-scripts config
+# Get cluster name from environment
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Try to load dev-scripts config (non-fatal)
-try_load_devscripts_config
+try_load_cluster_env
 
 CLUSTER_NAME="${CLUSTER_NAME:-$ENCLAVE_CLUSTER_NAME}"
 
@@ -44,84 +43,18 @@ ensure_working_dir
 
 SUSHY_DIR="${WORKING_DIR}/virtualbmc/sushy-tools"
 
-# Calculate BMC gateway and port from PROVISIONING_NETWORK
-PROVISIONING_NETWORK="${PROVISIONING_NETWORK:-100.64.1.0/24}"
-BMC_GATEWAY=$(get_network_gateway "$PROVISIONING_NETWORK")
-BMC_PORT=$(calculate_bmc_port "$PROVISIONING_NETWORK")
+# BMC gateway and port come straight from cluster-env.sh (vm_infra.py owns them).
+BMC_GATEWAY="${ENCLAVE_BMC_GATEWAY}"
+BMC_PORT="${ENCLAVE_BMC_PORT}"
 
-# Wait for bridge to have IP assigned
-wait_for_bridge_ip() {
-    local bridge_name="${CLUSTER_NAME}-p"
-    local expected_ip="$BMC_GATEWAY"
-    local max_attempts=30
-    local wait_seconds=2
-    local attempt=1
-
-    info "Waiting for bridge ${bridge_name} to have IP ${expected_ip}..."
-
-    while [ $attempt -le $max_attempts ]; do
-        # Check if bridge exists and has the expected IP
-        if ip addr show "$bridge_name" 2>/dev/null | grep -q "inet ${expected_ip}/"; then
-            success "Bridge ${bridge_name} has IP ${expected_ip}"
-            return 0
-        fi
-
-        if [ $attempt -eq $max_attempts ]; then
-            error "Timeout waiting for bridge ${bridge_name} to have IP ${expected_ip} (waited $((max_attempts * wait_seconds)) seconds)"
-            error ""
-            error "Bridge diagnostics:"
-
-            # Check if bridge exists
-            if ip link show "$bridge_name" >/dev/null 2>&1; then
-                error "  Bridge exists but IP not assigned:"
-                ip addr show "$bridge_name" 2>&1 | while IFS= read -r line; do
-                    error "    $line"
-                done
-
-                # Check libvirt network status
-                if sudo virsh net-info "$bridge_name" >/dev/null 2>&1; then
-                    error ""
-                    error "  Libvirt network status:"
-                    sudo virsh net-info "$bridge_name" 2>&1 | while IFS= read -r line; do
-                        error "    $line"
-                    done
-                else
-                    error "  Libvirt network '${bridge_name}' not found"
-                fi
-            else
-                error "  Bridge ${bridge_name} does not exist at all!"
-                error "  This means dev-scripts failed to create the network."
-            fi
-
-            return 1
-        fi
-
-        info "  Attempt $attempt/$max_attempts: Bridge not ready yet, waiting ${wait_seconds}s..."
-
-        # Show bridge state every 10 attempts for debugging
-        if [ $((attempt % 10)) -eq 0 ]; then
-            info "    Bridge state at attempt $attempt:"
-            if ip link show "$bridge_name" >/dev/null 2>&1; then
-                ip addr show "$bridge_name" 2>&1 | grep "inet " | while IFS= read -r line; do
-                    info "      $line"
-                done
-                if ! ip addr show "$bridge_name" 2>&1 | grep -q "inet "; then
-                    info "      Bridge exists but has no IP assigned yet"
-                fi
-            else
-                info "      Bridge does not exist yet"
-            fi
-        fi
-
-        sleep $wait_seconds
-        attempt=$((attempt + 1))
-    done
-
-    return 1
-}
-
-# Wait for bridge to be ready before starting sushy-tools
-wait_for_bridge_ip
+# Verify BMC bridge exists and has its IP assigned (libvirt isolated networks are synchronous)
+BMC_BRIDGE="${ENCLAVE_BMC_BRIDGE}"
+if ! ip addr show "$BMC_BRIDGE" 2>/dev/null | grep -q "inet ${BMC_GATEWAY}/"; then
+    error "BMC bridge ${BMC_BRIDGE} does not have expected IP ${BMC_GATEWAY}"
+    error "Run 'make -f Makefile.ci environment' to create the infrastructure"
+    exit 1
+fi
+success "BMC bridge ${BMC_BRIDGE} has IP ${BMC_GATEWAY}"
 
 # Create sushy-tools directory if it doesn't exist
 if [ ! -d "$SUSHY_DIR" ]; then
@@ -155,6 +88,13 @@ SUSHY_EMULATOR_LIBVIRT_URI = "qemu:///system"
 # Use MAC address as system identifier instead of UUID
 SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID = True
 
+# Upload virtual-media ISOs into the per-cluster libvirt pool. Without this,
+# sushy-tools falls back to a pool named "default", which does not exist on
+# hosts that only have per-cluster pools, causing VirtualMedia.InsertMedia to
+# fail with "Storage pool not found". Using the cluster pool also ensures the
+# ISOs are removed when the cluster (and its pool) is torn down.
+SUSHY_EMULATOR_STORAGE_POOL = "${CLUSTER_NAME}"
+
 # Bind to cluster-specific BMC IP and port for parallel execution isolation
 SUSHY_EMULATOR_LISTEN_IP = "${BMC_GATEWAY}"
 SUSHY_EMULATOR_LISTEN_PORT = ${BMC_PORT}
@@ -178,6 +118,12 @@ success "sushy-tools configuration created"
 info "Pulling sushy-tools image: $SUSHY_TOOLS_IMAGE"
 sudo podman pull "$SUSHY_TOOLS_IMAGE"
 
+# Remove any stale container with the same name (left over from a cancelled run)
+if sudo podman container exists "$CONTAINER_NAME" 2>/dev/null; then
+    warning "Removing stale container $CONTAINER_NAME from a previous run..."
+    sudo podman rm -f "$CONTAINER_NAME"
+fi
+
 # Start sushy-tools container with cluster-specific name, IP binding, and port
 info "Starting sushy-tools container for cluster $CLUSTER_NAME..."
 info "  Container: $CONTAINER_NAME"
@@ -188,7 +134,7 @@ sudo podman run -d \
     --name "$CONTAINER_NAME" \
     -v "$SUSHY_DIR:/root/sushy:z" \
     -v "/root/.ssh:/root/.ssh:ro,z" \
-    -v "/var/run/libvirt:/var/run/libvirt:z" \
+    -v "/var/run/libvirt:/var/run/libvirt" \
     "${SUSHY_TOOLS_IMAGE}" \
     sushy-emulator --config /root/sushy/conf.py
 

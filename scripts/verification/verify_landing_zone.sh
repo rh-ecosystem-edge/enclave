@@ -26,26 +26,25 @@ fail() {
 }
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster configuration
+load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-BMC_NETWORK="${PROVISIONING_NETWORK}"
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
+CLUSTER_NETWORK="${ENCLAVE_CLUSTER_NETWORK}"
 
 # Extract network prefixes for dynamic IP detection
 CLUSTER_NET_PREFIX=$(get_network_prefix "$CLUSTER_NETWORK")
 BMC_NET_PREFIX=$(get_network_prefix "$BMC_NETWORK")
 
-# Get actual IP from libvirt (VM uses DHCP) - dynamic subnet detection
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -159,7 +158,7 @@ if curl -k -s -o /dev/null -w '%{http_code}' --connect-timeout 5 "$SUSHY_ENDPOIN
     fi
 else
     fail "sushy-tools is NOT running on host ($SUSHY_ENDPOINT)"
-    info "  dev-scripts should have started it. Check: sudo podman ps | grep sushy"
+    info "  Check: sudo podman ps | grep sushy"
 fi
 
 # Test 7: Verify required packages are installed

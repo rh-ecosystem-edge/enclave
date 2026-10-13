@@ -22,32 +22,19 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
-# Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
-
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster configuration
+load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 ensure_working_dir
-CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Try cluster-specific environment file first, fall back to legacy location
-ENVIRONMENT_JSON="${WORKING_DIR}/environment-${CLUSTER_NAME}.json"
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    ENVIRONMENT_JSON="${WORKING_DIR}/environment.json"
-fi
-
-# Extract cluster network prefix for dynamic IP detection
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-
-# Get Landing Zone IP - dynamic subnet detection
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -78,16 +65,7 @@ if ! ssh_test_connection; then
 fi
 success "Landing Zone VM is accessible"
 
-# Step 2: Check if environment.json exists
-info "Step 2: Checking environment metadata..."
-if [ ! -f "$ENVIRONMENT_JSON" ]; then
-    error "Environment metadata not found: $ENVIRONMENT_JSON"
-    error "Run 'make environment' to create infrastructure first"
-    exit 1
-fi
-success "Environment metadata found"
-
-# Step 3: Copy Enclave Lab to Landing Zone
+# Step 2: Copy Enclave Lab to Landing Zone
 info "Step 3: Copying Enclave Lab repository to Landing Zone..."
 
 # Create directory on Landing Zone
@@ -131,70 +109,9 @@ scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_D
 
 success "Configuration generated and copied to Landing Zone"
 
-# Step 5.5: Configure DNS resolution for cluster endpoints via libvirt dnsmasq
-info "Step 5.5: Configuring DNS resolution..."
-
-# Extract values from generated config/global.yaml
-BASE_DOMAIN=$(grep '^baseDomain:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-CLUSTER_CFG_NAME=$(grep '^clusterName:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-API_VIP=$(grep '^apiVIP:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-INGRESS_VIP=$(grep '^ingressVIP:' "${WORKING_DIR}/config/global.yaml" | awk '{print $2}')
-
-# Validate required values are present
-if [[ -z "$BASE_DOMAIN" || -z "$CLUSTER_CFG_NAME" || -z "$API_VIP" || -z "$INGRESS_VIP" ]]; then
-    error "Missing required configuration values in config/global.yaml"
-    error "  baseDomain: ${BASE_DOMAIN:-<missing>}"
-    error "  clusterName: ${CLUSTER_CFG_NAME:-<missing>}"
-    error "  apiVIP: ${API_VIP:-<missing>}"
-    error "  ingressVIP: ${INGRESS_VIP:-<missing>}"
-    exit 1
-fi
-
-CLUSTER_NETWORK_NAME="${BAREMETAL_NETWORK_NAME:-${ENCLAVE_CLUSTER_NAME}-e}"
-
-# Add cluster DNS entries to libvirt network dnsmasq (same approach as mirror entry in provision_landing_zone.sh)
-# Note: virsh net-update only allows one host entry per IP, so all hostnames for the same IP must be grouped
-
-# API endpoint
-info "Adding DNS entry: api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${API_VIP} on network ${CLUSTER_NETWORK_NAME}..."
-if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${API_VIP}'><hostname>api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname></host>" \
-    --live --config 2>/dev/null; then
-    warning "Could not add API DNS entry (may already exist)"
-else
-    info "✓ DNS entry added: api.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${API_VIP}"
-fi
-
-# Ingress endpoints (grouped under single IP)
-# Uses virsh net-update to add DNS host entries to the running network (no restart needed).
-# Includes a catch-all "something" entry for wildcard DNS validation.
-INGRESS_APPS=(
-    something
-    console-openshift-console
-    oauth-openshift
-    downloads-openshift-console
-    alertmanager-main-openshift-monitoring
-    grafana-openshift-monitoring
-    prometheus-k8s-openshift-monitoring
-    thanos-querier-openshift-monitoring
-    registry-quay-quay-enterprise
-)
-INGRESS_HOSTNAMES_XML=""
-for APP in "${INGRESS_APPS[@]}"; do
-    INGRESS_HOSTNAMES_XML="${INGRESS_HOSTNAMES_XML}<hostname>${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN}</hostname>"
-done
-info "Adding DNS entries: *.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP} on network ${CLUSTER_NETWORK_NAME}..."
-if ! sudo virsh net-update "${CLUSTER_NETWORK_NAME}" add dns-host \
-    "<host ip='${INGRESS_VIP}'>${INGRESS_HOSTNAMES_XML}</host>" \
-    --live --config 2>/dev/null; then
-    warning "Could not add ingress DNS entries (may already exist)"
-else
-    for APP in "${INGRESS_APPS[@]}"; do
-        info "✓ DNS entry added: ${APP}.apps.${CLUSTER_CFG_NAME}.${BASE_DOMAIN} -> ${INGRESS_VIP}"
-    done
-fi
-
-success "DNS resolution configured for cluster endpoints"
+# Cluster DNS (api.<cluster>.<base>, *.apps.<cluster>.<base>, mirror) is baked into the
+# libvirt networks' dnsmasq by vm_infra.py (see Config.cluster_dns_addresses), so there
+# is no runtime net-update here.
 
 # Step 6: Copy pull secret
 info "Step 6: Setting up pull secret..."
@@ -205,7 +122,7 @@ PULL_SECRET_SOURCE=""
 
 # Check common pull secret locations in order of preference
 for SECRET_PATH in \
-    "${DEV_SCRIPTS_PATH}/pull_secret.json" \
+    "${WORKING_DIR}/pull_secret.json" \
     "${HOME}/.pull-secret.json" \
     "${WORKING_DIR}/pull-secret.json" \
     "/root/pull-secret.json"; do
@@ -253,7 +170,7 @@ EOPY
 else
     error "Pull secret not found in any common location"
     info "  Searched:"
-    info "    - ${DEV_SCRIPTS_PATH}/pull_secret.json"
+    info "    - ${WORKING_DIR}/pull_secret.json"
     info "    - ${HOME}/.pull-secret.json"
     info "    - ${WORKING_DIR}/pull-secret.json"
     info "    - /root/pull-secret.json"
@@ -267,15 +184,11 @@ fi
 
 # Step 7: Generate SSH key if needed
 info "Step 7: Checking SSH key on Landing Zone..."
-ssh $SSH_OPTS "$LZ_SSH" bash <<'EOSSH'
-if [ ! -f ~/.ssh/id_rsa.pub ]; then
-    echo "  Generating SSH key pair..."
-    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q
-else
-    echo "  SSH key already exists"
+if ! SSH_KEY_PATH=$(ensure_lz_ssh_public_key); then
+    error "Failed to find or generate an SSH key on the Landing Zone"
+    exit 1
 fi
-EOSSH
-success "SSH key ready"
+success "SSH key ready: ${SSH_KEY_PATH}"
 
 # Step 8: Display configuration summary
 info "Step 8: Configuration summary..."

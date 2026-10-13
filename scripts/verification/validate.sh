@@ -35,8 +35,8 @@ print_info() {
 validate_shell() {
     print_header "Validating shell scripts with shellcheck"
 
-    if find scripts/ -name "*.sh" -type f 2>/dev/null | grep -q .; then
-        if find scripts/ -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning; then
+    if find scripts/ src/ -name "*.sh" -type f 2>/dev/null | grep -q .; then
+        if find scripts/ src/ -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning; then
             print_success "Shell script validation passed"
             return 0
         else
@@ -133,7 +133,7 @@ validate_tags() {
         "playbooks/04-post-install.yaml:post-install-config:Post-install configurations"
         "playbooks/05-operators.yaml:operators:Configure seed operators"
         "playbooks/05-operators.yaml:operators:Configure remaining operators"
-        "playbooks/06-day2.yaml:acm-policy-catalogsources:Mirrored catalogsource configuration ACM policy"
+        "playbooks/05-operators.yaml:operators:Mirrored catalogsource configuration ACM policy"
         "playbooks/validation/validate-schema.yaml:test-fixtures:Include defaults schema validation tasks"
         "playbooks/validation/validate-schema.yaml:validate-config:Include config schema validation tasks"
         "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
@@ -228,6 +228,30 @@ validate_plugins() {
     fi
 }
 
+validate_migrations() {
+    print_header "Validating migration files"
+
+    if "${ENCLAVE_DIR}/scripts/verification/validate_migrations.sh"; then
+        print_success "Migration validation passed"
+        return 0
+    else
+        print_error "Migration validation failed"
+        return 1
+    fi
+}
+
+validate_osac_values() {
+    print_header "Validating OSAC values overlay against pinned chart schema"
+
+    if "${ENCLAVE_DIR}/scripts/verification/validate_osac_values.sh"; then
+        print_success "OSAC values overlay validation passed"
+        return 0
+    else
+        print_error "OSAC values overlay validation failed"
+        return 1
+    fi
+}
+
 validate_mirror() {
     print_header "Validating mirror artifacts on Landing Zone"
 
@@ -304,6 +328,7 @@ validate_all() {
     validate_templates || failed=1
     validate_makefile || failed=1
     validate_plugins || failed=1
+    validate_migrations || failed=1
     validate_python || failed=1
 
     if [ $failed -eq 0 ]; then
@@ -347,17 +372,23 @@ case "${1:-all}" in
     plugins)
         validate_plugins
         ;;
+    migrations)
+        validate_migrations
+        ;;
     python)
         validate_python
         ;;
     mirror)
         validate_mirror
         ;;
+    osac-values)
+        validate_osac_values
+        ;;
     all)
         validate_all
         ;;
     *)
-        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|python}"
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|migrations|python|osac-values}"
         exit 1
         ;;
 esac

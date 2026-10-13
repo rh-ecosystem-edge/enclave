@@ -10,7 +10,6 @@
 #
 # Usage: ./setup_ceph_on_lz.sh
 # Environment:
-#   DEV_SCRIPTS_PATH       - Path to dev-scripts (required)
 #   OSD_SIZE_GB            - Size per OSD in GB (default: 20)
 #   ENCLAVE_CLUSTER_NAME   - Cluster name (default: enclave-test)
 
@@ -29,21 +28,19 @@ source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 source "${ENCLAVE_DIR}/scripts/lib/common.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
 # Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
 
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -53,7 +50,12 @@ fi
 # Setup SSH configuration
 setup_ssh_config "$CLUSTER_IP"
 
-OSD_SIZE_GB="${OSD_SIZE_GB:-200}"
+# 3 loopback OSDs of this size back the LZ Ceph (RadosGW object store + RBD).
+# 200GB (600GB raw) overflowed: the disconnected mirror pushes ~512GB of blobs
+# into RadosGW, one OSD crossed the 0.95 full_ratio, Ceph froze all writes and
+# Quay's boot.py hung on its Postgres RBD commit. 300GB (900GB raw, ~855 usable)
+# keeps the hottest OSD near 63% for the current imageset.
+OSD_SIZE_GB="${OSD_SIZE_GB:-300}"
 
 info "========================================="
 info "Ceph Setup on Landing Zone"

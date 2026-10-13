@@ -18,21 +18,15 @@ source "${ENCLAVE_DIR}/scripts/lib/network.sh"
 source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 # Validate required environment variables
-require_env_var "DEV_SCRIPTS_PATH"
 
 # Determine cluster name for dynamic config file
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
-# Source dev-scripts configuration
-load_devscripts_config
+# Source cluster environment
+load_cluster_env
 
-# Configuration
-CLUSTER_NAME="${CLUSTER_NAME:-enclave-test}"
-LZ_VM_NAME="${CLUSTER_NAME}_landingzone_0"
-
-# Get Landing Zone IP using network utility
-CLUSTER_NETWORK="${EXTERNAL_SUBNET_V4}"
-CLUSTER_IP=$(get_vm_ip_on_network "$LZ_VM_NAME" "$CLUSTER_NETWORK")
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
 if [ -z "$CLUSTER_IP" ]; then
     error "Could not determine Landing Zone IP address"
@@ -151,7 +145,7 @@ info ""
 
 # Build ansible-playbook command with extra vars file
 # Create a temporary extra vars YAML file on the Landing Zone
-EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
 "
 
 # Set disconnected mode based on DEPLOYMENT_MODE
@@ -200,7 +194,7 @@ EOF
 
 # Run ansible-playbook with the extra vars file
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
-ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'set -o pipefail; ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml 2>&1 | tee deployment.log'"
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/main.yaml -e @config/extra_vars.yaml 2>&1 | tee deployment.log'"
 
 DEPLOYMENT_EXIT_CODE=$?
 
