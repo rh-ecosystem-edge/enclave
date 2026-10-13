@@ -148,14 +148,22 @@
   when:
     - r_sub_check.resources | length == 0
     - not (_use_automatic_approval | bool)
-  ansible.builtin.shell: |
-    enclave reconcile operator-versions \
-      --name "{{ operator.name }}" \
-      --version "{{ operator.version }}" \
-      --namespace "{{ operator.namespace }}" \
-      --channel "{{ operator.channel }}" \
-      {% for csv in (operator.csvNames | default([operator.name])) %}--csv-name "{{ csv }}" {% endfor %}\
-      --no-dry-run
+  ansible.builtin.command:
+    argv: >-
+      {{
+        [
+          'enclave',
+          'reconcile',
+          'operator-versions',
+          '--name', operator.name,
+          '--version', operator.version,
+          '--namespace', operator.namespace,
+          '--channel', operator.channel
+        ]
+        + (operator.csvNames | default([operator.name])
+           | map('regex_replace', '^', '--csv-name=') | list)
+        + ['--no-dry-run']
+      }}
   register: operator_update_result
 
 - name: Print Install Plan approval output ({{ operator.name }})

@@ -1,6 +1,8 @@
 import json
 import logging
+import re
 import time
+from typing import Any
 
 from enclave.utils import (
     log_subprocess_output,
@@ -17,8 +19,11 @@ def _update_subscription_channel(
     namespace: str,
     subscription_name: str,
     channel: str,
-) -> bool:
-    """Update a Subscription's channel, returning whether it needs changing."""
+) -> tuple[bool, str | None]:
+    """Update the Subscription channel and return change state and current CSV."""
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", channel) is None:
+        raise ValueError(f"Invalid operator channel {channel!r}")
+
     result = run_oc_command([
         "oc",
         "get",
@@ -41,7 +46,8 @@ def _update_subscription_channel(
         )
     try:
         subscription = json.loads(result.stdout)
-        current_channel = subscription.get("spec", {}).get("channel")
+        current_channel = (subscription.get("spec") or {}).get("channel")
+        current_csv = (subscription.get("status") or {}).get("currentCSV")
     except (json.JSONDecodeError, AttributeError) as exc:
         raise RuntimeError(
             f"oc get subscription/{subscription_name} in {namespace} "
@@ -55,7 +61,7 @@ def _update_subscription_channel(
             namespace,
             channel,
         )
-        return False
+        return False, current_csv
 
     logger.info(
         "Updating Subscription %s in namespace %s from channel %s to %s.",
@@ -66,7 +72,7 @@ def _update_subscription_channel(
     )
     logger.info("[UPDATE] %s/%s channel=%s", namespace, subscription_name, channel)
     if dry_run:
-        return True
+        return True, current_csv
 
     patch_result = run_oc_command([
         "oc",
@@ -96,7 +102,7 @@ def _update_subscription_channel(
         namespace,
         channel,
     )
-    return True
+    return True, current_csv
 
 
 def _plan_version_ok(
@@ -194,6 +200,93 @@ def _approve_plan(
         )
 
 
+def _retry_install_plan_poll(
+    deadline: float,
+    failure_message: str,
+    timeout_message: str,
+    cause: Exception | None = None,
+) -> None:
+    """Sleep before retrying InstallPlan retrieval, or raise at the deadline."""
+    if time.monotonic() >= deadline:
+        if cause is not None:
+            raise TimeoutError(timeout_message) from cause
+        raise TimeoutError(timeout_message)
+    logger.warning("%s; retrying in 10 seconds.", failure_message)
+    time.sleep(10)
+
+
+def _get_install_plans(
+    namespace: str,
+    wait_for_csvs: set[str] | None,
+    deadline: float,
+) -> list[dict[str, Any]]:
+    """Fetch InstallPlans, retrying transient failures when waiting for targets."""
+    while True:
+        try:
+            result = run_oc_command([
+                "oc",
+                "get",
+                "installplan.operators.coreos.com",
+                "-n",
+                namespace,
+                "-o",
+                "json",
+            ])
+        except TimeoutError as exc:
+            if wait_for_csvs is None:
+                raise
+            _retry_install_plan_poll(
+                deadline,
+                f"oc get installplan in {namespace} timed out",
+                f"oc get installplan in {namespace} timed out for 30 minutes",
+                exc,
+            )
+            continue
+
+        if result.returncode != 0:
+            log_subprocess_output(
+                f"oc get installplan failed (exit {result.returncode})",
+                result.stderr or "",
+            )
+            if wait_for_csvs is None:
+                raise RuntimeError(
+                    f"oc get installplan in {namespace} failed "
+                    f"(exit {result.returncode})"
+                )
+            _retry_install_plan_poll(
+                deadline,
+                f"oc get installplan in {namespace} failed",
+                f"oc get installplan in {namespace} failed for 30 minutes "
+                f"(exit {result.returncode})",
+            )
+            continue
+
+        try:
+            install_plans = json.loads(result.stdout)["items"]
+        except (json.JSONDecodeError, KeyError) as exc:
+            raise RuntimeError(
+                f"oc get installplan in {namespace} returned unexpected output"
+            ) from exc
+
+        if wait_for_csvs is not None:
+            plan_csv_names = {
+                csv_name
+                for install_plan in install_plans
+                for csv_name in install_plan["spec"]["clusterServiceVersionNames"]
+            }
+            if not wait_for_csvs.issubset(plan_csv_names):
+                _retry_install_plan_poll(
+                    deadline,
+                    "Waiting for InstallPlans containing target CSVs "
+                    f"{sorted(wait_for_csvs)} in namespace {namespace}",
+                    f"No InstallPlan containing target CSVs "
+                    f"{sorted(wait_for_csvs)} appeared in namespace "
+                    f"{namespace} within 30 minutes",
+                )
+                continue
+        return install_plans
+
+
 def approve_install_plans(
     dry_run: bool,
     namespace: str,
@@ -209,61 +302,16 @@ def approve_install_plans(
     exceed the desired version. Plans in other phases or with unmanaged /
     too-new CSVs are skipped with an info log.
 
-    When wait_for_csvs is set, waits until InstallPlans contain all of those CSV
-    names before processing plans. This is used after changing a Subscription
-    channel, which can take OLM time to resolve into a plan.
+    When wait_for_csvs is set, retries failed or timed-out queries until
+    InstallPlans contain all of those CSV names or the 30-minute deadline is
+    reached. This is used after changing a Subscription channel, which can take
+    OLM time to resolve into a plan.
 
     Raises RuntimeError on oc command failures or unexpected API output, and
     TimeoutError if a channel change does not produce the target InstallPlans.
     """
     deadline = time.monotonic() + 30 * 60
-    while True:
-        result = run_oc_command([
-            "oc",
-            "get",
-            "installplan.operators.coreos.com",
-            "-n",
-            namespace,
-            "-o",
-            "json",
-        ])
-        if result.returncode != 0:
-            log_subprocess_output(
-                f"oc get installplan failed (exit {result.returncode})",
-                result.stderr or "",
-            )
-            raise RuntimeError(
-                f"oc get installplan in {namespace} failed (exit {result.returncode})"
-            )
-        try:
-            install_plans = json.loads(result.stdout)["items"]
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise RuntimeError(
-                f"oc get installplan in {namespace} returned unexpected output"
-            ) from exc
-
-        if wait_for_csvs is not None:
-            plan_csv_names = {
-                csv_name
-                for install_plan in install_plans
-                for csv_name in install_plan["spec"]["clusterServiceVersionNames"]
-            }
-            if not wait_for_csvs.issubset(plan_csv_names):
-                if time.monotonic() >= deadline:
-                    raise TimeoutError(
-                        f"No InstallPlan containing target CSVs "
-                        f"{sorted(wait_for_csvs)} appeared in namespace "
-                        f"{namespace} within 30 minutes"
-                    )
-                logger.info(
-                    "Waiting for InstallPlans containing target CSVs %s in "
-                    "namespace %s.",
-                    sorted(wait_for_csvs),
-                    namespace,
-                )
-                time.sleep(10)
-                continue
-        break
+    install_plans = _get_install_plans(namespace, wait_for_csvs, deadline)
 
     for install_plan in install_plans:
         install_plan_name = install_plan["metadata"]["name"]
@@ -299,9 +347,9 @@ def reconcile(
     Normalises the version string ('+' → '-') to match the format OLM uses
     in CSV names. When a channel is provided, updates the Subscription before
     approving InstallPlans. After a channel change, waits for InstallPlans with
-    the desired CSVs before processing approvals. For each CSV, waits up to 30
-    minutes (polling every 10 s) for its phase to become Succeeded. The writes
-    and CSV wait are skipped in dry-run mode.
+    the desired CSVs if the target CSV is not already installed. For each CSV,
+    waits up to 30 minutes (polling every 10 s) for its phase to become
+    Succeeded. The writes and CSV wait are skipped in dry-run mode.
     """
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
     wait_for_csvs: set[str] | None = None
@@ -309,14 +357,15 @@ def reconcile(
         name = subscription_name or (csv_names[0] if csv_names else "")
         if not name:
             raise ValueError("A Subscription name is required when a channel is set")
-        channel_changed = _update_subscription_channel(
+        channel_changed, current_csv = _update_subscription_channel(
             dry_run, namespace, name, channel
         )
-        if channel_changed and not dry_run:
-            wait_for_csvs = {
-                f"{csv_name}.v{csv_version}"
-                for csv_name, csv_version in op_version_map.items()
-            }
+        target_csvs = {
+            f"{csv_name}.v{csv_version}"
+            for csv_name, csv_version in op_version_map.items()
+        }
+        if channel_changed and not dry_run and current_csv not in target_csvs:
+            wait_for_csvs = target_csvs
     if wait_for_csvs is None:
         approve_install_plans(dry_run, namespace, op_version_map)
     else:

@@ -99,7 +99,41 @@ def test_operator_versions_multiple_csv_names(mocker: MockerFixture) -> None:
     )
 
 
+def test_operator_versions_passes_channel_to_reconcile(
+    mocker: MockerFixture,
+) -> None:
+    """Pass explicit Subscription channel and name through the CLI."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    dry_run = False
+    result = CliRunner().invoke(
+        cli,
+        [
+            "operator-versions",
+            "--name",
+            "quay-operator",
+            "--version",
+            "3.15.3",
+            "--namespace",
+            "quay-enterprise",
+            "--channel",
+            "stable-3.15",
+        ],
+        env=_KC,
+    )
+
+    assert result.exit_code == 0
+    mock_reconcile.assert_called_once_with(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator"],
+        dry_run,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+    )
+
+
 def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> None:
+    """Pass each default operator's channel and Subscription name to reconcile."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     defaults_file = defaults_path("operators.yaml")
     with defaults_file.open(encoding="utf-8") as fh:

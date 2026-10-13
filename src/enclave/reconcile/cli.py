@@ -96,6 +96,7 @@ def operator_versions(
     use_defaults: bool,
     dry_run: bool,
 ) -> None:
+    """Reconcile operator versions using explicit options or bundled defaults."""
     if use_defaults and any([name, version, namespace, channel, csv_names]):
         raise click.UsageError(
             "--use-defaults is mutually exclusive with --name, --version, "

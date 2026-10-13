@@ -3,7 +3,11 @@ import json
 import pytest
 from pytest_mock import MockerFixture
 
-from enclave.reconcile.operator_versions import approve_install_plans, reconcile
+from enclave.reconcile.operator_versions import (
+    _update_subscription_channel,
+    approve_install_plans,
+    reconcile,
+)
 from tests.fixtures import Fixtures, OcResultFactory
 
 fxt = Fixtures("operator_versions")
@@ -165,6 +169,216 @@ def test_approve_patch_failure_raises(
         approve_install_plans(dry_run, "quay-enterprise", {"quay-operator": "3.15.3"})
 
 
+def test_approve_wait_retries_retrieval_failures_and_timeouts(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Retry failed and timed-out InstallPlan queries until the target appears."""
+    target_csv = "quay-operator.v3.15.3"
+    plan = _plan("ip-abc", "Complete", [target_csv])
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            TimeoutError("oc timed out"),
+            oc_result(stdout="", returncode=1, stderr="connection refused"),
+            oc_result(stdout=json.dumps({"items": []})),
+            oc_result(stdout=json.dumps({"items": [plan]})),
+        ],
+    )
+    mock_sleep = mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1.0, 2.0, 3.0],
+    )
+
+    approve_install_plans(
+        dry_run=False,
+        namespace="quay-enterprise",
+        approved_op_version_map={"quay-operator": "3.15.3"},
+        wait_for_csvs={target_csv},
+    )
+
+    assert mock_run.call_count == 4
+    assert mock_sleep.call_count == 3
+
+
+def test_approve_wait_times_out_without_target_plan(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Raise after the InstallPlan deadline if the target CSV never appears."""
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout='{"items": []}'),
+    )
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1800.0],
+    )
+
+    with pytest.raises(TimeoutError, match="No InstallPlan containing target CSVs"):
+        approve_install_plans(
+            dry_run=False,
+            namespace="quay-enterprise",
+            approved_op_version_map={"quay-operator": "3.15.3"},
+            wait_for_csvs={"quay-operator.v3.15.3"},
+        )
+
+
+def test_approve_wait_times_out_after_retrieval_timeout(
+    mocker: MockerFixture,
+) -> None:
+    """Stop retrying InstallPlan retrieval after the shared deadline."""
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=TimeoutError("oc timed out"),
+    )
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1800.0],
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+
+    with pytest.raises(TimeoutError, match=r"oc get installplan.*timed out"):
+        approve_install_plans(
+            dry_run=False,
+            namespace="quay-enterprise",
+            approved_op_version_map={"quay-operator": "3.15.3"},
+            wait_for_csvs={"quay-operator.v3.15.3"},
+        )
+
+    mock_run.assert_called_once()
+
+
+def test_update_subscription_channel_skips_matching_channel(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Do not patch a Subscription that already uses the requested channel."""
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(
+            stdout=json.dumps({
+                "spec": {"channel": "stable-3.15"},
+                "status": {"currentCSV": "quay-operator.v3.15.3"},
+            })
+        ),
+    )
+
+    assert _update_subscription_channel(
+        dry_run=False,
+        namespace="quay-enterprise",
+        subscription_name="quay-operator",
+        channel="stable-3.15",
+    ) == (False, "quay-operator.v3.15.3")
+    assert mock_run.call_count == 1
+
+
+def test_update_subscription_channel_patches_changed_channel(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Patch a Subscription channel and preserve its currently installed CSV."""
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(
+                stdout=json.dumps({
+                    "spec": {"channel": "stable-3.14"},
+                    "status": {"currentCSV": "quay-operator.v3.14.2"},
+                })
+            ),
+            oc_result(stdout="patched"),
+        ],
+    )
+
+    assert _update_subscription_channel(
+        dry_run=False,
+        namespace="quay-enterprise",
+        subscription_name="quay-operator",
+        channel="stable-3.15",
+    ) == (True, "quay-operator.v3.14.2")
+    patch_args = mock_run.call_args_list[1].args[0]
+    assert patch_args[:4] == [
+        "oc",
+        "patch",
+        "subscription.operators.coreos.com",
+        "quay-operator",
+    ]
+    assert json.loads(patch_args[patch_args.index("-p") + 1]) == {
+        "spec": {"channel": "stable-3.15"}
+    }
+
+
+def test_update_subscription_channel_dry_run_skips_patch(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Report a needed channel update without issuing the patch in dry-run mode."""
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout='{"spec": {"channel": "stable-3.14"}}'),
+    )
+
+    assert _update_subscription_channel(
+        dry_run=True,
+        namespace="quay-enterprise",
+        subscription_name="quay-operator",
+        channel="stable-3.15",
+    ) == (True, None)
+    assert mock_run.call_count == 1
+
+
+def test_update_subscription_channel_rejects_invalid_channel(
+    mocker: MockerFixture,
+) -> None:
+    """Reject shell metacharacters before running any oc command."""
+    mock_run = mocker.patch("enclave.reconcile.operator_versions.run_oc_command")
+
+    with pytest.raises(ValueError, match="Invalid operator channel"):
+        _update_subscription_channel(
+            dry_run=False,
+            namespace="quay-enterprise",
+            subscription_name="quay-operator",
+            channel="stable-3.15;id",
+        )
+    mock_run.assert_not_called()
+
+
+def test_update_subscription_channel_get_failure_raises(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Raise when the Subscription cannot be fetched."""
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout="", returncode=1, stderr="not found"),
+    )
+
+    with pytest.raises(RuntimeError, match="oc get subscription"):
+        _update_subscription_channel(
+            dry_run=False,
+            namespace="quay-enterprise",
+            subscription_name="quay-operator",
+            channel="stable-3.15",
+        )
+
+
+def test_update_subscription_channel_patch_failure_raises(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Raise when patching the Subscription channel fails."""
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(stdout='{"spec": {"channel": "stable-3.14"}}'),
+            oc_result(stdout="", returncode=1, stderr="forbidden"),
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="oc patch subscription"):
+        _update_subscription_channel(
+            dry_run=False,
+            namespace="quay-enterprise",
+            subscription_name="quay-operator",
+            channel="stable-3.15",
+        )
+
+
 # ---------------------------------------------------------------------------
 # approve_install_plans — fixture-backed (real cluster data)
 # ---------------------------------------------------------------------------
@@ -230,6 +444,115 @@ def test_reconcile_calls_approve_and_wait(mocker: MockerFixture) -> None:
         timeout_minutes=30,
         sleep_interval=10,
     )
+
+
+def test_reconcile_waits_for_install_plan_after_channel_change(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Wait for a target InstallPlan when a channel change needs an upgrade."""
+    subscription = {
+        "spec": {"channel": "stable-3.14"},
+        "status": {"currentCSV": "quay-operator.v3.14.2"},
+    }
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(stdout=json.dumps(subscription)),
+            oc_result(stdout="patched"),
+        ],
+    )
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
+    dry_run = False
+
+    reconcile(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator"],
+        dry_run,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+    )
+
+    mock_approve.assert_called_once_with(
+        dry_run,
+        "quay-enterprise",
+        {"quay-operator": "3.15.3"},
+        wait_for_csvs={"quay-operator.v3.15.3"},
+    )
+
+
+def test_reconcile_skips_plan_wait_when_target_csv_is_installed(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Skip the plan wait when Subscription status already reports the target CSV."""
+    subscription = {
+        "spec": {"channel": "stable-3.14"},
+        "status": {"currentCSV": "quay-operator.v3.15.3"},
+    }
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(stdout=json.dumps(subscription)),
+            oc_result(stdout="patched"),
+        ],
+    )
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
+    dry_run = False
+
+    reconcile(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator"],
+        dry_run,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+    )
+
+    mock_approve.assert_called_once_with(
+        dry_run, "quay-enterprise", {"quay-operator": "3.15.3"}
+    )
+
+
+def test_reconcile_dry_run_does_not_wait_for_plan_after_channel_change(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Do not patch or poll for a plan after a channel change in dry-run mode."""
+    subscription = {
+        "spec": {"channel": "stable-3.14"},
+        "status": {"currentCSV": "quay-operator.v3.14.2"},
+    }
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=json.dumps(subscription)),
+    )
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mock_wait = mocker.patch(
+        "enclave.reconcile.operator_versions.wait_for_resource_status"
+    )
+    dry_run = True
+
+    reconcile(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator"],
+        dry_run,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+    )
+
+    assert mock_run.call_count == 1
+    mock_approve.assert_called_once_with(
+        dry_run, "quay-enterprise", {"quay-operator": "3.15.3"}
+    )
+    mock_wait.assert_not_called()
 
 
 def test_reconcile_dry_run_skips_wait(mocker: MockerFixture) -> None:
