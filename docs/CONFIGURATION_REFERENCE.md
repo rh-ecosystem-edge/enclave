@@ -53,6 +53,7 @@ All configuration files in the `defaults/` directory are automatically loaded by
    - [Discovery Hosts Configuration](#discovery-hosts-configuration)
 4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
    - [LVMS Configuration](#lvms-configuration)
+   - [ODF Configuration](#odf-configuration)
 5. [System Defaults (read-only)](#system-defaults-read-only)
 6. [Complete Example](#complete-example)
 7. [Security Best Practices](#security-best-practices)
@@ -879,10 +880,99 @@ enabled_plugins:
 ODF plugin configuration lives in `config/plugins/odf.yaml`. See
 `config/plugins/odf.example.yaml` for the full template.
 
+##### Preparing an external Ceph cluster for ODF
+
+Enclave deploys ODF in **external mode**: ODF does not manage its own Ceph, it
+connects to a pre-existing Red Hat Ceph Storage (RHCS) cluster that you provision
+and operate independently. That external cluster must exist, be healthy, and be
+reachable from the managed cluster **before** you start the Enclave installation,
+because the connection details are required as installation input (see
+[`odfExternalConfig`](#odfexternalconfig)).
+
+**Prerequisites**
+
+- A running, healthy external RHCS cluster with the block pool (and, if object
+  storage is needed, the RADOS Gateway) you intend ODF to consume.
+- The Ceph Dashboard installed and configured on the external RHCS cluster
+  (required by ODF external mode).
+- Network reachability from the managed cluster to the Ceph MON, MGR
+  (metrics on `9283`), OSD, and (if used) RGW endpoints.
+- Admin access to a Ceph node to run the exporter script.
+
+**Obtaining the connection details**
+
+The value of `odfExternalConfig` is the JSON produced by an exporter script run
+against the external Ceph cluster. Red Hat ships this script as
+`ceph-external-cluster-details-exporter.py`, embedded in the ODF Operator, and its
+two documented sources both require a running OpenShift cluster with the ODF Operator
+installed:
+
+- the OpenShift console **"Download Script"** link (Storage → *External Systems* →
+  *Connect external systems* → *Red Hat/IBM Ceph Cluster*), or
+- extracting it from the `ocs-operator` ClusterServiceVersion:
+  ```bash
+  oc get csv -n openshift-storage \
+    "$(oc get csv -n openshift-storage | grep ocs-operator | awk '{print $1}')" \
+    -o jsonpath='{.metadata.annotations.external\.features\.ocs\.openshift\.io/export-script}' \
+    | base64 --decode > ceph-external-cluster-details-exporter.py
+  ```
+
+In an Enclave flow the JSON is needed **before any cluster exists**, so neither of
+those is available yet. Use the upstream Rook equivalent instead,
+`deploy/examples/create-external-cluster-resources.py` in the
+[Rook repository](https://github.com/rook/rook) (the same script; Red Hat's copy is a
+renamed downstream build). See the Rook
+[provider-export guide](https://rook.io/docs/rook/latest-release/CRDs/Cluster/external-cluster/provider-export/)
+for usage and the full argument list.
+
+**Choosing the right script version**
+
+The exporter's output schema is tied to the **Rook version** bundled in your ODF
+release, so use the matching version of the script — not `master`, and not whatever
+`latest-release` happens to be. To find it:
+
+1. Determine the ODF version Enclave installs. Enclave pins this in
+   `plugins/odf/plugin.yaml` (the `odf-operator` entry).
+2. Open the
+   [ODF Supportability and Interoperability Checker](https://access.redhat.com/labs/odfsi/)
+   (requires a Red Hat login), set **Service Type** to *ODF as Self-Managed Service*,
+   and select your ODF version from the **Version** drop-down.
+3. On the **Version Mapping** tab, open the **Mapping with Upstream** sub-tab and note
+   the **Rook** version listed for that ODF release (also confirm the Ceph/RHCS version
+   your external cluster must run).
+4. Download the script from the matching release **tag** of the
+   [Rook repository](https://github.com/rook/rook) — it lives at
+   `deploy/examples/create-external-cluster-resources.py`. Pin to the immutable `vX.Y.z`
+   tag (not the `release-X.Y` branch) so the script cannot change after you fetch it:
+   ```bash
+   curl -O https://raw.githubusercontent.com/rook/rook/vX.Y.z/deploy/examples/create-external-cluster-resources.py
+   ```
+
+> **Note:** Do not assume `master`/`latest-release` is compatible with the RHCS
+> version your external cluster runs. Always cross-check against the
+> Interoperability Checker for your ODF version.
+
+**Example invocation**
+
+Run on a Ceph node with admin access, adjusting pool names and endpoints to your
+cluster:
+
+```bash
+python3 create-external-cluster-resources.py \
+  --rbd-data-pool-name <rbd-pool> \
+  --monitoring-endpoint <ceph-mgr-ip> \
+  --monitoring-endpoint-port 9283 \
+  --rgw-endpoint <rgw-ip>:<rgw-port>    # optional, only if object storage is needed
+```
+
+The script prints the JSON that becomes the value of `odfExternalConfig` in
+`config/plugins/odf.yaml`.
+
 ##### `odfExternalConfig`
 
 **Description**: External Ceph cluster configuration required when `storage_plugin: odf`.
-Contains the JSON output from the `ceph-external-cluster-details-exporter.py` script.
+Contains the JSON output from the external Ceph exporter script (see
+[Preparing an external Ceph cluster for ODF](#preparing-an-external-ceph-cluster-for-odf)).
 
 **Type**: String (JSON, required when `storage_plugin: odf`)
 
@@ -898,14 +988,8 @@ odfExternalConfig: >-
 **Notes**:
 - Only required when `storage_plugin` is set to `odf`
 - Validated by `plugins/odf/schemas/config.yaml` at CI time
-- The `ceph-external-cluster-details-exporter.py` script ships with the ODF operator
-  (console "Download Script" link, or the `ocs-operator` CSV annotation). When it is not
-  available before the cluster exists, the upstream equivalent is
-  [`create-external-cluster-resources.py`](https://github.com/rook/rook/blob/master/deploy/examples/create-external-cluster-resources.py)
-  in the rook repo. Use the branch matching the rook release bundled in your ODF version
-  (not `master`), as the output schema can differ between releases. See the
-  [provider-export guide](https://rook.io/docs/rook/latest-release/CRDs/Cluster/external-cluster/provider-export/)
-  for usage.
+- See [Preparing an external Ceph cluster for ODF](#preparing-an-external-ceph-cluster-for-odf)
+  for how to obtain this JSON (including which version of the exporter script to use)
 
 ##### `odfDefaults`
 
