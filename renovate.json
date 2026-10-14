@@ -83,6 +83,12 @@
       "matchPackageNames": ["osac-project/charts/osac"],
       "ignoreUnstable": false,
       "respectLatest": false
+    },
+    {
+      "description": "Python deps (pyproject.toml / uv.lock): automerge patch and minor, never major",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
     }
   ],
   "lockFileMaintenance": {
