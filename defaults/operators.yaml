@@ -53,18 +53,18 @@ operators:
     csvNames:
       - network-observability-operator
 
-  - name: cluster-logging
-    version: 6.4.6
-    channel: stable-6.4
-    init_version: 6.4.2
-    namespace: openshift-logging
-
   - name: loki-operator
-    version: 6.4.7
-    channel: stable-6.4
-    init_version: 6.4.2
+    version: 6.6.1
+    channel: stable-6.6
+    init_version: 6.6.1
     namespace: openshift-operators-redhat
     global: true
+
+  - name: cluster-logging
+    version: 6.6.1
+    channel: stable-6.6
+    init_version: 6.6.1
+    namespace: openshift-logging
 
   - name: redhat-oadp-operator
     version: 1.5.8
