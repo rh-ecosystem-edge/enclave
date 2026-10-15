@@ -99,9 +99,9 @@ operators:
       - external-secrets-operator
 
   - name: compliance-operator
-    version: 1.8.2
+    version: 1.10.0
     channel: stable
-    init_version: 1.8.2
+    init_version: 1.10.0
     namespace: openshift-compliance
 
   - name: metallb-operator
