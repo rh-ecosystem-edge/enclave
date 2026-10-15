@@ -145,7 +145,7 @@ Scripts for verifying deployments, collecting logs, and running validation check
 make verify-infrastructure   # Check VMs and networks
 make -f Makefile.ci verify-landing-zone     # Check Landing Zone
 make -f Makefile.ci verify-cluster          # Check cluster deployment
-make -f Makefile.ci verify                  # Run all verification checks
+make -f Makefile.ci verify                  # Check infrastructure
 ```
 
 ---
