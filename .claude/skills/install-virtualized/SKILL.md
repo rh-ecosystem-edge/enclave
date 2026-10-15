@@ -525,8 +525,29 @@ For each step:
    [██░░░░░░░░░░░░░░] 2/21 — provision-landing-zone
      Log: (output in SSH session)
    ```
-3. Run it via SSH with the full env block
-4. Check the exit code
+3. Run it via SSH with the full env block, using the **robust runner** below so a
+   network blip cannot silently drop the step or hide its real result:
+   - Add SSH keepalives so a long step survives transient drops:
+     `ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=1000 <host> '...'`
+   - Run make under `setsid ... < /dev/null` so it is not killed by SIGHUP if the
+     SSH session does drop, and finish the remote command with `; echo "STEP_RC=$?"`
+     so the **real make exit code** is always recorded in the output.
+   - **Never pipe the make command to `tail`/`head`/`grep`** (e.g. `make ... | tail`):
+     the pipeline's exit code is the last command's, not make's, so a failed step
+     looks like it exited 0. Let the Bash tool capture the full output and read
+     `STEP_RC=` from it instead.
+
+   Example:
+   ```bash
+   ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=1000 <host> \
+     'cd ~/enclave && export <env-block> && \
+      setsid make -f Makefile.ci <target> < /dev/null; echo "STEP_RC=$?"'
+   ```
+4. Check the result by reading the `STEP_RC=` line from the output — **do not trust
+   the Bash tool's reported exit code if the command was piped**. If the SSH session
+   dropped before `STEP_RC=` was printed, verify the real state on the host (running
+   processes, the LZ bootstrap log, `oc get clusterversion/nodes`) before deciding
+   success or failure — the step may have completed on the host after the drop.
 5. On success: update progress bar with ✓ and move to next
 6. On failure: go to **Failure Handling** below
 
@@ -553,7 +574,13 @@ If this fails, stop and troubleshoot — all subsequent log monitoring depends o
 For steps known to take >10 minutes (especially `deploy-cluster-install` which
 takes 30-60+ minutes), provide live feedback:
 
-1. **Run the command in background**: use the Bash tool with `run_in_background: true`
+1. **Run the command in background**: use the Bash tool with `run_in_background: true`,
+   and always use the **robust runner** from "Running Steps" above (SSH keepalives +
+   `setsid ... < /dev/null; echo "STEP_RC=$?"`, never piped to `tail`). `deploy-cluster-install`
+   runs 30-60+ minutes, long enough that an un-keepalived SSH session frequently drops
+   with `Broken pipe`; the keepalives prevent that, and the `STEP_RC=` line lets you tell
+   a genuine failure from a dropped session. If the session does drop, the make continues
+   on the host — verify cluster state directly rather than assuming failure.
 
 2. **Poll every 5-6 minutes** while the background task runs. Use the LZ log file
    from the mapping table above. Tail via double-hop SSH:
