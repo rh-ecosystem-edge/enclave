@@ -1,0 +1,115 @@
+name: Build RPM
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-rpm:
+    name: Build RPM
+    runs-on: [self-hosted, pr-validation]
+    container:
+      image: quay.io/centos/centos:stream10
+      options: --user root
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install build tools
+        run: dnf install -y rpm-build git-core python3
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version
+        id: meta
+        run: |
+          VERSION=$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Create source tarball
+        run: |
+          git archive \
+            --format=tar.gz \
+            --prefix="enclave-${{ steps.meta.outputs.version }}/" \
+            --output="/tmp/enclave-${{ steps.meta.outputs.version }}.tar.gz" \
+            HEAD
+
+      - name: Build RPM
+        run: |
+          RPMBUILD_DIR=$(mktemp -d)
+          mkdir -p "${RPMBUILD_DIR}"/{SOURCES,SPECS,RPMS,BUILD,SRPMS}
+          cp "/tmp/enclave-${{ steps.meta.outputs.version }}.tar.gz" "${RPMBUILD_DIR}/SOURCES/"
+          cp scripts/rpm/enclave.spec "${RPMBUILD_DIR}/SPECS/"
+
+          rpmbuild -bs \
+            --define "_topdir ${RPMBUILD_DIR}" \
+            --define "enclave_version ${{ steps.meta.outputs.version }}" \
+            "${RPMBUILD_DIR}/SPECS/enclave.spec"
+
+          rpmbuild -bb \
+            --define "_topdir ${RPMBUILD_DIR}" \
+            --define "enclave_version ${{ steps.meta.outputs.version }}" \
+            "${RPMBUILD_DIR}/SPECS/enclave.spec"
+
+          mkdir -p out
+          cp "${RPMBUILD_DIR}"/SRPMS/*.src.rpm out/
+          cp "${RPMBUILD_DIR}"/RPMS/*/*.rpm out/
+
+          echo "## RPM Build" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -lh out/*.rpm >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload RPM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: enclave-rpm-${{ steps.meta.outputs.version }}
+          path: out/*.rpm
+          retention-days: 7
+
+  attach-to-release:
+    name: Attach RPM to Release
+    needs: build-rpm
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: [self-hosted, pr-validation]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download RPM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: enclave-rpm-${{ needs.build-rpm.outputs.version }}
+          path: rpms
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for rpm in rpms/*.rpm; do
+            gh release upload "${{ github.ref_name }}" "${rpm}" --repo "${{ github.repository }}"
+          done
