@@ -332,7 +332,7 @@ echo ""
 info "To run Enclave Lab:"
 info "  ssh $LZ_SSH"
 info "  cd $LZ_ENCLAVE_DIR"
-info "  ./bootstrap.sh
+info "  ./bootstrap.sh"
 echo ""
 
 # Exit with failure if any tests failed
