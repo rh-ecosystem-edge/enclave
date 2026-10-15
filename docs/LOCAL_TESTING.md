@@ -34,8 +34,8 @@ This guide explains how to run the complete CI workflow locally using Makefile t
 export BASE_WORKING_DIR=/opt/clusters                                 # Base directory for cluster data
 export PULL_SECRET=$(cat /path/to/pull-secret.json)                   # Red Hat pull secret
 export LZ_CLOUD_IMAGE_URL=file:///path/to/rhel-10.2-x86_64-kvm.qcow2  # RHEL 10 installation image
-export LZ_RHSM_ORG=<rhsm org id>
-export LZ_RHSM_ACTIVATION_KEY=<rhsm activation key>
+export LZ_RHSM_ORG="YOUR_RHSM_ORG_ID"
+export LZ_RHSM_ACTIVATION_KEY="YOUR_RHSM_ACTIVATION_KEY"
 ```
 
 #### Optional
@@ -72,8 +72,9 @@ export BASE_WORKING_DIR=/opt/clusters    # the place to store VMs files, etc... 
 export ENCLAVE_CLUSTER_NAME=eci-local01  # In this example we pin a unique name manually
 export PULL_SECRET=$(cat /path/to/pull-secret.json)
 export LZ_CLOUD_IMAGE_URL=file:///path/to/rhel-10.2-x86_64-kvm.qcow2
-export LZ_RHSM_ORG=<rhsm org id>
 export LZ_RHSM_ACTIVATION_KEY=<rhsm activation key>
+export LZ_RHSM_ORG="YOUR_RHSM_ORG_ID"
+export LZ_RHSM_ACTIVATION_KEY="YOUR_RHSM_ACTIVATION_KEY"
 ```
 
 ### 1. Preflight Checks
