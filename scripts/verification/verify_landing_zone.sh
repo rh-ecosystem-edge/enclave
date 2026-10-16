@@ -80,7 +80,7 @@ else
     if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
         error "VM exists but is not running. Start it with: sudo virsh start $LZ_VM_NAME"
     else
-        error "VM does not exist. Run 'make environment' first"
+        error "VM does not exist. Run 'make -f Makefile.ci environment' first"
     fi
     exit 1
 fi
@@ -163,7 +163,7 @@ fi
 
 # Test 7: Verify required packages are installed
 info "Test 7: Verifying required packages..."
-REQUIRED_PACKAGES=("git" "ansible" "python3" "curl" "jq")
+REQUIRED_PACKAGES=("git" "python3" "curl" "jq")
 for pkg in "${REQUIRED_PACKAGES[@]}"; do
     if ssh $SSH_OPTS cloud-user@${CLUSTER_IP} "command -v $pkg &>/dev/null"; then
         success "$pkg is installed"
@@ -212,6 +212,6 @@ info "  BMC Network: ${BMC_IP} (can reach ${BMC_GATEWAY}:8000)"
 info "  Cluster Network: ${CLUSTER_IP}"
 info ""
 info "Next Steps:"
-info "  - Install Enclave Lab: make install-enclave (Task 3)"
-info "  - Verify full infrastructure: make verify"
+info "  - Install Enclave Lab: make -f Makefile.ci install-enclave (Task 3)"
+info "  - Verify full infrastructure: make -f Makefile.ci verify"
 info ""

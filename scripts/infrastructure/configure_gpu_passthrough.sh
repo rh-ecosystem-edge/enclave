@@ -3,7 +3,7 @@
 #
 # This script auto-detects an NVIDIA GPU on the host and attaches it
 # to the first master VM via PCI passthrough. It is designed to be
-# called as part of `make environment` and exits silently (exit 0)
+# called as part of `make -f Makefile.ci environment` and exits silently (exit 0)
 # when ENCLAVE_ENABLE_GPU_PASSTHROUGH is not set to "true", no GPU
 # is detected, or no IOMMU is available.
 #
@@ -29,7 +29,7 @@ load_cluster_env
 # GPU passthrough is opt-in via ENCLAVE_ENABLE_GPU_PASSTHROUGH=true.
 # When disabled (default), the script exits early and no GPU is attached.
 # Set this env var in CI workflow env blocks or export it before running
-# `make environment` to enable GPU passthrough for a specific job.
+# `make -f Makefile.ci environment` to enable GPU passthrough for a specific job.
 if [ "${ENCLAVE_ENABLE_GPU_PASSTHROUGH:-false}" != "true" ]; then
     info "GPU passthrough not enabled (set ENCLAVE_ENABLE_GPU_PASSTHROUGH=true to enable)"
     exit 0

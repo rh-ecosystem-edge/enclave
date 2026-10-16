@@ -34,7 +34,7 @@ This workflow runs automatically on every PR. No manual action needed.
 
 To test locally before pushing:
 ```bash
-make validate
+make -f Makefile.ci validate
 ```
 
 ### Viewing Results
@@ -58,7 +58,7 @@ yamllint .
 ansible-lint playbooks/
 
 # Fix all at once
-make validate
+make -f Makefile.ci validate
 ```
 
 ---
@@ -78,9 +78,9 @@ make validate
 ### What It Does
 
 1. ✅ Pre-flight checks (resources, permissions)
-2. ✅ Create infrastructure (`make environment`)
-3. ✅ Provision Landing Zone (`make provision-landing-zone`)
-4. ✅ Install Enclave Lab in connected mode (`make install-enclave`)
+2. ✅ Create infrastructure (`make -f Makefile.ci environment`)
+3. ✅ Provision Landing Zone (`make -f Makefile.ci provision-landing-zone`)
+4. ✅ Install Enclave Lab in connected mode (`make -f Makefile.ci install-enclave`)
 5. ✅ Verify installation
 6. ✅ Collect artifacts (logs, environment metadata)
 7. ✅ Optional cleanup
@@ -190,7 +190,7 @@ with E2E-relevant file changes.
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
 
-**Note on real certificates** (`cert-type` set): The workflow calls `make generate-ironic-cert`
+**Note on real certificates** (`cert-type` set): The workflow calls `make -f Makefile.ci generate-ironic-cert`
 before deployment to obtain a real Ironic TLS certificate via a DNS-01 challenge against
 Hetzner DNS. Ingress and API certificates are requested by `generate_enclave_vars.sh` during
 environment setup. Disconnected mode always enables Ironic HTTPS (`ENCLAVE_IRONIC_HTTPS=true`).
@@ -228,7 +228,7 @@ The workflow checks:
 ### Cleanup Levels
 
 **Standard** (default):
-- Runs `make clean`
+- Runs `make -f Makefile.ci clean`
 - Removes Enclave test infrastructure
 - Quick and safe
 
@@ -299,7 +299,7 @@ Prevents resource accumulation.
 ### For Developers
 
 ✅ **DO**:
-- Run `make validate` locally before pushing
+- Run `make -f Makefile.ci validate` locally before pushing
 - Use `test-infra` label for infrastructure changes
 - Use `test-e2e` label sparingly (long running)
 - Check workflow results before asking for review

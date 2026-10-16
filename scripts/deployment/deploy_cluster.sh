@@ -62,13 +62,13 @@ success "Landing Zone accessible"
 info "Verifying Enclave Lab installation..."
 if ! ssh_file_exists "$LZ_ENCLAVE_DIR/playbooks/main.yaml"; then
     error "Enclave Lab not found at $LZ_ENCLAVE_DIR"
-    error "Run 'make install-enclave' first"
+    error "Run 'make -f Makefile.ci install-enclave' first"
     exit 1
 fi
 
 if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
     error "config/global.yaml not found at $LZ_ENCLAVE_DIR"
-    error "Run 'make install-enclave' first"
+    error "Run 'make -f Makefile.ci install-enclave' first"
     exit 1
 fi
 success "Enclave Lab installation verified"

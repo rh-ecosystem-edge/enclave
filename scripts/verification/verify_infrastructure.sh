@@ -136,12 +136,12 @@ if sudo virsh list --all | grep -q "$LZ_VM_NAME"; then
                 success "Landing Zone VM is fully provisioned and operational"
             else
                 warning "Landing Zone VM exists but may not be fully provisioned"
-                info "Run 'make provision-landing-zone' to provision it with CentOS Stream 10"
+                info "Run 'make -f Makefile.ci provision-landing-zone' to provision it with CentOS Stream 10"
             fi
         fi
     else
         info "  Landing Zone VM is not running (this is normal before provisioning)"
-        info "  Run 'make provision-landing-zone' to provision and start it"
+        info "  Run 'make -f Makefile.ci provision-landing-zone' to provision and start it"
     fi
 else
     fail "Landing Zone VM not found: $LZ_VM_NAME"
@@ -182,10 +182,10 @@ if [ "$FAILED" -eq 0 ]; then
     info ""
     info "Next steps:"
     if ! sudo virsh list --state-running | grep -q "$LZ_VM_NAME"; then
-        info "  1. Provision Landing Zone: make provision-landing-zone"
-        info "  2. Verify Landing Zone: make verify-landing-zone"
+        info "  1. Provision Landing Zone: make -f Makefile.ci provision-landing-zone"
+        info "  2. Verify Landing Zone: make -f Makefile.ci verify-landing-zone"
     else
-        info "  1. Install Enclave Lab on Landing Zone: make install-enclave (Task 3)"
+        info "  1. Install Enclave Lab on Landing Zone: make -f Makefile.ci install-enclave (Task 3)"
     fi
     info ""
     exit 0
