@@ -46,6 +46,15 @@ LZ_BMC_IP="${ENCLAVE_LZ_BMC_IP}"
 MASTER_COUNT="${ENCLAVE_MASTER_COUNT}"
 RENDEZVOUS_IP="${ENCLAVE_RENDEZVOUS_IP}"
 
+# Deployment mode. vm_infra.py emits ENCLAVE_DEPLOYMENT_MODE in cluster-env.sh.
+# Persist it into config/global.yaml as `disconnected` so day-2 scripts
+# (sync.sh, upgrade.sh) detect the mode without the ephemeral env var. Default to
+# disconnected unless the mode is explicitly connected (matches bootstrap.sh).
+DISCONNECTED=true
+if [ "${ENCLAVE_DEPLOYMENT_MODE:-}" = "connected" ]; then
+    DISCONNECTED=false
+fi
+
 info "Configuration parameters:"
 info "  Cluster Name: $CLUSTER_NAME"
 info "  Base Domain: $BASE_DOMAIN"
@@ -55,6 +64,7 @@ info "  API VIP: $API_VIP"
 info "  Ingress VIP: $INGRESS_VIP"
 info "  Rendezvous IP: $RENDEZVOUS_IP"
 info "  Masters: $MASTER_COUNT"
+info "  Disconnected: $DISCONNECTED"
 
 # Generate config/global.yaml
 mkdir -p "$(dirname "$GLOBAL_VARS_OUTPUT")"
@@ -116,7 +126,11 @@ storage_plugin: lvms
 # ============================================================================
 # OpenShift Deployment Configuration (optional)
 # ============================================================================
-# Leaving default values
+# Deployment mode: true for disconnected (air-gapped, mirror registry), false
+# for connected (direct registry access). Persisted here so day-2 scripts
+# (sync.sh, upgrade.sh) detect the mode without the ephemeral
+# ENCLAVE_DEPLOYMENT_MODE env var.
+disconnected: ${DISCONNECTED}
 
 # ============================================================================
 # Pull Secret and SSH Public Key Configuration
