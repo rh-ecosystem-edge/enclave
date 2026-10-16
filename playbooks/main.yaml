@@ -1,7 +1,7 @@
 ---
 # Red Hat Sovereign Enclave - Main Deployment Playbook
 #
-# Supports both connected and disconnected deployment modes:
+# Supports multiple deployment modes:
 #
 # DISCONNECTED MODE (default):
 #   Phase 1: Prepare - Download binaries and content
@@ -21,12 +21,26 @@
 #   Phase 6: Day2 - Optional advanced features
 #   Phase 7: Configure Discovery - Hardware discovery (optional)
 #
+# EXISTING MANAGEMENT CLUSTER MODE:
+#   Auto-detected when workingDir/ocp-cluster/auth/kubeconfig exists
+#   Phase 1: Prepare - Download binaries and content
+#   Phase 2: Mirror - Set up local registry and mirror images
+#   Validate: Validate existing management cluster
+#   Phase 3: SKIPPED - Use existing cluster
+#   Phase 4: SKIPPED - Cluster already configured
+#   Phase 5: Operators - Install and configure operators
+#   Phase 6: Day2 - Optional advanced features
+#   Phase 7: Configure Discovery - Hardware discovery (optional)
+#
 # Usage:
 #   # Full deployment (disconnected mode)
 #   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
 #
 #   # Full deployment (connected mode)
 #   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user -e disconnected=false
+#
+#   # Use existing management cluster (place kubeconfig at workingDir/ocp-cluster/auth/kubeconfig)
+#   ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
 #
 #   # Run specific phases
 #   ansible-playbook playbooks/04-post-install.yaml -e workingDir=/home/cloud-user
@@ -39,11 +53,39 @@
   ansible.builtin.import_playbook: 02-mirror.yaml
   when: disconnected | default(true) | bool
 
+- name: Detect existing management cluster
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables for detection
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+
+    - name: Check if management cluster kubeconfig already exists
+      ansible.builtin.stat:
+        path: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: existing_kubeconfig
+
+    - name: Set flag based on kubeconfig presence
+      ansible.builtin.set_fact:
+        management_cluster_exists: "{{ existing_kubeconfig.stat.exists }}"
+        cacheable: yes
+
+    - name: Display deployment mode
+      ansible.builtin.debug:
+        msg: "{{ 'Management cluster exists - skipping provisioning, focusing on mirroring flow' if management_cluster_exists else 'Provisioning new management cluster' }}"
+
+- name: Validate existing management cluster
+  ansible.builtin.import_playbook: validate-existing-cluster.yaml
+  when: management_cluster_exists | default(false) | bool
+
 - name: Phase 3 - Deploy OpenShift cluster
   ansible.builtin.import_playbook: 03-deploy.yaml
+  when: not (management_cluster_exists | default(false) | bool)
 
 - name: Phase 4 - Post-installation configuration
   ansible.builtin.import_playbook: 04-post-install.yaml
+  when: not (management_cluster_exists | default(false) | bool)
 
 - name: Phase 5 - Operator installation
   ansible.builtin.import_playbook: 05-operators.yaml

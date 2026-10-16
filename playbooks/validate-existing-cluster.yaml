@@ -1,0 +1,73 @@
+---
+# Validate Existing Management Cluster
+# Auto-detected when workingDir/ocp-cluster/auth/kubeconfig exists
+#
+# Performs:
+# - Verify kubeconfig is accessible
+# - Check cluster connectivity
+# - Validate OpenShift version matches configuration
+#
+# Usage:
+#   ansible-playbook playbooks/validate-existing-cluster.yaml
+
+- name: Validate existing management cluster
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+        apply:
+          tags: always
+      tags: always
+
+    - name: Execute validation tasks
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
+      block:
+        - name: Display validation message
+          ansible.builtin.debug:
+            msg: "Validating existing management cluster at {{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+        - name: Test cluster connectivity
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          ansible.builtin.command: "{{ workingDir }}/bin/oc whoami"
+          register: oc_whoami
+          changed_when: false
+          failed_when: oc_whoami.rc != 0
+
+        - name: Get cluster version
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          kubernetes.core.k8s_info:
+            kind: ClusterVersion
+            name: version
+          register: cluster_version_info
+          failed_when: cluster_version_info.resources | length == 0
+
+        - name: Extract cluster version
+          ansible.builtin.set_fact:
+            actual_cluster_version: "{{ cluster_version_info.resources[0].status.desired.version }}"
+
+        - name: Display cluster information
+          ansible.builtin.debug:
+            msg: |
+              Management cluster version: {{ actual_cluster_version }}
+              Expected version: {{ openshift_version_default }}
+              Authenticated as: {{ oc_whoami.stdout }}
+
+        - name: Validate cluster version matches configuration
+          ansible.builtin.assert:
+            that:
+              - actual_cluster_version is version(openshift_version_default, '==')
+            fail_msg: |
+              Management cluster version mismatch:
+                Actual: {{ actual_cluster_version }}
+                Expected: {{ openshift_version_default }}
+              Update config/global.yaml or use a different cluster.
+            success_msg: "Management cluster version matches expected version {{ openshift_version_default }}"
+
+        - name: Validation successful
+          ansible.builtin.debug:
+            msg: "✓ Management cluster validation passed - proceeding with mirroring and operator installation"
