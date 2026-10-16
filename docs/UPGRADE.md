@@ -48,6 +48,13 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
+    **OADP InstallPlan during sync**: When MultiClusterHub uses Manual
+    `oadp-subscription-spec`, ACM may leave an OADP InstallPlan in
+    `RequiresApproval` in `open-cluster-management-backup`. Before or during
+    sync, review and approve it (`oc get installplan -n open-cluster-management-backup`,
+    then `oc patch installplan <name> -n open-cluster-management-backup --type merge -p '{"spec":{"approved":true}}'`),
+    or sync stalls on "Wait until RHACM MultiClusterHub is ready".
+
 7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
 
     ```sh
