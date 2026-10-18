@@ -31,9 +31,9 @@ operators:
       - update-service-operator
 
   - name: openshift-gitops-operator
-    version: 1.19.7
-    channel: gitops-1.19
-    init_version: 1.19.2
+    version: 1.22.1
+    channel: gitops-1.22
+    init_version: 1.22.0
     namespace: openshift-gitops-operator
     global: true
 
