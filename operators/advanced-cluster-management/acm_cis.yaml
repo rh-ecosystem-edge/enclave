@@ -10,7 +10,9 @@
   register: r_cluster_image_set
 
 - name: Validate ClusterImageSet in disconnected mode
-  when: disconnected | default(false) | bool
+  when:
+    - disconnected | default(false) | bool
+    - fresh | default(true) | bool
   block:
     - name: Validate ClusterImageSet count
       ansible.builtin.assert:
