@@ -20,6 +20,7 @@
   when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     oadp_subscription_spec:
+      installPlanApproval: Manual
       source: cs-redhat-operator-index-v4-20
 
 - name: Set OADP subscription spec for connected
