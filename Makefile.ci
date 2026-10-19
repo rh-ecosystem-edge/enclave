@@ -476,6 +476,7 @@ ci-flow-connected:
 	@echo "Running full CI flow (connected mode)"
 	@echo "=========================================="
 	@set -e; \
+	 export ENCLAVE_DEPLOYMENT_MODE="$${ENCLAVE_DEPLOYMENT_MODE:-connected}"; \
 	 ident_env="$$(mktemp)"; \
 	 trap 'rc=$$?; if [ "$$rc" -eq 0 ]; then rm -f "$$ident_env"; else echo "ci-flow failed (exit $$rc); cluster identity kept for cleanup at $$ident_env:" >&2; cat "$$ident_env" >&2; fi; exit "$$rc"' EXIT; \
 	 $(MAKE) -f Makefile.ci preflight-checks; \
