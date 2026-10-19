@@ -73,7 +73,6 @@ operator:
     templatePrefix: osac
   fulfillment:
     serverAddress: fulfillment-api:8000
-    tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
   controllers:
     # clusterOrder (caas), computeInstance (vmaas) and bareMetalInstance (bmaas)
     # are intentionally omitted: the chart derives them from global.services.*
@@ -92,12 +91,17 @@ service:
   externalHostname: "fulfillment-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
   internalHostname: "fulfillment-internal-api-osac.{{ __r_ingress_config.resources[0].spec.domain }}"
 {% if osac_images is defined and (osac_images.fulfillment_service is defined or osac_images.envoy is defined) %}
+  # service.images.* are objects (repository/tag) in the chart schema, not strings.
   images:
 {% if osac_images.fulfillment_service is defined %}
-    service: "{{ osac_images.fulfillment_service }}"
+    service:
+      repository: "{{ osac_images.fulfillment_service.rsplit(':', 1)[0] }}"
+      tag: "{{ osac_images.fulfillment_service.rsplit(':', 1)[1] }}"
 {% endif %}
 {% if osac_images.envoy is defined %}
-    envoy: "{{ osac_images.envoy }}"
+    envoy:
+      repository: "{{ osac_images.envoy.rsplit(':', 1)[0] }}"
+      tag: "{{ osac_images.envoy.rsplit(':', 1)[1] }}"
 {% endif %}
 {% endif %}
   certs:
@@ -150,6 +154,26 @@ service:
             - key: ca.crt
               param: sslrootcert
 {% endif %}
+  # Secret store: wire the chart to the enclave-managed OpenBao (tasks/openbao.yaml).
+  # keycloakIssuerUrl MUST be the external Keycloak route (not the in-cluster
+  # Service) so it matches the token issuer and JWT validation succeeds.
+  vault:
+    endpoint: "{{ osac_vault_endpoint }}"
+    namespace: "{{ osac_vault_logical_ns }}"
+    kvMountPath: "{{ osac_vault_kv_mount_path }}"
+    lifecycleRole: "{{ osac_vault_lifecycle_role }}"
+    lifecycleMountPath: "{{ osac_vault_lifecycle_mount_path }}"
+    keycloakClientId: "{{ osac_keycloak_client_id }}"
+    keycloakIssuerUrl: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
+    keycloakAudience: "{{ osac_vault_audience }}"
+    caBundle:
+      configMap: ca-bundle
+    credentials:
+      - secret:
+          name: fulfillment-controller-credentials
+          items:
+            - key: client-secret
+              param: client-secret
 
 # Chart manages the AAP instance
 aap:
@@ -236,3 +260,10 @@ validation:
 
 hubAccess:
   enabled: false
+
+# OSAC UI subchart. oidcIssuerURL is a required value that the chart does NOT
+# tpl-render for subcharts, so set it explicitly to the same external Keycloak
+# issuer as service.auth.issuerUrl (used for gRPC reflection authentication).
+ui:
+  auth:
+    oidcIssuerURL: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"

@@ -135,9 +135,25 @@
       - __r_bootstrap_job.resources[0].status.succeeded | default(0) | int >= 1
     fail_msg: "AAP bootstrap job has not completed successfully in osac namespace"
 
+# 9. OpenBao secret store running
+- name: Check OpenBao deployment is running
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    name: openbao
+    namespace: "{{ osac_vault_ns }}"
+  register: __r_openbao
+
+- name: Assert OpenBao is running
+  ansible.builtin.assert:
+    that:
+      - __r_openbao.resources | length > 0
+      - __r_openbao.resources[0].status.availableReplicas | default(0) | int > 0
+    fail_msg: "OpenBao deployment is not running in {{ osac_vault_ns }} namespace"
+
 - name: Log OSAC validation success
   ansible.builtin.debug:
     msg: >-
       OSAC post-validate passed: all fulfillment deployments running,
-      OSAC operator running, AAP instance ready,
+      OSAC operator running, AAP instance ready, OpenBao running,
       bootstrap job completed{{ ', PostgreSQL running' if not osacBYODatabase | bool else '' }}.

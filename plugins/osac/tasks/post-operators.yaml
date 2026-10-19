@@ -19,7 +19,8 @@
 #   12. Wait for certificate issuance
 #   13. Create fulfillment-db secret (when not BYO, or BYO with osacDatabaseUrl)
 #   14. Create config-as-code-manifest-ig secret (AAP license)
-#   15. Provision the OSAC Kafka cluster (namespace, listener cert, Kafka CRs)
+#   15. Deploy the OpenBao secret store (via openbao.yaml)
+#   16. Provision the OSAC Kafka cluster (namespace, listener cert, Kafka CRs)
 
 # =====================================================================
 # 1. Create osac namespace with ca-bundle label
@@ -850,7 +851,17 @@
   no_log: true
 
 # =====================================================================
-# 15. Provision the OSAC Kafka cluster (AMQ Streams / Strimzi)
+# 15. Deploy the OpenBao secret store
+# =====================================================================
+# Deploy the enclave-managed OpenBao (see tasks/openbao.yaml). Must run after the
+# Keycloak osac realm exists (step 7) — the bootstrap configures OIDC discovery
+# against it — and before the Helm install so service.vault.* has a backend.
+
+- name: Deploy OpenBao secret store
+  ansible.builtin.include_tasks: openbao.yaml
+
+# =====================================================================
+# 16. Provision the OSAC Kafka cluster (AMQ Streams / Strimzi)
 # =====================================================================
 # The main OSAC Helm chart renders a KafkaUser in the osac-kafka namespace and a
 # Job that waits for its SCRAM secret, so the cluster and its user operator must
