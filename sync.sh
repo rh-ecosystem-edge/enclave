@@ -1,6 +1,5 @@
-#!/bin/bash -e
-set -o pipefail
-set -e
+#!/bin/bash
+set -euo pipefail
 
 # Config file paths — single source of truth is load-vars.yaml inside playbooks.
 # These are only used for shell-level checks and getValue before Ansible runs.
@@ -104,4 +103,8 @@ step_done
 
 echo "Restart catalog pods .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags restart-catalog-pods
+step_done
+
+echo "Prepare operator channels .." | tee -a "${log}"
+    ANSIBLE_LOG_PATH="${log}" ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags prepare-operator-channels
 step_done

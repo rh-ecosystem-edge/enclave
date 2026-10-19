@@ -85,3 +85,12 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: restart-catalog-pods
+
+        - name: Prepare operator subscription channels
+          ansible.builtin.include_tasks:
+            file: tasks/prepare_operator_channels.yaml
+            apply:
+              tags: prepare-operator-channels
+              environment:
+                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          tags: prepare-operator-channels

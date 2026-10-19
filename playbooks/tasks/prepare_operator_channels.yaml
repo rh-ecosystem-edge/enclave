@@ -1,0 +1,11 @@
+---
+- name: Prepare operator subscription channels
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - reconcile
+      - operator-versions
+      - --use-defaults
+      - --channel-only
+  register: r_operator_channel_preparation
+  changed_when: "'[UPDATE]' in r_operator_channel_preparation.stderr"

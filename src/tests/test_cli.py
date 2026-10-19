@@ -21,6 +21,7 @@ def test_operator_versions_help() -> None:
     assert "--name" in result.output
     assert "--version" in result.output
     assert "--namespace" in result.output
+    assert "--channel-only" in result.output
     assert "--csv-name" in result.output
     assert "--dry-run" in result.output
     assert "--use-defaults" in result.output
@@ -129,7 +130,62 @@ def test_operator_versions_passes_channel_to_reconcile(
         dry_run,
         channel="stable-3.15",
         subscription_name="quay-operator",
+        channel_only=False,
     )
+
+
+def test_operator_versions_passes_channel_only_to_reconcile(
+    mocker: MockerFixture,
+) -> None:
+    """Pass channel-only mode through the CLI."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    dry_run = False
+    result = CliRunner().invoke(
+        cli,
+        [
+            "operator-versions",
+            "--name",
+            "quay-operator",
+            "--version",
+            "3.15.3",
+            "--namespace",
+            "quay-enterprise",
+            "--channel",
+            "stable-3.15",
+            "--channel-only",
+        ],
+        env=_KC,
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_reconcile.assert_called_once_with(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator"],
+        dry_run,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+        channel_only=True,
+    )
+
+
+def test_operator_versions_channel_only_requires_channel() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "operator-versions",
+            "--name",
+            "quay-operator",
+            "--version",
+            "3.15.3",
+            "--namespace",
+            "quay-enterprise",
+            "--channel-only",
+        ],
+        env=_KC,
+    )
+    assert result.exit_code != 0
+    assert "--channel-only requires --channel" in result.output
 
 
 def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> None:
@@ -152,7 +208,21 @@ def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> Non
         dry_run,
         channel=quay_op["channel"],
         subscription_name=quay_op["name"],
+        channel_only=False,
     )
+
+
+def test_use_defaults_passes_channel_only(mocker: MockerFixture) -> None:
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    result = CliRunner().invoke(
+        cli,
+        ["operator-versions", "--use-defaults", "--channel-only"],
+        env=_KC,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert mock_reconcile.call_count > 0
+    assert all(call.kwargs["channel_only"] for call in mock_reconcile.call_args_list)
 
 
 def test_use_defaults_mutual_exclusive_name() -> None:
