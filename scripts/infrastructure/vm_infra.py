@@ -76,6 +76,8 @@ _PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
 # <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
 # cap the configured zone well below that to leave room for the generated prefixes.
 _MAX_BASE_DOMAIN_LEN = 200
+# RFC 1035 total DNS name limit (textual representation).
+_MAX_DNS_NAME_LEN = 253
 # A single RFC 1035 label: 1–63 chars, alphanumeric, internal hyphens only.
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
@@ -244,6 +246,16 @@ class Config:
                 f"(max {SPOKE_IP_OFFSET - MASTER_IP_OFFSET} masters with a spoke)"
             )
 
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap. Read
+        # it before the cluster name so the spoke FQDN-length check below can use it.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
+
         # Cluster name: required for destroy; optional for create, where it is
         # generated under the subnet lock when absent. An explicitly supplied name
         # is always honored (re-create / destroy of a known cluster).
@@ -265,21 +277,23 @@ class Config:
                     f"ERROR: derived spoke cluster name {spoke_label!r} is not a valid "
                     f"DNS label (<= 63 chars); shorten ENCLAVE_CLUSTER_NAME"
                 )
+            # The label can be valid yet the full FQDN still overflow 253 chars once
+            # the base domain is appended. api-int is the longest prefix we emit, so
+            # checking it bounds the fixed spoke records (api / api-int / apps).
+            effective_base = base_domain or f"{cluster_name}.lab"
+            longest_spoke_fqdn = f"api-int.{spoke_label}.{effective_base}"
+            if len(longest_spoke_fqdn) > _MAX_DNS_NAME_LEN:
+                sys.exit(
+                    f"ERROR: derived spoke DNS name {longest_spoke_fqdn!r} exceeds the "
+                    f"{_MAX_DNS_NAME_LEN}-char DNS limit; shorten ENCLAVE_CLUSTER_NAME "
+                    f"or ENCLAVE_BASE_DOMAIN"
+                )
 
         prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
         if prefix not in CLUSTER_PREFIXES:
             sys.exit(
                 f"ERROR: ENCLAVE_CLUSTER_PREFIX={prefix!r} must be one of "
                 f"{', '.join(CLUSTER_PREFIXES)}"
-            )
-
-        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
-        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
-        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
-        if base_domain and not _is_valid_base_domain(base_domain):
-            sys.exit(
-                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
-                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
             )
 
         def check_xml_safe(label: str, value: str) -> None:
