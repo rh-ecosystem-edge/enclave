@@ -160,6 +160,12 @@ identity (name, base domain, per-node MACs/IP) is emitted to `cluster-env.sh` un
 installing OpenShift onto it (ClusterDeployment/AgentClusterInstall + ACM import) is a
 later playbook phase that consumes these values.
 
+Only a single-node (SNO) spoke is supported, so `ENCLAVE_NUM_SPOKE_NODES` must be `0`
+or `1`. Like all topology, the spoke count is fixed at **create** time: the cluster
+network (and its DHCP/DNS records) is defined once and `create` is otherwise
+idempotent, so adding or removing a spoke on an existing cluster requires a
+`destroy` + `create`, not a re-run.
+
 `destroy` tears the spoke down with the rest of the cluster (it matches the shared
 `{cluster}_` domain prefix and the `*-extra.img` glob), and `reap` recognizes
 `{cluster}_spoke_N` domains so a cluster left with only a spoke is still reclaimed.

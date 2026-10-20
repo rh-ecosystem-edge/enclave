@@ -56,6 +56,12 @@ SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
 MIN_SUBNET = 2
 MAX_SUBNET = 254
 
+# Static cluster-network lease offsets within 192.168.N.0/24: masters at .{20+i},
+# spoke nodes at .{30+i}. The gap (10) bounds how many masters can coexist with a
+# spoke before their leases would collide; from_env enforces it.
+MASTER_IP_OFFSET = 20
+SPOKE_IP_OFFSET = 30
+
 # Cluster-name prefixes. `eci`/`ecd` (e2e connected/disconnected) and `nc`/`nd`
 # (nightly) are the sanctioned set; CI selects the right one via
 # ENCLAVE_CLUSTER_PREFIX, defaulting to `eci`. This is the single source of the
@@ -220,6 +226,24 @@ class Config:
         default_spoke_disk = 200
         default_spoke_extra = 200
 
+        num_masters = optint("ENCLAVE_NUM_MASTERS", 3)
+        # Only a single-node (SNO) spoke is supported: spoke_dns_addresses maps every
+        # spoke record to node 0, so larger counts have no valid DNS/install semantics.
+        num_spoke_nodes = optint("ENCLAVE_NUM_SPOKE_NODES", 0)
+        if num_spoke_nodes not in (0, 1):
+            sys.exit(
+                "ERROR: ENCLAVE_NUM_SPOKE_NODES must be 0 or 1 (single-node spoke), "
+                f"got {num_spoke_nodes}"
+            )
+        # Masters lease .{20..20+num_masters-1}; the spoke leases .{30}. Reject a
+        # master count that would push a master onto the spoke's address.
+        if num_spoke_nodes > 0 and MASTER_IP_OFFSET + num_masters > SPOKE_IP_OFFSET:
+            sys.exit(
+                f"ERROR: ENCLAVE_NUM_MASTERS={num_masters} is too large to add a spoke; "
+                f"master leases would overlap the spoke range "
+                f"(max {SPOKE_IP_OFFSET - MASTER_IP_OFFSET} masters with a spoke)"
+            )
+
         # Cluster name: required for destroy; optional for create, where it is
         # generated under the subnet lock when absent. An explicitly supplied name
         # is always honored (re-create / destroy of a known cluster).
@@ -230,6 +254,17 @@ class Config:
             cluster_name = ""  # filled in by create() under the lock
         else:
             sys.exit("ERROR: ENCLAVE_CLUSTER_NAME environment variable is required")
+
+        # The spoke cluster name is "<cluster>-spoke" and must be a valid DNS label
+        # (<= 63 chars). Generated names are short by construction, so only an
+        # explicitly supplied name can overflow — check it here when a spoke is asked for.
+        if num_spoke_nodes > 0 and cluster_name:
+            spoke_label = f"{cluster_name}-spoke"
+            if not _DNS_LABEL_RE.fullmatch(spoke_label):
+                sys.exit(
+                    f"ERROR: derived spoke cluster name {spoke_label!r} is not a valid "
+                    f"DNS label (<= 63 chars); shorten ENCLAVE_CLUSTER_NAME"
+                )
 
         prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
         if prefix not in CLUSTER_PREFIXES:
@@ -289,7 +324,7 @@ class Config:
         return cls(
             cluster_name=cluster_name,
             deployment_mode=deployment_mode,
-            num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
+            num_masters=num_masters,
             master=VMSpec(
                 memory_mb=optint("MASTER_MEMORY", default_master_mem),
                 vcpu=optint("MASTER_VCPU", default_master_vcpu),
@@ -303,7 +338,7 @@ class Config:
                 extra_disk_gb=0,
             ),
             storage_plugin=storage_plugin,
-            num_spoke_nodes=optint("ENCLAVE_NUM_SPOKE_NODES", 0),
+            num_spoke_nodes=num_spoke_nodes,
             spoke=VMSpec(
                 memory_mb=optint("SPOKE_MEMORY", default_spoke_mem),
                 vcpu=optint("SPOKE_VCPU", default_spoke_vcpu),
@@ -416,16 +451,17 @@ class Config:
         networkConfig (see templates/agent-config.yaml.j2); the matching static
         DHCP lease reserves it so no dynamic client can claim it.
         """
-        return f"192.168.{self._subnet}.{20 + i}"
+        return f"192.168.{self._subnet}.{MASTER_IP_OFFSET + i}"
 
     def spoke_cluster_ip(self, i: int) -> str:
         """Spoke node i static IP on the cluster bridge (192.168.N.{30+i}).
 
         Sits in the cluster subnet above the masters (.20+) and is reserved by a
         matching static DHCP lease so no dynamic client can claim it. Task 2 assigns
-        it to the node via the spoke's NMState networkConfig.
+        it to the node via the spoke's NMState networkConfig. from_env rejects master
+        counts large enough to push a master lease into this range.
         """
-        return f"192.168.{self._subnet}.{30 + i}"
+        return f"192.168.{self._subnet}.{SPOKE_IP_OFFSET + i}"
 
     @property
     def spoke_cluster_name(self) -> str:
