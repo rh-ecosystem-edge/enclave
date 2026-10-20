@@ -379,6 +379,9 @@ def reconcile(
     waits up to 30 minutes (polling every 10 s) for its phase to become
     Succeeded. The writes and CSV wait are skipped in dry-run mode.
     """
+    if channel_only and channel is None:
+        raise ValueError("A channel is required when channel-only mode is enabled")
+
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
     wait_for_csvs: set[str] | None = None
     if channel is not None:
@@ -397,17 +400,18 @@ def reconcile(
             for csv_name, csv_version in op_version_map.items()
         }
         if channel_only:
-            if not dry_run and not skipped and (current_csv not in target_csvs):
+            pending_csvs = target_csvs - {current_csv}
+            if not dry_run and not skipped and pending_csvs:
                 logger.info(
                     "Waiting for InstallPlans containing target CSVs %s in "
                     "namespace %s.",
-                    sorted(target_csvs),
+                    sorted(pending_csvs),
                     namespace,
                 )
-                _wait_for_target_install_plans(namespace, target_csvs)
+                _wait_for_target_install_plans(namespace, pending_csvs)
                 logger.info(
                     "InstallPlans containing target CSVs %s are ready in namespace %s.",
-                    sorted(target_csvs),
+                    sorted(pending_csvs),
                     namespace,
                 )
             return

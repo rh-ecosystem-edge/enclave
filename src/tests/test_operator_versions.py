@@ -628,6 +628,69 @@ def test_reconcile_channel_only_patches_and_waits_without_approving(
     mock_wait.assert_not_called()
 
 
+def test_reconcile_channel_only_requires_channel(mocker: MockerFixture) -> None:
+    """Reject direct channel-only calls that do not provide a channel."""
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+
+    with pytest.raises(ValueError, match="channel is required"):
+        reconcile(
+            "3.15.3",
+            "quay-enterprise",
+            ["quay-operator"],
+            dry_run=False,
+            channel_only=True,
+        )
+
+    mock_approve.assert_not_called()
+
+
+def test_reconcile_channel_only_waits_for_remaining_multi_csv_targets(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Wait for target CSVs that are not already reported as current."""
+    subscription = {
+        "spec": {
+            "channel": "stable-3.15",
+            "installPlanApproval": "Manual",
+        },
+        "status": {"currentCSV": "quay-operator.v3.15.3"},
+    }
+    plan = _plan(
+        "ip-abc",
+        "RequiresApproval",
+        ["quay-dependency.v3.15.3"],
+    )
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        side_effect=[
+            oc_result(stdout=json.dumps(subscription)),
+            oc_result(stdout=json.dumps({"items": [plan]})),
+        ],
+    )
+    mock_approve = mocker.patch(
+        "enclave.reconcile.operator_versions.approve_install_plans"
+    )
+    mock_wait = mocker.patch(
+        "enclave.reconcile.operator_versions.wait_for_resource_status"
+    )
+
+    reconcile(
+        "3.15.3",
+        "quay-enterprise",
+        ["quay-operator", "quay-dependency"],
+        dry_run=False,
+        channel="stable-3.15",
+        subscription_name="quay-operator",
+        channel_only=True,
+    )
+
+    assert mock_run.call_count == 2
+    mock_approve.assert_not_called()
+    mock_wait.assert_not_called()
+
+
 def test_reconcile_channel_only_waits_on_matching_channel(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
