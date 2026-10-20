@@ -27,6 +27,30 @@ _cleanup(){
     rm -fr "${lck}"
 }
 
+# Fail fast on an invalid/expired kubeconfig, before the long mirror step.
+check_cluster_session(){
+    local kubeconfig="${workingDir}/ocp-cluster/auth/kubeconfig"
+    local oc_bin="${workingDir}/bin/oc"
+
+    if [ ! -x "${oc_bin}" ]; then
+        echo "ERROR: oc binary not found or not executable at ${oc_bin}." | tee -a ${log}
+        echo "       Ensure the cluster is installed before running sync.sh." | tee -a ${log}
+        exit 1
+    fi
+    if [ ! -f "${kubeconfig}" ]; then
+        echo "ERROR: kubeconfig not found at ${kubeconfig}." | tee -a ${log}
+        echo "       Ensure the cluster is installed before running sync.sh." | tee -a ${log}
+        exit 1
+    fi
+    if ! KUBECONFIG="${kubeconfig}" "${oc_bin}" whoami --request-timeout=10s >/dev/null 2>&1; then
+        echo "ERROR: Cannot authenticate to the cluster using ${kubeconfig}." | tee -a ${log}
+        echo "       The session is likely expired or invalid, or the API is" | tee -a ${log}
+        echo "       unreachable. Re-authenticate against that kubeconfig" | tee -a ${log}
+        echo "       (KUBECONFIG=${kubeconfig} oc login ...) or refresh it, then" | tee -a ${log}
+        echo "       re-run sync.sh." | tee -a ${log}
+        exit 1
+    fi
+}
 
 echo " "
 echo " ██████╗░███████╗██████╗░  ██╗░░██╗░█████╗░████████╗"
@@ -69,6 +93,10 @@ for x in $FList; do
     fi
 done
 
+step_done
+
+echo "Checking cluster session .. " | tee -a ${log}
+    check_cluster_session
 step_done
 
 echo "Configuring environment .. "  | tee -a ${log}
