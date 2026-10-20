@@ -19,8 +19,14 @@ def _update_subscription_channel(
     namespace: str,
     subscription_name: str,
     channel: str,
-) -> tuple[bool, str | None]:
-    """Update the Subscription channel and return change state and current CSV."""
+    channel_only: bool = False,
+) -> tuple[bool, str | None, bool]:
+    """Update a Subscription channel and report its change state.
+
+    In channel-only mode, Automatic-approval Subscriptions are skipped because
+    changing their channel would immediately install the new operator version.
+    Returns a (changed, current_csv, skipped) tuple.
+    """
     if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", channel) is None:
         raise ValueError(f"Invalid operator channel {channel!r}")
 
@@ -46,13 +52,25 @@ def _update_subscription_channel(
         )
     try:
         subscription = json.loads(result.stdout)
-        current_channel = (subscription.get("spec") or {}).get("channel")
+        spec = subscription.get("spec") or {}
+        current_channel = spec.get("channel")
         current_csv = (subscription.get("status") or {}).get("currentCSV")
+        install_plan_approval = spec.get("installPlanApproval")
     except (json.JSONDecodeError, AttributeError) as exc:
         raise RuntimeError(
             f"oc get subscription/{subscription_name} in {namespace} "
             "returned unexpected output"
         ) from exc
+
+    if channel_only and install_plan_approval != "Manual":
+        logger.warning(
+            "Skipping channel-only update for Subscription %s in namespace %s "
+            "because installPlanApproval is %r.",
+            subscription_name,
+            namespace,
+            install_plan_approval,
+        )
+        return False, current_csv, True
 
     if current_channel == channel:
         logger.info(
@@ -61,7 +79,7 @@ def _update_subscription_channel(
             namespace,
             channel,
         )
-        return False, current_csv
+        return False, current_csv, False
 
     logger.info(
         "Updating Subscription %s in namespace %s from channel %s to %s.",
@@ -72,7 +90,7 @@ def _update_subscription_channel(
     )
     logger.info("[UPDATE] %s/%s channel=%s", namespace, subscription_name, channel)
     if dry_run:
-        return True, current_csv
+        return True, current_csv, False
 
     patch_result = run_oc_command([
         "oc",
@@ -102,7 +120,7 @@ def _update_subscription_channel(
         namespace,
         channel,
     )
-    return True, current_csv
+    return True, current_csv, False
 
 
 def _plan_version_ok(
@@ -287,6 +305,15 @@ def _get_install_plans(
         return install_plans
 
 
+def _wait_for_target_install_plans(
+    namespace: str,
+    target_csvs: set[str],
+) -> None:
+    """Wait for InstallPlans containing all target CSVs."""
+    deadline = time.monotonic() + 30 * 60
+    _get_install_plans(namespace, target_csvs, deadline)
+
+
 def approve_install_plans(
     dry_run: bool,
     namespace: str,
@@ -341,6 +368,7 @@ def reconcile(
     dry_run: bool,
     channel: str | None = None,
     subscription_name: str | None = None,
+    channel_only: bool = False,
 ) -> None:
     """Reconcile an operator Subscription and wait for each CSV to reach Succeeded.
 
@@ -351,19 +379,42 @@ def reconcile(
     waits up to 30 minutes (polling every 10 s) for its phase to become
     Succeeded. The writes and CSV wait are skipped in dry-run mode.
     """
+    if channel_only and channel is None:
+        raise ValueError("A channel is required when channel-only mode is enabled")
+
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
     wait_for_csvs: set[str] | None = None
     if channel is not None:
         name = subscription_name or (csv_names[0] if csv_names else "")
         if not name:
             raise ValueError("A Subscription name is required when a channel is set")
-        channel_changed, current_csv = _update_subscription_channel(
-            dry_run, namespace, name, channel
+        channel_changed, current_csv, skipped = _update_subscription_channel(
+            dry_run,
+            namespace,
+            name,
+            channel,
+            channel_only=channel_only,
         )
         target_csvs = {
             f"{csv_name}.v{csv_version}"
             for csv_name, csv_version in op_version_map.items()
         }
+        if channel_only:
+            pending_csvs = target_csvs - {current_csv}
+            if not dry_run and not skipped and pending_csvs:
+                logger.info(
+                    "Waiting for InstallPlans containing target CSVs %s in "
+                    "namespace %s.",
+                    sorted(pending_csvs),
+                    namespace,
+                )
+                _wait_for_target_install_plans(namespace, pending_csvs)
+                logger.info(
+                    "InstallPlans containing target CSVs %s are ready in namespace %s.",
+                    sorted(pending_csvs),
+                    namespace,
+                )
+            return
         if channel_changed and not dry_run and current_csv not in target_csvs:
             wait_for_csvs = target_csvs
     if wait_for_csvs is None:

@@ -48,6 +48,12 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
+    During sync, the Day 2 `prepare-operator-channels` task runs `enclave reconcile
+    operator-versions --use-defaults --channel-only`. This updates Manual-approval
+    Subscription channels and waits for their target InstallPlans to appear, but leaves
+    the plans unapproved for the upgrade phase. Automatic-approval Subscriptions are
+    skipped because changing their channel would immediately install the new version.
+
 7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
 
     ```sh
