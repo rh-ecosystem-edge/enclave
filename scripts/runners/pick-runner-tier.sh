@@ -23,9 +23,9 @@
 #   GH_TOKEN="$(gh auth token)" GH_ORG=rh-ecosystem-edge \
 #     ./scripts/runners/pick-runner-tier.sh
 #
-# NOTE: `set -e` is intentionally omitted — a failed API call must fall through
-# to the AWS default, not abort the script.
-set -uo pipefail
+# API failures are handled explicitly (`|| return 1` on each pipeline, `if !` on
+# the call) so they fall through to the AWS default even under errexit.
+set -euo pipefail
 
 BAREMETAL_GROUP="${BAREMETAL_GROUP:-enclave-ci-baremetal}"
 BAREMETAL_LABEL="${BAREMETAL_LABEL:-enclave-large-baremetal}"
@@ -54,6 +54,10 @@ emit() {
 
 # count_idle ORG GROUP LABEL -> prints the number of online, non-busy runners in
 # GROUP carrying LABEL. Returns non-zero on any failure (caller falls back).
+# NOTE: no visible_to_repository filter — that param only matches a group's
+# "selected repositories" list, but enclave-ci-baremetal grants the public enclave
+# repo access via allows_public_repositories, so the filter would wrongly exclude
+# it and force AWS. The by-name match reflects the group that actually serves jobs.
 # `gh api --paginate` emits one JSON object per page; `jq -s` slurps them into an
 # array so the result is a single correct total, not a per-page value. jq --arg
 # is used for safe interpolation (no shell values spliced into the filter). With

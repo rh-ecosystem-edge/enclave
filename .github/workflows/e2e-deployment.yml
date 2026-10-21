@@ -61,6 +61,13 @@ permissions:
 jobs:
   check-e2e-needed:
     name: Check if E2E should run
+    # Kept on the self-hosted pr-validation-aws pool on purpose: it has only two
+    # concurrent runners, so gating pipeline ENTRY here is free admission control
+    # that narrows the baremetal routing TOCTOU window (a burst of e2e pipelines
+    # can't all reach pick-tier at once, so the first run claims the idle baremetal
+    # box before later picks see it — they then fall back to AWS). No secrets run
+    # here, so the non-ephemeral host is fine; the App token stays on pick-tier
+    # (ubuntu-latest, ephemeral).
     runs-on: [self-hosted, pr-validation-aws]
     timeout-minutes: 5
     outputs:
@@ -101,25 +108,37 @@ jobs:
     # from fleet health. gh + jq are preinstalled on the runner image.
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Only contents:read is needed (checkout). Drop the checks:write / pull-requests:read
+    # the workflow grants by default so the job's GITHUB_TOKEN is minimal around the
+    # minted App token and the PR-controlled pick script.
+    permissions:
+      contents: read
     outputs:
       group: ${{ steps.pick.outputs.group }}
       labels: ${{ steps.pick.outputs.labels }}
     steps:
+      # persist-credentials:false so checkout does not leave GITHUB_TOKEN in
+      # .git/config where the pick script (PR-controlled) could read it; the pick
+      # uses the minted App token via GH_TOKEN, not git credentials.
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # Org-level runner APIs need the "Organization → Self-hosted runners: Read"
       # scope, which the default GITHUB_TOKEN lacks. Mint a short-lived token from
-      # a dedicated read-only GitHub App. continue-on-error so a missing or
-      # misconfigured app never fails the job — pick falls back to AWS instead.
+      # a dedicated read-only GitHub App, scoped to that one permission.
+      # continue-on-error so a missing or misconfigured app never fails the job —
+      # pick falls back to AWS instead.
       - name: Mint runner-query token
         id: app-token
         continue-on-error: true
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ secrets.RUNNER_QUERY_APP_ID }}
           private-key: ${{ secrets.RUNNER_QUERY_APP_KEY }}
           owner: ${{ github.repository_owner }}
+          permission-organization-self-hosted-runners: read
 
       # The script always emits a valid group/labels pair and exits 0;
       # continue-on-error is belt-and-suspenders so even a missing script can't
@@ -138,7 +157,14 @@ jobs:
   e2e:
     name: E2E ${{ inputs.mode }} (${{ matrix.storage-plugin }})
     needs: [check-e2e-needed, pick-tier]
-    if: needs.check-e2e-needed.outputs.should_run == 'true'
+    # Run whenever e2e is needed, even if pick-tier failed/was skipped (a checkout
+    # failure, runner outage, or timeout). A failed pick-tier leaves empty outputs,
+    # which the runs-on guards below resolve to AWS — keeping AWS the guaranteed
+    # floor rather than letting a needs-failure skip e2e entirely.
+    if: >-
+      !cancelled() &&
+      needs.check-e2e-needed.result == 'success' &&
+      needs.check-e2e-needed.outputs.should_run == 'true'
     # ODF needs a larger disconnected runner and always stays on AWS; everything
     # else uses the tier picked by pick-tier (baremetal if idle, else AWS). The
     # `|| 'enclave-ci'` / `|| '[...aws]'` guards make an empty pick output (should
