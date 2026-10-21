@@ -903,22 +903,13 @@ because the connection details are required as installation input (see
 
 The value of `odfExternalConfig` is the JSON produced by an exporter script run
 against the external Ceph cluster. Red Hat ships this script as
-`ceph-external-cluster-details-exporter.py`, embedded in the ODF Operator, and its
-two documented sources both require a running OpenShift cluster with the ODF Operator
-installed:
+`ceph-external-cluster-details-exporter.py`, embedded in the ODF Operator; see the
+[Red Hat ODF documentation](https://docs.redhat.com/en/documentation/red_hat_openshift_data_foundation)
+for how to obtain it. Every documented method requires a running OpenShift cluster
+with the ODF Operator already installed.
 
-- the OpenShift console **"Download Script"** link (Storage → *External Systems* →
-  *Connect external systems* → *Red Hat/IBM Ceph Cluster*), or
-- extracting it from the `ocs-operator` ClusterServiceVersion:
-  ```bash
-  oc get csv -n openshift-storage \
-    "$(oc get csv -n openshift-storage | grep ocs-operator | awk '{print $1}')" \
-    -o jsonpath='{.metadata.annotations.external\.features\.ocs\.openshift\.io/export-script}' \
-    | base64 --decode > ceph-external-cluster-details-exporter.py
-  ```
-
-In an Enclave flow the JSON is needed **before any cluster exists**, so neither of
-those is available yet. Use the upstream Rook equivalent instead,
+In an Enclave flow the JSON is needed **before any cluster exists**, so none of
+those methods are available yet. Use the upstream Rook equivalent instead,
 `deploy/examples/create-external-cluster-resources.py` in the
 [Rook repository](https://github.com/rook/rook) (the same script; Red Hat's copy is a
 renamed downstream build). See the Rook
