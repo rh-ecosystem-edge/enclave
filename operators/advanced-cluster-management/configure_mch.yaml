@@ -14,13 +14,54 @@
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_stable_core_catalog_source
 
+- name: Check for legacy core operator CatalogSource
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "cs-{{ mirror_rh_operator_catalog }}-v4-20"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_legacy_core_catalog_source
+
+- name: Check for versioned core operator CatalogSource
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "cs-{{ mirror_rh_operator_catalog }}-v{{ mgmt_openshift_version.split('.')[:2] | join('-') }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_versioned_core_catalog_source
+
 - name: Select core operator CatalogSource for disconnected MCE and OADP
   when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     _core_operator_catalog_source: >-
       {{ 'cs-' ~ mirror_rh_operator_catalog
-         if r_stable_core_catalog_source.resources | default([]) | length > 0
-         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v' ~ (mgmt_openshift_version.split('.')[:2] | join('-')) }}
+         if r_stable_core_catalog_source.resources | default([]) | length > 0 and
+            (((r_stable_core_catalog_source.resources[0].status | default({}, true))
+              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
+         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v4-20'
+         if r_legacy_core_catalog_source.resources | default([]) | length > 0 and
+            (((r_legacy_core_catalog_source.resources[0].status | default({}, true))
+              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
+         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v' ~ (mgmt_openshift_version.split('.')[:2] | join('-'))
+         if r_versioned_core_catalog_source.resources | default([]) | length > 0 and
+            (((r_versioned_core_catalog_source.resources[0].status | default({}, true))
+              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
+         else '' }}
+
+- name: Require a ready core operator CatalogSource for disconnected MCE and OADP
+  ansible.builtin.assert:
+    that:
+      - _core_operator_catalog_source | length > 0
+    fail_msg: >-
+      No ready stable, legacy, or versioned Red Hat operator CatalogSource is
+      available in openshift-marketplace for MCE and OADP.
+  when: disconnected | default(true) | bool
 
 - name: Set MCE subscription spec for disconnected
   when: disconnected | default(true) | bool

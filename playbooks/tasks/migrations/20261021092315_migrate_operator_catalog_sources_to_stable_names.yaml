@@ -99,13 +99,15 @@
 - name: Parse MultiClusterHub subscription source annotations
   ansible.builtin.set_fact:
     _catalog_migration_mce_spec: >-
-      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({})).get(
-          'installer.open-cluster-management.io/mce-subscription-spec', '{}')) | from_json
-         if r_catalog_migration_mch.resources | length > 0 else {} }}
+      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({}, true)).get(
+          'installer.open-cluster-management.io/mce-subscription-spec', '{}')
+          | default('{}', true)) | from_json
+         if r_catalog_migration_mch.resources | default([]) | length > 0 else {} }}
     _catalog_migration_oadp_spec: >-
-      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({})).get(
-          'installer.open-cluster-management.io/oadp-subscription-spec', '{}')) | from_json
-         if r_catalog_migration_mch.resources | length > 0 else {} }}
+      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({}, true)).get(
+          'installer.open-cluster-management.io/oadp-subscription-spec', '{}')
+          | default('{}', true)) | from_json
+         if r_catalog_migration_mch.resources | default([]) | length > 0 else {} }}
   when: disconnected | default(true) | bool
 
 - name: Update MCE subscription source annotation to stable CatalogSource
@@ -127,6 +129,13 @@
     - disconnected | default(true) | bool
     - r_catalog_migration_mch.resources | default([]) | length > 0
     - r_catalog_migration_core_alias.resources | default([]) | length > 0
+    - >-
+      (
+        (
+          (r_catalog_migration_core_alias.resources[0].status | default({}, true))
+          .connectionState | default({}, true)
+        ).lastObservedState | default('', true)
+      ) == 'READY'
     - (_catalog_migration_mce_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')
 
 - name: Update OADP subscription source annotation to stable CatalogSource
@@ -148,4 +157,11 @@
     - disconnected | default(true) | bool
     - r_catalog_migration_mch.resources | default([]) | length > 0
     - r_catalog_migration_core_alias.resources | default([]) | length > 0
+    - >-
+      (
+        (
+          (r_catalog_migration_core_alias.resources[0].status | default({}, true))
+          .connectionState | default({}, true)
+        ).lastObservedState | default('', true)
+      ) == 'READY'
     - (_catalog_migration_oadp_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')

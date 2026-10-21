@@ -81,8 +81,15 @@
   retries: 30
   delay: 10
   until: >-
-    r_stable_catalog_source_ready.resources | length > 0 and
-    r_stable_catalog_source_ready.resources[0].status.connectionState.lastObservedState | default('') == 'READY'
+    r_stable_catalog_source_ready.resources | default([]) | length > 0 and
+    (
+      (
+        (
+          (r_stable_catalog_source_ready.resources | default([]) | first | default({}))
+          .status | default({}, true)
+        ).connectionState | default({}, true)
+      ).lastObservedState | default('', true)
+    ) == 'READY'
   when: _catalog_source_migration_needed | bool
 
 - name: Migrate {{ operator_name }} Subscription to stable CatalogSource alias
