@@ -89,8 +89,19 @@ api.<cluster>.<base_domain>         -> API VIP      (192.168.N.100)
 *.apps.<cluster>.<base_domain>      -> ingress VIP  (192.168.N.101, true wildcard)
 ```
 
-These are added to the **cluster** network (masters resolve via its dnsmasq) and, in
-disconnected mode, also to the **uplink** network (the LZ resolves via that one).
+When a spoke is created (`ENCLAVE_NUM_SPOKE_NODES >= 1`), SNO records for the
+`<cluster>-spoke` cluster are appended; a single node serves both API and ingress,
+so all three resolve to its node IP (192.168.N.30):
+
+```text
+api.<cluster>-spoke.<base_domain>       -> spoke node (192.168.N.30)
+api-int.<cluster>-spoke.<base_domain>   -> spoke node (192.168.N.30)
+*.apps.<cluster>-spoke.<base_domain>    -> spoke node (192.168.N.30, true wildcard)
+```
+
+These are added to the **cluster** network (masters and the spoke resolve via its
+dnsmasq) and, in disconnected mode, also to the **uplink** network (the LZ resolves
+via that one).
 
 ### NIC assignments
 
@@ -99,12 +110,13 @@ disconnected mode, also to the **uplink** network (the LZ resolves via that one)
 | `{cluster}_landingzone_0` (connected) | `{cluster}-p` | `{cluster}-e` | — |
 | `{cluster}_landingzone_0` (disconnected) | `{cluster}-p` | `{cluster}-e` | `{cluster}-u` |
 | `{cluster}_master_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
+| `{cluster}_spoke_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
 
-Masters have no IP on the BMC bridge — they are identified by MAC address for
-Redfish (`SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID=True`).
+Masters and spoke nodes have no IP on the BMC bridge — they are identified by MAC
+address for Redfish (`SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID=True`).
 
 VM names follow the dev-scripts convention (`{cluster}_landingzone_0`,
-`{cluster}_master_{i}`) so no downstream scripts need to change.
+`{cluster}_master_{i}`, `{cluster}_spoke_{i}`) so no downstream scripts need to change.
 
 ### Boot order
 
@@ -112,6 +124,9 @@ Master VMs (`{cluster}_master_N`) are defined with `<os><boot dev='cdrom'/><boot
 
 1. SATA CD-ROM (first) — sushy-tools mounts the ABI ISO here via Redfish VirtualMedia
 2. virtio primary disk (second) — boots RHCOS after installation
+
+Spoke VMs (`{cluster}_spoke_N`) use the same boot order; the ISO mounted there is the
+assisted-installer discovery ISO rather than the ABI ISO.
 
 sushy-tools changes the boot device by modifying `<os><boot>` elements via the
 libvirt API. Per-device `<boot order='N'/>` attributes on disk elements must NOT
@@ -125,6 +140,35 @@ builds the cloud-init ISO at that path, writes the cloud image into the existing
 volume (and resizes it), then `virsh start`s the already-defined domain — it never
 undefines/recreates it or manages the pool. The uplink NIC (`{cluster}-u`) is part of
 the domain definition in disconnected mode.
+
+## Spoke (managed) cluster
+
+By default `vm_infra.py` builds the hub only (1 LZ + N masters). Setting
+`ENCLAVE_NUM_SPOKE_NODES` to `1` additionally creates a single-node (SNO) **spoke**
+VM (`{cluster}_spoke_0`) used to exercise managed-cluster workflows such as installing
+the OpenShift AI plugin on a spoke. It is a plain libvirt domain on the same host, so
+the existing per-cluster sushy-tools instance exposes it automatically (no new BMC
+port); it reuses `ENCLAVE_BMC_ENDPOINT`.
+
+The spoke is defined exactly like a master — empty cdrom, cdrom-first boot — so the
+hub's Bare Metal Operator / Ironic can mount the assisted-installer discovery ISO as
+Redfish virtual media via sushy-tools. It gets a static cluster-network lease
+(`192.168.N.30`) reserving the IP its NMState networkConfig assigns, SNO DNS records
+(see *DNS records*), and an extra disk for the spoke's storage plugin (LVMS). Its
+identity (name, base domain, per-node MACs/IP) is emitted to `cluster-env.sh` under the
+`ENCLAVE_SPOKE_*` keys. `vm_infra.py` only creates the VM and network/DNS plumbing;
+installing OpenShift onto it (ClusterDeployment/AgentClusterInstall + ACM import) is a
+later playbook phase that consumes these values.
+
+Only a single-node (SNO) spoke is supported, so `ENCLAVE_NUM_SPOKE_NODES` must be `0`
+or `1`. Like all topology, the spoke count is fixed at **create** time: the cluster
+network (and its DHCP/DNS records) is defined once and `create` is otherwise
+idempotent, so adding or removing a spoke on an existing cluster requires a
+`destroy` + `create`, not a re-run.
+
+`destroy` tears the spoke down with the rest of the cluster (it matches the shared
+`{cluster}_` domain prefix and the `*-extra.img` glob), and `reap` recognizes
+`{cluster}_spoke_N` domains so a cluster left with only a spoke is still reclaimed.
 
 ## Parallelism and isolation
 
@@ -165,6 +209,9 @@ export ENCLAVE_MASTER_COUNT="3"
 export ENCLAVE_MASTER_0_CLUSTER_MAC="52:54:00:…"
 export ENCLAVE_MASTER_0_CLUSTER_IP="192.168.N.20"
 # … and so on
+export ENCLAVE_SPOKE_COUNT="0"   # or 1, with the keys below when a spoke is created
+# export ENCLAVE_SPOKE_CLUSTER_NAME="eci-ab12cd34-spoke"
+# export ENCLAVE_SPOKE_0_CLUSTER_IP="192.168.N.30"
 ```
 
 ### MAC addresses
@@ -191,6 +238,7 @@ old random-MACs-plus-`macs.json` scheme.)
 | `ENCLAVE_BMC_NETWORK` | no | derived | Alternative way to pin N via its third octet (e.g. `100.64.5.0/24`); ignored if `ENCLAVE_SUBNET_ID` is set |
 | `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
 | `ENCLAVE_NUM_MASTERS` | no | `3` | Number of master VMs |
+| `ENCLAVE_NUM_SPOKE_NODES` | no | `0` | Number of SNO spoke VMs (0 = hub only; 1 = add a spoke for managed-cluster / OpenShift-AI testing) |
 | `STORAGE_PLUGIN` | no | `lvms` | `lvms` or `odf` — affects VM sizing defaults |
 | `MASTER_MEMORY` | no | 32768 / 49152 (odf) | Master RAM in MiB. ODF masters get 48 GB for the ODF/ACM/MCE control plane and Ceph consumers; more does not help (the operators-phase Quay CrashLoop is a Quay-backend health-probe issue, not master memory) |
 | `MASTER_VCPU` | no | 12 / 16 (odf) | Master vCPU count |
@@ -199,6 +247,10 @@ old random-MACs-plus-`macs.json` scheme.)
 | `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB; the odf default gives Ceph-on-LZ headroom |
 | `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (odf) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; odf additionally needs ~900 GB for the Ceph loopback OSD files |
 | `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count |
+| `SPOKE_MEMORY` | no | 32768 | Spoke (SNO) RAM in MiB |
+| `SPOKE_VCPU` | no | 16 | Spoke vCPU count |
+| `SPOKE_DISK` | no | 200 | Spoke primary disk in GiB (larger than a master's for the disconnected RHOAI image pull) |
+| `SPOKE_EXTRA_DISK` | no | 200 | Spoke extra disk in GiB for its storage plugin (LVMS); 0 to omit |
 
 ### XML templates
 

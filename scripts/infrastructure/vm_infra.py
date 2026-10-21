@@ -56,6 +56,12 @@ SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
 MIN_SUBNET = 2
 MAX_SUBNET = 254
 
+# Static cluster-network lease offsets within 192.168.N.0/24: masters at .{20+i},
+# spoke nodes at .{30+i}. The gap (10) bounds how many masters can coexist with a
+# spoke before their leases would collide; from_env enforces it.
+MASTER_IP_OFFSET = 20
+SPOKE_IP_OFFSET = 30
+
 # Cluster-name prefixes. `eci`/`ecd` (e2e connected/disconnected) and `nc`/`nd`
 # (nightly) are the sanctioned set; CI selects the right one via
 # ENCLAVE_CLUSTER_PREFIX, defaulting to `eci`. This is the single source of the
@@ -70,6 +76,8 @@ _PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
 # <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
 # cap the configured zone well below that to leave room for the generated prefixes.
 _MAX_BASE_DOMAIN_LEN = 200
+# RFC 1035 total DNS name limit (textual representation).
+_MAX_DNS_NAME_LEN = 253
 # A single RFC 1035 label: 1–63 chars, alphanumeric, internal hyphens only.
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
@@ -86,7 +94,7 @@ def _is_valid_base_domain(domain: str) -> bool:
 
 @dataclass
 class VMSpec:
-    """Hardware sizing for one VM class (LZ or master)."""
+    """Hardware sizing for one VM class (LZ, master, or spoke)."""
 
     memory_mb: int
     vcpu: int
@@ -104,6 +112,11 @@ class Config:
     master: VMSpec
     lz: VMSpec
     storage_plugin: str
+    # Spoke (managed) cluster nodes. Default 0 keeps the hub-only topology; the
+    # OpenShift-AI-on-spoke scenario sets 1 (SNO). The spoke boots the assisted
+    # discovery ISO via the same sushy-tools BMC as the masters.
+    num_spoke_nodes: int = 0
+    spoke: Optional[VMSpec] = None
     # Working dir. None until finalized: on `create` with a generated name it is
     # derived from base_working_dir once the name is known (see finalize_working_dir).
     working_dir: Optional[Path] = None
@@ -206,6 +219,43 @@ class Config:
             # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
             default_lz_mem = 16384
 
+        # Spoke (SNO) sizing. A single node runs its own control plane plus the
+        # OpenShift AI (KServe) stack, and in disconnected mode pulls RHOAI images
+        # from the hub Quay onto its root disk — so give it a master-class CPU/RAM
+        # and a larger root disk, with an extra disk for the storage plugin (LVMS).
+        default_spoke_mem = 32768
+        default_spoke_vcpu = 16
+        default_spoke_disk = 200
+        default_spoke_extra = 200
+
+        num_masters = optint("ENCLAVE_NUM_MASTERS", 3)
+        # Only a single-node (SNO) spoke is supported: spoke_dns_addresses maps every
+        # spoke record to node 0, so larger counts have no valid DNS/install semantics.
+        num_spoke_nodes = optint("ENCLAVE_NUM_SPOKE_NODES", 0)
+        if num_spoke_nodes not in (0, 1):
+            sys.exit(
+                "ERROR: ENCLAVE_NUM_SPOKE_NODES must be 0 or 1 (single-node spoke), "
+                f"got {num_spoke_nodes}"
+            )
+        # Masters lease .{20..20+num_masters-1}; the spoke leases .{30}. Reject a
+        # master count that would push a master onto the spoke's address.
+        if num_spoke_nodes > 0 and MASTER_IP_OFFSET + num_masters > SPOKE_IP_OFFSET:
+            sys.exit(
+                f"ERROR: ENCLAVE_NUM_MASTERS={num_masters} is too large to add a spoke; "
+                f"master leases would overlap the spoke range "
+                f"(max {SPOKE_IP_OFFSET - MASTER_IP_OFFSET} masters with a spoke)"
+            )
+
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap. Read
+        # it before the cluster name so the spoke FQDN-length check below can use it.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
+
         # Cluster name: required for destroy; optional for create, where it is
         # generated under the subnet lock when absent. An explicitly supplied name
         # is always honored (re-create / destroy of a known cluster).
@@ -217,20 +267,33 @@ class Config:
         else:
             sys.exit("ERROR: ENCLAVE_CLUSTER_NAME environment variable is required")
 
+        # The spoke cluster name is "<cluster>-spoke" and must be a valid DNS label
+        # (<= 63 chars). Generated names are short by construction, so only an
+        # explicitly supplied name can overflow — check it here when a spoke is asked for.
+        if num_spoke_nodes > 0 and cluster_name:
+            spoke_label = f"{cluster_name}-spoke"
+            if not _DNS_LABEL_RE.fullmatch(spoke_label):
+                sys.exit(
+                    f"ERROR: derived spoke cluster name {spoke_label!r} is not a valid "
+                    f"DNS label (<= 63 chars); shorten ENCLAVE_CLUSTER_NAME"
+                )
+            # The label can be valid yet the full FQDN still overflow 253 chars once
+            # the base domain is appended. api-int is the longest prefix we emit, so
+            # checking it bounds the fixed spoke records (api / api-int / apps).
+            effective_base = base_domain or f"{cluster_name}.lab"
+            longest_spoke_fqdn = f"api-int.{spoke_label}.{effective_base}"
+            if len(longest_spoke_fqdn) > _MAX_DNS_NAME_LEN:
+                sys.exit(
+                    f"ERROR: derived spoke DNS name {longest_spoke_fqdn!r} exceeds the "
+                    f"{_MAX_DNS_NAME_LEN}-char DNS limit; shorten ENCLAVE_CLUSTER_NAME "
+                    f"or ENCLAVE_BASE_DOMAIN"
+                )
+
         prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
         if prefix not in CLUSTER_PREFIXES:
             sys.exit(
                 f"ERROR: ENCLAVE_CLUSTER_PREFIX={prefix!r} must be one of "
                 f"{', '.join(CLUSTER_PREFIXES)}"
-            )
-
-        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
-        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
-        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
-        if base_domain and not _is_valid_base_domain(base_domain):
-            sys.exit(
-                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
-                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
             )
 
         def check_xml_safe(label: str, value: str) -> None:
@@ -275,7 +338,7 @@ class Config:
         return cls(
             cluster_name=cluster_name,
             deployment_mode=deployment_mode,
-            num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
+            num_masters=num_masters,
             master=VMSpec(
                 memory_mb=optint("MASTER_MEMORY", default_master_mem),
                 vcpu=optint("MASTER_VCPU", default_master_vcpu),
@@ -289,6 +352,13 @@ class Config:
                 extra_disk_gb=0,
             ),
             storage_plugin=storage_plugin,
+            num_spoke_nodes=num_spoke_nodes,
+            spoke=VMSpec(
+                memory_mb=optint("SPOKE_MEMORY", default_spoke_mem),
+                vcpu=optint("SPOKE_VCPU", default_spoke_vcpu),
+                disk_gb=optint("SPOKE_DISK", default_spoke_disk),
+                extra_disk_gb=optint("SPOKE_EXTRA_DISK", default_spoke_extra),
+            ),
             working_dir=working_dir,
             base_working_dir=base_working_dir,
             prefix=prefix,
@@ -395,7 +465,22 @@ class Config:
         networkConfig (see templates/agent-config.yaml.j2); the matching static
         DHCP lease reserves it so no dynamic client can claim it.
         """
-        return f"192.168.{self._subnet}.{20 + i}"
+        return f"192.168.{self._subnet}.{MASTER_IP_OFFSET + i}"
+
+    def spoke_cluster_ip(self, i: int) -> str:
+        """Spoke node i static IP on the cluster bridge (192.168.N.{30+i}).
+
+        Sits in the cluster subnet above the masters (.20+) and is reserved by a
+        matching static DHCP lease so no dynamic client can claim it. Task 2 assigns
+        it to the node via the spoke's NMState networkConfig. from_env rejects master
+        counts large enough to push a master lease into this range.
+        """
+        return f"192.168.{self._subnet}.{SPOKE_IP_OFFSET + i}"
+
+    @property
+    def spoke_cluster_name(self) -> str:
+        """OpenShift cluster name for the spoke ({cluster}-spoke); FQDNs sit under base_domain."""
+        return f"{self.cluster_name}-spoke"
 
     @property
     def rendezvous_ip(self) -> str:
@@ -434,6 +519,24 @@ class Config:
             f"address=/mirror.{b}/{self.lz_cluster_ip}",
             f"address=/api.{c}.{b}/{self.api_vip}",
             f"address=/apps.{c}.{b}/{self.ingress_vip}",
+        ] + self.spoke_dns_addresses
+
+    @property
+    def spoke_dns_addresses(self) -> List[str]:
+        """dnsmasq `address=` records for the SNO spoke, or [] when no spoke is created.
+
+        A single node serves both the API and ingress, so api, api-int and the
+        *.apps wildcard of the spoke cluster all resolve to its node IP.
+        """
+        if self.num_spoke_nodes < 1:
+            return []
+        b = self.base_domain
+        s = self.spoke_cluster_name
+        ip = self.spoke_cluster_ip(0)
+        return [
+            f"address=/api.{s}.{b}/{ip}",
+            f"address=/api-int.{s}.{b}/{ip}",
+            f"address=/apps.{s}.{b}/{ip}",
         ]
 
     @property
@@ -464,6 +567,11 @@ class Config:
     def master_vm_name(self, i: int) -> str:
         """Matches dev-scripts naming convention so downstream scripts need no changes."""
         return f"{self.cluster_name}_master_{i}"
+
+    def spoke_vm_name(self, i: int) -> str:
+        """Spoke domain name ({cluster}_spoke_{i}); shares the cluster_name prefix so
+        destroy()/reap() tear it down with the rest of the cluster."""
+        return f"{self.cluster_name}_spoke_{i}"
 
     @property
     def all_bridges(self) -> List[str]:
@@ -516,6 +624,9 @@ def generate_macs(cfg: Config) -> Dict[str, Dict[str, str]]:
     }
     for i in range(cfg.num_masters):
         name = cfg.master_vm_name(i)
+        macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
+    for i in range(cfg.num_spoke_nodes):
+        name = cfg.spoke_vm_name(i)
         macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
     return macs
 
@@ -895,6 +1006,24 @@ def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str
             (f"ENCLAVE_MASTER_{i}_CLUSTER_MAC", m["cluster"]),
             (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
         ]
+    # Spoke (managed) cluster. Count is always emitted so downstream can branch on
+    # it; the spoke cluster name, base domain and per-node identity follow only when
+    # a spoke is created. The spoke reuses ENCLAVE_BMC_ENDPOINT (already emitted).
+    pairs.append(("ENCLAVE_SPOKE_COUNT", str(cfg.num_spoke_nodes)))
+    if cfg.num_spoke_nodes > 0:
+        pairs += [
+            ("ENCLAVE_SPOKE_CLUSTER_NAME", cfg.spoke_cluster_name),
+            ("ENCLAVE_SPOKE_BASE_DOMAIN", cfg.base_domain),
+        ]
+        for i in range(cfg.num_spoke_nodes):
+            name = cfg.spoke_vm_name(i)
+            s = macs[name]
+            pairs += [
+                (f"ENCLAVE_SPOKE_{i}_NAME", name),
+                (f"ENCLAVE_SPOKE_{i}_BMC_MAC", s["bmc"]),
+                (f"ENCLAVE_SPOKE_{i}_CLUSTER_MAC", s["cluster"]),
+                (f"ENCLAVE_SPOKE_{i}_CLUSTER_IP", cfg.spoke_cluster_ip(i)),
+            ]
     return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
 
 
@@ -940,6 +1069,13 @@ def _create_networks(conn: libvirt.virConnect, cfg: Config, macs: Dict[str, Dict
             "ip": cfg.master_cluster_ip(i),
         }
         for i in range(cfg.num_masters)
+    ] + [
+        {
+            "mac": macs[cfg.spoke_vm_name(i)]["cluster"],
+            "name": f"spoke-{i}",
+            "ip": cfg.spoke_cluster_ip(i),
+        }
+        for i in range(cfg.num_spoke_nodes)
     ]
     cluster_net_kwargs: dict = dict(
         name=cfg.cluster_bridge,
@@ -1072,12 +1208,48 @@ def create(cfg: Config) -> None:
             name,
         )
 
+    # Spoke VMs (managed cluster). Same shape as a master — empty cdrom, cdrom-first
+    # boot — so the hub's BMO/Ironic can mount the assisted discovery ISO as Redfish
+    # virtual media via the shared sushy-tools BMC. Skipped entirely when count is 0.
+    if cfg.num_spoke_nodes > 0 and cfg.spoke is not None:
+        for i in range(cfg.num_spoke_nodes):
+            name = cfg.spoke_vm_name(i)
+            vol = f"{name}.qcow2"
+            extra_path = cfg.pool_dir / f"{name}-extra.img"
+            _create_volume(conn, cfg, vol, cfg.spoke.disk_gb)
+            if cfg.spoke.extra_disk_gb > 0 and not extra_path.exists():
+                _create_sparse_file(extra_path, cfg.spoke.extra_disk_gb)
+            spoke_nics = [
+                {"mac": macs[name]["bmc"], "network": cfg.bmc_bridge},
+                {"mac": macs[name]["cluster"], "network": cfg.cluster_bridge},
+            ]
+            _define_domain(
+                conn,
+                render(
+                    "domain.xml.j2",
+                    name=name,
+                    memory_kb=cfg.spoke.memory_mb * 1024,
+                    vcpu=cfg.spoke.vcpu,
+                    pool_path=str(cfg.pool_dir),
+                    vol_name=vol,
+                    nics=spoke_nics,
+                    extra_disk_path=str(extra_path) if cfg.spoke.extra_disk_gb > 0 else "",
+                    cdrom_path="",
+                    boot_order=["cdrom", "hd"],
+                ),
+                name,
+            )
+
     LOG.info("=== Infrastructure created for cluster: %s ===", cfg.cluster_name)
     LOG.info("  BMC bridge:     %s  (%s)", cfg.bmc_bridge, cfg.bmc_gateway)
     LOG.info("  Cluster bridge: %s  (%s)", cfg.cluster_bridge, cfg.cluster_gateway)
     if cfg.uplink_bridge:
         LOG.info("  Uplink bridge:  %s  (%s)", cfg.uplink_bridge, cfg.uplink_gateway)
-    LOG.info("  VMs: 1 LZ + %d masters (all defined, not started)", cfg.num_masters)
+    LOG.info(
+        "  VMs: 1 LZ + %d masters + %d spoke (all defined, not started)",
+        cfg.num_masters,
+        cfg.num_spoke_nodes,
+    )
 
 
 # ─── Destroy ──────────────────────────────────────────────────────────────────
@@ -1174,9 +1346,11 @@ def destroy(cfg: Config) -> None:
 
 # CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
 # 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is
-# the dev-scripts VM naming convention (landingzone_0 / master_N).
+# the dev-scripts VM naming convention (landingzone_0 / master_N / spoke_N). Spoke
+# domains must be matched so a cluster left with only a spoke is still discovered
+# and reaped rather than leaking on a shared host.
 _CI_DOMAIN_RE = re.compile(
-    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+)$"
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+|spoke_\d+)$"
 )
 # A CI storage pool: the exact cluster token, optionally followed by a numeric
 # suffix (virt-install appends "-1", "-2", … when it auto-creates a pool for the
