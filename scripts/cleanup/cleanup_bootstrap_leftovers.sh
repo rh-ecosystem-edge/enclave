@@ -11,6 +11,10 @@ info()    { echo "$(_ts) INFO     $1"; }
 warning() { echo "$(_ts) WARNING  $1"; }
 error()   { echo "$(_ts) ERROR    $1"; }
 
+# shellcheck disable=SC2155
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+
 workingDir="${WORKING_DIR:?WORKING_DIR must be set}"
 
 info "Starting pre-bootstrap cleanup (working dir: ${workingDir})"
@@ -40,20 +44,35 @@ sudo podman secret rm -i metal3-ironic-htpasswd metal3-ironic-password metal3-ku
 info "Root podman resources removed"
 
 # Remove user podman resources
-info "Removing user podman resources..."
+info "Removing user metal3 podman resources..."
 podman pod rm -f metal3-ironic
 podman rm -f baremetal-operator
-podman volume rm -f metal3-ironic-shared quay-storage
+podman volume rm -f metal3-ironic-shared
 podman secret rm --ignore metal3-ironic-htpasswd metal3-ironic-username metal3-ca-bundle metal3-ironic-password
-info "User podman resources removed"
+info "User metal3 podman resources removed"
 
 # Remove Quay registry
 info "Removing Quay registry..."
 if [ -x "${workingDir}/bin/mirror-registry" ]; then
     "${workingDir}/bin/mirror-registry" uninstall --quayRoot "${workingDir}/data" --autoApprove -v
 fi
-podman pod rm -f quay-pod
-podman secret rm -i pgdb_pass redis_pass
+
+# Remove quay user units
+systemctl --user stop quay-postgres.service
+systemctl --user disable quay-postgres.service
+rm -f ~/.config/systemd/user/quay-postgres.service
+
+systemctl --user stop quay-pod.service
+systemctl --user disable quay-pod.service
+rm -f ~/.config/systemd/user/quay-pod.service
+
+systemctl --user daemon-reload
+
+# Manually remove any potential leftover
+podman rm -f quay-postgres
+podman pod rm -f quay-postgres quay-pod
+podman volume rm -f quay-storage pg-storage
+podman secret rm -i pgdb_pass redis_pass quay-pg-pass
 info "Quay registry removed"
 
 info "Wiping kubeconfig symlink ~/.config/enclave/kubeconfig..."
