@@ -3,12 +3,31 @@
 # This ensures ACM respects Manual installPlanApproval for MCE and OADP subscriptions.
 # Can be used for both initial creation and patching existing MCH during upgrades.
 
+- name: Check for stable core operator CatalogSource
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "cs-{{ mirror_rh_operator_catalog }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_stable_core_catalog_source
+
+- name: Select core operator CatalogSource for disconnected MCE and OADP
+  when: disconnected | default(true) | bool
+  ansible.builtin.set_fact:
+    _core_operator_catalog_source: >-
+      {{ 'cs-' ~ mirror_rh_operator_catalog
+         if r_stable_core_catalog_source.resources | default([]) | length > 0
+         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v' ~ (mgmt_openshift_version.split('.')[:2] | join('-')) }}
+
 - name: Set MCE subscription spec for disconnected
   when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     mce_subscription_spec:
       installPlanApproval: Manual
-      source: cs-redhat-operator-index-v4-20
+      source: "{{ _core_operator_catalog_source }}"
 
 - name: Set MCE subscription spec for connected
   when: not (disconnected | default(true) | bool)
@@ -24,7 +43,7 @@
   ansible.builtin.set_fact:
     oadp_subscription_spec:
       installPlanApproval: Manual
-      source: cs-redhat-operator-index-v4-20
+      source: "{{ _core_operator_catalog_source }}"
 
 - name: Set OADP subscription spec for connected
   when: not (disconnected | default(true) | bool)
