@@ -234,6 +234,16 @@ Each Plugin is mirrored to a custom catalog to support operations on day 2, and 
 
 Before cluster installation, plugins with `tasks/pre-install-validate.yaml` run hardware checks against discovered hosts.
 
+### Boot Provider Plugins
+
+The initial `agent_hosts` boot step uses Ironic with Redfish virtual media (`boot_method: default`) unless a plugin is selected. To use a plugin, set `boot_method: plugin` and select its name with `boot_plugin`. This selection is separate from `enabled_plugins`, which controls deployment of cluster components.
+
+A boot provider declares `type: boot` in `plugin.yaml` and implements `tasks/boot-nodes.yaml`. Enclave passes `agent_hosts_to_provision`, `workingDir`, and `agent_installer_iso_path`. Providers can read their defaults and optional `config/plugins/<name>.yaml` file. Enclave owns the shared readiness gate: after the provider returns, the playbook waits for the rendezvous host and expected agents to be known to Assisted Service before releasing installation.
+
+The built-in `boot-manual` provider prints the hosts and ISO path, then pauses for operator confirmation. The standard discovery wait still confirms that the hosts are ready before installation proceeds. For a custom provider, add a directory under `plugins/`, set `type: boot` in `plugin.yaml`, and provide `tasks/boot-nodes.yaml`.
+
+Boot provider selection currently applies to the initial `agent_hosts` path. The separate `discovery_hosts` flow continues to use Redfish-backed BareMetalHosts.
+
 ### Operator Installation
 
 Foundation plugins deploy before core operators (Quay, GitOps). This ordering ensures storage is available when Quay creates its PVCs.

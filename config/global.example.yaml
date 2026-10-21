@@ -73,6 +73,11 @@ storage_plugin: lvms
 #   - lvms
 #   - example
 
+# Optional alternate boot method. The default is the existing Ironic/Redfish flow.
+# To use a boot-provider plugin under plugins/<name>/, set:
+# boot_method: plugin
+# boot_plugin: boot-manual
+
 # ============================================================================
 # Storage Configuration (LVMS) (optional)
 # ============================================================================
@@ -148,10 +153,10 @@ agent_hosts:
   - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
     macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
     ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
-    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
+    redfish: YOUR_REDFISH_IP          # Used by the default Ironic/Redfish boot method
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: YOUR_REDFISH_USER
-    redfishPassword: YOUR_REDFISH_PASSWORD
+    redfishUser: YOUR_REDFISH_USER    # Used by the default Ironic/Redfish boot method
+    redfishPassword: YOUR_REDFISH_PASSWORD  # Used by the default Ironic/Redfish boot method
     # bmcSystemId: System.Embedded.1   # Optional. Redfish System ID. Only needed for multi-system BMCs
   # Add a total of 3 agent hosts, no more, no less
 

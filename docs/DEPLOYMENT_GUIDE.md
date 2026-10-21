@@ -85,13 +85,13 @@ The following Red Hat operators are automatically installed and configured:
 
 - **Bare Metal Servers**:
   - Minimum 3 servers for control plane
-  - Redfish-compatible BMC with:
+  - When using the default `boot_method: default`, a Redfish-compatible BMC with:
     - **Minimum**: Redfish 1.6.0 (VirtualMedia 1.3.0 schema)
     - **Recommended**: Redfish 1.13.0+ for full feature support (Firmware Updates, TLS Cert Injection)
     - **Tested configurations**: See [OpenShift IPI Firmware Requirements](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installing_on_bare_metal/installer-provisioned-infrastructure#ipi-install-firmware-requirements-for-installing-with-virtual-media_ipi-install-prerequisites) for validated HP, Dell, and Cisco firmware versions
     - **Note**: Redfish version alone doesn't guarantee compatibility—implementation quality varies significantly by vendor
   - Network connectivity to deployment host
-  - Boot from ISO capability (via Redfish virtual media)
+  - Boot from ISO capability using the selected boot provider
 
 #### Hardware Compatibility
 
@@ -236,7 +236,7 @@ Configuration is split across multiple files for better organization:
 1. **Base Configuration**: Working directory, cluster name, domain
 2. **Network Configuration**: VIPs, network ranges, DNS, gateway
 3. **Registry Configuration**: Quay settings, backend storage
-4. **Hardware Configuration**: Redfish credentials, host definitions
+4. **Hardware Configuration**: Existing host definitions; Redfish is used by the default `boot_method: default`
 
 **`config/certificates.yaml`** — SSL certificate configuration:
 - API server certificate and private key
@@ -750,7 +750,7 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
 1. **Redfish API Connection Failures**:
    - Verify BMC IP addresses are correct
    - Check network connectivity to BMCs
-   - Verify Redfish credentials
+   - Verify Redfish credentials when using the default `boot_method: default`
    - Ensure BMC firmware meets minimum requirements (see [Hardware Compatibility](#hardware-compatibility))
    - Try setting `redfish_legacy: true` for older BMCs
 

@@ -325,6 +325,32 @@ defaultNtpServers:
 
 ### Hardware Configuration
 
+#### `boot_method` and `boot_plugin`
+
+**Description**: Selects how the initial `agent_hosts` are booted during cluster installation. Existing configurations continue to use Ironic with Redfish virtual media.
+
+**`boot_method` type**: String
+
+**`boot_method` default**: `default` (Ironic with Redfish virtual media)
+
+**Values**: `default`, `plugin`
+
+**`boot_plugin` type**: String, required when `boot_method: plugin`
+
+Set `boot_method: plugin` to call a boot-provider plugin. In that case, `boot_plugin` names a directory under `plugins/`.
+
+**Built-in boot plugin**: `boot-manual` prints the generated ISO path and target hosts, then waits for operator confirmation.
+
+**Custom providers**: Add a plugin directory under `plugins/<name>/`, set `type: boot` in `plugin.yaml`, and implement `tasks/boot-nodes.yaml`. Select it with `boot_method: plugin` and `boot_plugin: <name>`. The provider is selected independently of `enabled_plugins`.
+
+**Example**:
+```yaml
+boot_method: plugin
+boot_plugin: boot-manual
+```
+
+The selected provider handles only the boot step. Enclave then waits for the rendezvous host and expected agents to be discovered before it releases the installation gate and continues.
+
 #### `agent_hosts`
 
 **Description**: List of control plane nodes with their network and hardware configuration.
@@ -366,9 +392,9 @@ agent_hosts:
 | `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
 | `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
 | `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
+| `redfishUser` | Redfish API username | `admin` |
+| `redfishPassword` | Redfish API password | `YourSecurePassword` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
-| `redfishUser` | Override Username for Redfish API authentication on BMCs | `admin-override` |
-| `redfishPassword` | Override Password for Redfish API authentication on BMCs | `YourSecurePassword-override` |
 
 **Optional fields for each host**:
 

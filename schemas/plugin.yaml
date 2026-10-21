@@ -245,7 +245,10 @@ properties:
     enum:
       - foundation
       - addon
-    description: Plugin type. foundation plugins deploy before core operators.
+      - boot
+    description: >-
+      Plugin type. foundation plugins deploy before core operators; boot
+      plugins provide the initial agent-host boot method.
   order:
     type: integer
     description: Deploy order among same-type plugins. Lower values deploy first.
