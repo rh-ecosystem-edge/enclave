@@ -80,14 +80,72 @@ jobs:
           force-run: ${{ inputs.force-run }}
 
   # ---------------------------------------------------------------------------
+  # Pick the runner tier for the non-ODF e2e legs: prefer an idle baremetal
+  # runner (group enclave-ci-baremetal), else fall back to the elastic AWS fleet
+  # (group enclave-ci). Best-effort cost optimization — AWS is the guaranteed
+  # floor, so this job MUST always end green with a valid output: any failure
+  # (no app token, API error, group missing, no idle runner) yields the AWS
+  # fallback. ODF is unaffected (it is pinned to AWS in the e2e runs-on below).
+  #
+  # The baremetal path requests `enclave-large-baremetal`, a label the AWS
+  # scale-up matcher does NOT match, so routing to baremetal never trips the
+  # (group-blind) AWS autoscaler. The AWS path requests `enclave-large-aws`.
+  # ---------------------------------------------------------------------------
+  pick-tier:
+    name: Pick runner tier (baremetal or AWS)
+    needs: check-e2e-needed
+    if: needs.check-e2e-needed.outputs.should_run == 'true'
+    # GitHub-hosted: free on this public repo, and an ephemeral isolated VM is the
+    # safer place to mint the app token and run the (PR-checked-out) pick script
+    # than the non-ephemeral self-hosted fleet. Also decouples the pick decision
+    # from fleet health. gh + jq are preinstalled on the runner image.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      group: ${{ steps.pick.outputs.group }}
+      labels: ${{ steps.pick.outputs.labels }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Org-level runner APIs need the "Organization → Self-hosted runners: Read"
+      # scope, which the default GITHUB_TOKEN lacks. Mint a short-lived token from
+      # a dedicated read-only GitHub App. continue-on-error so a missing or
+      # misconfigured app never fails the job — pick falls back to AWS instead.
+      - name: Mint runner-query token
+        id: app-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RUNNER_QUERY_APP_ID }}
+          private-key: ${{ secrets.RUNNER_QUERY_APP_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      # The script always emits a valid group/labels pair and exits 0;
+      # continue-on-error is belt-and-suspenders so even a missing script can't
+      # block e2e (the e2e runs-on also defaults to AWS on an empty output).
+      - name: Pick group + labels
+        id: pick
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_ORG: ${{ github.repository_owner }}
+        run: bash ./scripts/runners/pick-runner-tier.sh
+
+  # ---------------------------------------------------------------------------
   # Single-mode E2E deployment (connected or disconnected, per inputs.mode)
   # ---------------------------------------------------------------------------
   e2e:
     name: E2E ${{ inputs.mode }} (${{ matrix.storage-plugin }})
-    needs: check-e2e-needed
+    needs: [check-e2e-needed, pick-tier]
     if: needs.check-e2e-needed.outputs.should_run == 'true'
-    # ODF needs a larger disconnected runner; everything else uses the standard one.
-    runs-on: ${{ (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
+    # ODF needs a larger disconnected runner and always stays on AWS; everything
+    # else uses the tier picked by pick-tier (baremetal if idle, else AWS). The
+    # `|| 'enclave-ci'` / `|| '[...aws]'` guards make an empty pick output (should
+    # never happen — pick-tier always emits one) still fall back to AWS.
+    runs-on:
+      group: ${{ (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && 'enclave-ci' || (needs.pick-tier.outputs.group || 'enclave-ci') }}
+      labels: ${{ (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON(needs.pick-tier.outputs.labels || '["self-hosted", "enclave-large-aws"]') }}
     # Connected is fast; disconnected mirrors content (longer, longest on nightly).
     timeout-minutes: ${{ inputs.mode == 'connected' && 210 || (github.event_name == 'schedule' && 600 || 360) }}
 

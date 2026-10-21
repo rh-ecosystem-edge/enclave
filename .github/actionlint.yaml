@@ -6,4 +6,5 @@ self-hosted-runner:
     - enclave-small       # For cleanup infra, not needed in aws
     - enclave-small-aws   # Medium jobs like infra-verify
     - enclave-large-aws          # Large nested-virt E2E jobs (PR-context and nightly)
+    - enclave-large-baremetal    # Large nested-virt E2E jobs preferring the baremetal pool
     - odf                        # ODF disconnected E2E (Ceph-capable servers)
