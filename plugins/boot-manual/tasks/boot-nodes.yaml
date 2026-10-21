@@ -4,17 +4,15 @@
     msg: |
       Manual boot plugin selected.
 
-      Boot the following agent hosts from the generated Agent-Based Installer ISO:
-      {% for agent_host in agent_hosts_to_provision %}
-      - {{ agent_host.name }} (MAC {{ agent_host.macAddress }})
-      {% endfor %}
+      Boot {{ agent_hosts_to_provision | length }} management host(s) from the
+      generated Agent-Based Installer ISO.
 
-      ISO on the Landing Zone: {{ agent_installer_iso_path }}
+      ISO relative path on the Landing Zone: ocp-cluster/abi-iso/agent.x86_64.iso
       Keep this playbook running. Enclave will continue after the rendezvous node
       is reachable and all configured agent hosts are known to Assisted Service.
 
 - name: Wait for operator to start manual agent-host boot
   ansible.builtin.pause:
     prompt: >-
-      Boot the listed hosts from the generated ISO, then press Enter to wait for
-      host discovery and continue the installation.
+      Boot the management hosts from the generated ISO, then press Enter to wait
+      for host discovery and continue the installation.

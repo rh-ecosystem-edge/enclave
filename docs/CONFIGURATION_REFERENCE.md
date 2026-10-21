@@ -339,7 +339,7 @@ defaultNtpServers:
 
 Set `boot_method: plugin` to call a boot-provider plugin. In that case, `boot_plugin` names a directory under `plugins/`.
 
-**Built-in boot plugin**: `boot-manual` prints the generated ISO path and target hosts, then waits for operator confirmation.
+**Built-in boot plugin**: `boot-manual` prints the number of hosts to boot and the ISO's path relative to the Landing Zone working directory, then waits for operator confirmation.
 
 **Custom providers**: Add a plugin directory under `plugins/<name>/`, set `type: boot` in `plugin.yaml`, and implement `tasks/boot-nodes.yaml`. Select it with `boot_method: plugin` and `boot_plugin: <name>`. The provider is selected independently of `enabled_plugins`.
 

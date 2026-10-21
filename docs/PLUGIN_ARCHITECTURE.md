@@ -240,7 +240,7 @@ The initial `agent_hosts` boot step uses Ironic with Redfish virtual media (`boo
 
 A boot provider declares `type: boot` in `plugin.yaml` and implements `tasks/boot-nodes.yaml`. Enclave passes `agent_hosts_to_provision`, `workingDir`, and `agent_installer_iso_path`. Providers can read their defaults and optional `config/plugins/<name>.yaml` file. Enclave owns the shared readiness gate: after the provider returns, the playbook waits for the rendezvous host and expected agents to be known to Assisted Service before releasing installation.
 
-The built-in `boot-manual` provider prints the hosts and ISO path, then pauses for operator confirmation. The standard discovery wait still confirms that the hosts are ready before installation proceeds. For a custom provider, add a directory under `plugins/`, set `type: boot` in `plugin.yaml`, and provide `tasks/boot-nodes.yaml`.
+The built-in `boot-manual` provider prints the number of hosts to boot and the ISO's path relative to the Landing Zone working directory, then pauses for operator confirmation. The standard discovery wait still confirms that the hosts are ready before installation proceeds. For a custom provider, add a directory under `plugins/`, set `type: boot` in `plugin.yaml`, and provide `tasks/boot-nodes.yaml`.
 
 Boot provider selection currently applies to the initial `agent_hosts` path. The separate `discovery_hosts` flow continues to use Redfish-backed BareMetalHosts.
 
