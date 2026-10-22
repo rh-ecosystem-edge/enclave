@@ -787,6 +787,31 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
    - Verify pull secrets are correctly configured
    - Check oc-mirror logs: `{{ workingDir }}/logs/oc-mirror.progress.log`
 
+6. **Rerun stops because the OpenShift release changed (or can't be determined)**:
+   - A deployment rerun (`bootstrap.sh` or the `03-deploy` playbook) stops at the
+     start of the ISO-generation step (`configure-abi`), reporting that the
+     existing cluster directory was built for a different OpenShift release than
+     the one configured. `openshift-install` cannot reuse an installation
+     directory across releases, so the rerun is refused up front.
+   - **To upgrade** the management cluster to a new OpenShift version, follow the
+     day-2 upgrade workflow in [UPGRADE.md](UPGRADE.md).
+   - **To destroy and redeploy** from scratch with the new version, remove the
+     cluster directory first, then rerun `bootstrap.sh`:
+     ```bash
+     rm -rf {{ workingDir }}/ocp-cluster
+     ```
+   - The built release is tracked in `{{ workingDir }}/ocp-cluster/.enclave-openshift-version`.
+     Clusters created before this tracking existed have no marker; an upgrade
+     migration backfills it from the running cluster on the next `upgrade.sh`, so
+     this case normally only appears if you adopted the new code without running
+     the upgrade migrations. If a rerun stops with "OpenShift release cannot be
+     determined", either `rm -rf` the cluster directory to redeploy, or — only if
+     you are certain the configured version matches what the cluster was installed
+     with — seed the marker manually:
+     ```bash
+     echo <installed-version> > {{ workingDir }}/ocp-cluster/.enclave-openshift-version
+     ```
+
 ### Log Files
 
 - **Bootstrap logs**: `logs/<timestamp>`
@@ -975,6 +1000,7 @@ oc get baremetalhosts -n infraenv
 ## Notes
 
 - The deployment is **destructive** - running bootstrap.sh will destroy and recreate the entire environment
+- A rerun that changes the OpenShift version is refused at the ISO-generation step; use `./sync.sh` + `./upgrade.sh` to change versions, or remove `{{ workingDir }}/ocp-cluster` to redeploy from scratch (see Troubleshooting)
 - Some steps reuse local caches (downloaded binaries, images) for faster re-runs
 - The deployment host must have internet access for initial downloads
 - After mirror registry setup, the cluster operates in a disconnected/air-gapped mode
