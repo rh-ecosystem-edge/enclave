@@ -28,6 +28,7 @@
   ansible.builtin.include_vars:
     file: "{{ boot_plugin_dir }}/plugin.yaml"
     name: _boot_plugin
+  no_log: true
 
 - name: Validate selected boot provider descriptor
   ansible.builtin.assert:
@@ -68,13 +69,15 @@
     file: "{{ boot_plugin_dir }}/defaults.yaml"
     name: _boot_plugin_defaults
   when: r_boot_plugin_defaults.stat.exists
+  no_log: true
 
-- name: Load boot provider defaults from descriptor  # noqa: var-naming[no-jinja]
+- name: Load boot provider defaults from descriptor
   ansible.builtin.set_fact:
     _boot_plugin_defaults: "{{ _boot_plugin.defaults }}"
   when:
     - _boot_plugin.defaults is defined
     - not r_boot_plugin_defaults.stat.exists
+  no_log: true
 
 - name: Check boot provider user configuration
   ansible.builtin.stat:
@@ -86,16 +89,14 @@
     file: "{{ r_boot_plugin_config.stat.path }}"
     name: _boot_plugin_user_config
   when: r_boot_plugin_config.stat.exists
+  no_log: true
 
-- name: Apply boot provider defaults and user configuration  # noqa: var-naming[no-jinja]
+- name: Merge boot provider defaults and user configuration
   ansible.builtin.set_fact:
-    "{{ item.key }}": "{{ item.value }}"
-  loop: >-
-    {{ (_boot_plugin_defaults | default({}))
-       | combine(_boot_plugin_user_config | default({}), recursive=true)
-       | dict2items }}
-  loop_control:
-    label: "{{ item.key }}"
+    boot_plugin_config: >-
+      {{ (_boot_plugin_defaults | default({}))
+         | combine(_boot_plugin_user_config | default({}), recursive=true) }}
+  no_log: true
 
 - name: Set agent installer ISO path for boot provider
   ansible.builtin.set_fact:
