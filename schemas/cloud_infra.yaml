@@ -10,3 +10,12 @@ properties:
     description: List of discovery hosts for hardware discovery
     items:
       "$ref": "#/definitions/hostEntry"
+
+allOf:
+  - properties:
+      discovery_hosts:
+        items:
+          required:
+            - redfish
+            - redfishPassword
+            - redfishUser

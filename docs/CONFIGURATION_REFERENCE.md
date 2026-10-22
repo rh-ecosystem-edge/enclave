@@ -384,17 +384,18 @@ agent_hosts:
     redfishPassword: YourSecurePassword
 ```
 
-**Required fields for each host**:
+**Fields required for every host**:
 
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `mgmt-ctl01` |
 | `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
 | `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
-| `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
-| `redfishUser` | Redfish API username | `admin` |
-| `redfishPassword` | Redfish API password | `YourSecurePassword` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
+
+The `redfish`, `redfishUser`, and `redfishPassword` fields are required when
+`boot_method` is `default` or omitted. They can be omitted when
+`boot_method: plugin`.
 
 **Optional fields for each host**:
 

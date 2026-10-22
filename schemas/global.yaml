@@ -185,6 +185,14 @@ allOf:
       required: [boot_method]
     then:
       required: [boot_plugin]
+    else:
+      properties:
+        agent_hosts:
+          items:
+            required:
+              - redfish
+              - redfishPassword
+              - redfishUser
   - if:
       properties:
         quayBackend:

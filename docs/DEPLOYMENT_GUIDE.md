@@ -579,8 +579,11 @@ Each `agent_hosts` entry requires:
 - `name`: Hostname for the node
 - `macAddress`: MAC address for network identification (not required if using `networkConfig`)
 - `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
-- `redfish`: BMC IP address for Redfish API
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
+
+The `redfish`, `redfishUser`, and `redfishPassword` fields are required when
+`boot_method` is `default` or omitted. They can be omitted when
+`boot_method: plugin`.
 
 Optional fields for advanced network configuration:
 - `mapInterfaces`: List of interface name to MAC address mappings
