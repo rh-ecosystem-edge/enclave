@@ -3,10 +3,11 @@ name: E2E Connected
 # Connected-mode E2E: fast deployment pulling from upstream registries.
 #
 # Thin wrapper that calls the reusable single-mode workflow e2e-deployment.yml
-# with mode=connected. Runs on every PR and nightly. Disconnected is a separate
-# workflow (e2e-disconnected.yml) so each mode runs — and is retried by
-# e2e-spot-retry.yml — independently. Callers that need a custom plugin chain
-# (e.g. e2e-osac.yml) call e2e-deployment.yml directly, not this wrapper.
+# with mode=connected. Runs nightly and on manual dispatch only — it is NOT run
+# per PR or in the merge queue, since disconnected (e2e-disconnected.yml) already
+# covers PR validation and running both modes on every PR gains little. Connected
+# is still retried by e2e-spot-retry.yml independently. Callers that need a custom
+# plugin chain (e.g. e2e-osac.yml) call e2e-deployment.yml directly, not this wrapper.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
@@ -56,10 +57,6 @@ on:
         required: false
         type: string
         default: ''
-  pull_request:
-    types: [opened, synchronize, reopened]
-  merge_group:
-    types: [checks_requested]
 
 permissions:
   contents: read
@@ -71,9 +68,9 @@ jobs:
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       mode: connected
-      # Everything that is not a plain PR runs unconditionally; PRs are gated by
-      # the paths-filter inside the reusable workflow's check-e2e-needed.
-      force-run: ${{ github.event_name != 'pull_request' }}
+      # Connected only runs on schedule/dispatch (no PR trigger), so always run
+      # unconditionally rather than gating on changed files.
+      force-run: true
       storage-plugin: ${{ inputs.storage-plugin || '' }}
       skip-cleanup: ${{ inputs.skip-cleanup || false }}
       send-slack-notification: ${{ inputs.send-slack-notification || false }}

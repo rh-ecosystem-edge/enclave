@@ -136,11 +136,12 @@ The paths-filter/decision logic lives in the `./.github/actions/check-e2e-needed
 composite action. Running them as separate workflows removes duplication and lets
 `e2e-spot-retry.yml` retry each mode independently.
 
-**Trigger** (each workflow, independently):
-- Automatic on every PR
-- Nightly schedule (03:00 UTC daily)
-- Manual dispatch (Actions tab)
-- Merge queue
+**Trigger**:
+- `E2E Disconnected`: automatic on every PR, merge queue, nightly schedule
+  (03:00 UTC daily), and manual dispatch
+- `E2E Connected`: nightly schedule (03:00 UTC daily) and manual dispatch only —
+  it does **not** run per PR or in the merge queue. Disconnected already covers PR
+  validation, and running both modes on every PR gains little.
 
 **Duration**: ~90-120 minutes (connected), ~180-360 minutes (disconnected)
 
@@ -157,8 +158,9 @@ Each workflow calls the reusable `e2e-deployment.yml`, which runs:
 | `check-e2e-needed` | Decides whether to run and which storage plugin to use (via the composite action) |
 | `e2e` | The single-mode deployment (connected or disconnected, per `mode` input) |
 
-Connected and disconnected appear as separate workflow runs/checks on PRs, so you
-can see which mode failed and retry them independently.
+On PRs only disconnected appears as a workflow run/check; connected runs nightly
+(and on demand). Both appear as separate workflow runs so you can see which mode
+failed and retry them independently.
 
 ### What It Does
 
@@ -175,8 +177,8 @@ can see which mode failed and retry them independently.
 ### How to Use
 
 **Automatic (PR)**:
-Both the `E2E Connected` and `E2E Disconnected` workflows run automatically on every PR
-with E2E-relevant file changes.
+The `E2E Disconnected` workflow runs automatically on every PR with E2E-relevant file
+changes. `E2E Connected` does not run on PRs — it runs nightly and on manual dispatch.
 
 **Manual Dispatch**:
 
