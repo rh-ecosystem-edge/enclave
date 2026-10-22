@@ -41,6 +41,7 @@ additionalImages:
   - registry.redhat.io/rhel10/postgresql-18:latest
   - quay.io/prometheus/prometheus:v3.8.1
   - docker.io/bitnami/kubectl:latest
+  - ghcr.io/openbao/openbao:2.6.2
 
 registries:
   - location: "ghcr.io/osac-project"
@@ -55,6 +56,8 @@ registries:
     mirror: "rhel10"
   - location: "quay.io/prometheus"
     mirror: "prometheus"
+  - location: "ghcr.io/openbao"
+    mirror: "openbao"
 
 requires:
   files:

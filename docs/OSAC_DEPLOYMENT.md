@@ -24,9 +24,9 @@ OSAC is deployed as a set of Enclave plugins that are installed sequentially. Ea
 | `rhbk` | 101 | Red Hat Build of Keycloak (identity provider) |
 | `aap` | 103 | AAP operator installation (provides CRDs for the OSAC chart) |
 | `amq-streams` | 104 | AMQ Streams (Strimzi) operator — provides the `kafka.strimzi.io` CRDs |
-| `osac` | 200 | OSAC fulfillment service, operator, Kafka cluster, chart-managed AAP instance, bootstrap |
+| `osac` | 200 | OSAC fulfillment service, operator, Kafka cluster, OpenBao secret store, chart-managed AAP instance, bootstrap |
 
-The `aap` plugin installs the AAP operator and waits for it to be available (no configuration required). The `amq-streams` plugin installs the AMQ Streams operator cluster-wide (in `openshift-operators`); it is generic and owns no Kafka cluster of its own. The `osac` plugin then provisions its own `osac-kafka` Kafka cluster and deploys the OSAC Helm chart, which creates its own AAP instance (`osac-aap`) in the `osac` namespace.
+The `aap` plugin installs the AAP operator and waits for it to be available (no configuration required). The `amq-streams` plugin installs the AMQ Streams operator cluster-wide (in `openshift-operators`); it is generic and owns no Kafka cluster of its own. The `osac` plugin then provisions its own `osac-kafka` Kafka cluster, deploys an OpenBao secret store (the fulfillment-service requires a Vault-compatible backend), and deploys the OSAC Helm chart, which creates its own AAP instance (`osac-aap`) in the `osac` namespace.
 
 ### What Gets Deployed
 
@@ -45,6 +45,16 @@ The `osac-kafka` namespace contains:
   The listener certificate is issued by the `default-ca` ClusterIssuer. The OSAC Helm chart
   creates the `fulfillment-service` `KafkaUser` here and copies its credentials into the
   `osac` namespace.
+
+The `osac-infra` namespace contains:
+
+- **OpenBao** (`openbao`): a single-node, Vault-compatible secret store required by the
+  fulfillment service. The OSAC chart no longer bundles one, so the `osac` plugin deploys
+  it (server + bootstrap sidecar) with a cert-manager server certificate and persistent
+  raft storage. A bootstrap sidecar initialises and unseals it, then configures the `osac`
+  logical namespace, JWT auth with Keycloak OIDC discovery (against the external `osac`
+  realm issuer), the lifecycle policy, and the `lifecycle` role bound to the `osac-api`
+  audience. The OSAC Helm chart is wired to it via `service.vault.*`.
 
 ## Prerequisites
 
@@ -119,7 +129,7 @@ The `make deploy-plugin PLUGIN=osac` command runs the full plugin lifecycle:
 
 1. **pre-validate** — checks Keycloak ready, AAP CRDs registered, license file exists
 2. **mirror** — mirrors images (disconnected environments only)
-3. **post-operators** — creates osac namespace, Keycloak realm/client, PostgreSQL, secrets, and the `osac-kafka` Kafka cluster (waits for it to be Ready)
+3. **post-operators** — creates osac namespace, Keycloak realm/client, PostgreSQL, secrets, the OpenBao secret store in `osac-infra` (waits for bootstrap to complete), and the `osac-kafka` Kafka cluster (waits for it to be Ready)
 4. **helm deploy** — installs the OSAC Helm chart
 5. **deploy** — waits for AAP, creates access token, patches the OSAC operator
 6. **post-validate** — verifies all components are healthy
@@ -159,6 +169,10 @@ oc get pods -n osac
 oc get kafka osac-kafka -n osac-kafka
 oc get pods -n osac-kafka
 # Expected: osac-kafka-dual-role-* (broker/controller), osac-kafka-entity-operator-*
+
+# Check the OpenBao secret store (2/2 Running: server + bootstrap sidecar)
+oc get pods -n osac-infra
+# Expected: openbao-* (2/2 Running)
 
 # Check Helm release
 helm status osac -n osac

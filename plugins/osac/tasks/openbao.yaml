@@ -1,0 +1,429 @@
+---
+# Deploy a single-node OpenBao (Vault-compatible) secret store for OSAC.
+#
+# The OSAC fulfillment-service requires a Vault-compatible backend.
+# Upstream osac-installer ships a bundled dev OpenBao in its osac-infra chart;
+# enclave does not deploy osac-infra, so this task ports that bundled instance
+# as an enclave-managed deployment, and service.vault.* in the Helm
+# values (templates/values.yaml.j2) points the chart at it.
+#
+# This is a dev/test instance: single raft node, Shamir 1-of-1, unseal key and
+# root token persisted on the PVC so it recovers across restarts. A bootstrap
+# sidecar initialises/unseals it and configures the OpenBao logical namespace,
+# JWT auth, lifecycle policy, Keycloak OIDC discovery and the lifecycle role.
+#
+# Runs in post-operators (before the Helm install) and AFTER the Keycloak osac
+# realm exists, because OIDC discovery is configured against that realm's
+# external issuer URL.
+
+# =====================================================================
+# 1. Namespace (labelled so trust-manager syncs the ca-bundle ConfigMap)
+# =====================================================================
+- name: Create OpenBao namespace with ca-bundle label
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ osac_vault_ns }}"
+        labels:
+          enclave/ca-bundle: "true"
+  register: __r_vault_ns
+  retries: 5
+  delay: 5
+  until: __r_vault_ns is success
+
+- name: Wait for ca-bundle ConfigMap in OpenBao namespace
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: ConfigMap
+    name: ca-bundle
+    namespace: "{{ osac_vault_ns }}"
+  register: __r_vault_ca_bundle
+  retries: 30
+  delay: 10
+  until:
+    - __r_vault_ca_bundle.resources | default([]) | length > 0
+    - __r_vault_ca_bundle.resources[0].data['bundle.pem'] is defined
+    - __r_vault_ca_bundle.resources[0].data['bundle.pem'] | length > 0
+
+# =====================================================================
+# 2. Server TLS certificate (cert-manager, signed by the enclave CA)
+# =====================================================================
+- name: Create OpenBao server Certificate
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: cert-manager.io/v1
+      kind: Certificate
+      metadata:
+        name: openbao-server
+        namespace: "{{ osac_vault_ns }}"
+      spec:
+        secretName: openbao-server-cert
+        privateKey:
+          rotationPolicy: Always
+        issuerRef:
+          kind: ClusterIssuer
+          name: default-ca
+        dnsNames:
+          - openbao
+          - "openbao.{{ osac_vault_ns }}"
+          - "openbao.{{ osac_vault_ns }}.svc.cluster.local"
+          - localhost
+
+- name: Wait for OpenBao server certificate to be issued
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: openbao-server-cert
+    namespace: "{{ osac_vault_ns }}"
+  register: __r_vault_cert
+  retries: 30
+  delay: 5
+  until:
+    - __r_vault_cert.resources | default([]) | length > 0
+    - __r_vault_cert.resources[0].data['tls.crt'] is defined
+
+# =====================================================================
+# 3. Server config + bootstrap script ConfigMaps
+# =====================================================================
+- name: Create OpenBao server config ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: openbao-config
+        namespace: "{{ osac_vault_ns }}"
+      data:
+        config.hcl: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/openbao-config.hcl.j2') }}"
+
+- name: Create OpenBao bootstrap script ConfigMap
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: openbao-init
+        namespace: "{{ osac_vault_ns }}"
+      data:
+        init.sh: "{{ lookup('ansible.builtin.file', plugin_dir ~ '/files/openbao-init.sh') }}"
+
+# =====================================================================
+# 4. Persistent storage for the raft store + bootstrap material
+# =====================================================================
+- name: Create OpenBao data PVC
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: openbao-data
+        namespace: "{{ osac_vault_ns }}"
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "{{ osac_vault_storage_size }}"
+
+# =====================================================================
+# 5. Service (HTTPS :8200)
+# =====================================================================
+- name: Create OpenBao Service
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: openbao
+        namespace: "{{ osac_vault_ns }}"
+      spec:
+        selector:
+          app: openbao
+        ports:
+          - name: api
+            port: 8200
+            targetPort: api
+
+- name: Restrict OpenBao ingress to the osac namespace
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: allow-osac-to-openbao
+        namespace: "{{ osac_vault_ns }}"
+      spec:
+        podSelector:
+          matchLabels:
+            app: openbao
+        policyTypes:
+          - Ingress
+        ingress:
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: osac
+            ports:
+              - protocol: TCP
+                port: 8200
+
+# =====================================================================
+# 6. Deployment: server container + bootstrap/auto-unseal sidecar
+# =====================================================================
+- name: Create OpenBao Deployment
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: openbao
+        namespace: "{{ osac_vault_ns }}"
+        labels:
+          app: openbao
+      spec:
+        replicas: 1
+        strategy:
+          type: Recreate
+        selector:
+          matchLabels:
+            app: openbao
+        template:
+          metadata:
+            labels:
+              app: openbao
+          spec:
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            volumes:
+              - name: server-cert
+                secret:
+                  secretName: openbao-server-cert
+                  defaultMode: 292  # 0444
+              - name: config
+                configMap:
+                  name: openbao-config
+              - name: init-script
+                configMap:
+                  name: openbao-init
+                  defaultMode: 493  # 0755
+              - name: ca-bundle
+                configMap:
+                  name: ca-bundle
+              - name: data
+                persistentVolumeClaim:
+                  claimName: openbao-data
+              - name: tmp
+                emptyDir: {}
+              - name: home
+                emptyDir: {}
+            containers:
+              - name: server
+                image: "{{ osac_vault_image }}"
+                imagePullPolicy: IfNotPresent
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                      - ALL
+                command:
+                  - bao
+                  - server
+                  - -config=/vault/config/config.hcl
+                env:
+                  # localhost (not 127.0.0.1): the server cert has a localhost DNS
+                  # SAN but no IP SAN, so an IP address fails TLS verification.
+                  - name: BAO_ADDR
+                    value: "https://localhost:8200"
+                  - name: BAO_CACERT
+                    value: /vault/ca/bundle.pem
+                  - name: SKIP_SETCAP
+                    value: "true"
+                  - name: HOME
+                    value: /tmp
+                ports:
+                  - name: api
+                    containerPort: 8200
+                    protocol: TCP
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+                volumeMounts:
+                  - name: server-cert
+                    mountPath: /vault/tls
+                  - name: config
+                    mountPath: /vault/config
+                  - name: ca-bundle
+                    mountPath: /vault/ca
+                  - name: data
+                    mountPath: /vault/data
+                  - name: tmp
+                    mountPath: /tmp
+                  - name: home
+                    mountPath: /home/openbao
+                livenessProbe:
+                  httpGet:
+                    path: /v1/sys/health
+                    port: api
+                    scheme: HTTPS
+                  initialDelaySeconds: 10
+                  periodSeconds: 10
+                readinessProbe:
+                  httpGet:
+                    path: /v1/sys/health
+                    port: api
+                    scheme: HTTPS
+                  initialDelaySeconds: 5
+                  periodSeconds: 5
+                startupProbe:
+                  httpGet:
+                    path: /v1/sys/health
+                    port: api
+                    scheme: HTTPS
+                  periodSeconds: 5
+                  failureThreshold: 30
+              - name: bootstrap
+                image: "{{ osac_vault_image }}"
+                imagePullPolicy: IfNotPresent
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                      - ALL
+                command:
+                  - /bin/sh
+                  - /scripts/init.sh
+                env:
+                  - name: BAO_ADDR
+                    value: "https://localhost:8200"
+                  - name: BAO_CACERT
+                    value: /vault/ca/bundle.pem
+                  # NOT VAULT_NAMESPACE/BAO_NAMESPACE: the bao CLI auto-applies
+                  # those to every command, which breaks the root-only init/unseal.
+                  - name: OSAC_VAULT_NS
+                    value: "{{ osac_vault_logical_ns }}"
+                  - name: KEYCLOAK_ISSUER_URL
+                    value: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
+                  - name: KEYCLOAK_AUDIENCE
+                    value: "{{ osac_vault_audience }}"
+                  - name: KEYCLOAK_CLIENT_ID
+                    value: "{{ osac_keycloak_client_id }}"
+                  - name: HOME
+                    value: /tmp
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 200m
+                    memory: 128Mi
+                # Readiness gates the pod on bootstrap completion: the marker is
+                # written only after the namespace/JWT/OIDC/role setup succeeds, so
+                # the pod is not Ready while OIDC discovery is still retrying.
+                readinessProbe:
+                  exec:
+                    command: [test, -f, /tmp/bootstrap-ready]
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                  failureThreshold: 30
+                volumeMounts:
+                  # No server-cert mount: the bootstrap talks to the server over
+                  # the CA bundle (BAO_CACERT) and never needs the TLS private key.
+                  - name: init-script
+                    mountPath: /scripts
+                  - name: ca-bundle
+                    mountPath: /vault/ca
+                  - name: data
+                    mountPath: /vault/data
+                  - name: tmp
+                    mountPath: /tmp
+                  - name: home
+                    mountPath: /home/openbao
+
+# =====================================================================
+# 7. Wait for the server to become ready and the bootstrap to complete
+# =====================================================================
+- name: Wait for OpenBao to be ready and bootstrapped
+  block:
+    - name: Wait for OpenBao deployment to be available
+      kubernetes.core.k8s_info:
+        api_version: apps/v1
+        kind: Deployment
+        name: openbao
+        namespace: "{{ osac_vault_ns }}"
+      register: __r_vault_deploy
+      retries: 60
+      delay: 10
+      until:
+        - __r_vault_deploy.resources | default([]) | length > 0
+        - __r_vault_deploy.resources[0].status.availableReplicas | default(0) | int > 0
+
+    - name: Wait for OpenBao bootstrap to complete
+      ansible.builtin.command:
+        cmd: >-
+          {{ workingDir }}/bin/oc logs deployment/openbao
+          -n {{ osac_vault_ns }} -c bootstrap --tail=200
+      register: __r_vault_bootstrap
+      retries: 30
+      delay: 10
+      until: "'OpenBao bootstrap complete' in __r_vault_bootstrap.stdout"
+      changed_when: false
+
+    - name: Log OpenBao readiness
+      ansible.builtin.debug:
+        msg: >-
+          OpenBao ready and bootstrapped in {{ osac_vault_ns }}
+          (endpoint {{ osac_vault_endpoint }}).
+  rescue:
+    # OpenBao did not come up. Surface the pod state and both container logs so
+    # the failure (crashloop, unseal error, OIDC discovery against Keycloak) is
+    # visible in the deploy output instead of requiring a manual oc describe/logs.
+    - name: Collect OpenBao pod status (diagnostics)
+      ansible.builtin.command:
+        cmd: "{{ workingDir }}/bin/oc get pods -n {{ osac_vault_ns }} -o wide"
+      register: __r_vault_diag_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Collect OpenBao server + bootstrap logs (diagnostics)
+      ansible.builtin.command:
+        cmd: >-
+          {{ workingDir }}/bin/oc logs deployment/openbao
+          -n {{ osac_vault_ns }} -c {{ item }} --tail=40
+      loop:
+        - server
+        - bootstrap
+      register: __r_vault_diag_logs
+      changed_when: false
+      failed_when: false
+
+    - name: Show OpenBao diagnostics
+      ansible.builtin.debug:
+        msg: >-
+          {{ __r_vault_diag_pods.stdout_lines | default([])
+             + ['--- container logs (server, bootstrap), last 40 lines ---']
+             + (__r_vault_diag_logs.results | default([]) | map(attribute='stdout') | list) }}
+
+    - name: Fail after OpenBao diagnostics
+      ansible.builtin.fail:
+        msg: >-
+          OpenBao secret store failed to become ready in {{ osac_vault_ns }}.
+          See the pod status and container logs above.

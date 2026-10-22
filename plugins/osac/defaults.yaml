@@ -140,3 +140,15 @@ osac_kafka_replicas: 1
 osac_kafka_storage_size: 10Gi
 osac_kafka_version: "4.2.0"
 osac_kafka_metadata_version: "4.2-IV0"
+
+# Secret store: enclave-managed OpenBao (deployed by tasks/openbao.yaml; see its
+# header for why). Internal defaults, not user-facing config (like osac_kafka_*).
+osac_vault_ns: osac-infra                 # Kubernetes namespace for the OpenBao deployment
+osac_vault_logical_ns: osac               # OpenBao logical namespace (service.vault.namespace)
+osac_vault_endpoint: "https://openbao.{{ osac_vault_ns }}.svc.cluster.local:8200"
+osac_vault_kv_mount_path: secret
+osac_vault_lifecycle_role: lifecycle
+osac_vault_lifecycle_mount_path: jwt
+osac_vault_audience: osac-api             # bound token audience (matches osac-api client scope)
+osac_vault_image: "ghcr.io/openbao/openbao:2.6.2"
+osac_vault_storage_size: 10Gi

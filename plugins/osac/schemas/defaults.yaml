@@ -159,6 +159,33 @@ properties:
   osac_kafka_metadata_version:
     type: string
     description: Kafka KRaft metadata version for the cluster spec.
+  osac_vault_ns:
+    type: string
+    description: Kubernetes namespace for the enclave-managed OpenBao deployment.
+  osac_vault_logical_ns:
+    type: string
+    description: OpenBao logical namespace (maps to service.vault.namespace).
+  osac_vault_endpoint:
+    type: string
+    description: OpenBao API endpoint the fulfillment-service connects to.
+  osac_vault_kv_mount_path:
+    type: string
+    description: OpenBao KV v2 mount path (service.vault.kvMountPath).
+  osac_vault_lifecycle_role:
+    type: string
+    description: OpenBao JWT auth role used for tenant namespace lifecycle.
+  osac_vault_lifecycle_mount_path:
+    type: string
+    description: OpenBao JWT auth mount path (service.vault.lifecycleMountPath).
+  osac_vault_audience:
+    type: string
+    description: Expected token audience bound to the OpenBao lifecycle role.
+  osac_vault_image:
+    type: string
+    description: OpenBao container image for the bundled secret store.
+  osac_vault_storage_size:
+    type: string
+    description: Persistent volume size for the OpenBao raft store.
 required:
   - osacProfilesList
   - osac_aap_name
