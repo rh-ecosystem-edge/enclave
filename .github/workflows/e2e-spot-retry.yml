@@ -1,8 +1,11 @@
 name: E2E Spot Retry
 
-# Auto-retry e2e jobs that AWS reclaimed mid-run (spot interruption), without retrying
+# Auto-retry e2e runs that AWS reclaimed mid-run (spot interruption), without retrying
 # genuine failures. Fires after an e2e run completes; if any failed job's runner was
-# spot-killed (verified against AWS), re-runs only that run's failed jobs.
+# spot-killed (verified against AWS), re-runs the WHOLE run (a fresh attempt) so the
+# pick-tier routing job runs again — the retry can then land on an idle baremetal runner
+# (immune to spot reclaim) instead of reusing the spot-killed run's AWS placement. Each
+# e2e mode is its own workflow, so this only re-runs the mode that was reclaimed.
 #
 # NOTE: a `workflow_run` workflow only triggers when this file is on the repository's
 # DEFAULT branch, and it always runs in the default-branch context. It observes E2E runs

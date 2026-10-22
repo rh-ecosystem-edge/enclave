@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Re-run e2e jobs whose spot runner was reclaimed by AWS mid-job.
+# Re-run the e2e workflow when its spot runner was reclaimed by AWS mid-job.
 #
 # Invoked by .github/workflows/e2e-spot-retry.yml when an e2e run completes with failure.
 # Lists the run's failed jobs and, for each, maps its runner name (which IS the EC2 instance
@@ -10,9 +10,14 @@
 # An aged-out instance may surface either as an InvalidInstanceID.NotFound error OR as a
 # successful call with an empty result set ("[]"); both route to the CloudTrail fallback, so a
 # reclaim is never missed just because the detailed record expired before the run completed.
-# Only the jobs with a confirmed spot signal are re-run, and each is re-run individually
-# (never `gh run rerun --failed`, which would also re-run a genuinely-failed sibling job in
-# the same run). A genuine test failure carries no spot signal, so it is left red.
+# If any failed job's runner was spot-reclaimed, the WHOLE run is re-run (a fresh attempt,
+# `gh run rerun <run-id>`, NOT `--failed`/`--job`). A full re-run re-runs check-e2e-needed and
+# the pick-tier routing job, so the retry re-evaluates placement and can land on an idle
+# baremetal runner (dedicated hardware, immune to spot reclaim) instead of reusing the
+# original run's AWS routing — a per-job re-run would reuse pick-tier's stale output and land
+# on AWS again. Post-split (ec7bbca) each e2e mode (connected/disconnected/osac) is its own
+# workflow, so a whole-run retry only re-runs the one mode that was reclaimed. A genuine test
+# failure carries no spot signal, so nothing is retried and the run is left red.
 #
 # An AWS lookup error (permissions, throttling, service outage) is never treated as "no
 # reclaim" — it fails the workflow so a real reclaim is not silently dropped.
@@ -186,33 +191,29 @@ if [ "${#spot_job_ids[@]}" -eq 0 ]; then
   exit 0
 fi
 
-echo "Spot reclaim confirmed for job id(s): ${spot_job_ids[*]} — re-running them individually."
-hard_error=false
-for job_id in "${spot_job_ids[@]}"; do
-  # Re-run just this job (and its dependents), not the whole run's failed set.
-  set +e
-  out="$(gh run rerun --job "$job_id" -R "$REPO" 2>&1)"
-  rc=$?
-  set -e
-  dbg "gh run rerun --job ${job_id} rc=${rc}: ${out}"
+echo "Spot reclaim confirmed for job id(s): ${spot_job_ids[*]} — re-running the whole run ${RUN_ID} so routing (pick-tier) is re-evaluated."
 
-  if [ "$rc" -eq 0 ]; then
-    echo "re-ran job ${job_id}"
-    continue
-  fi
+# Re-run ALL jobs (no --failed/--job): a full re-run is a fresh attempt that re-runs
+# check-e2e-needed and pick-tier, so the retry can route to an idle baremetal runner
+# (immune to spot reclaim) rather than reusing the spot-killed run's AWS placement.
+set +e
+out="$(gh run rerun "$RUN_ID" -R "$REPO" 2>&1)"
+rc=$?
+set -e
+dbg "gh run rerun ${RUN_ID} rc=${rc}: ${out}"
 
-  # GitHub rejects a second re-run while the run is already re-running; that is expected when
-  # more than one spot job shares a run — the rest are picked up on the next attempt (they stay
-  # failed and still carry the spot signal), bounded by the workflow's run_attempt cap. Any
-  # other rejection (permissions, invalid job id, ...) is a real failure the workflow must show.
-  if grep -qiE "currently pending or in progress|already.*in progress" <<< "$out"; then
-    echo "job ${job_id}: run already re-running; deferred to the next attempt"
-  else
-    echo "ERROR: could not re-run job ${job_id}: ${out}" >&2
-    hard_error=true
-  fi
-done
-
-if [ "$hard_error" = true ]; then
-  exit 1
+if [ "$rc" -eq 0 ]; then
+  echo "re-ran run ${RUN_ID}"
+  exit 0
 fi
+
+# A re-run already in progress is expected/benign (e.g. a prior attempt still running);
+# the run_attempt cap in the workflow bounds the loop. Any other rejection (permissions,
+# invalid run id, ...) is a real failure the workflow must surface.
+if grep -qiE "currently pending or in progress|already.*in progress" <<< "$out"; then
+  echo "run ${RUN_ID}: already re-running; deferred to the next attempt"
+  exit 0
+fi
+
+echo "ERROR: could not re-run run ${RUN_ID}: ${out}" >&2
+exit 1
