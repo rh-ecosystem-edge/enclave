@@ -539,6 +539,47 @@ jobs:
           sudo virsh list --all > cleanup-state/libvirt/vms.txt 2>&1 || true
           df -h > cleanup-state/system/disk-usage.txt 2>&1 || true
 
+      # Cleanup-leak check (ported from the retired infra-verify workflow): assert
+      # `make clean` removed this cluster's libvirt resources. Report-only — leaks
+      # are flagged for host hygiene (the reap/cleanup workflows sweep them later),
+      # not failed, so a successful deploy with a lingering resource still merges.
+      - name: Verify cleanup completion
+        if: always() && inputs.skip-cleanup != true
+        run: |
+          mkdir -p cleanup-logs
+          echo "## Cleanup Verification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          LEFTOVER_POOLS=$(sudo virsh pool-list --all --name | grep -F "$ENCLAVE_CLUSTER_NAME" || true)
+          LEFTOVER_NETWORKS=$(sudo virsh net-list --all --name | grep -F "$ENCLAVE_CLUSTER_NAME" || true)
+          LEFTOVER_VMS=$(sudo virsh list --all --name | grep -F "$ENCLAVE_CLUSTER_NAME" || true)
+
+          {
+            echo "=== Cleanup Verification Results ==="
+            echo "Timestamp: $(date -u +"%Y%m%d-%H%M%S")"
+            echo "Cluster: $ENCLAVE_CLUSTER_NAME"
+            echo ""
+            if [ -z "$LEFTOVER_POOLS$LEFTOVER_NETWORKS$LEFTOVER_VMS" ]; then
+              echo "No leftover resources detected"
+            else
+              echo "Leftover resources detected:"
+              [ -n "$LEFTOVER_POOLS" ] && echo "- Pools: $LEFTOVER_POOLS"
+              [ -n "$LEFTOVER_NETWORKS" ] && echo "- Networks: $LEFTOVER_NETWORKS"
+              [ -n "$LEFTOVER_VMS" ] && echo "- VMs: $LEFTOVER_VMS"
+            fi
+          } | tee cleanup-logs/verification.txt
+
+          if [ -z "$LEFTOVER_POOLS$LEFTOVER_NETWORKS$LEFTOVER_VMS" ]; then
+            echo "No leftover resources detected for \`$ENCLAVE_CLUSTER_NAME\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Leftover resources detected for \`$ENCLAVE_CLUSTER_NAME\`:**" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_POOLS" ] && echo "- **Pools**: $(echo "$LEFTOVER_POOLS" | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_NETWORKS" ] && echo "- **Networks**: $(echo "$LEFTOVER_NETWORKS" | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            [ -n "$LEFTOVER_VMS" ] && echo "- **VMs**: $(echo "$LEFTOVER_VMS" | tr '\n' ' ')" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "These should be swept by the reap/cleanup workflows." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Upload post-cleanup artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -646,3 +687,49 @@ jobs:
           failed-step: ${{ steps.failed_step.outputs.FAILED_STEP }}
           artifact-url: ${{ steps.artifact_url.outputs.ARTIFACT_URL }}
           osac-chart-version: ${{ inputs.osac-chart-version }}
+
+  # ---------------------------------------------------------------------------
+  # Stable, always-reporting gate job.
+  #
+  # This exists so E2E Disconnected can serve as the required PR status check that
+  # replaces the retired Infrastructure Verification workflow. The deploy job's
+  # name varies by storage plugin (e.g. "E2E disconnected (lvms)" / "(odf)"), so
+  # it cannot be named as a required check directly — the plugin that does not run
+  # on a given PR would leave its check permanently pending and block merges.
+  # This job has a FIXED name and always runs (if: always()), so it always reports
+  # a conclusion:
+  #   - passes when the deploy succeeded, or was legitimately skipped because no
+  #     deployment-relevant files changed (docs-only PRs still merge);
+  #   - fails when the deploy failed, was cancelled, or was spot-killed, so nothing
+  #     merges without a green full E2E (an admin may still force-merge).
+  # Mark "E2E Disconnected / E2E disconnected gate" as the required check in branch
+  # protection.
+  # ---------------------------------------------------------------------------
+  e2e-gate:
+    name: E2E ${{ inputs.mode }} gate
+    needs: [check-e2e-needed, e2e]
+    if: always()
+    runs-on: [self-hosted, pr-validation-aws]
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate E2E result
+        env:
+          NEEDED_RESULT: ${{ needs.check-e2e-needed.result }}
+          SHOULD_RUN: ${{ needs.check-e2e-needed.outputs.should_run }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          if [ "$NEEDED_RESULT" != "success" ]; then
+            echo "check-e2e-needed did not succeed ($NEEDED_RESULT) — failing gate." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ "$SHOULD_RUN" != "true" ]; then
+            echo "No deployment-relevant changes — E2E $MODE not required; gate passes." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [ "$E2E_RESULT" = "success" ]; then
+            echo "E2E $MODE succeeded — gate passes." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "E2E $MODE result: $E2E_RESULT — gate fails." | tee -a "$GITHUB_STEP_SUMMARY"
+          exit 1
