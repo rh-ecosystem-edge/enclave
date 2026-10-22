@@ -302,6 +302,20 @@ jobs:
           make -f Makefile.ci deploy-cluster-mirror
           echo "Cache build complete" >> $GITHUB_STEP_SUMMARY
 
+      # Fast-fail gate: validate the mirror artifacts (Quay health, pull secret,
+      # IDMS/ITMS/CatalogSource manifests, TLS cert, rendered imageset config)
+      # right after the mirror is built, before we spend cycles acquiring hardware
+      # and installing a cluster that would fail anyway if the mirror is broken.
+      # Disconnected only — connected has no local mirror. This replaces the
+      # standalone Disconnected Dry-Run workflow, whose sole unique check this was.
+      - name: Phase 2.5 - Validate mirror artifacts
+        if: inputs.mode == 'disconnected'
+        id: validate_mirror
+        run: |
+          echo "## Phase 2.5: Validate Mirror Artifacts" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci validate-mirror
+          echo "Mirror artifacts validated" >> $GITHUB_STEP_SUMMARY
+
       - name: Bootstrap - Acquire hardware
         id: bootstrap_acquire_hardware
         run: |

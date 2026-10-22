@@ -13,7 +13,6 @@ on:
       - 'E2E Connected'
       - 'E2E Disconnected'
       - 'E2E OSAC'
-      - 'Disconnected Dry-Run'
     types: [completed]
 
 # Least privilege: OIDC to assume the read-only spot-detection role, actions:write to
