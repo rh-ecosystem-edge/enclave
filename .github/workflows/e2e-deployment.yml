@@ -592,6 +592,7 @@ jobs:
             ["bootstrap_validate"]="Bootstrap: Validate configuration"
             ["bootstrap_download_content"]="Bootstrap: Download content"
             ["bootstrap_build_cache"]="Bootstrap: Build local cache"
+            ["validate_mirror"]="Phase 2.5: Validate mirror artifacts"
             ["bootstrap_acquire_hardware"]="Bootstrap: Acquire hardware"
             ["bootstrap_deploy"]="Bootstrap: Deploy cluster"
             ["bootstrap_post_install"]="Bootstrap: Post-install"
@@ -616,6 +617,7 @@ jobs:
             bootstrap_validate
             bootstrap_download_content
             bootstrap_build_cache
+            validate_mirror
             bootstrap_acquire_hardware
             bootstrap_deploy
             bootstrap_post_install
