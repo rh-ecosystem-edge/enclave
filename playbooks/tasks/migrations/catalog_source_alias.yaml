@@ -1,0 +1,107 @@
+---
+# Migrate one Enclave-managed Subscription from a y-stream-named CatalogSource
+# to its stable alias. The alias copies the existing source spec so it keeps
+# using the mirrored catalog image already available in the cluster.
+
+- name: "Check {{ operator_name }} Subscription before catalog source migration"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator_name }}"
+    namespace: "{{ operator_namespace }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_alias_subscription
+
+- name: Check whether {{ operator_name }} uses the expected legacy CatalogSource
+  ansible.builtin.set_fact:
+    _catalog_source_migration_needed: >-
+      {{ r_alias_subscription.resources | length > 0 and
+         r_alias_subscription.resources[0].spec.source | default('') == legacy_source and
+         r_alias_subscription.resources[0].spec.sourceNamespace | default('openshift-marketplace') == 'openshift-marketplace' }}
+
+- name: "Read legacy CatalogSource for {{ operator_name }}"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ legacy_source }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_legacy_catalog_source
+  when: _catalog_source_migration_needed | bool
+
+- name: "Read stable CatalogSource alias for {{ operator_name }}"
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ stable_source }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_stable_catalog_source
+  when: _catalog_source_migration_needed | bool
+
+- name: Ensure legacy CatalogSource is available before migrating {{ operator_name }}
+  ansible.builtin.assert:
+    that:
+      - r_stable_catalog_source.resources | default([]) | length > 0 or
+        r_legacy_catalog_source.resources | default([]) | length > 0
+    fail_msg: >-
+      Cannot migrate {{ operator_namespace }}/{{ operator_name }} from
+      {{ legacy_source }}: neither the legacy CatalogSource nor its stable
+      alias {{ stable_source }} exists in openshift-marketplace.
+  when: _catalog_source_migration_needed | bool
+
+- name: Create stable CatalogSource alias for {{ operator_name }}
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: CatalogSource
+      metadata:
+        name: "{{ stable_source }}"
+        namespace: openshift-marketplace
+      spec: "{{ r_legacy_catalog_source.resources[0].spec }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - _catalog_source_migration_needed | bool
+    - r_stable_catalog_source.resources | default([]) | length == 0
+
+- name: Wait for stable CatalogSource alias for {{ operator_name }}
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ stable_source }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_stable_catalog_source_ready
+  retries: 30
+  delay: 10
+  until: >-
+    r_stable_catalog_source_ready.resources | default([]) | length > 0 and
+    (
+      (
+        (
+          (r_stable_catalog_source_ready.resources | default([]) | first | default({}))
+          .status | default({}, true)
+        ).connectionState | default({}, true)
+      ).lastObservedState | default('', true)
+    ) == 'READY'
+  when: _catalog_source_migration_needed | bool
+
+- name: Migrate {{ operator_name }} Subscription to stable CatalogSource alias
+  kubernetes.core.k8s:
+    state: patched
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ operator_name }}"
+    namespace: "{{ operator_namespace }}"
+    definition:
+      spec:
+        source: "{{ stable_source }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when: _catalog_source_migration_needed | bool

@@ -1,0 +1,167 @@
+---
+# Migrate existing disconnected operator Subscriptions from CatalogSource names
+# suffixed with -v4-20 to stable aliases without the y-stream suffix.
+# Explicit operator.source overrides are left unchanged.
+
+- name: Migrate core operator CatalogSource references
+  ansible.builtin.include_tasks:
+    file: catalog_source_alias.yaml
+  vars:
+    operator_name: "{{ operator.name }}"
+    operator_namespace: "{{ operator.namespace }}"
+    legacy_source: "cs-{{ mirror_rh_operator_catalog }}-v4-20"
+    stable_source: "cs-{{ mirror_rh_operator_catalog }}"
+  loop: "{{ operators | default([]) }}"
+  loop_control:
+    loop_var: operator
+    label: "{{ operator.name }}"
+  when:
+    - disconnected | default(true) | bool
+    - operator.source is not defined
+    - operator.namespace is defined
+
+- name: Find plugin descriptors for catalog source migration
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: plugin.yaml
+    recurse: true
+    depth: 2
+  register: r_alias_plugin_descriptors
+  when: disconnected | default(true) | bool
+
+- name: Read plugin descriptors for catalog source migration
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_alias_plugin_descriptors.files | default([]) | map(attribute='path') | list }}"
+  loop_control:
+    loop_var: plugin_path
+  register: r_alias_plugin_descriptors_content
+  when: disconnected | default(true) | bool
+
+- name: Set plugin descriptors for catalog source migration
+  ansible.builtin.set_fact:
+    _catalog_alias_plugins: >-
+      {{ r_alias_plugin_descriptors_content.results | default([])
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | list }}
+  when: disconnected | default(true) | bool
+
+- name: Migrate plugin operator CatalogSource references
+  ansible.builtin.include_tasks:
+    file: catalog_source_alias.yaml
+  vars:
+    plugin: "{{ plugin_operator.0 }}"
+    operator: "{{ plugin_operator.1 }}"
+    operator_name: "{{ operator.name }}"
+    operator_namespace: "{{ operator.namespace }}"
+    _operator_catalog_mirror: >-
+      {{ mirror_certified_rh_operator_catalog
+         if plugin.catalog | default('redhat') == 'certified'
+         else mirror_rh_operator_catalog }}
+    legacy_source: "cs-{{ _operator_catalog_mirror }}-{{ plugin.name }}-v4-20"
+    stable_source: "cs-{{ _operator_catalog_mirror }}-{{ plugin.name }}"
+  loop: "{{ _catalog_alias_plugins | default([]) | subelements('operators', skip_missing=True) }}"
+  loop_control:
+    loop_var: plugin_operator
+    label: "{{ plugin_operator.0.name }}/{{ plugin_operator.1.name }}"
+  when:
+    - disconnected | default(true) | bool
+    - plugin.catalog | default('redhat') in ['redhat', 'certified']
+    - operator.source is not defined
+    - operator.namespace is defined
+
+- name: Read MultiClusterHub subscription source annotations
+  kubernetes.core.k8s_info:
+    api_version: operator.open-cluster-management.io/v1
+    kind: MultiClusterHub
+    name: multiclusterhub
+    namespace: open-cluster-management
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_migration_mch
+  when: disconnected | default(true) | bool
+
+- name: Read stable core CatalogSource for MultiClusterHub annotations
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "cs-{{ mirror_rh_operator_catalog }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_migration_core_alias
+  when:
+    - disconnected | default(true) | bool
+    - r_catalog_migration_mch.resources | default([]) | length > 0
+
+- name: Parse MultiClusterHub subscription source annotations
+  ansible.builtin.set_fact:
+    _catalog_migration_mce_spec: >-
+      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({}, true)).get(
+          'installer.open-cluster-management.io/mce-subscription-spec', '{}')
+          | default('{}', true)) | from_json
+         if r_catalog_migration_mch.resources | default([]) | length > 0 else {} }}
+    _catalog_migration_oadp_spec: >-
+      {{ ((r_catalog_migration_mch.resources[0].metadata.annotations | default({}, true)).get(
+          'installer.open-cluster-management.io/oadp-subscription-spec', '{}')
+          | default('{}', true)) | from_json
+         if r_catalog_migration_mch.resources | default([]) | length > 0 else {} }}
+  when: disconnected | default(true) | bool
+
+- name: Update MCE subscription source annotation to stable CatalogSource
+  kubernetes.core.k8s:
+    state: patched
+    api_version: operator.open-cluster-management.io/v1
+    kind: MultiClusterHub
+    name: multiclusterhub
+    namespace: open-cluster-management
+    definition:
+      metadata:
+        annotations:
+          installer.open-cluster-management.io/mce-subscription-spec: >-
+            {{ _catalog_migration_mce_spec
+               | combine({'source': 'cs-' ~ mirror_rh_operator_catalog}) | to_json }}
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - disconnected | default(true) | bool
+    - r_catalog_migration_mch.resources | default([]) | length > 0
+    - r_catalog_migration_core_alias.resources | default([]) | length > 0
+    - >-
+      (
+        (
+          (r_catalog_migration_core_alias.resources[0].status | default({}, true))
+          .connectionState | default({}, true)
+        ).lastObservedState | default('', true)
+      ) == 'READY'
+    - (_catalog_migration_mce_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')
+
+- name: Update OADP subscription source annotation to stable CatalogSource
+  kubernetes.core.k8s:
+    state: patched
+    api_version: operator.open-cluster-management.io/v1
+    kind: MultiClusterHub
+    name: multiclusterhub
+    namespace: open-cluster-management
+    definition:
+      metadata:
+        annotations:
+          installer.open-cluster-management.io/oadp-subscription-spec: >-
+            {{ _catalog_migration_oadp_spec
+               | combine({'source': 'cs-' ~ mirror_rh_operator_catalog}) | to_json }}
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - disconnected | default(true) | bool
+    - r_catalog_migration_mch.resources | default([]) | length > 0
+    - r_catalog_migration_core_alias.resources | default([]) | length > 0
+    - >-
+      (
+        (
+          (r_catalog_migration_core_alias.resources[0].status | default({}, true))
+          .connectionState | default({}, true)
+        ).lastObservedState | default('', true)
+      ) == 'READY'
+    - (_catalog_migration_oadp_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')
