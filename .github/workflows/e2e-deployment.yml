@@ -52,6 +52,10 @@ on:
       cert-type:
         type: string
         default: ''
+      enable-spoke:
+        description: 'Provision an SNO spoke cluster (disconnected only)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -86,8 +90,9 @@ jobs:
     name: E2E ${{ inputs.mode }} (${{ matrix.storage-plugin }})
     needs: check-e2e-needed
     if: needs.check-e2e-needed.outputs.should_run == 'true'
-    # ODF needs a larger disconnected runner; everything else uses the standard one.
-    runs-on: ${{ (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
+    # ODF (and the spoke, which adds another VM) need a larger runner; everything
+    # else uses the standard one.
+    runs-on: ${{ ((inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') || inputs.enable-spoke) && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
     # Connected is fast; disconnected mirrors content (longer, longest on nightly).
     timeout-minutes: ${{ inputs.mode == 'connected' && 210 || (github.event_name == 'schedule' && 600 || 360) }}
 
@@ -109,6 +114,9 @@ jobs:
       ENABLED_PLUGINS: ${{ inputs.enabled-plugins || matrix.storage-plugin }}
       OPENSHIFT_CI: "true"
       ENCLAVE_ENABLE_GPU_PASSTHROUGH: "false"
+      # vm_infra.py creates an SNO spoke VM when > 0; generate_enclave_vars.sh then
+      # adds it to discovery_hosts so Phase 07 discovers it (consumed by deploy-spoke).
+      ENCLAVE_NUM_SPOKE_NODES: ${{ inputs.enable-spoke && '1' || '0' }}
       LZ_OS_VARIANT: ${{ vars.LZ_OS_VARIANT }}
       AAP_LICENSE_FILE: ${{ inputs.aap-license-file }}
       OSAC_CHART_VERSION: ${{ inputs.osac-chart-version }}
@@ -365,6 +373,39 @@ jobs:
           make -f Makefile.ci deploy-cluster-write-migration-tasks
           echo "Migration tasks file written" >> $GITHUB_STEP_SUMMARY
 
+      # Verify the base (hub) cluster is healthy right after the bootstrap stages,
+      # before layering the spoke and plugins, so a broken cluster fails fast.
+      - name: Verify hub cluster deployment
+        if: success()
+        id: verify_cluster
+        run: |
+          make -f Makefile.ci verify-cluster
+
+          # Additional verification for disconnected mode - check mirror registry
+          if [ "${{ inputs.mode }}" = "disconnected" ]; then
+            LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
+
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
+            ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
+          fi
+
+      # Provision the SNO spoke from the agent Phase 07 discovered, before any
+      # spoke-targeting plugin (e.g. openshift-ai) is deployed.
+      - name: Provision spoke cluster
+        if: inputs.enable-spoke
+        id: provision_spoke
+        run: |
+          echo "## Provision Spoke Cluster" >> $GITHUB_STEP_SUMMARY
+          make -f Makefile.ci deploy-spoke
+          echo "Spoke cluster provisioned" >> $GITHUB_STEP_SUMMARY
+
+      - name: Verify spoke cluster deployment
+        if: inputs.enable-spoke
+        id: verify_spoke
+        run: make -f Makefile.ci verify-spoke
+
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
         id: deploy_trust_manager
@@ -403,22 +444,6 @@ jobs:
         if: success() && inputs.mode == 'connected' && contains(format(',{0},', env.ENABLED_PLUGINS), ',osac,')
         id: osac_smoke
         run: make -f Makefile.ci osac-smoke
-
-      - name: Verify cluster deployment
-        if: success()
-        id: verify_cluster
-        run: |
-          make -f Makefile.ci verify-cluster
-
-          # Additional verification for disconnected mode - check mirror registry
-          if [ "${{ inputs.mode }}" = "disconnected" ]; then
-            LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
-            SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Mirror Registry Status" >> $GITHUB_STEP_SUMMARY
-            ssh $SSH_OPTS cloud-user@$LZ_IP "podman ps --filter name=quay --format 'table {{.Names}}\t{{.Status}}'" >> $GITHUB_STEP_SUMMARY || true
-          fi
 
       # Stop the in-flight sampler before post-mortem collection so its logs
       # under artifacts/inflight are flushed and shipped by Upload artifacts.
@@ -641,6 +666,9 @@ jobs:
             ["bootstrap_day2"]="Bootstrap: Day-2"
             ["bootstrap_discovery"]="Bootstrap: Discovery"
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
+            ["verify_cluster"]="Verify hub cluster deployment"
+            ["provision_spoke"]="Provision spoke cluster"
+            ["verify_spoke"]="Verify spoke cluster deployment"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
@@ -648,7 +676,6 @@ jobs:
             ["deploy_amq_streams"]="Deploy amq-streams plugin"
             ["deploy_osac"]="Deploy osac plugin"
             ["osac_smoke"]="Run OSAC CLI smoke test"
-            ["verify_cluster"]="Verify cluster deployment"
           )
 
           step_order=(
@@ -666,6 +693,9 @@ jobs:
             bootstrap_day2
             bootstrap_discovery
             bootstrap_write_migration_tasks
+            verify_cluster
+            provision_spoke
+            verify_spoke
             deploy_trust_manager
             deploy_rhbk
             deploy_aap
@@ -673,7 +703,6 @@ jobs:
             deploy_amq_streams
             deploy_osac
             osac_smoke
-            verify_cluster
           )
 
           FAILED_STEP=""
