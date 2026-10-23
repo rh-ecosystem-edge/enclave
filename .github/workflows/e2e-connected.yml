@@ -65,6 +65,9 @@ permissions:
 
 jobs:
   e2e:
+    # TEMPORARY (OSAC-6416 PR): skip generic e2e on the spoke branch while iterating
+    # on the dedicated E2E Spoke OpenShift AI run. Remove before merge.
+    if: github.head_ref != 'feature/OSAC-6416-provision-spoke'
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       mode: connected
