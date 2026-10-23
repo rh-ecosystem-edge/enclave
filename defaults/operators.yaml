@@ -4,7 +4,7 @@ operators:
   - name: quay-operator
     version: 3.15.8
     channel: stable-3.15
-    init_version: 3.15.0
+    init_version: 3.15.8
     namespace: quay-enterprise
 
   - name: multicluster-engine
@@ -22,58 +22,6 @@ operators:
     namespace: open-cluster-management
     seed: true
 
-  - name: cincinnati-operator
-    version: 5.0.3
-    channel: v1
-    init_version: 5.0.3
-    namespace: openshift-update-service
-    csvNames:
-      - update-service-operator
-
-  - name: openshift-gitops-operator
-    version: 1.22.1
-    channel: gitops-1.22
-    init_version: 1.22.0
-    namespace: openshift-gitops-operator
-    global: true
-
-  - name: openshift-pipelines-operator-rh
-    version: 1.20.5
-    channel: pipelines-1.20
-    init_version: 1.20.3
-    namespace: openshift-pipelines
-    global: true
-
-  - name: netobserv-operator
-    version: 1.11.2
-    channel: stable
-    init_version: 1.11.0
-    namespace: openshift-netobserv-operator
-    global: true
-    csvNames:
-      - network-observability-operator
-
-  - name: loki-operator
-    version: 6.6.1
-    channel: stable-6.6
-    init_version: 6.6.1
-    namespace: openshift-operators-redhat
-    global: true
-
-  - name: cluster-logging
-    version: 6.6.1
-    channel: stable-6.6
-    init_version: 6.6.1
-    namespace: openshift-logging
-
-  - name: redhat-oadp-operator
-    version: 1.5.8
-    channel: stable
-    init_version: 1.5.5
-    namespace: openshift-oadp
-    csvNames:
-      - oadp-operator
-
   - name: openshift-cert-manager-operator
     version: 1.18.1
     channel: stable-v1
@@ -82,35 +30,8 @@ operators:
     csvNames:
       - cert-manager-operator
 
-  - name: cluster-observability-operator
-    version: 1.5.3
-    channel: stable
-    init_version: 1.5.3
-    namespace: openshift-cluster-observability-operator
-    global: true
-
-  - name: openshift-external-secrets-operator
-    version: 1.0.1
-    channel: stable-v1.0
-    init_version: 1.0.0
-    namespace: external-secrets-operator
-    global: true
-    csvNames:
-      - external-secrets-operator
-
   - name: compliance-operator
     version: 1.10.0
     channel: stable
     init_version: 1.10.0
     namespace: openshift-compliance
-
-  - name: metallb-operator
-    version: 4.20.0-202602261925
-    channel: stable
-    init_version: 4.20.0-202602261925
-    namespace: metallb-system
-    global: true
-    csvNames:
-      - metallb-operator
-    extraMirrorPackages:
-      - kubevirt-hyperconverged
