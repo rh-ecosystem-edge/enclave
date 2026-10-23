@@ -107,7 +107,7 @@ runs). The `e2e-gate` job exists because the `e2e` deploy job's name varies by
 storage plugin (`(lvms)`/`(odf)`) and so cannot be required directly. The gate
 passes when the deploy succeeded or was legitimately skipped (no
 deployment-relevant files changed), and fails when the deploy failed, was
-cancelled, or was spot-killed — so nothing merges without a green full E2E. A
+cancelled, or was spot-killed — so nothing merges without a green E2E gate. A
 spot-killed run is re-run automatically by `e2e-spot-retry.yml`; a maintainer can
 still force-merge via admin bypass when they know a failure is unrelated.
 
