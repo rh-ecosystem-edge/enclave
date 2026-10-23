@@ -109,6 +109,7 @@ Scripts for deploying OpenShift clusters on the provisioned infrastructure.
 | `install_enclave.sh` | Install Enclave Lab on Landing Zone VM and generate configuration |
 | `deploy_cluster.sh` | Deploy full OpenShift cluster (connected or disconnected mode) |
 | `deploy_phase.sh` | Deploy specific phase of deployment (for phased workflows) |
+| `provision_spoke.sh` | Provision an SNO spoke cluster from a discovered agent and extract its kubeconfig (disconnected) |
 | `generate_ironic_cert.sh` | Generate TLS certificate for the Ironic ISO server; self-signed (local CA) by default, or a real DNS-01 certificate from a public CA when `ENCLAVE_CERT_TYPE` is set |
 
 **Deployment Modes:**
@@ -136,6 +137,7 @@ Scripts for verifying deployments, collecting logs, and running validation check
 | `verify_landing_zone.sh` | Verify Landing Zone VM is accessible and configured |
 | `verify_enclave_installation.sh` | Verify Enclave Lab is installed correctly on Landing Zone |
 | `verify_cluster.sh` | Verify OpenShift cluster is deployed and healthy |
+| `verify_spoke.sh` | Verify the SNO spoke cluster is deployed and healthy |
 | `validate.sh` | Run all validation checks in sequence |
 | `collect_ci_artifacts.sh` | Collect logs and artifacts for CI (GitHub Actions) |
 | `collect_step_logs.sh` | Collect logs from specific deployment step |
