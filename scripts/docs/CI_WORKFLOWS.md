@@ -4,12 +4,11 @@ This guide explains how to use the GitHub Actions CI/CD workflows for Enclave La
 
 ## Overview
 
-Enclave Lab uses GitHub Actions for automated testing and validation with four main workflows:
+Enclave Lab uses GitHub Actions for automated testing and validation with three main workflows:
 
 1. **PR Validation** - Fast code quality checks on every PR
-2. **Infrastructure Verification** - Test infrastructure setup
-3. **E2E Deployment** - Full cluster deployment testing (connected and disconnected modes)
-4. **Cleanup** - Infrastructure maintenance
+2. **E2E Deployment** - Full cluster deployment testing (connected and disconnected modes)
+3. **Cleanup** - Infrastructure maintenance
 
 ## Workflow 1: PR Validation
 
@@ -63,69 +62,7 @@ make -f Makefile.ci validate
 
 ---
 
-## Workflow 2: Infrastructure Verification
-
-**Purpose**: Test infrastructure creation without full cluster deployment
-
-**Trigger**:
-- Manual dispatch (Actions tab)
-- PR with `test-infra` label
-
-**Duration**: ~60-75 minutes
-
-**Runs on**: Self-hosted runner (CI machine)
-
-### What It Does
-
-1. ✅ Pre-flight checks (resources, permissions)
-2. ✅ Create infrastructure (`make -f Makefile.ci environment`)
-3. ✅ Provision Landing Zone (`make -f Makefile.ci provision-landing-zone`)
-4. ✅ Install Enclave Lab in connected mode (`make -f Makefile.ci install-enclave`)
-5. ✅ Verify installation
-6. ✅ Collect artifacts (logs, environment metadata)
-7. ✅ Optional cleanup
-
-### How to Use
-
-**Option 1: Manual Dispatch**
-
-1. Go to Actions tab on GitHub
-2. Select "Infrastructure Verification"
-3. Click "Run workflow"
-4. Choose cleanup strategy:
-   - `on_failure` (recommended): Clean up only if test fails
-   - `always`: Clean up after every run
-   - `never`: Keep infrastructure for debugging
-
-**Option 2: PR Label**
-
-1. Add label `test-infra` to your PR
-2. Workflow runs automatically
-3. Remove label to prevent re-runs
-
-### Cleanup Strategies
-
-- **on_failure** (recommended): Keeps successful infrastructure for reuse, cleans failures
-- **always**: Always cleans up, ensures fresh state
-- **never**: Manual cleanup required, good for debugging
-
-### Viewing Results
-
-1. Go to Actions tab
-2. Click on the workflow run
-3. View step-by-step progress
-4. Download artifacts (logs, cluster-env.sh)
-
-### Artifacts Collected
-
-- `cluster-env.sh` - Infrastructure metadata (single source of truth)
-- `vm-status.txt` - Virtual machine status
-- `network-status.txt` - Network configuration
-- `deployment.log` - Enclave Lab installation log
-
----
-
-## Workflow 3: E2E Deployment
+## Workflow 2: E2E Deployment
 
 **Purpose**: Full end-to-end cluster deployment testing in connected and disconnected modes
 
@@ -157,10 +94,22 @@ Each workflow calls the reusable `e2e-deployment.yml`, which runs:
 |-----|-------------|
 | `check-e2e-needed` | Decides whether to run and which storage plugin to use (via the composite action) |
 | `e2e` | The single-mode deployment (connected or disconnected, per `mode` input) |
+| `e2e-gate` | Fixed-name job that always reports a conclusion, so E2E can be a required check |
 
 On PRs only disconnected appears as a workflow run/check; connected runs nightly
 (and on demand). Both appear as separate workflow runs so you can see which mode
 failed and retry them independently.
+
+**Required check.** `E2E Disconnected / E2E disconnected gate` is the required PR
+status check (it replaced the retired *Infrastructure Verification* workflow,
+whose create-infra → provision-LZ → install-enclave → clean steps E2E already
+runs). The `e2e-gate` job exists because the `e2e` deploy job's name varies by
+storage plugin (`(lvms)`/`(odf)`) and so cannot be required directly. The gate
+passes when the deploy succeeded or was legitimately skipped (no
+deployment-relevant files changed), and fails when the deploy failed, was
+cancelled, or was spot-killed — so nothing merges without a green E2E gate. A
+spot-killed run is re-run automatically by `e2e-spot-retry.yml`; a maintainer can
+still force-merge via admin bypass when they know a failure is unrelated.
 
 ### What It Does
 
@@ -215,7 +164,7 @@ The workflow checks:
 
 ---
 
-## Workflow 4: Cleanup
+## Workflow 3: Cleanup
 
 **Purpose**: Infrastructure cleanup and maintenance
 
