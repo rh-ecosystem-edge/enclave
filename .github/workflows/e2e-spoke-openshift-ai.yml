@@ -1,0 +1,64 @@
+name: E2E Spoke OpenShift AI
+
+# Disconnected E2E that provisions an SNO spoke cluster and (later) installs the
+# OpenShift AI plugin onto it. Runs on manual dispatch and on PRs touching the
+# spoke paths below; each run is a long disconnected deployment.
+#
+# Calls the reusable e2e-deployment workflow with enable-spoke=true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip-cleanup:
+        description: 'Skip cleanup after deployment (leave infrastructure running)'
+        required: false
+        type: boolean
+        default: false
+      send-slack-notification:
+        description: 'Send Slack notification on completion'
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'scripts/deployment/provision_spoke.sh'
+      - 'scripts/infrastructure/vm_infra.py'
+      - 'scripts/infrastructure/generate_enclave_vars.sh'
+      - 'plugins/openshift-ai/**'
+      - 'Makefile.ci'
+      - '.github/workflows/e2e-spoke-openshift-ai.yml'
+      - '.github/workflows/e2e-deployment.yml'
+
+# Default to read-only token; the reusable workflow requests more as needed.
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-spoke-openshift-ai-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  e2e-spoke-openshift-ai:
+    # The e2e runs on the shared self-hosted fleet; never let a fork PR run it.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      checks: write  # required by e2e-deployment.yml for check-run updates
+      pull-requests: read  # required by e2e-deployment.yml for changed-file detection
+    # Call the reusable single-mode workflow directly (not via the e2e-disconnected
+    # wrapper) so this run gets its own concurrency group.
+    uses: ./.github/workflows/e2e-deployment.yml
+    with:
+      mode: disconnected
+      # This workflow applies no path filter, so run regardless of changed files.
+      force-run: true
+      enable-spoke: true
+      # Pin the matrix to a single lvms run (the spoke also needs a storage class).
+      storage-plugin: lvms
+      # openshift-ai is added once its deploy + verify steps land (OSAC-6418).
+      enabled-plugins: 'lvms'
+      skip-cleanup: ${{ inputs.skip-cleanup || false }}
+      send-slack-notification: ${{ inputs.send-slack-notification || false }}
+      workflow-display-name: 'E2E Spoke OpenShift AI'
+    secrets: inherit
