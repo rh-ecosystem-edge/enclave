@@ -6,7 +6,7 @@ The plugin system allows components (storage backends, AI/ML stacks, GPU operato
 
 ## Directory Structure
 
-A plugin is a directory under `plugins/` with a single descriptor and optional task files:
+A foundation or addon plugin is a directory under `plugins/` with a descriptor and optional task files. A boot provider also has a descriptor, and must include `tasks/boot-nodes.yaml`:
 
 ```
 plugins/lvms/
@@ -24,6 +24,7 @@ plugins/lvms/
         valid/             <- fixtures that must pass config schema validation
         invalid/           <- fixtures that must fail config schema validation
   tasks/
+    boot-nodes.yaml        <- initial agent-host boot method (required for type: boot)
     early-validate.yaml    <- custom validation before downloads, no cluster access (optional)
     deploy.yaml            <- post-operator deployment logic
     quay.yaml              <- Quay storage integration
@@ -38,7 +39,7 @@ plugins/lvms/
 
 ### The Descriptor: `plugin.yaml`
 
-This is the only required file. It contains plugin metadata, operator definitions, and registry entries.
+For foundation and addon plugins, this is the only required file. Boot providers also require `tasks/boot-nodes.yaml`. The descriptor contains plugin metadata, operator definitions, and registry entries.
 
 ```yaml
 name: lvms
@@ -67,7 +68,7 @@ registries:
 | Field | What it does |
 |-------|-------------|
 | `name` | Plugin identifier. Must match the directory name. |
-| `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deploys after core operators and Quay mirroring. |
+| `type` | `foundation` -- deploys before core operators (storage, networking); `addon` -- deploys after core operators and Quay mirroring; `boot` -- provides the initial agent-host boot method and requires `tasks/boot-nodes.yaml`. Boot providers use `name`, `type`, and optional default settings; deployment fields such as `order`, `operators`, `helm`, and `registries` do not apply. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
@@ -84,7 +85,7 @@ The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during
 
 ### Lifecycle Files
 
-Each file is optional and lives under `tasks/`. The plugin runner (`deploy_plugin.yaml`) checks if it exists before including it. If it's missing, that step is skipped.
+For foundation and addon plugins, each deployment lifecycle file is optional and lives under `tasks/`. The plugin runner (`deploy_plugin.yaml`) checks if it exists before including it; if it's missing, that step is skipped. Boot providers do not use this deployment lifecycle: they must implement `tasks/boot-nodes.yaml`, which the boot-provider runner includes.
 
 Here's what runs and in what order:
 
@@ -233,6 +234,16 @@ Each Plugin is mirrored to a custom catalog to support operations on day 2, and 
 ### Pre-install Validation
 
 Before cluster installation, plugins with `tasks/pre-install-validate.yaml` run hardware checks against discovered hosts.
+
+### Boot Provider Plugins
+
+The initial `agent_hosts` boot step uses Ironic with Redfish virtual media (`boot_method: default`) unless a plugin is selected. To use a plugin, set `boot_method: plugin` and select its name with `boot_plugin`. This selection is separate from `enabled_plugins`, which controls deployment of cluster components.
+
+Boot providers declare `type: boot` in `plugin.yaml` and implement `tasks/boot-nodes.yaml`. The runner provides `agent_hosts_to_provision`, `workingDir`, and `agent_installer_iso_path`. Provider defaults and optional `config/plugins/<name>.yaml` settings are merged under `boot_plugin_config`, with user values taking precedence and remaining separate from deployment variables. After the provider returns, Enclave applies the shared readiness gate and waits for the rendezvous host and expected agents to be known to Assisted Service before releasing installation.
+
+The built-in `boot-manual` provider prints the number of hosts to boot and the ISO's path relative to the Landing Zone working directory, then pauses for operator confirmation. The standard discovery wait still confirms that the hosts are ready before installation proceeds. For a custom provider, add a directory under `plugins/`, set `type: boot` in `plugin.yaml`, and provide `tasks/boot-nodes.yaml`.
+
+Boot provider selection currently applies to the initial `agent_hosts` path. The separate `discovery_hosts` flow continues to use Redfish-backed BareMetalHosts.
 
 ### Operator Installation
 

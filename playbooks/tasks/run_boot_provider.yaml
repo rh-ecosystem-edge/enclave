@@ -1,0 +1,110 @@
+---
+- name: Set selected boot provider
+  ansible.builtin.set_fact:
+    boot_plugin_selected: "{{ boot_plugin }}"
+
+- name: Validate boot provider name
+  ansible.builtin.assert:
+    that:
+      - boot_plugin_selected is string
+      - boot_plugin_selected is regex('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    fail_msg: "boot_plugin must be a plugin name without path separators."
+
+- name: Set boot provider directory
+  ansible.builtin.set_fact:
+    boot_plugin_dir: "{{ playbook_dir }}/../plugins/{{ boot_plugin_selected }}"
+
+- name: Check boot provider descriptor
+  ansible.builtin.stat:
+    path: "{{ boot_plugin_dir }}/plugin.yaml"
+  register: r_boot_plugin_descriptor
+
+- name: Require boot provider descriptor
+  ansible.builtin.assert:
+    that: r_boot_plugin_descriptor.stat.exists
+    fail_msg: "Boot provider plugin not found: {{ boot_plugin_dir }}/plugin.yaml"
+
+- name: Load boot provider descriptor
+  ansible.builtin.include_vars:
+    file: "{{ boot_plugin_dir }}/plugin.yaml"
+    name: _boot_plugin
+  no_log: true
+
+- name: Validate selected boot provider descriptor
+  ansible.builtin.assert:
+    that:
+      - _boot_plugin.name == boot_plugin_selected
+      - _boot_plugin.type == 'boot'
+    fail_msg: >-
+      Plugin '{{ boot_plugin_selected }}' must declare type: boot in plugin.yaml.
+
+- name: Check boot provider task file
+  ansible.builtin.stat:
+    path: "{{ boot_plugin_dir }}/tasks/boot-nodes.yaml"
+  register: r_boot_plugin_tasks
+
+- name: Require boot provider task file
+  ansible.builtin.assert:
+    that: r_boot_plugin_tasks.stat.exists
+    fail_msg: >-
+      Boot provider '{{ boot_plugin_selected }}' must implement
+      tasks/boot-nodes.yaml.
+
+- name: Check boot provider defaults file
+  ansible.builtin.stat:
+    path: "{{ boot_plugin_dir }}/defaults.yaml"
+  register: r_boot_plugin_defaults
+
+- name: Reject duplicate boot provider defaults
+  ansible.builtin.fail:
+    msg: >-
+      Boot provider '{{ boot_plugin_selected }}' has both defaults.yaml and
+      a defaults field in plugin.yaml. Use only one.
+  when:
+    - r_boot_plugin_defaults.stat.exists
+    - _boot_plugin.defaults is defined
+
+- name: Load boot provider defaults file
+  ansible.builtin.include_vars:
+    file: "{{ boot_plugin_dir }}/defaults.yaml"
+    name: _boot_plugin_defaults
+  when: r_boot_plugin_defaults.stat.exists
+  no_log: true
+
+- name: Load boot provider defaults from descriptor
+  ansible.builtin.set_fact:
+    _boot_plugin_defaults: "{{ _boot_plugin.defaults }}"
+  when:
+    - _boot_plugin.defaults is defined
+    - not r_boot_plugin_defaults.stat.exists
+  no_log: true
+
+- name: Check boot provider user configuration
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../config/plugins/{{ boot_plugin_selected }}.yaml"
+  register: r_boot_plugin_config
+
+- name: Load boot provider user configuration
+  ansible.builtin.include_vars:
+    file: "{{ r_boot_plugin_config.stat.path }}"
+    name: _boot_plugin_user_config
+  when: r_boot_plugin_config.stat.exists
+  no_log: true
+
+- name: Merge boot provider defaults and user configuration
+  ansible.builtin.set_fact:
+    boot_plugin_config: >-
+      {{ (_boot_plugin_defaults | default({}))
+         | combine(_boot_plugin_user_config | default({}), recursive=true) }}
+  no_log: true
+
+- name: Set agent installer ISO path for boot provider
+  ansible.builtin.set_fact:
+    agent_installer_iso_path: "{{ workingDir }}/ocp-cluster/abi-iso/agent.x86_64.iso"
+
+- name: Run boot provider for hosts that need provisioning
+  ansible.builtin.include_tasks:
+    file: "{{ boot_plugin_dir }}/tasks/boot-nodes.yaml"
+    apply:
+      tags: hardware
+  when: agent_hosts_to_provision | length > 0

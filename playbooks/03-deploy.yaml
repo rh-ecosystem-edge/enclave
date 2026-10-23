@@ -10,7 +10,7 @@
 # - Generate Agent-Based Installer ISO
 # - Copy ISO to web server
 # - Skip hosts already Ready in the cluster (idempotent reruns)
-# - Setup Ironic and boot agent hosts via virtual media
+# - Boot agent hosts via the configured method (Ironic by default)
 # - Wait for deployment to complete
 # - Detach virtual media from hosts
 # - Clean up Ironic
@@ -27,6 +27,18 @@
         file: common/load-vars.yaml
         apply:
           tags: always
+      tags: always
+
+    - name: Validate agent-host boot method selection
+      ansible.builtin.assert:
+        that:
+          - (boot_method | default('default')) in ['default', 'plugin']
+          - >-
+            (boot_method | default('default')) != 'plugin' or
+            (boot_plugin is defined and boot_plugin is string and boot_plugin | length > 0)
+        fail_msg: >-
+          Set boot_method to 'default' or 'plugin'. When boot_method is 'plugin',
+          set boot_plugin to the plugin name.
       tags: always
 
     - name: Execute tasks with workingDir in PATH
@@ -57,8 +69,10 @@
             file: tasks/configure_hardware_ironic_setup.yaml
             apply:
               tags: hardware
+          when:
+            - (boot_method | default('default')) != 'plugin'
+            - agent_hosts_to_provision | length > 0
           tags: hardware
-          when: agent_hosts_to_provision | length > 0
 
         - name: Configure and boot hosts via Ironic
           loop: "{{ agent_hosts_to_provision }}"
@@ -68,6 +82,7 @@
             file: tasks/configure_hardware_ironic_boot.yaml
             apply:
               tags: hardware
+          when: (boot_method | default('default')) != 'plugin'
           tags: hardware
 
         - name: Wait for all hosts to reach active state
@@ -78,6 +93,15 @@
             file: tasks/configure_hardware_ironic_wait.yaml
             apply:
               tags: hardware
+          when: (boot_method | default('default')) != 'plugin'
+          tags: hardware
+
+        - name: Run selected boot provider for agent hosts
+          ansible.builtin.include_tasks:
+            file: tasks/run_boot_provider.yaml
+            apply:
+              tags: hardware
+          when: (boot_method | default('default')) == 'plugin'
           tags: hardware
 
         - name: Pre-install validate plugins

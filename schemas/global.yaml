@@ -16,6 +16,16 @@ properties:
     "$ref": "#/definitions/ipv4Address"
   baseDomain:
     "$ref": "#/definitions/nonEmptyString"
+  boot_method:
+    type: string
+    enum: [default, plugin]
+    description: >-
+      Selects the initial agent-host boot method. Defaults to the existing
+      Ironic/Redfish flow.
+  boot_plugin:
+    type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    description: Name of the boot-provider plugin when boot_method is plugin.
   storage_plugin:
     type: string
     enum: [lvms, odf, vast-csi]
@@ -168,6 +178,21 @@ oneOf:
   - required: [sshPubPath]
 
 allOf:
+  - if:
+      properties:
+        boot_method:
+          const: plugin
+      required: [boot_method]
+    then:
+      required: [boot_plugin]
+    else:
+      properties:
+        agent_hosts:
+          items:
+            required:
+              - redfish
+              - redfishPassword
+              - redfishUser
   - if:
       properties:
         quayBackend:
