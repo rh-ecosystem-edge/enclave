@@ -104,7 +104,7 @@ jobs:
           | `/test e2e-connected` | Dispatch E2E (connected only) | enclave-large-aws |
           | `/test e2e-disconnected` | Dispatch E2E (disconnected only) | enclave-large-aws |
           | `/test e2e-disconnected-odf` | Dispatch E2E disconnected with ODF storage | enclave-large-odf-aws |
-          | `/test cleanup` | Run cleanup workflow | enclave-small-aws |
+          | `/test cleanup` | Run cleanup workflow | enclave-small |
           | `/test all` | Run validation + tarball + e2e (both modes) | multiple |
           | `/test ?` or `/test help` | Show this help message | — |
           | `/retest` | Re-run all failed checks on this PR | — |
