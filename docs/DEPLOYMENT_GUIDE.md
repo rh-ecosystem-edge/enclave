@@ -366,6 +366,7 @@ For complex network setups like bonding, VLANs, or multiple interfaces, use `map
 agent_hosts:
   # Host with bonding configuration
   - name: mgmt-ctl01
+    macAddress: "0c:c4:7a:62:fe:ec"
     redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
@@ -417,7 +418,7 @@ agent_hosts:
 ```
 
 **Notes**:
-- When using `networkConfig`, `ipAddress` is not required because the address is part of `networkConfig`
+- `ipAddress` is required for simple IP-based hosts; when using `networkConfig`, it is not required because the address is part of `networkConfig`
 - Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - `mapInterfaces` maps interface names to MAC addresses for the agent installer
 - `networkConfig` follows the [nmstate](https://nmstate.io/) format
@@ -578,7 +579,7 @@ control_binaries:
 
 Each `agent_hosts` entry requires:
 - `name`: Hostname for the node
-- `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
+- `ipAddress`: Static IP address for simple IP-based hosts (omit when `networkConfig` provides the address)
 - `redfish`: BMC IP address for Redfish API
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
 
@@ -919,7 +920,7 @@ Each node in `discovery_hosts` requires:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `ipAddress` | Static IP address for the node | `192.168.2.21` |
+| `ipAddress` | Static IP address for simple IP-based hosts; omit when `networkConfig` provides the address. | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Redfish username | `admin` |
@@ -927,7 +928,7 @@ Each node in `discovery_hosts` requires:
 
 For IP-based network configuration, `macAddress` is optional. The Landing Zone probes
 the host IP and uses the resolved MAC without prompting. Set `macAddress` explicitly
-if you want to choose the exact address.
+to use a specific address.
 
 ### Running Discovery (One-Time Setup Only)
 

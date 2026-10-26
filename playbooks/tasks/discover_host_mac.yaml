@@ -1,4 +1,4 @@
-- name: Probe {{ host_to_resolve.ipAddress }} to populate the Landing Zone neighbor table
+- name: Probe the configured host to populate the Landing Zone neighbor table
   ansible.builtin.command:
     argv:
       - ping
@@ -9,8 +9,10 @@
       - "{{ host_to_resolve.ipAddress }}"
   changed_when: false
   failed_when: false
+  register: r_host_probe
+  no_log: true
 
-- name: Read the neighbor entry for {{ host_to_resolve.ipAddress }}
+- name: Read the configured host neighbor entry
   ansible.builtin.command:
     argv:
       - ip
@@ -21,32 +23,29 @@
       - "{{ host_to_resolve.ipAddress }}"
   register: r_host_neighbors
   changed_when: false
+  no_log: true
 
-- name: Find distinct MAC addresses for {{ host_to_resolve.ipAddress }}
+- name: Find distinct fresh MAC addresses for the configured host
   ansible.builtin.set_fact:
     discovered_host_macs: >-
-      {{ r_host_neighbors.stdout
+      {{ (r_host_neighbors.stdout
+         | regex_findall('^.*\\sREACHABLE(?:\\s|$)', multiline=True)
+         | join(' '))
          | regex_findall('lladdr +([0-9a-fA-F:]{17})')
-         | map('lower') | unique | list }}
+         | map('lower') | unique | list
+         if r_host_probe.rc == 0 else [] }}
+  no_log: true
 
-- name: Require one discovered MAC for {{ host_to_resolve.name }}
+- name: Require one fresh MAC address for the configured host
   ansible.builtin.assert:
     that:
       - discovered_host_macs | length == 1
     fail_msg: >-
-      Could not discover exactly one MAC address for {{ host_to_resolve.name }}
-      at {{ host_to_resolve.ipAddress }}. Neighbor table output:
-      {{ r_host_neighbors.stdout | trim | default('(empty)') }}.
-      Keep the host reachable from the Landing Zone on the same network, or set
-      macAddress explicitly in its configuration if you want to choose the address.
+      Could not discover exactly one fresh MAC address for a configured host.
+      Ensure the host is reachable from the Landing Zone on the same network, or
+      set macAddress explicitly in its configuration.
 
-- name: Set the discovered MAC for {{ host_to_resolve.name }}
+- name: Set the discovered MAC address for the configured host
   ansible.builtin.set_fact:
     resolved_mac_address: "{{ discovered_host_macs[0] }}"
-
-- name: Report the discovered MAC for {{ host_to_resolve.name }}
-  ansible.builtin.debug:
-    msg: >-
-      Using discovered MAC {{ resolved_mac_address }} for {{ host_to_resolve.name }}
-      at {{ host_to_resolve.ipAddress }}. Set macAddress in the configuration to
-      select a specific address instead.
+  no_log: true
