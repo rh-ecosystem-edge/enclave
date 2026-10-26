@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Unique checkout dir per run/attempt/job. The pr-validation-aws fleet is
           # non-ephemeral, so jobs share a host and its _work; a fixed path let a
@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload shellcheck log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: shellcheck-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/shellcheck.log
@@ -95,7 +95,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -124,7 +124,7 @@ jobs:
 
       - name: Upload yamllint log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: yamllint-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/yamllint.log
@@ -146,7 +146,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -175,7 +175,7 @@ jobs:
 
       - name: Upload JSON schema log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: json-schema-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/json-schema.log
@@ -197,7 +197,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -226,7 +226,7 @@ jobs:
 
       - name: Upload ansible-lint log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ansible-lint-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/ansible-lint.log
@@ -248,7 +248,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -279,7 +279,7 @@ jobs:
 
       - name: Upload tags log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tags-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/tags.log
@@ -302,7 +302,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -329,7 +329,7 @@ jobs:
 
       - name: Upload template rendering log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: template-rendering-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/template-rendering.log
@@ -351,7 +351,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -380,7 +380,7 @@ jobs:
 
       - name: Upload Makefile log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: makefile-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/makefile.log
@@ -402,7 +402,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -431,7 +431,7 @@ jobs:
 
       - name: Upload plugin validation log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: plugins-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/plugins.log
@@ -453,7 +453,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
@@ -482,7 +482,7 @@ jobs:
 
       - name: Upload python validation log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: python-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/python.log
@@ -509,12 +509,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
 
       - name: Detect OSAC-relevant changes
-        uses: dorny/paths-filter@v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           # The repo is checked out under a unique subdir (see Checkout step), so point
@@ -570,7 +570,7 @@ jobs:
 
       - name: Upload OSAC values validation log
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: osac-values-log
           path: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}/osac-values.log
