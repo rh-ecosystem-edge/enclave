@@ -107,7 +107,7 @@
       "automerge": true
     },
     {
-      "description": "uv (Dockerfile.ci + setup_ansible.sh): automerge patch and minor, never major",
+      "description": "uv: automerge patch and minor, never major",
       "matchPackageNames": ["ghcr.io/astral-sh/uv"],
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true
