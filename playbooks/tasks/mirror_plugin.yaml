@@ -333,3 +333,10 @@
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
+
+- name: Create stable aliases for mirrored plugin CatalogSources
+  ansible.builtin.include_tasks:
+    file: create_stable_catalog_source_aliases.yaml
+  when:
+    - r_plugin_mirror is defined
+    - r_plugin_mirror is success

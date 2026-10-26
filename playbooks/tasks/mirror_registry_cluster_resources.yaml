@@ -45,3 +45,7 @@
     | selectattr('status.connectionState', 'defined')
     | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
     | list | length == (_applied_cs_names | length)
+
+- name: Create stable aliases for mirrored CatalogSources
+  ansible.builtin.include_tasks:
+    file: create_stable_catalog_source_aliases.yaml

@@ -137,6 +137,7 @@
         ).lastObservedState | default('', true)
       ) == 'READY'
     - (_catalog_migration_mce_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')
+    - (_catalog_migration_mce_spec.sourceNamespace | default('openshift-marketplace')) == 'openshift-marketplace'
 
 - name: Update OADP subscription source annotation to stable CatalogSource
   kubernetes.core.k8s:
@@ -165,3 +166,4 @@
         ).lastObservedState | default('', true)
       ) == 'READY'
     - (_catalog_migration_oadp_spec.source | default('')) == ('cs-' ~ mirror_rh_operator_catalog ~ '-v4-20')
+    - (_catalog_migration_oadp_spec.sourceNamespace | default('openshift-marketplace')) == 'openshift-marketplace'

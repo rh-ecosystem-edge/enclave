@@ -1,0 +1,31 @@
+---
+# Create y-stream-agnostic aliases for oc-mirror's versioned CatalogSources.
+
+- name: List CatalogSources for stable aliases
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_catalog_sources_for_aliases
+
+- name: Set management CatalogSource y-stream suffix
+  ansible.builtin.set_fact:
+    _stable_catalog_source_version_suffix: >-
+      -v{{ mgmt_openshift_version.split('.')[:2] | join('-') }}
+
+- name: Create stable aliases for versioned CatalogSources
+  ansible.builtin.include_tasks:
+    file: create_stable_catalog_source_alias.yaml
+  loop: >-
+    {{ r_catalog_sources_for_aliases.resources | default([])
+       | selectattr('metadata.name', 'match', '^cs-.*' ~ _stable_catalog_source_version_suffix ~ '$')
+       | list }}
+  loop_control:
+    loop_var: versioned_catalog_source
+    label: "{{ versioned_catalog_source.metadata.name }}"
+  vars:
+    stable_catalog_source_name: >-
+      {{ versioned_catalog_source.metadata.name
+         | regex_replace(_stable_catalog_source_version_suffix ~ '$', '') }}
