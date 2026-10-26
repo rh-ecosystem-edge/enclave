@@ -40,7 +40,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Determine tag
         id: meta
@@ -63,12 +63,12 @@ jobs:
           echo -n "${{ steps.meta.outputs.tag }}" > .version
 
       - name: Install ORAS
-        uses: oras-project/setup-oras@v2
+        uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
         with:
           version: 1.2.0
 
       - name: Log in to Quay.io
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USER }}
@@ -182,7 +182,7 @@ jobs:
 
       - name: Upload tarball artifact
         if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: enclave-tarball-${{ steps.meta.outputs.tag }}
           path: enclave.tar.gz

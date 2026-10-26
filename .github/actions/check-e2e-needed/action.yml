@@ -42,7 +42,7 @@ runs:
     # PR base to diff against.
     - name: Check if E2E-relevant files changed
       if: inputs.force-run != 'true'
-      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
       id: filter
       with:
         filters: |
@@ -84,7 +84,7 @@ runs:
     # a PR mixing scripts code and scripts docs still triggers E2E.
     - name: Check if E2E-relevant scripts changed
       if: inputs.force-run != 'true'
-      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
       id: filter_scripts
       with:
         predicate-quantifier: every
