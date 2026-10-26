@@ -2,6 +2,10 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "schedule": ["* * * * 0,6"],
   "updateNotScheduled": false,
+  "gitIgnoredAuthors": [
+    "github-actions[bot]@users.noreply.github.com",
+    "41898282+github-actions[bot]@users.noreply.github.com"
+  ],
   "customDatasources": {
     "redhat-operator-catalog": {
       "format": "json",
