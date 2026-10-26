@@ -79,9 +79,10 @@
       "enabled": false
     },
     {
-      "description": "AWS CLI: only allow v2 updates (installer URL is hardcoded to v2)",
+      "description": "AWS CLI: only allow v2 updates (installer URL is hardcoded to v2); automerge them",
       "matchPackageNames": ["aws/aws-cli"],
-      "allowedVersions": "<3"
+      "allowedVersions": "<3",
+      "automerge": true
     },
     {
       "matchPackageNames": ["osac-project/charts/osac"],
