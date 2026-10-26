@@ -3,56 +3,35 @@
 # This ensures ACM respects Manual installPlanApproval for MCE and OADP subscriptions.
 # Can be used for both initial creation and patching existing MCH during upgrades.
 
-- name: Check for stable core operator CatalogSource
+- name: List core operator CatalogSources for disconnected MCE and OADP
   when: disconnected | default(true) | bool
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
     kind: CatalogSource
-    name: "cs-{{ mirror_rh_operator_catalog }}"
     namespace: openshift-marketplace
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_stable_core_catalog_source
-
-- name: Check for legacy core operator CatalogSource
-  when: disconnected | default(true) | bool
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    name: "cs-{{ mirror_rh_operator_catalog }}-v4-20"
-    namespace: openshift-marketplace
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_legacy_core_catalog_source
-
-- name: Check for versioned core operator CatalogSource
-  when: disconnected | default(true) | bool
-  kubernetes.core.k8s_info:
-    api_version: operators.coreos.com/v1alpha1
-    kind: CatalogSource
-    name: "cs-{{ mirror_rh_operator_catalog }}-v{{ mgmt_openshift_version.split('.')[:2] | join('-') }}"
-    namespace: openshift-marketplace
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_versioned_core_catalog_source
+  register: r_core_catalog_sources
 
 - name: Select core operator CatalogSource for disconnected MCE and OADP
   when: disconnected | default(true) | bool
+  vars:
+    # Highest priority first: stable alias, legacy y-stream, management version.
+    _core_catalog_candidates:
+      - "cs-{{ mirror_rh_operator_catalog }}"
+      - "cs-{{ mirror_rh_operator_catalog }}-v4-20"
+      - "cs-{{ mirror_rh_operator_catalog }}-v{{ mgmt_openshift_version.split('.')[:2] | join('-') }}"
+    _ready_core_catalog_sources: >-
+      {{ r_core_catalog_sources.resources | default([])
+         | selectattr('status', 'defined')
+         | selectattr('status.connectionState', 'defined')
+         | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+         | map(attribute='metadata.name') | list }}
   ansible.builtin.set_fact:
     _core_operator_catalog_source: >-
-      {{ 'cs-' ~ mirror_rh_operator_catalog
-         if r_stable_core_catalog_source.resources | default([]) | length > 0 and
-            (((r_stable_core_catalog_source.resources[0].status | default({}, true))
-              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
-         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v4-20'
-         if r_legacy_core_catalog_source.resources | default([]) | length > 0 and
-            (((r_legacy_core_catalog_source.resources[0].status | default({}, true))
-              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
-         else 'cs-' ~ mirror_rh_operator_catalog ~ '-v' ~ (mgmt_openshift_version.split('.')[:2] | join('-'))
-         if r_versioned_core_catalog_source.resources | default([]) | length > 0 and
-            (((r_versioned_core_catalog_source.resources[0].status | default({}, true))
-              .connectionState | default({}, true)).lastObservedState | default('', true)) == 'READY'
-         else '' }}
+      {{ _core_catalog_candidates
+         | select('in', _ready_core_catalog_sources)
+         | first | default('') }}
 
 - name: Require a ready core operator CatalogSource for disconnected MCE and OADP
   ansible.builtin.assert:

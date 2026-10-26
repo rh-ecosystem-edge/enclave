@@ -28,6 +28,7 @@ mirror:
   operators:
 {% for c_name, c_catalog_operators in catalog_operators.items() %}
 {% if c_name == 'core' %}
+    # Keep the target CatalogSource y-stream agnostic; only the source image tag is versioned.
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
 {% elif c_catalog_operators.catalog == 'certified' %}
