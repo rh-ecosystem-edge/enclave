@@ -89,6 +89,12 @@
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["patch", "minor"],
       "automerge": true
+    },
+    {
+      "description": "Dockerfile.ci image digest bumps (e.g. ubi10/ubi): automerge",
+      "matchFileNames": [".github/workflows/Dockerfile.ci"],
+      "matchUpdateTypes": ["digest"],
+      "automerge": true
     }
   ],
   "lockFileMaintenance": {
