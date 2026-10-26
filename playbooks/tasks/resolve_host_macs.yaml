@@ -1,0 +1,10 @@
+- name: Initialize the resolved host list
+  ansible.builtin.set_fact:
+    resolved_host_macs: []
+
+- name: Resolve each host MAC address
+  ansible.builtin.include_tasks: resolve_single_host_mac.yaml
+  loop: "{{ hosts_to_resolve }}"
+  loop_control:
+    loop_var: host_to_resolve
+    label: "{{ host_to_resolve.name }}"

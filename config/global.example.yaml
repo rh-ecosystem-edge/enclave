@@ -146,7 +146,8 @@ sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
 # ============================================================================
 agent_hosts:
   - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
-    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
+    # Optional with IP-based config. Omit to discover from the Landing Zone.
+    # macAddress: YOUR_MAC_ADDRESS    # Example: 0c:c4:7a:62:fe:ec
     ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
     redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0

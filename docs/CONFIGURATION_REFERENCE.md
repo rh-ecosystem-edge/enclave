@@ -363,7 +363,6 @@ agent_hosts:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `mgmt-ctl01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
 | `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
 | `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
@@ -374,9 +373,13 @@ agent_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
+| `macAddress` | Primary interface MAC. Optional when `ipAddress` is set; deployment discovers it from the Landing Zone neighbor table. Set it to select a specific address. | `0c:c4:7a:62:fe:ec` |
 | `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
+
+MAC discovery is noninteractive. If you want to choose or approve the exact address,
+provide `macAddress` explicitly in the host entry.
 
 #### Advanced Network Configuration
 
@@ -534,7 +537,8 @@ agent_hosts:
 ```
 
 **Notes on Advanced Network Configuration**:
-- When using `networkConfig`, the `macAddress` and `ipAddress` fields are not required (they're part of the networkConfig)
+- When using `networkConfig`, `ipAddress` is not required because the address is part of `networkConfig`
+- Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - The `mapInterfaces` field maps interface names to MAC addresses for the agent installer
 - The `networkConfig` follows the [nmstate](https://nmstate.io/) format
 - You can mix hosts with simple and advanced configurations in the same `agent_hosts` list
@@ -1298,7 +1302,6 @@ discovery_hosts:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
 | `ipAddress` | Static IP address for the node | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
@@ -1309,10 +1312,13 @@ discovery_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
+| `macAddress` | Primary interface MAC. Optional when `ipAddress` is set; deployment discovers it from the Landing Zone neighbor table. Set it to select a specific address. | `0c:c4:7a:d3:bc:30` |
 | `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; auto-discovered when omitted | `System.Embedded.1` |
 | `interfaceName` | Network interface name. Defaults to `eno1` | `ens3f0` |
 
 **Notes**:
+- If `macAddress` is omitted, the Landing Zone probes the host IP and uses the discovered MAC without prompting
+- Set `macAddress` explicitly if you want to choose the address used for a host
 - MAC addresses must be unique
 - IP addresses must be unique and in the same network as the cluster
 - `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.

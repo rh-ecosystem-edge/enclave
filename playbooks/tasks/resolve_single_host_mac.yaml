@@ -1,0 +1,22 @@
+- name: Start with the configured MAC address for {{ host_to_resolve.name }}
+  ansible.builtin.set_fact:
+    resolved_mac_address: "{{ host_to_resolve.macAddress | default('') }}"
+
+- name: Require an IP address to discover the MAC for {{ host_to_resolve.name }}
+  ansible.builtin.assert:
+    that:
+      - host_to_resolve.ipAddress is defined
+    fail_msg: >-
+      Host {{ host_to_resolve.name }} has no macAddress or ipAddress. Set macAddress
+      explicitly, or provide ipAddress so the Landing Zone can discover the MAC.
+  when: resolved_mac_address | length == 0
+
+- name: Discover the MAC address for {{ host_to_resolve.name }} when omitted
+  ansible.builtin.include_tasks: discover_host_mac.yaml
+  when: resolved_mac_address | length == 0
+
+- name: Add {{ host_to_resolve.name }} to the resolved host list
+  ansible.builtin.set_fact:
+    resolved_host_macs: >-
+      {{ resolved_host_macs +
+         [host_to_resolve | combine({'macAddress': resolved_mac_address})] }}

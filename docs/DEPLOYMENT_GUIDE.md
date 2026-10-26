@@ -417,7 +417,8 @@ agent_hosts:
 ```
 
 **Notes**:
-- When using `networkConfig`, the `macAddress` and `ipAddress` fields are not required
+- When using `networkConfig`, `ipAddress` is not required because the address is part of `networkConfig`
+- Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - `mapInterfaces` maps interface names to MAC addresses for the agent installer
 - `networkConfig` follows the [nmstate](https://nmstate.io/) format
 - You can mix hosts with simple and advanced configurations in the same list
@@ -577,10 +578,14 @@ control_binaries:
 
 Each `agent_hosts` entry requires:
 - `name`: Hostname for the node
-- `macAddress`: MAC address for network identification (not required if using `networkConfig`)
 - `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
 - `redfish`: BMC IP address for Redfish API
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
+
+For simple IP-based network configuration, `macAddress` is optional. The Landing Zone
+probes the node IP and uses the MAC from its neighbor table without prompting. Set
+`macAddress` explicitly if you want to choose the exact address. Advanced network
+configurations must set `macAddress` explicitly.
 
 Optional fields for advanced network configuration:
 - `mapInterfaces`: List of interface name to MAC address mappings
@@ -914,12 +919,15 @@ Each node in `discovery_hosts` requires:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
 | `ipAddress` | Static IP address for the node | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Redfish username | `admin` |
 | `redfishPassword` | Redfish password | `Password` |
+
+For IP-based network configuration, `macAddress` is optional. The Landing Zone probes
+the host IP and uses the resolved MAC without prompting. Set `macAddress` explicitly
+if you want to choose the exact address.
 
 ### Running Discovery (One-Time Setup Only)
 

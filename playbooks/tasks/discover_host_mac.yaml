@@ -1,0 +1,52 @@
+- name: Probe {{ host_to_resolve.ipAddress }} to populate the Landing Zone neighbor table
+  ansible.builtin.command:
+    argv:
+      - ping
+      - -c
+      - "1"
+      - -W
+      - "2"
+      - "{{ host_to_resolve.ipAddress }}"
+  changed_when: false
+  failed_when: false
+
+- name: Read the neighbor entry for {{ host_to_resolve.ipAddress }}
+  ansible.builtin.command:
+    argv:
+      - ip
+      - -o
+      - neigh
+      - show
+      - to
+      - "{{ host_to_resolve.ipAddress }}"
+  register: r_host_neighbors
+  changed_when: false
+
+- name: Find distinct MAC addresses for {{ host_to_resolve.ipAddress }}
+  ansible.builtin.set_fact:
+    discovered_host_macs: >-
+      {{ r_host_neighbors.stdout
+         | regex_findall('lladdr +([0-9a-fA-F:]{17})')
+         | map('lower') | unique | list }}
+
+- name: Require one discovered MAC for {{ host_to_resolve.name }}
+  ansible.builtin.assert:
+    that:
+      - discovered_host_macs | length == 1
+    fail_msg: >-
+      Could not discover exactly one MAC address for {{ host_to_resolve.name }}
+      at {{ host_to_resolve.ipAddress }}. Neighbor table output:
+      {{ r_host_neighbors.stdout | trim | default('(empty)') }}.
+      Keep the host reachable from the Landing Zone on the same network, or set
+      macAddress explicitly in its configuration if you want to choose the address.
+
+- name: Set the discovered MAC for {{ host_to_resolve.name }}
+  ansible.builtin.set_fact:
+    resolved_mac_address: "{{ discovered_host_macs[0] }}"
+
+- name: Report the discovered MAC for {{ host_to_resolve.name }}
+  ansible.builtin.debug:
+    msg: >-
+      Using discovered MAC {{ resolved_mac_address }} for {{ host_to_resolve.name }}
+      at {{ host_to_resolve.ipAddress }}. Set macAddress in the configuration to
+      select a specific address instead.
