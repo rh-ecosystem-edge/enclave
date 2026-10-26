@@ -2,7 +2,7 @@ collections:
 - name: community.crypto
   version: 3.5.0
 - name: containers.podman
-  version: 1.20.2
+  version: 1.21.2
 - name: kubernetes.core
   version: 6.5.0
 - name: community.general
