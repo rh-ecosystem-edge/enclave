@@ -75,16 +75,22 @@
       ansible.builtin.set_fact:
         _osac_values: "{{ _osac_values_raw.content | b64decode | from_yaml }}"
 
+    # Expected value held in a var so a failed assertion prints only the
+    # condition expression, not the internal hostname (kept out of CI logs).
+    - name: Expected internal Fulfillment listener for the operator
+      ansible.builtin.set_fact:
+        _osac_expected_fulfillment: "fulfillment-internal-api:8001"
+
     # Operator uses private gRPC methods the public listener rejects; catch a
     # regression at PR time rather than at runtime.
     - name: Assert operator targets the internal Fulfillment listener
+      vars:
+        _actual: "{{ _osac_values.operator.fulfillment.serverAddress | default('') }}"
       ansible.builtin.assert:
         that:
-          - _osac_values.operator.fulfillment.serverAddress is defined
-          - _osac_values.operator.fulfillment.serverAddress == 'fulfillment-internal-api:8001'
+          - _actual | length > 0
+          - _actual == _osac_expected_fulfillment
         fail_msg: >-
-          operator.fulfillment.serverAddress must be the internal listener
-          'fulfillment-internal-api:8001' for private API traffic, not the
-          public listener. Got:
-          '{{ _osac_values.operator.fulfillment.serverAddress | default('<unset>') }}'
+          operator.fulfillment.serverAddress must target the internal Fulfillment
+          listener for private API traffic, not the public listener.
         success_msg: "operator.fulfillment.serverAddress targets the internal listener ({{ osac_profile_name | default('unnamed') }})"
