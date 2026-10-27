@@ -89,6 +89,12 @@ The per-host `bootPlugin` is validated by name pattern only, since third-party p
 not known in advance; that the referenced plugins exist and honour the contract is checked by
 [validation](#validation).
 
+`schemas/global.yaml` rejects unknown top-level properties, so it gains two entries:
+
+- `bootPlugin`: string, plugin name pattern, optional, default `ironic`.
+- `bootDiscoveryTimeout`: integer, seconds, minimum 60, optional (see
+  [Hook points](#hook-points)).
+
 `agent_hosts` stays in `config/global.yaml`: almost all of its fields (`name`, `macAddress`,
 `ipAddress`, `rootDisk`, `interfaceName`, `networkConfig`, `mapInterfaces`) feed the ABI
 `agent-config`/`nmstateconfig` templates, host filtering, pre-install validation and plugins. Only
@@ -189,12 +195,21 @@ list and loops itself if it needs to.
 Each plugin serves the ISO in whatever way it needs; core only guarantees `bootIsoPath`.
 `post-install.yaml` and `cleanup.yaml` run on every deployment, so they must be idempotent.
 
-Between `boot.yaml` and `post-install.yaml`, core runs unchanged:
-`pre_install_validate_plugins.yaml` waits for the rendezvous host and for all hosts to be `known`,
-then releases the installation gate. Both waits use the largest `discoveryTimeout` among the
-plugins in use. Today they are hardcoded to 600 seconds and 60 × 5 seconds, which is fine when
-Ironic powers on all hosts at once but not when a person boots them one after another. Users can
-override it with a global `bootDiscoveryTimeout`.
+Between `boot.yaml` and `post-install.yaml`, core runs `pre_install_validate_plugins.yaml`: it
+waits for the rendezvous host and for all hosts to be `known`, then releases the installation gate.
+Two things change there:
+
+- **Timeouts.** Today both waits are hardcoded (600 seconds, and 60 × 5 seconds), which is fine
+  when Ironic powers on all hosts at once but not when a person boots them one after another. Both
+  now use, in order of precedence: the user's global `bootDiscoveryTimeout`; otherwise the largest
+  `discoveryTimeout` among the plugins in use; otherwise 600 seconds.
+- **Host identity.** Today the check only counts hosts (at least as many registered and `known`
+  hosts as `agent_hosts` entries) and never compares them with `agent_hosts`. With `manual`, a
+  person picks the machines, so booting a wrong or extra machine from the ISO is a realistic
+  mistake that the count would not catch. Core instead waits until every `agent_hosts` entry is
+  `known`, matching Assisted Service host records by MAC address (`macAddress`, or the MACs in
+  `mapInterfaces`, against the interfaces in the host inventory). It fails immediately, with a
+  message naming the host, if a host registers whose MACs match no `agent_hosts` entry.
 
 ### The `ironic` boot plugin
 
@@ -324,6 +339,20 @@ A versioned migration under `playbooks/tasks/migrations/` moves `redfish`, `redf
 `redfishPassword` and `bmcSystemId` from each `agent_hosts` entry into
 `config/plugins/boot/ironic.yaml`. It runs only if any `agent_hosts` entry still has those fields.
 `bootPlugin` is not written, since `ironic` is the default. `discovery_hosts` is not touched.
+
+It is the first migration that rewrites user configuration, and the migration runner only records
+a migration once it succeeds, so a failed run is retried. The migration is therefore safe to run
+again:
+
+1. For each host, the BMC fields are merged into `hosts.<name>` of `ironic.yaml`: added if the
+   entry is missing, left as is if it holds identical values. If it holds different values, the
+   migration fails with a message naming the host and changes nothing.
+1. `ironic.yaml` is written first, then the fields are removed from `global.yaml`. Each file is
+   written atomically (temporary file, then rename), after keeping a backup of the original.
+1. A run interrupted between the two writes leaves the values in both files. The next run finds
+   identical values, skips the merge and only removes them from `global.yaml`, so credentials are
+   neither lost nor duplicated.
+
 Diagnostics redaction (`scripts/diagnostics/gather_lz.sh`, which redacts known password fields of
 `global.yaml`) must cover the new file.
 
