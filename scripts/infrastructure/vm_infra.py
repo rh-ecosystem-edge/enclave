@@ -36,6 +36,7 @@ import shlex
 import subprocess
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -599,6 +600,15 @@ def _mac(cluster_name: str, vm: str, nic: str, salt: int = 0) -> str:
     return f"52:54:00:{b[0]:02x}:{b[1]:02x}:{b[2]:02x}"
 
 
+def vm_uuid(cluster_name: str, vm: str) -> str:
+    """Deterministic libvirt domain UUID (uuid5) derived from cluster/vm.
+
+    Deterministic so it is known before the domain is defined and stable across
+    destroy+create; the cluster name keeps UUIDs distinct across clusters.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"enclave:{cluster_name}:{vm}"))
+
+
 def generate_macs(cfg: Config) -> Dict[str, Dict[str, str]]:
     """Deterministic per-NIC MAC map for all VMs; stable across destroy+create.
 
@@ -954,7 +964,8 @@ def _define_domain(conn: libvirt.virConnect, xml: str, name: str) -> None:
 
 def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str]:
     """Build the `export` lines for cluster-env.sh — the single source of truth consumed
-    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs and MACs).
+    downstream (networks, gateways, BMC endpoint, service IPs, LZ/master names, IPs, MACs
+    and domain UUIDs).
 
     Every value is shell-quoted with shlex.quote: cluster-env.sh is sourced and `eval`'d
     downstream, so an unexpected character in a value must never become shell code.
@@ -1005,6 +1016,7 @@ def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str
             (f"ENCLAVE_MASTER_{i}_BMC_MAC", m["bmc"]),
             (f"ENCLAVE_MASTER_{i}_CLUSTER_MAC", m["cluster"]),
             (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
+            (f"ENCLAVE_MASTER_{i}_UUID", vm_uuid(cfg.cluster_name, name)),
         ]
     # Spoke (managed) cluster. Count is always emitted so downstream can branch on
     # it; the spoke cluster name, base domain and per-node identity follow only when
@@ -1023,6 +1035,7 @@ def _cluster_env_lines(cfg: Config, macs: Dict[str, Dict[str, str]]) -> List[str
                 (f"ENCLAVE_SPOKE_{i}_BMC_MAC", s["bmc"]),
                 (f"ENCLAVE_SPOKE_{i}_CLUSTER_MAC", s["cluster"]),
                 (f"ENCLAVE_SPOKE_{i}_CLUSTER_IP", cfg.spoke_cluster_ip(i)),
+                (f"ENCLAVE_SPOKE_{i}_UUID", vm_uuid(cfg.cluster_name, name)),
             ]
     return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
 
@@ -1164,6 +1177,7 @@ def create(cfg: Config) -> None:
         render(
             "domain.xml.j2",
             name=cfg.lz_vm_name,
+            uuid=vm_uuid(cfg.cluster_name, cfg.lz_vm_name),
             memory_kb=cfg.lz.memory_mb * 1024,
             vcpu=cfg.lz.vcpu,
             pool_path=str(cfg.pool_dir),
@@ -1195,6 +1209,7 @@ def create(cfg: Config) -> None:
             render(
                 "domain.xml.j2",
                 name=name,
+                uuid=vm_uuid(cfg.cluster_name, name),
                 memory_kb=cfg.master.memory_mb * 1024,
                 vcpu=cfg.master.vcpu,
                 pool_path=str(cfg.pool_dir),
@@ -1228,6 +1243,7 @@ def create(cfg: Config) -> None:
                 render(
                     "domain.xml.j2",
                     name=name,
+                    uuid=vm_uuid(cfg.cluster_name, name),
                     memory_kb=cfg.spoke.memory_mb * 1024,
                     vcpu=cfg.spoke.vcpu,
                     pool_path=str(cfg.pool_dir),

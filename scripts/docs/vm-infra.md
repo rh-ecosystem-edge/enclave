@@ -112,8 +112,8 @@ via that one).
 | `{cluster}_master_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
 | `{cluster}_spoke_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
 
-Masters and spoke nodes have no IP on the BMC bridge — they are identified by MAC
-address for Redfish (`SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID=True`).
+Masters and spoke nodes have no IP on the BMC bridge. sushy-tools exposes them as
+Redfish systems identified by their libvirt domain UUID (see *Domain UUIDs*).
 
 VM names follow the dev-scripts convention (`{cluster}_landingzone_0`,
 `{cluster}_master_{i}`, `{cluster}_spoke_{i}`) so no downstream scripts need to change.
@@ -195,7 +195,7 @@ vm_infra.py create)"` locally, or append it to `$GITHUB_ENV` in CI.
 `cluster-env.sh` carries the full infrastructure contract: cluster name and base
 domain, deployment mode, `WORKING_DIR`, pool path, bridges, CIDRs, gateways, the BMC
 endpoint/port, service IPs (API/ingress VIPs, rendezvous), and the Landing Zone and
-enumerated master names, IPs and MACs. For example:
+enumerated master names, IPs, MACs and libvirt domain UUIDs. For example:
 
 ```bash
 export ENCLAVE_CLUSTER_NAME="eci-ab12cd34"
@@ -208,10 +208,12 @@ export ENCLAVE_LZ_CLUSTER_IP="192.168.N.2"
 export ENCLAVE_MASTER_COUNT="3"
 export ENCLAVE_MASTER_0_CLUSTER_MAC="52:54:00:…"
 export ENCLAVE_MASTER_0_CLUSTER_IP="192.168.N.20"
+export ENCLAVE_MASTER_0_UUID="3f9c1e2a-…"
 # … and so on
 export ENCLAVE_SPOKE_COUNT="0"   # or 1, with the keys below when a spoke is created
 # export ENCLAVE_SPOKE_CLUSTER_NAME="eci-ab12cd34-spoke"
 # export ENCLAVE_SPOKE_0_CLUSTER_IP="192.168.N.30"
+# export ENCLAVE_SPOKE_0_UUID="7a4d0b9e-…"
 ```
 
 ### MAC addresses
@@ -221,6 +223,13 @@ MACs are **deterministic** — `52:54:00:` + the first three bytes of
 reproduces the same addresses with no persisted file, and distinct cluster names
 keep addresses unique across concurrent clusters on a shared host. (This replaces the
 old random-MACs-plus-`macs.json` scheme.)
+
+### Domain UUIDs
+
+Libvirt domain UUIDs are **deterministic** too — `uuid5` of `enclave:cluster_name:vm`,
+set in `domain.xml.j2` — so they are known before any domain is defined and are
+emitted in `cluster-env.sh` as `ENCLAVE_MASTER_<i>_UUID` / `ENCLAVE_SPOKE_<i>_UUID`.
+sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 
 ## Python tool
 

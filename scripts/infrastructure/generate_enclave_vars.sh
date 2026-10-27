@@ -158,11 +158,11 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
     name_var="ENCLAVE_MASTER_${i}_NAME";        MASTER_NAME="${!name_var}"
     mac_var="ENCLAVE_MASTER_${i}_CLUSTER_MAC";  MASTER_MAC="${!mac_var}"
     ip_var="ENCLAVE_MASTER_${i}_CLUSTER_IP";    MASTER_IP="${!ip_var}"
+    # Libvirt domain UUID (sushy-tools uses libvirt UUIDs as system IDs)
+    uuid_var="ENCLAVE_MASTER_${i}_UUID";        MASTER_UUID="${!uuid_var:-}"
 
-    # Get libvirt domain UUID (sushy-tools uses libvirt UUIDs as system IDs)
-    MASTER_UUID=$(sudo virsh domuuid "$MASTER_NAME" 2>/dev/null || echo "")
     if [ -z "$MASTER_UUID" ]; then
-        error "Could not get UUID for VM: $MASTER_NAME"
+        error "No UUID for VM ${MASTER_NAME} (${uuid_var} empty in cluster-env.sh)"
         exit 1
     fi
 
