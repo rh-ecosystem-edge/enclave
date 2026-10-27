@@ -36,7 +36,8 @@ The Redfish path is also hardwired across the codebase, which makes adding an al
 
 ## Goals
 
-- Booting the management cluster hosts is done by a **boot plugin** selected in configuration.
+- Booting the management cluster hosts is done by a **boot plugin** selected in configuration,
+  with a default for all hosts and an optional per-host override, so mixed hardware is supported.
   Boot plugins live in `plugins/boot/<name>/` and have a code path fully separate from the
   existing plugins, including their validation.
 - The current Ironic/Redfish flow becomes the `ironic` boot plugin, the default. Redfish is a
@@ -67,18 +68,26 @@ The Redfish path is also hardwired across the codebase, which makes adding an al
 - **Boot plugins other than `ironic` and `manual`.**
 - **Ironic drivers other than `redfish`.** The `ironic` plugin makes the driver configurable, but
   only `redfish` is supported initially.
-- **Selecting a different boot plugin per host.** One boot plugin boots all hosts. The
-  configuration layout does not prevent adding a per-host override later.
 
 ## Proposal
 
 ### Selection and configuration
 
-A new optional top-level setting in `config/global.yaml` selects the boot plugin:
+A new optional top-level setting in `config/global.yaml` selects the default boot plugin, and each
+`agent_hosts` entry can override it with the same property:
 
 ```yaml
-boot_plugin: ironic   # default when omitted
+bootPlugin: ironic       # default for all hosts; ironic when omitted
+agent_hosts:
+  - name: master-0       # booted by ironic
+  - name: master-1       # booted by ironic
+  - name: master-2
+    bootPlugin: manual   # per-host override, e.g. a host whose BMC does not work
 ```
+
+The per-host `bootPlugin` is validated by name pattern only, since third-party plugin names are
+not known in advance; that the referenced plugins exist and honour the contract is checked by
+[validation](#validation).
 
 `agent_hosts` stays in `config/global.yaml`: almost all of its fields (`name`, `macAddress`,
 `ipAddress`, `rootDisk`, `interfaceName`, `networkConfig`, `mapInterfaces`) feed the ABI
@@ -103,14 +112,16 @@ Boot plugin settings therefore cannot collide with global variables, and the pro
 that `validate_plugins.sh` enforces for existing plugins is not needed.
 
 `hostEntry` in `schemas/definitions.yaml` is shared today by `agent_hosts` and `discovery_hosts`.
-It is split: the `agent_hosts` variant drops the four BMC fields; `discovery_hosts` keeps them.
+It is split: the `agent_hosts` variant drops the four BMC fields and gains the optional
+`bootPlugin`; `discovery_hosts` keeps the BMC fields.
 
 `lzBmcIP`, `lzBmcHostname` and the Ironic HTTPS certificates stay in global and certificates
 configuration, since the Day 2 discovery path needs them as well. `lzBmcIP` is no longer
-unconditionally required by `schemas/global.yaml`; the `ironic` plugin and the discovery path each
-check it explicitly. As a consequence, the `httpd` check in `validations.sh` (which guards the LZ
-host httpd serving the RHCOS live ISOs referenced by the MCE `AgentServiceConfig`) switches from
-`lzBmcIP` to `quayHostname`, the address its consumer actually uses.
+unconditionally required by `schemas/global.yaml`; the `ironic` plugin (when any host uses it) and
+the discovery path each check it explicitly. As a consequence, the `httpd` check in
+`validations.sh` (which guards the LZ host httpd serving the RHCOS live ISOs referenced by the MCE
+`AgentServiceConfig`) switches from `lzBmcIP` to `quayHostname`, the address its consumer actually
+uses.
 
 ### Boot plugin layout
 
@@ -155,20 +166,35 @@ fixed point of the existing bootstrap steps:
 | `tasks/post-install.yaml` | `deploy` | `wait_for_deployment.yaml`, after `install-complete` | `configure_hardware_ironic_detach_vmedia.yaml` |
 | `tasks/cleanup.yaml` | `deploy` | `wait_for_deployment.yaml`, after `post-install.yaml` | `configure_hardware_ironic_cleanup.yaml` |
 
-Variables available to every hook: `bootPluginConfig`, `workingDir`, `agent_hosts`, and
-`bootIsoPath` (`<workingDir>/ocp-cluster/abi-iso/agent.x86_64.iso`). `setup.yaml` and
-`boot.yaml` also get `agent_hosts_to_provision`. `boot.yaml` receives the whole host list and
-loops itself if it needs to.
+The runner groups the hosts by their effective `bootPlugin` and runs each hook once per plugin in
+use, with that plugin's hosts only:
+
+- `validate.yaml`, `post-install.yaml` and `cleanup.yaml` run for every plugin in use.
+- `setup.yaml` and `boot.yaml` run, one plugin after the other, for every plugin with at least one
+  host to provision. Plugins are ordered by `discoveryTimeout`, largest first: a plugin that waits
+  for its hosts (as `ironic` waits for its nodes to become active) would otherwise delay the
+  instructions of a human-driven plugin such as `manual`.
+
+Variables available to every hook:
+
+- `bootPluginConfig`: the configuration of the plugin being run, set before each plugin's hooks
+- `bootHosts`: the `agent_hosts` entries assigned to that plugin
+- `workingDir`
+- `bootIsoPath` (`<workingDir>/ocp-cluster/abi-iso/agent.x86_64.iso`)
+
+`setup.yaml` and `boot.yaml` also get `bootHostsToProvision`, the subset of `bootHosts` not
+already in the cluster. Hooks never read `agent_hosts` directly. `boot.yaml` receives its whole host
+list and loops itself if it needs to.
 
 Each plugin serves the ISO in whatever way it needs; core only guarantees `bootIsoPath`.
 `post-install.yaml` and `cleanup.yaml` run on every deployment, so they must be idempotent.
 
 Between `boot.yaml` and `post-install.yaml`, core runs unchanged:
 `pre_install_validate_plugins.yaml` waits for the rendezvous host and for all hosts to be `known`,
-then releases the installation gate. `discoveryTimeout` drives both of those waits. Today they are
-hardcoded to 600 seconds and 60 × 5 seconds, which is fine when Ironic powers on all hosts at once
-but not when a person boots them one after another. Users can override it with a global
-`bootDiscoveryTimeout`.
+then releases the installation gate. Both waits use the largest `discoveryTimeout` among the
+plugins in use. Today they are hardcoded to 600 seconds and 60 × 5 seconds, which is fine when
+Ironic powers on all hosts at once but not when a person boots them one after another. Users can
+override it with a global `bootDiscoveryTimeout`.
 
 ### The `ironic` boot plugin
 
@@ -195,8 +221,8 @@ The per-node virtual media detach work belongs to this plugin's `post-install.ya
 `tasks/validate.yaml` ports the Redfish checks from `validations.sh` to Ansible. It also checks
 explicitly every setting the plugin needs from outside its own configuration file: `lzBmcIP`,
 `lzBmcHostname` and the Ironic certificates when HTTPS is configured, and that the `hosts` keys
-match `agent_hosts[].name` exactly (the plugin also reads `agent_hosts[].macAddress` to create the
-Ironic ports).
+match the names in `bootHosts` exactly, so hosts booted by another plugin need no BMC entry (the
+plugin also reads `macAddress` from `bootHosts` to create the Ironic ports).
 
 ### Shared Ironic tasks library
 
@@ -245,7 +271,7 @@ Boot plugin validation has three layers:
 
 | Layer | What | Owner | When |
 |---|---|---|---|
-| 1. Contract | Does the directory honour the boot plugin contract? | core, `src/enclave` | install time (selected plugin) and CI (all in-repo boot plugins) |
+| 1. Contract | Does the directory honour the boot plugin contract? | core, `src/enclave` | install time (every plugin referenced by `bootPlugin`) and CI (all in-repo boot plugins) |
 | 2. Configuration | `config/plugins/boot/<name>.yaml` against the plugin's `schemas/config.yaml` | core runs it, the plugin's schema holds the rules | install time, `validate` step |
 | 3. Preflight | Plugin-specific runtime checks, e.g. BMC reachability | the plugin's `tasks/validate.yaml` | install time, `validate` step |
 
@@ -297,7 +323,7 @@ recursively (depth 2), so they would pick up `plugins/boot/<name>/plugin.yaml` a
 A versioned migration under `playbooks/tasks/migrations/` moves `redfish`, `redfishUser`,
 `redfishPassword` and `bmcSystemId` from each `agent_hosts` entry into
 `config/plugins/boot/ironic.yaml`. It runs only if any `agent_hosts` entry still has those fields.
-`boot_plugin` is not written, since `ironic` is the default. `discovery_hosts` is not touched.
+`bootPlugin` is not written, since `ironic` is the default. `discovery_hosts` is not touched.
 Diagnostics redaction (`scripts/diagnostics/gather_lz.sh`, which redacts known password fields of
 `global.yaml`) must cover the new file.
 
@@ -341,7 +367,7 @@ cluster name on separate runners (`vm_infra.py` only avoids clashes on the same 
 diagnostics artifacts would clash.
 
 **Configuration.** A `BOOT_PLUGIN` environment variable is consumed by
-`scripts/infrastructure/generate_enclave_vars.sh`, which writes `boot_plugin:` into
+`scripts/infrastructure/generate_enclave_vars.sh`, which writes the top-level `bootPlugin:` into
 `config/global.yaml`. For `ironic` it writes `config/plugins/boot/ironic.yaml` instead of the
 Redfish fields in `agent_hosts`; for `manual` it writes no plugin file. Unlike `STORAGE_PLUGIN`,
 the value must not go through `extra_vars.yaml`: config validation only reads the configuration
@@ -395,6 +421,11 @@ behaviour inside Ironic would mean custom Python drivers in the Ironic image.
 
 **Moving `agent_hosts` to the boot plugin configuration.** Most `agent_hosts` fields are used
 outside booting. Only the four BMC fields are boot-specific.
+
+**A single boot plugin for all hosts.** Simpler runner, but a management cluster with one host whose
+BMC does not work could not use `ironic` for the others. Supporting the per-host override from the
+start costs the grouping loop, the plugin ordering and the largest-timeout rule, and keeps the hook
+contract (`bootHosts`) stable.
 
 **Pausing in the `manual` plugin.** See [The `manual` boot plugin](#the-manual-boot-plugin).
 
