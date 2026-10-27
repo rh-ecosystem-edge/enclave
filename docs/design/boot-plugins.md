@@ -125,9 +125,10 @@ It is split: the `agent_hosts` variant drops the four BMC fields and gains the o
 configuration, since the Day 2 discovery path needs them as well. `lzBmcIP` is no longer
 unconditionally required by `schemas/global.yaml`; the `ironic` plugin (when any host uses it) and
 the discovery path each check it explicitly. As a consequence, the `httpd` check in
-`validations.sh` (which guards the LZ host httpd serving the RHCOS live ISOs referenced by the MCE
-`AgentServiceConfig`) switches from `lzBmcIP` to `quayHostname`, the address its consumer actually
-uses.
+`validations.sh` (which guards the LZ host httpd serving the RHCOS live ISOs) switches from
+`lzBmcIP` to `quayHostname`, the address its consumer actually uses: the MCE
+`AgentServiceConfig.osImages` reference the ISOs as `http://{{ quayHostname }}/...`
+(`operators/multicluster-engine/configure_asc.yaml`).
 
 ### Boot plugin layout
 
@@ -316,20 +317,16 @@ shell script is removed, so every plugin is validated at install time.
 
 ### Coexistence with existing plugins
 
-Several places discover existing plugins by scanning `plugins/`. Some search for `plugin.yaml`
-recursively (depth 2), so they would pick up `plugins/boot/<name>/plugin.yaml` as a
-`foundation`/`addon` descriptor. Others list the directories one level down, so they would treat
-`plugins/boot/` itself as a plugin without a descriptor. All of them must exclude `plugins/boot/`:
+Boot plugins live one level deeper than the `foundation`/`addon` discovery looks: the recursive
+`plugin.yaml` searches use `depth: 2` and do not reach `plugins/boot/<name>/plugin.yaml`, and they
+also filter by `type` or `enabled_plugins`, so they ignore boot plugins. `load-vars.yaml` lists
+`plugins/boot` as a directory but keeps only names in `enabled_plugins`, which never contains
+`boot`. Two directory-level scanners have no such filter and must skip `plugins/boot`:
 
-- `playbooks/common/load-vars.yaml`
-- `playbooks/tasks/deploy_plugins.yaml`
-- `playbooks/tasks/validate_enabled_plugins.yaml`
-- `playbooks/tasks/pre_install_validate_plugins.yaml`
-- `playbooks/tasks/collect_core_plugin_operators.yaml`
-- `playbooks/tasks/collect_plugin_registries.yaml`
-- `playbooks/validation/tasks/defaults_schema_validation.yaml`
-- `scripts/verification/validate_plugins.sh`
-- the plugin catalog migrations under `playbooks/tasks/migrations/` that scan `plugins/`
+- `playbooks/validation/tasks/defaults_schema_validation.yaml`: its directory pass (`depth: 1`)
+  would look up `plugins/boot/plugin.yaml`, which does not exist, and fail.
+- `scripts/verification/validate_plugins.sh`: it iterates every directory under `plugins/` and
+  would validate `plugins/boot` as a `foundation`/`addon` plugin.
 
 `boot` becomes a reserved name: no `foundation`/`addon` plugin may be called `boot`.
 
