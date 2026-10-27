@@ -17,7 +17,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update uv version in setup_ansible.sh and install_enclave.sh (kept in sync with ghcr.io/astral-sh/uv in Dockerfile.ci via a shared datasource)",
+      "description": "Update uv version in setup_ansible.sh (kept in sync with ghcr.io/astral-sh/uv in Dockerfile.ci via a shared datasource)",
       "managerFilePatterns": ["setup_ansible.sh"],
       "matchStrings": ["UV_VERSION=\"(?<currentValue>[^\"]+)\""],
       "depNameTemplate": "ghcr.io/astral-sh/uv",
@@ -104,6 +104,12 @@
       "description": "Konflux references (Tekton task bundles in .tekton/): automerge digest and patch",
       "matchFileNames": [".tekton/**"],
       "matchUpdateTypes": ["digest", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "uv: automerge patch and minor, never major",
+      "matchPackageNames": ["ghcr.io/astral-sh/uv"],
+      "matchUpdateTypes": ["patch", "minor"],
       "automerge": true
     }
   ],
