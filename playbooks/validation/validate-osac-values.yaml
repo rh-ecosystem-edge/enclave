@@ -70,3 +70,21 @@
           - _osac_values_raw.content | b64decode | from_yaml is mapping
         fail_msg: "Rendered OSAC values overlay is not a valid YAML mapping: {{ osac_values_out }}"
         success_msg: "Rendered OSAC values overlay parsed successfully ({{ osac_profile_name | default('unnamed') }})"
+
+    - name: Parse rendered overlay
+      ansible.builtin.set_fact:
+        _osac_values: "{{ _osac_values_raw.content | b64decode | from_yaml }}"
+
+    # Operator uses private gRPC methods the public listener rejects; catch a
+    # regression at PR time rather than at runtime.
+    - name: Assert operator targets the internal Fulfillment listener
+      ansible.builtin.assert:
+        that:
+          - _osac_values.operator.fulfillment.serverAddress is defined
+          - _osac_values.operator.fulfillment.serverAddress == 'fulfillment-internal-api:8001'
+        fail_msg: >-
+          operator.fulfillment.serverAddress must be the internal listener
+          'fulfillment-internal-api:8001' for private API traffic, not the
+          public listener. Got:
+          '{{ _osac_values.operator.fulfillment.serverAddress | default('<unset>') }}'
+        success_msg: "operator.fulfillment.serverAddress targets the internal listener ({{ osac_profile_name | default('unnamed') }})"
