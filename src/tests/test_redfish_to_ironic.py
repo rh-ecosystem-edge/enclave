@@ -442,20 +442,65 @@ def test_migrate_falls_back_to_rewrite(
     assert "fake-bmc-password-a" not in caplog.text
 
 
-def test_diff_masks_passwords(
+def test_migrate_logs_removed_fields_without_values(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ) -> None:
     global_path, ironic_path = paths
     with caplog.at_level(logging.INFO):
         migrate(global_path, ironic_path, SCHEMA)
-    assert "-    redfishPassword: ********" in caplog.text
-    assert "-    redfish: 192.168.1.101" in caplog.text
-    for password in (
+    assert (
+        "removed the lines of redfish, redfishUser, redfishPassword, bmcSystemId "
+        "from agent_hosts entry mgmt-ctl02"
+    ) in caplog.text
+    for value in (
         "fake-bmc-password-a",
         "fake-bmc-password-b",
         "fake-bmc-password-c",
+        "192.168.1.101",
+        "fake",
     ):
-        assert password not in caplog.text
+        assert value not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "global_text",
+    [
+        # Unchanged secret right next to the removed fields.
+        (
+            "agent_hosts:\n"
+            "  - name: m0\n"
+            "    redfish: 10.0.0.1\n"
+            "    redfishUser: admin\n"
+            "    redfishPassword: fake-secret-one\n"
+            'pullSecret: {"auths":{"quay.io":{"auth":"fake-secret-two"}}}\n'
+        ),
+        # Block scalar password with a blank line in it.
+        (
+            "agent_hosts:\n"
+            "  - name: m0\n"
+            "    redfish: 10.0.0.1\n"
+            "    redfishUser: admin\n"
+            "    redfishPassword: |\n"
+            "      fake-secret-one\n"
+            "\n"
+            "      fake-secret-two\n"
+            "    rootDisk: /dev/vda\n"
+        ),
+    ],
+)
+def test_migrate_exact_edit_never_logs_secrets(
+    paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture, global_text: str
+) -> None:
+    global_path, ironic_path = paths
+    global_path.write_text(global_text, encoding="utf-8")
+
+    with caplog.at_level(logging.DEBUG):
+        result = migrate(global_path, ironic_path, SCHEMA)
+
+    assert result.rewritten == []
+    assert "formatting changed" not in caplog.text
+    assert "removed the lines of redfish" in caplog.text
+    assert "fake-secret" not in caplog.text
 
 
 def test_migrate_never_logs_flow_style_passwords_or_other_secrets(

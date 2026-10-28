@@ -17,7 +17,6 @@ retried.
 """
 
 import copy
-import difflib
 import io
 import itertools
 import logging
@@ -61,10 +60,6 @@ _MAP_COMMENT_SLOT = 2
 _SEQ_COMMENT_SLOT = 0
 _MAPPING_PARENT_LINE = re.compile(r"^(\s*)[^\s#\-][^:]*:\s*(#.*)?$")
 _MAPPING_KEY_LINE = re.compile(r"^(\s*)[^\s#\-][^:]*:(\s|$)")
-_FIELD_LINE = re.compile(r"^\s*(-\s+)?(" + "|".join(BMC_FIELDS) + r")\s*:")
-_PASSWORD_LINE = re.compile(
-    r"^(\s*[-+]?\s*(-\s+)?[\"']?[^\s:]*password[^\s:]*[\"']?\s*:).*$", re.IGNORECASE
-)
 _NEW_FILE_MODE = 0o600
 _NEW_DIR_MODE = 0o750
 
@@ -315,39 +310,6 @@ def _render(
     return _plain_dump(expected), False
 
 
-def _masked_diff(diff: list[str]) -> list[str]:
-    """Mask password values, including the continuation lines of removed fields."""
-    masked = []
-    field_indent = None
-    for line in diff:
-        if line.startswith("-") and not line.startswith("---"):
-            content = line[1:]
-            indent = len(content) - len(content.lstrip(" -"))
-            if field_indent is not None and indent > field_indent and content.strip():
-                masked.append("-" + " " * indent + "********")
-                continue
-            field_indent = indent if _FIELD_LINE.match(content) else None
-        else:
-            field_indent = None
-        masked.append(_PASSWORD_LINE.sub(r"\1 ********", line))
-    return masked
-
-
-def _report_removed_lines(path: Path, old: str, new: str) -> None:
-    """Log the changes of an edit that only removed the migrated fields."""
-    diff = list(
-        difflib.unified_diff(
-            old.splitlines(),
-            new.splitlines(),
-            fromfile=f"{path} (original)",
-            tofile=str(path),
-            lineterm="",
-        )
-    )
-    if diff:
-        logger.info("Changes to %s:\n%s", path, "\n".join(_masked_diff(diff)))
-
-
 def _write_fd(fd: int, text: str) -> None:
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(text)
@@ -429,6 +391,7 @@ def _update_global(
     global_path: Path,
     global_text: str,
     expected: dict[str, Any],
+    removed: dict[str, Any],
     result: MigrationResult,
 ) -> None:
     new_text, exact = _render(
@@ -441,10 +404,16 @@ def _update_global(
         result,
     )
     _write(global_path, new_text, result)
-    # Only an exact edit is shown: other edits may reformat lines holding
-    # secrets that are not migrated passwords (e.g. pullSecret).
+    # Field values are never logged: they include passwords, and other edits
+    # may also change lines holding unrelated secrets (e.g. pullSecret).
     if exact:
-        _report_removed_lines(global_path, global_text, new_text)
+        for name, entry in removed.items():
+            logger.info(
+                "%s: removed the lines of %s from agent_hosts entry %s",
+                global_path,
+                ", ".join(f for f, key in BMC_FIELDS.items() if key in entry),
+                name,
+            )
     elif global_path not in result.rewritten:
         logger.warning(
             "%s: formatting changed beyond the migrated settings; compare it with the "
@@ -494,7 +463,9 @@ def migrate(global_path: Path, ironic_path: Path, schema_path: Path) -> Migratio
         _update_ironic(ironic_path, ironic_text, new_ironic_data, added, result)
     else:
         logger.info("%s already has the BMC settings of all hosts", ironic_path)
-    _update_global(global_path, global_text, _without_bmc_fields(global_data), result)
+    _update_global(
+        global_path, global_text, _without_bmc_fields(global_data), entries, result
+    )
 
     logger.info(
         "Moved the Redfish settings of %s from %s to %s",

@@ -122,12 +122,12 @@ Their BMC settings no longer live in `agent_hosts`: the migration
   is left as is; if it has different values, the migration fails naming the host and changes
   nothing. Resolve the conflict by removing one of the two entries and run `./upgrade.sh` again.
 - Both files keep their comments and formatting. Usually only the lines of the moved fields are
-  removed from `config/global.yaml`, and the migration output shows those lines with passwords
-  masked.
+  removed from `config/global.yaml`; the migration output lists, per host, the fields removed,
+  never their values.
 - If `config/global.yaml` cannot be edited that way, the migration edits it keeping comments but
   possibly changing some formatting, or, as a last resort, rewrites it from its content (comments
-  and formatting are then kept only in the backup). In both cases it shows no changes, since other
-  lines may hold secrets; compare the file with its backup instead.
+  and formatting are then kept only in the backup). Either way it says so in its output; compare
+  the file with its backup to review the changes.
 - Both files are backed up before being changed, next to the original, as
   `<file>.<pid>.<date>@<time>~` (e.g. `config/global.yaml.12345.2026-10-28@14:43:17~`). The
   migration output lists the backups.

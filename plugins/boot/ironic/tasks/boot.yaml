@@ -63,6 +63,7 @@
 - name: Initialize Ironic node states
   ansible.builtin.set_fact:
     _ironic_nodes: {}
+    _bmc_password_results: []
 
 - name: Set node UUIDs and initial states
   ansible.builtin.set_fact:
@@ -75,9 +76,9 @@
     label: "{{ item.0.item.name }}"
 
 # The BMC password is set apart from node creation so that only this task
-# needs no_log; its outcome is reported by the next task without the password.
-# Nodes left in enroll by an earlier run get it too.
-- name: Set BMC password of nodes in enroll state
+# needs no_log. It is set on every node that will be deployed, so that nodes
+# left by an earlier run get the current password.
+- name: Set BMC password of nodes to deploy
   ansible.builtin.uri:
     url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
     method: PATCH
@@ -95,21 +96,35 @@
     status_code: [200]
   loop: "{{ bootHostsToProvision }}"
   register: r_bmc_passwords
-  when: _ironic_nodes[item.name].state == "enroll"
+  when: _ironic_nodes[item.name].state != "active"
   failed_when: false
   no_log: true
 
-- name: Check that the BMC password of each node in enroll state was set
+# Only the node name, HTTP status and Ironic error message are kept from the
+# results above, so that no request data reaches the output.
+- name: Collect BMC password update results
+  ansible.builtin.set_fact:
+    _bmc_password_results: >-
+      {{ _bmc_password_results + [{
+           'name': item.item.name,
+           'status': item.status | default(-1),
+           'error': item.json.error_message | default(item.msg | default('')) | string}] }}
+  loop: "{{ r_bmc_passwords.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  no_log: true
+
+- name: Check that the BMC password of each node to deploy was set
   ansible.builtin.assert:
     that:
       - item.status == 200
     fail_msg: >-
-      Setting the BMC password of node {{ item.item.name }} failed with HTTP status
-      {{ item.status }}: {{ item.json.error_message | default(item.msg | default('')) }}
+      Setting the BMC password of node {{ item.name }} failed with HTTP status
+      {{ item.status }}: {{ item.error }}
     quiet: true
-  loop: "{{ r_bmc_passwords.results | rejectattr('skipped', 'defined') | list }}"
+  loop: "{{ _bmc_password_results }}"
   loop_control:
-    label: "{{ item.item.name }}"
+    label: "{{ item.name }}"
 
 - name: Create ports for nodes
   ansible.builtin.uri:
