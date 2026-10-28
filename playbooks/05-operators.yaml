@@ -48,6 +48,18 @@
             - foundation-plugins
             - operators
 
+        - name: Create stable aliases for mirrored CatalogSources
+          when: disconnected | default(true) | bool
+          ansible.builtin.include_tasks:
+            file: tasks/create_stable_catalog_source_aliases.yaml
+            apply:
+              tags:
+                - foundation-plugins
+                - operators
+          tags:
+            - foundation-plugins
+            - operators
+
         - name: Configure seed operators
           ansible.builtin.include_tasks:
             file: tasks/configure_operators.yaml

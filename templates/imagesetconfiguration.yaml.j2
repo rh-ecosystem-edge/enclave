@@ -28,6 +28,7 @@ mirror:
   operators:
 {% for c_name, c_catalog_operators in catalog_operators.items() %}
 {% if c_name == 'core' %}
+    # oc-mirror emits y-stream-suffixed CatalogSources; playbooks create stable aliases after import.
     - catalog: {{ rh_operator_catalog }}:{{ rh_operator_catalog_version }}
       targetCatalog: redhat/{{ mirror_rh_operator_catalog }}
 {% elif c_catalog_operators.catalog == 'certified' %}

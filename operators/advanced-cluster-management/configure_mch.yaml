@@ -3,12 +3,51 @@
 # This ensures ACM respects Manual installPlanApproval for MCE and OADP subscriptions.
 # Can be used for both initial creation and patching existing MCH during upgrades.
 
+- name: List core operator CatalogSources for disconnected MCE and OADP
+  when: disconnected | default(true) | bool
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_core_catalog_sources
+
+- name: Select core operator CatalogSource for disconnected MCE and OADP
+  when: disconnected | default(true) | bool
+  vars:
+    # Highest priority first: stable alias, legacy y-stream, management version.
+    _core_catalog_candidates:
+      - "cs-{{ mirror_rh_operator_catalog }}"
+      - "cs-{{ mirror_rh_operator_catalog }}-v4-20"
+      - "cs-{{ mirror_rh_operator_catalog }}-v{{ mgmt_openshift_version.split('.')[:2] | join('-') }}"
+    _ready_core_catalog_sources: >-
+      {{ r_core_catalog_sources.resources | default([])
+         | selectattr('status', 'defined')
+         | selectattr('status.connectionState', 'defined')
+         | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+         | map(attribute='metadata.name') | list }}
+  ansible.builtin.set_fact:
+    _core_operator_catalog_source: >-
+      {{ _core_catalog_candidates
+         | select('in', _ready_core_catalog_sources)
+         | first | default('') }}
+
+- name: Require a ready core operator CatalogSource for disconnected MCE and OADP
+  ansible.builtin.assert:
+    that:
+      - _core_operator_catalog_source | length > 0
+    fail_msg: >-
+      No ready stable, legacy, or versioned Red Hat operator CatalogSource is
+      available in openshift-marketplace for MCE and OADP.
+  when: disconnected | default(true) | bool
+
 - name: Set MCE subscription spec for disconnected
   when: disconnected | default(true) | bool
   ansible.builtin.set_fact:
     mce_subscription_spec:
       installPlanApproval: Manual
-      source: cs-redhat-operator-index-v4-20
+      source: "{{ _core_operator_catalog_source }}"
 
 - name: Set MCE subscription spec for connected
   when: not (disconnected | default(true) | bool)
@@ -24,7 +63,7 @@
   ansible.builtin.set_fact:
     oadp_subscription_spec:
       installPlanApproval: Manual
-      source: cs-redhat-operator-index-v4-20
+      source: "{{ _core_operator_catalog_source }}"
 
 - name: Set OADP subscription spec for connected
   when: not (disconnected | default(true) | bool)

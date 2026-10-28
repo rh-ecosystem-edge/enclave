@@ -1,0 +1,35 @@
+---
+- name: Ensure stable CatalogSource alias {{ stable_catalog_source_name }} uses the mirrored catalog
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: operators.coreos.com/v1alpha1
+      kind: CatalogSource
+      metadata:
+        name: "{{ stable_catalog_source_name }}"
+        namespace: openshift-marketplace
+      spec: "{{ versioned_catalog_source.spec }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Wait for stable CatalogSource alias {{ stable_catalog_source_name }} to be ready
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    name: "{{ stable_catalog_source_name }}"
+    namespace: openshift-marketplace
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_stable_catalog_source_alias
+  retries: 24
+  delay: 10
+  until: >-
+    r_stable_catalog_source_alias.resources | default([]) | length > 0 and
+    (
+      (
+        (
+          (r_stable_catalog_source_alias.resources | first | default({}))
+          .status | default({}, true)
+        ).connectionState | default({}, true)
+      ).lastObservedState | default('', true)
+    ) == 'READY'
