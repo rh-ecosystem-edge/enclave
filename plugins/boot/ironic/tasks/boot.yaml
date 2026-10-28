@@ -63,7 +63,7 @@
 - name: Initialize Ironic node states
   ansible.builtin.set_fact:
     _ironic_nodes: {}
-    _bmc_password_results: []
+    _bmc_settings_results: []
 
 - name: Set node UUIDs and initial states
   ansible.builtin.set_fact:
@@ -76,17 +76,23 @@
     label: "{{ item.0.item.name }}"
 
 # The BMC password is set apart from node creation so that only this task
-# needs no_log. It is set on every node that will be deployed, so that nodes
-# left by an earlier run get the current password.
-- name: Set BMC password of nodes to deploy
+# needs no_log. The BMC settings are set together, in one request, on every
+# node not deployed yet, so that nodes left by an earlier run get the current
+# settings and the password is never stored with a stale address. Nodes whose
+# deployment is in progress are left alone.
+- name: Set BMC settings of nodes to deploy
   ansible.builtin.uri:
     url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
     method: PATCH
     body_format: json
-    body:
-      - op: add
-        path: /driver_info/redfish_password
-        value: "{{ bootPluginConfig.hosts[item.name].password }}"
+    body: >-
+      {{ [
+           {'op': 'add', 'path': '/driver_info/redfish_address', 'value': 'https://' ~ _bmc.address},
+           {'op': 'add', 'path': '/driver_info/redfish_username', 'value': _bmc.username},
+         ]
+         + ([{'op': 'add', 'path': '/driver_info/redfish_system_id',
+              'value': '/redfish/v1/Systems/' ~ _bmc.systemId}] if _bmc.systemId is defined else [])
+         + [{'op': 'add', 'path': '/driver_info/redfish_password', 'value': _bmc.password}] }}
     headers:
       Content-Type: "application/json"
       X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
@@ -94,35 +100,37 @@
     password: "{{ metal3_ironic_password }}"
     force_basic_auth: true
     status_code: [200]
+  vars:
+    _bmc: "{{ bootPluginConfig.hosts[item.name] }}"
   loop: "{{ bootHostsToProvision }}"
-  register: r_bmc_passwords
-  when: _ironic_nodes[item.name].state != "active"
+  register: r_bmc_settings
+  when: _ironic_nodes[item.name].state in ["enroll", "manageable", "available"]
   failed_when: false
   no_log: true
 
 # Only the node name, HTTP status and Ironic error message are kept from the
 # results above, so that no request data reaches the output.
-- name: Collect BMC password update results
+- name: Collect BMC settings update results
   ansible.builtin.set_fact:
-    _bmc_password_results: >-
-      {{ _bmc_password_results + [{
+    _bmc_settings_results: >-
+      {{ _bmc_settings_results + [{
            'name': item.item.name,
            'status': item.status | default(-1),
            'error': item.json.error_message | default(item.msg | default('')) | string}] }}
-  loop: "{{ r_bmc_passwords.results | rejectattr('skipped', 'defined') | list }}"
+  loop: "{{ r_bmc_settings.results | rejectattr('skipped', 'defined') | list }}"
   loop_control:
     label: "{{ item.item.name }}"
   no_log: true
 
-- name: Check that the BMC password of each node to deploy was set
+- name: Check that the BMC settings of each node to deploy were set
   ansible.builtin.assert:
     that:
       - item.status == 200
     fail_msg: >-
-      Setting the BMC password of node {{ item.name }} failed with HTTP status
+      Updating the BMC settings of node {{ item.name }} failed with HTTP status
       {{ item.status }}: {{ item.error }}
     quiet: true
-  loop: "{{ _bmc_password_results }}"
+  loop: "{{ _bmc_settings_results }}"
   loop_control:
     label: "{{ item.name }}"
 
