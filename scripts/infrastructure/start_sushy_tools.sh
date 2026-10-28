@@ -85,9 +85,6 @@ sudo tee "${SUSHY_DIR}/conf.py" > /dev/null <<EOF
 # Use libvirt as the backend
 SUSHY_EMULATOR_LIBVIRT_URI = "qemu:///system"
 
-# Use MAC address as system identifier instead of UUID
-SUSHY_EMULATOR_LIBVIRT_MAC_AS_ID = True
-
 # Upload virtual-media ISOs into the per-cluster libvirt pool. Without this,
 # sushy-tools falls back to a pool named "default", which does not exist on
 # hosts that only have per-cluster pools, causing VirtualMedia.InsertMedia to
