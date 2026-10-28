@@ -91,7 +91,9 @@ not known in advance; that the referenced plugins exist and honour the contract 
 
 `schemas/global.yaml` rejects unknown top-level properties, so it gains two entries:
 
-- `bootPlugin`: string, plugin name pattern, optional, default `ironic`.
+- `bootPlugin`: string, plugin name pattern, optional. Its default, `ironic`, is set in
+  `defaults/deployment.yaml` (next to `storage_plugin`), like every other default, not in the
+  schema.
 - `bootDiscoveryTimeout`: integer, seconds, minimum 60, optional (see
   [Hook points](#hook-points)).
 
@@ -117,9 +119,21 @@ The boot plugin runner loads the plugin's `defaults.yaml` merged with
 Boot plugin settings therefore cannot collide with global variables, and the property-prefix rule
 that `validate_plugins.sh` enforces for existing plugins is not needed.
 
-`hostEntry` in `schemas/definitions.yaml` is shared today by `agent_hosts` and `discovery_hosts`.
-It is split: the `agent_hosts` variant drops the four BMC fields and gains the optional
-`bootPlugin`; `discovery_hosts` keeps the BMC fields.
+`hostEntry` in `schemas/definitions.yaml` is shared today by `agent_hosts` (referenced from
+`schemas/global.yaml`) and `discovery_hosts` (referenced from `schemas/cloud_infra.yaml`). It is
+split into two definitions:
+
+- `agentHostEntry`, referenced from `schemas/global.yaml`: drops the four BMC fields and gains the
+  optional `bootPlugin`.
+- `discoveryHostEntry`, referenced from `schemas/cloud_infra.yaml`: keeps the BMC fields required.
+
+The fixtures under `test-fixtures/schemas/global/` and `test-fixtures/schemas/cloud_infra/` are
+updated accordingly, including a valid `agent_hosts` entry without Redfish fields.
+
+MAC addresses must be unique across all `agent_hosts` entries (`macAddress` and the MACs in
+`mapInterfaces`). JSON Schema cannot express uniqueness of a field across array items, so config
+validation checks it explicitly; the host identity check in [Hook points](#hook-points) relies on
+it.
 
 `lzBmcIP`, `lzBmcHostname` and the Ironic HTTPS certificates stay in global and certificates
 configuration, since the Day 2 discovery path needs them as well. `lzBmcIP` is no longer
@@ -170,17 +184,20 @@ fixed point of the existing bootstrap steps:
 | `tasks/validate.yaml` | `validate` | config validation, after the boot plugin contract and configuration checks | Redfish checks in `validations.sh` |
 | `tasks/setup.yaml` | `acquire-hardware` | `03-deploy.yaml` (`hardware` tag), after host filtering; skipped when no host needs provisioning | `configure_hardware_ironic_setup.yaml` |
 | `tasks/boot.yaml` | `acquire-hardware` | right after `setup.yaml`; skipped when no host needs provisioning | `configure_hardware_ironic_boot.yaml`, `configure_hardware_ironic_wait.yaml` |
-| `tasks/post-install.yaml` | `deploy` | `wait_for_deployment.yaml`, after `install-complete` | `configure_hardware_ironic_detach_vmedia.yaml` |
+| `tasks/post-install.yaml` | `deploy` | `wait_for_deployment.yaml`, after `install-complete`; skipped when no host needed provisioning | `configure_hardware_ironic_detach_vmedia.yaml` |
 | `tasks/cleanup.yaml` | `deploy` | `wait_for_deployment.yaml`, after `post-install.yaml` | `configure_hardware_ironic_cleanup.yaml` |
 
 The runner groups the hosts by their effective `bootPlugin` and runs each hook once per plugin in
 use, with that plugin's hosts only:
 
-- `validate.yaml`, `post-install.yaml` and `cleanup.yaml` run for every plugin in use.
+- `validate.yaml` and `cleanup.yaml` run for every plugin in use.
 - `setup.yaml` and `boot.yaml` run, one plugin after the other, for every plugin with at least one
   host to provision. Plugins are ordered by `discoveryTimeout`, largest first: a plugin that waits
   for its hosts (as `ironic` waits for its nodes to become active) would otherwise delay the
   instructions of a human-driven plugin such as `manual`.
+- `post-install.yaml` runs for every plugin with at least one host to provision. On a rerun where
+  all of a plugin's hosts are already in the cluster, its `setup.yaml` did not run (for `ironic`,
+  no Ironic is running), so there is nothing to undo.
 
 Variables available to every hook:
 
@@ -189,12 +206,13 @@ Variables available to every hook:
 - `workingDir`
 - `bootIsoPath` (`<workingDir>/ocp-cluster/abi-iso/agent.x86_64.iso`)
 
-`setup.yaml` and `boot.yaml` also get `bootHostsToProvision`, the subset of `bootHosts` not
-already in the cluster. Hooks never read `agent_hosts` directly. `boot.yaml` receives its whole host
-list and loops itself if it needs to.
+`setup.yaml`, `boot.yaml` and `post-install.yaml` also get `bootHostsToProvision`, the subset of
+`bootHosts` not already in the cluster. Hooks never read `agent_hosts` directly. `boot.yaml`
+receives its whole host list and loops itself if it needs to.
 
 Each plugin serves the ISO in whatever way it needs; core only guarantees `bootIsoPath`.
-`post-install.yaml` and `cleanup.yaml` run on every deployment, so they must be idempotent.
+`cleanup.yaml` runs on every deployment, including when `setup.yaml` did not run, so it must be
+idempotent.
 
 Between `boot.yaml` and `post-install.yaml`, core runs `pre_install_validate_plugins.yaml`: it
 waits for the rendezvous host and for all hosts to be `known`, then releases the installation gate.
@@ -209,8 +227,11 @@ Two things change there:
   person picks the machines, so booting a wrong or extra machine from the ISO is a realistic
   mistake that the count would not catch. Core instead waits until every `agent_hosts` entry is
   `known`, matching Assisted Service host records by MAC address (`macAddress`, or the MACs in
-  `mapInterfaces`, against the interfaces in the host inventory). It fails immediately, with a
-  message naming the host, if a host registers whose MACs match no `agent_hosts` entry.
+  `mapInterfaces`, against the interfaces in the host inventory). The match must be one-to-one:
+  each host record matches exactly one `agent_hosts` entry and each entry exactly one host record
+  (configured MACs are unique, see [Selection and configuration](#selection-and-configuration)).
+  It fails immediately, with a message naming the hosts involved, if a host registers whose MACs
+  match no entry, or match more than one entry.
 
 ### The `ironic` boot plugin
 
@@ -341,10 +362,19 @@ It is the first migration that rewrites user configuration, and the migration ru
 a migration once it succeeds, so a failed run is retried. The migration is therefore safe to run
 again:
 
-1. For each host, the BMC fields are merged into `hosts.<name>` of `ironic.yaml`: added if the
-   entry is missing, left as is if it holds identical values. If it holds different values, the
-   migration fails with a message naming the host and changes nothing.
-1. `ironic.yaml` is written first, then the fields are removed from `global.yaml`. Each file is
+1. For each host, the BMC fields are renamed and merged into `hosts.<name>` of `ironic.yaml`:
+
+   | `agent_hosts[]` field | `ironic.yaml` `hosts.<name>` field |
+   |---|---|
+   | `redfish` | `address` |
+   | `redfishUser` | `username` |
+   | `redfishPassword` | `password` |
+   | `bmcSystemId` | `systemId` |
+
+   An entry is added if missing, and left as is if it holds identical values. If it holds
+   different values, the migration fails with a message naming the host and changes nothing.
+1. The resulting `ironic.yaml` is validated against the plugin's `schemas/config.yaml`. Only then
+   is it written, and only after that are the fields removed from `global.yaml`. Each file is
    written atomically (temporary file, then rename), after keeping a backup of the original.
 1. A run interrupted between the two writes leaves the values in both files. The next run finds
    identical values, skips the merge and only removes them from `global.yaml`, so credentials are
