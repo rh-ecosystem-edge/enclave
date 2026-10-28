@@ -184,20 +184,22 @@ fixed point of the existing bootstrap steps:
 | `tasks/validate.yaml` | `validate` | config validation, after the boot plugin contract and configuration checks | Redfish checks in `validations.sh` |
 | `tasks/setup.yaml` | `acquire-hardware` | `03-deploy.yaml` (`hardware` tag), after host filtering; skipped when no host needs provisioning | `configure_hardware_ironic_setup.yaml` |
 | `tasks/boot.yaml` | `acquire-hardware` | right after `setup.yaml`; skipped when no host needs provisioning | `configure_hardware_ironic_boot.yaml`, `configure_hardware_ironic_wait.yaml` |
-| `tasks/post-install.yaml` | `deploy` | `wait_for_deployment.yaml`, after `install-complete`; skipped when no host needed provisioning | `configure_hardware_ironic_detach_vmedia.yaml` |
+| `tasks/post-install.yaml` | `deploy` | `wait_for_deployment.yaml`, after `install-complete` | `configure_hardware_ironic_detach_vmedia.yaml` |
 | `tasks/cleanup.yaml` | `deploy` | `wait_for_deployment.yaml`, after `post-install.yaml` | `configure_hardware_ironic_cleanup.yaml` |
 
 The runner groups the hosts by their effective `bootPlugin` and runs each hook once per plugin in
 use, with that plugin's hosts only:
 
-- `validate.yaml` and `cleanup.yaml` run for every plugin in use.
+- `validate.yaml`, `post-install.yaml` and `cleanup.yaml` run for every plugin in use.
 - `setup.yaml` and `boot.yaml` run, one plugin after the other, for every plugin with at least one
   host to provision. Plugins are ordered by `discoveryTimeout`, largest first: a plugin that waits
   for its hosts (as `ironic` waits for its nodes to become active) would otherwise delay the
   instructions of a human-driven plugin such as `manual`.
-- `post-install.yaml` runs for every plugin with at least one host to provision. On a rerun where
-  all of a plugin's hosts are already in the cluster, its `setup.yaml` did not run (for `ironic`,
-  no Ironic is running), so there is nothing to undo.
+
+`post-install.yaml` is not gated on hosts to provision on purpose: a run can stop after
+`install-complete` but before `post-install.yaml`, and on the rerun all hosts are already in the
+cluster. The plugin decides what it can do in that state (see
+[The `ironic` boot plugin](#the-ironic-boot-plugin)).
 
 Variables available to every hook:
 
@@ -206,12 +208,13 @@ Variables available to every hook:
 - `workingDir`
 - `bootIsoPath` (`<workingDir>/ocp-cluster/abi-iso/agent.x86_64.iso`)
 
-`setup.yaml`, `boot.yaml` and `post-install.yaml` also get `bootHostsToProvision`, the subset of
-`bootHosts` not already in the cluster. Hooks never read `agent_hosts` directly. `boot.yaml`
-receives its whole host list and loops itself if it needs to.
+`setup.yaml` and `boot.yaml` also get `bootHostsToProvision`, the subset of `bootHosts` not
+already in the cluster. Hooks never read `agent_hosts` directly. `boot.yaml` receives its whole
+host list and loops itself if it needs to.
 
 Each plugin serves the ISO in whatever way it needs; core only guarantees `bootIsoPath`.
-`cleanup.yaml` runs on every deployment, including when `setup.yaml` did not run, so it must be
+`post-install.yaml` and `cleanup.yaml` run on every deployment, including when `setup.yaml` did not
+run, so they must not fail in that case. `cleanup.yaml` only undoes what `setup.yaml` did and is
 idempotent.
 
 Between `boot.yaml` and `post-install.yaml`, core runs `pre_install_validate_plugins.yaml`: it
@@ -254,6 +257,14 @@ plugin. The hardcoded `driver: redfish`, `boot_interface: redfish-virtual-media`
 `bootPluginConfig.hosts`. Ironic's own httpd keeps serving the ISO, as today (the ISO directory is
 mounted at `/iso` and referenced as `file:///iso/agent.x86_64.iso` in `instance_info.boot_iso`).
 The per-node virtual media detach work belongs to this plugin's `post-install.yaml`.
+
+`post-install.yaml` detaches the virtual media of all its `bootHosts`, not only the ones
+provisioned in this run, so a rerun after a run that stopped between `install-complete` and the
+detach still detaches it while the ephemeral Ironic is running. If Ironic is not running (no host
+needed provisioning and the ephemeral Ironic of the interrupted run is gone), it does not fail: it
+emits a warning naming the hosts whose media could not be detached. Ironic boots from the ISO only
+once (`force_persistent_boot_device: Never`), so leftover media only matters on hardware that
+ignores one-time boot. Detaching stays out of `cleanup.yaml`, which only tears down Ironic.
 
 `tasks/validate.yaml` ports the Redfish checks from `validations.sh` to Ansible. It also checks
 explicitly every setting the plugin needs from outside its own configuration file: `lzBmcIP`,
