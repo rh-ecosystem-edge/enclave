@@ -129,6 +129,7 @@
   ansible.builtin.set_fact:
     redfish_host_macs: []
     redfish_ip_macs: []
+    redfish_ip_match_count: 0
   no_log: true
 
 - name: Collect Redfish MAC addresses
@@ -145,6 +146,19 @@
     - >-
       redfish_interface_detail.json.MACAddress | replace('-', ':') |
       regex_search('^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$') is not none
+  no_log: true
+
+- name: Count Redfish interfaces matching the configured IP
+  ansible.builtin.set_fact:
+    redfish_ip_match_count: "{{ redfish_ip_match_count + 1 }}"
+  loop: "{{ r_redfish_ethernet_interface_details.results }}"
+  loop_control:
+    loop_var: redfish_interface_detail
+    label: Redfish Ethernet interface
+  when: >-
+    host_to_resolve.ipAddress in
+    (redfish_interface_detail.json.IPv4Addresses | default([], true) |
+    selectattr('Address', 'defined') | map(attribute='Address') | list)
   no_log: true
 
 - name: Match Redfish MAC addresses to the configured IP when available
@@ -167,10 +181,19 @@
       selectattr('Address', 'defined') | map(attribute='Address') | list)
   no_log: true
 
+- name: Require a valid MAC for each IP-matched Redfish interface
+  ansible.builtin.assert:
+    that:
+      - redfish_ip_macs | length == redfish_ip_match_count
+    fail_msg: >-
+      Redfish reported the configured IP on an interface with a missing or
+      invalid MAC address. Set macAddress explicitly.
+  when: redfish_ip_match_count > 0
+
 - name: Select Redfish MAC candidates for the configured host
   ansible.builtin.set_fact:
     discovered_host_macs: >-
-      {{ (redfish_ip_macs if redfish_ip_macs | length > 0 else redfish_host_macs)
+      {{ (redfish_ip_macs if redfish_ip_match_count > 0 else redfish_host_macs)
          | unique | list }}
   no_log: true
 
