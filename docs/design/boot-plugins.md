@@ -215,7 +215,8 @@ host list and loops itself if it needs to.
 Each plugin serves the ISO in whatever way it needs; core only guarantees `bootIsoPath`.
 `post-install.yaml` and `cleanup.yaml` run on every deployment, including when `setup.yaml` did not
 run, so they must not fail in that case. `cleanup.yaml` only undoes what `setup.yaml` did and is
-idempotent.
+idempotent. The runner runs `cleanup.yaml` even if `post-install.yaml` fails (an Ansible `always`
+block), so a plugin never leaves its setup behind.
 
 Between `boot.yaml` and `post-install.yaml`, core runs `pre_install_validate_plugins.yaml`: it
 waits for the rendezvous host and for all hosts to be `known`, then releases the installation gate.
@@ -258,13 +259,16 @@ plugin. The hardcoded `driver: redfish`, `boot_interface: redfish-virtual-media`
 mounted at `/iso` and referenced as `file:///iso/agent.x86_64.iso` in `instance_info.boot_iso`).
 The per-node virtual media detach work belongs to this plugin's `post-install.yaml`.
 
-`post-install.yaml` detaches the virtual media of all its `bootHosts`, not only the ones
-provisioned in this run, so a rerun after a run that stopped between `install-complete` and the
-detach still detaches it while the ephemeral Ironic is running. If Ironic is not running (no host
-needed provisioning and the ephemeral Ironic of the interrupted run is gone), it does not fail: it
-emits a warning naming the hosts whose media could not be detached. Ironic boots from the ISO only
-once (`force_persistent_boot_device: Never`), so leftover media only matters on hardware that
-ignores one-time boot. Detaching stays out of `cleanup.yaml`, which only tears down Ironic.
+`post-install.yaml` goes through all its `bootHosts`, not only the ones provisioned in this run, so
+a rerun after a run that stopped between `install-complete` and the detach still detaches the media
+while that run's ephemeral Ironic is running. It detaches each host the current Ironic knows. For a
+host it cannot detach, because Ironic is not running or because the host was not enrolled in this
+run (a rerun where only some hosts needed provisioning), it emits a warning naming the host and
+continues: it never fails for that reason, and never reports that host's media as detached. It
+does not enroll nodes just to detach media, since that would put hosts running in the cluster under
+Ironic management. Ironic boots from the ISO only once (`force_persistent_boot_device: Never`), so
+leftover media only matters on hardware that ignores one-time boot. Detaching stays out of
+`cleanup.yaml`, which only tears down Ironic.
 
 `tasks/validate.yaml` ports the Redfish checks from `validations.sh` to Ansible. It also checks
 explicitly every setting the plugin needs from outside its own configuration file: `lzBmcIP`,
