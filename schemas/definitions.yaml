@@ -88,7 +88,11 @@ definitions:
   agentHostEntry:
     type: object
     description: Management cluster host entry (agent_hosts)
+    additionalProperties: false
     properties:
+      bmcSystemId:
+        description: >-
+          Deprecated. Moved to hosts.<name>.systemId of config/plugins/boot/ironic.yaml.
       bootPlugin:
         "$ref": "#/definitions/bootPluginName"
       interfaceName:
@@ -117,6 +121,15 @@ definitions:
       networkConfig:
         type: object
         description: Network configuration
+      redfish:
+        description: >-
+          Deprecated. Moved to hosts.<name>.address of config/plugins/boot/ironic.yaml.
+      redfishPassword:
+        description: >-
+          Deprecated. Moved to hosts.<name>.password of config/plugins/boot/ironic.yaml.
+      redfishUser:
+        description: >-
+          Deprecated. Moved to hosts.<name>.username of config/plugins/boot/ironic.yaml.
       rootDisk:
         "$ref": "#/definitions/nonEmptyString"
     required:

@@ -229,10 +229,11 @@ with open(sys.argv[1], 'r') as f:
 yaml.dump(redact(data), sys.stdout, default_flow_style=False, sort_keys=False)
 PYTHON_SCRIPT
 
+    # No line-based fallback: it cannot redact multi-line values safely
     if [ ! -s "${BOOT_PLUGIN_OUTPUT}" ]; then
-        log_warning "Python sanitization failed for $(basename "${BOOT_PLUGIN_FILE}"), using sed fallback"
-        sed -e 's/\([Pp]assword:\).*/\1 REDACTED/' \
-            "${BOOT_PLUGIN_FILE}" > "${BOOT_PLUGIN_OUTPUT}" 2>/dev/null || true
+        log_warning "Python sanitization failed for $(basename "${BOOT_PLUGIN_FILE}"), not collecting it"
+        echo "NOT_COLLECTED: redaction failed" > "${BOOT_PLUGIN_OUTPUT}"
+        continue
     fi
 
     log_info "  OK Collected boot plugin configuration $(basename "${BOOT_PLUGIN_FILE}") (sanitized)"

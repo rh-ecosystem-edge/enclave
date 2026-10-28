@@ -40,7 +40,6 @@
       driver_info:
         redfish_address: "https://{{ _bmc.address }}"
         redfish_username: "{{ _bmc.username }}"
-        redfish_password: "{{ _bmc.password }}"
         redfish_verify_ca: false
         force_persistent_boot_device: "Never"
         redfish_system_id: "{{ '/redfish/v1/Systems/' + _bmc.systemId if _bmc.systemId is defined else omit }}"
@@ -74,6 +73,43 @@
   loop: "{{ r_existing_nodes.results | zip(r_created_nodes.results) | list }}"
   loop_control:
     label: "{{ item.0.item.name }}"
+
+# The BMC password is set apart from node creation so that only this task
+# needs no_log; its outcome is reported by the next task without the password.
+# Nodes left in enroll by an earlier run get it too.
+- name: Set BMC password of nodes in enroll state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
+    method: PATCH
+    body_format: json
+    body:
+      - op: add
+        path: /driver_info/redfish_password
+        value: "{{ bootPluginConfig.hosts[item.name].password }}"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  loop: "{{ bootHostsToProvision }}"
+  register: r_bmc_passwords
+  when: _ironic_nodes[item.name].state == "enroll"
+  failed_when: false
+  no_log: true
+
+- name: Check that the BMC password of each node in enroll state was set
+  ansible.builtin.assert:
+    that:
+      - item.status == 200
+    fail_msg: >-
+      Setting the BMC password of node {{ item.item.name }} failed with HTTP status
+      {{ item.status }}: {{ item.json.error_message | default(item.msg | default('')) }}
+    quiet: true
+  loop: "{{ r_bmc_passwords.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
 
 - name: Create ports for nodes
   ansible.builtin.uri:

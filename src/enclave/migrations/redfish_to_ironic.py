@@ -61,6 +61,7 @@ _MAP_COMMENT_SLOT = 2
 _SEQ_COMMENT_SLOT = 0
 _MAPPING_PARENT_LINE = re.compile(r"^(\s*)[^\s#\-][^:]*:\s*(#.*)?$")
 _MAPPING_KEY_LINE = re.compile(r"^(\s*)[^\s#\-][^:]*:(\s|$)")
+_FIELD_LINE = re.compile(r"^\s*(-\s+)?(" + "|".join(BMC_FIELDS) + r")\s*:")
 _PASSWORD_LINE = re.compile(
     r"^(\s*[-+]?\s*(-\s+)?[\"']?[^\s:]*password[^\s:]*[\"']?\s*:).*$", re.IGNORECASE
 )
@@ -314,11 +315,26 @@ def _render(
     return _plain_dump(expected), False
 
 
-def _masked(line: str) -> str:
-    return _PASSWORD_LINE.sub(r"\1 ********", line)
+def _masked_diff(diff: list[str]) -> list[str]:
+    """Mask password values, including the continuation lines of removed fields."""
+    masked = []
+    field_indent = None
+    for line in diff:
+        if line.startswith("-") and not line.startswith("---"):
+            content = line[1:]
+            indent = len(content) - len(content.lstrip(" -"))
+            if field_indent is not None and indent > field_indent and content.strip():
+                masked.append("-" + " " * indent + "********")
+                continue
+            field_indent = indent if _FIELD_LINE.match(content) else None
+        else:
+            field_indent = None
+        masked.append(_PASSWORD_LINE.sub(r"\1 ********", line))
+    return masked
 
 
-def _report_diff(path: Path, old: str, new: str, *, exact: bool) -> None:
+def _report_removed_lines(path: Path, old: str, new: str) -> None:
+    """Log the changes of an edit that only removed the migrated fields."""
     diff = list(
         difflib.unified_diff(
             old.splitlines(),
@@ -328,15 +344,8 @@ def _report_diff(path: Path, old: str, new: str, *, exact: bool) -> None:
             lineterm="",
         )
     )
-    if not diff:
-        return
-    logger.info("Changes to %s:\n%s", path, "\n".join(_masked(d) for d in diff))
-    if not exact:
-        logger.warning(
-            "%s: formatting changed beyond the migrated settings; review the changes "
-            "above",
-            path,
-        )
+    if diff:
+        logger.info("Changes to %s:\n%s", path, "\n".join(_masked_diff(diff)))
 
 
 def _write_fd(fd: int, text: str) -> None:
@@ -388,6 +397,63 @@ def _validate_ironic(schema_path: Path, data: dict[str, Any]) -> None:
         )
 
 
+def _read_ironic(ironic_path: Path) -> tuple[str | None, dict[str, Any]]:
+    text = ironic_path.read_text(encoding="utf-8") if ironic_path.exists() else None
+    data = (_load_data(ironic_path, text) if text is not None else None) or {}
+    if not isinstance(data, dict):
+        raise MigrationError(f"{ironic_path}: expected a YAML mapping")
+    if not isinstance(data.get("hosts") or {}, dict):
+        raise MigrationError(f"{ironic_path}: hosts must be a YAML mapping")
+    return text, data
+
+
+def _update_ironic(
+    ironic_path: Path,
+    ironic_text: str | None,
+    new_data: dict[str, Any],
+    added: dict[str, Any],
+    result: MigrationResult,
+) -> None:
+    if ironic_text is None:
+        new_text = _plain_dump(new_data, IRONIC_HEADER)
+    else:
+        text = ironic_text
+        new_text, _ = _render(
+            ironic_path, new_data, [lambda: _add_hosts_round_trip(text, added)], result
+        )
+    _write(ironic_path, new_text, result)
+    logger.info("Added the BMC settings of %s to %s", ", ".join(added), ironic_path)
+
+
+def _update_global(
+    global_path: Path,
+    global_text: str,
+    expected: dict[str, Any],
+    result: MigrationResult,
+) -> None:
+    new_text, exact = _render(
+        global_path,
+        expected,
+        [
+            lambda: _remove_bmc_fields_by_lines(global_text),
+            lambda: _remove_bmc_fields_round_trip(global_text),
+        ],
+        result,
+    )
+    _write(global_path, new_text, result)
+    # Only an exact edit is shown: other edits may reformat lines holding
+    # secrets that are not migrated passwords (e.g. pullSecret).
+    if exact:
+        _report_removed_lines(global_path, global_text, new_text)
+    elif global_path not in result.rewritten:
+        logger.warning(
+            "%s: formatting changed beyond the migrated settings; compare it with the "
+            "backup %s",
+            global_path,
+            result.backups[-1],
+        )
+
+
 def migrate(global_path: Path, ironic_path: Path, schema_path: Path) -> MigrationResult:
     """Move the Redfish settings of agent_hosts from global_path to ironic_path."""
     result = MigrationResult()
@@ -405,18 +471,8 @@ def migrate(global_path: Path, ironic_path: Path, schema_path: Path) -> Migratio
         return result
     result.hosts = list(entries)
 
-    ironic_text = (
-        ironic_path.read_text(encoding="utf-8") if ironic_path.exists() else None
-    )
-    ironic_data = (
-        _load_data(ironic_path, ironic_text) if ironic_text is not None else None
-    ) or {}
-    if not isinstance(ironic_data, dict):
-        raise MigrationError(f"{ironic_path}: expected a YAML mapping")
+    ironic_text, ironic_data = _read_ironic(ironic_path)
     existing_hosts = ironic_data.get("hosts") or {}
-    if not isinstance(existing_hosts, dict):
-        raise MigrationError(f"{ironic_path}: hosts must be a YAML mapping")
-
     conflicts = [
         name
         for name, entry in entries.items()
@@ -432,35 +488,13 @@ def migrate(global_path: Path, ironic_path: Path, schema_path: Path) -> Migratio
     new_ironic_data = dict(ironic_data)
     new_ironic_data["hosts"] = {**existing_hosts, **entries}
     _validate_ironic(schema_path, new_ironic_data)
-    expected_global = _without_bmc_fields(global_data)
 
+    added = {name: e for name, e in entries.items() if name not in existing_hosts}
     if new_ironic_data != ironic_data:
-        if ironic_text is None:
-            new_ironic_text = _plain_dump(new_ironic_data, IRONIC_HEADER)
-        else:
-            text = ironic_text
-            new_ironic_text, _ = _render(
-                ironic_path,
-                new_ironic_data,
-                [lambda: _add_hosts_round_trip(text, entries)],
-                result,
-            )
-            _report_diff(ironic_path, text, new_ironic_text, exact=True)
-        _write(ironic_path, new_ironic_text, result)
+        _update_ironic(ironic_path, ironic_text, new_ironic_data, added, result)
     else:
         logger.info("%s already has the BMC settings of all hosts", ironic_path)
-
-    new_global_text, exact = _render(
-        global_path,
-        expected_global,
-        [
-            lambda: _remove_bmc_fields_by_lines(global_text),
-            lambda: _remove_bmc_fields_round_trip(global_text),
-        ],
-        result,
-    )
-    _report_diff(global_path, global_text, new_global_text, exact=exact)
-    _write(global_path, new_global_text, result)
+    _update_global(global_path, global_text, _without_bmc_fields(global_data), result)
 
     logger.info(
         "Moved the Redfish settings of %s from %s to %s",

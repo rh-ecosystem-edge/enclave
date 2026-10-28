@@ -678,7 +678,7 @@ Certificates are stored in `config/certificates.yaml` and must be provided in PE
    cp config/global.example.yaml config/global.yaml
    cp config/certificates.example.yaml config/certificates.yaml
    cp config/cloud_infra.example.yaml config/cloud_infra.yaml
-   cp config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
+   install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
    vim config/global.yaml       # Edit cluster, network, hardware and registry settings
    vim config/certificates.yaml # Add SSL certificates
    vim config/cloud_infra.yaml  # Add discovery hosts (leave discovery_hosts: [] if none)

@@ -163,7 +163,7 @@
     msg: >-
       agent_hosts entries matched by more than one host registered with Assisted Service:
       {% for name in _host_match_result.duplicated %}{{ name }}
-      ({{ _host_match_result.records[name] | map(attribute='label') | join(', ') }}){{ '; ' if not loop.last }}{% endfor %}.
+      ({{ _host_match_result.records[name] | map(attribute='label') | join(', ') }}){{ '; ' if not loop.last else '' }}{% endfor %}.
   when: _host_match_result.duplicated | length > 0
 
 - name: Fail if agent hosts did not become known in time
@@ -171,7 +171,7 @@
     msg: >-
       Timed out after {{ boot_discovery_timeout }} seconds waiting for agent_hosts to register
       with Assisted Service and reach status known: {% for name in _host_match_result.pending %}{{ name }}
-      ({{ _host_match_result.records[name] | default([]) | map(attribute='status') | first | default('not registered') }}){{ ', ' if not loop.last }}{% endfor %}.
+      ({{ _host_match_result.records[name] | default([]) | map(attribute='status') | first | default('not registered') }}){{ ', ' if not loop.last else '' }}{% endfor %}.
       Set bootDiscoveryTimeout in config/global.yaml to wait longer.
   when: _host_match_result.pending | length > 0
 

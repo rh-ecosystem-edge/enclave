@@ -399,6 +399,7 @@ def test_migrate_falls_back_to_round_trip(
         ]
     }
     assert "formatting changed beyond the migrated settings" in caplog.text
+    assert "Changes to" not in caplog.text
     assert "fake-bmc-password-a" not in caplog.text
 
 
@@ -428,7 +429,8 @@ def test_migrate_falls_back_to_rewrite(
         return_value="not: the expected data\n",
     )
 
-    result = migrate(global_path, ironic_path, SCHEMA)
+    with caplog.at_level(logging.INFO):
+        result = migrate(global_path, ironic_path, SCHEMA)
 
     assert result.rewritten == [global_path]
     text = global_path.read_text(encoding="utf-8")
@@ -436,6 +438,7 @@ def test_migrate_falls_back_to_rewrite(
     assert yaml.safe_load(text) == {"agent_hosts": [{"name": "m0"}]}
     assert [b.read_text(encoding="utf-8") for b in _backups(global_path)] == [original]
     assert "rewriting it from its data" in caplog.text
+    assert "Changes to" not in caplog.text
     assert "fake-bmc-password-a" not in caplog.text
 
 
@@ -447,7 +450,36 @@ def test_diff_masks_passwords(
         migrate(global_path, ironic_path, SCHEMA)
     assert "-    redfishPassword: ********" in caplog.text
     assert "-    redfish: 192.168.1.101" in caplog.text
-    assert "fake-bmc-password-a" not in caplog.text
+    for password in (
+        "fake-bmc-password-a",
+        "fake-bmc-password-b",
+        "fake-bmc-password-c",
+    ):
+        assert password not in caplog.text
+
+
+def test_migrate_never_logs_flow_style_passwords_or_other_secrets(
+    paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture
+) -> None:
+    global_path, ironic_path = paths
+    global_path.write_text(
+        'pullSecret: {"auths":{"quay.io":{"auth":"fake-pull-secret"}}}\n'
+        "agent_hosts:\n"
+        "  - {name: m0, redfish: 10.0.0.1, redfishUser: admin, "
+        "redfishPassword: fake-flow-password}\n",
+        encoding="utf-8",
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = migrate(global_path, ironic_path, SCHEMA)
+
+    assert yaml.safe_load(global_path.read_text(encoding="utf-8"))["agent_hosts"] == [
+        {"name": "m0"}
+    ]
+    assert result.rewritten == []
+    assert f"compare it with the backup {result.backups[-1]}" in caplog.text
+    assert "fake-flow-password" not in caplog.text
+    assert "fake-pull-secret" not in caplog.text
 
 
 def test_guess_mapping_indent() -> None:

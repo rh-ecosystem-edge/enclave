@@ -29,7 +29,7 @@ cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
 cp config/cloud_infra.example.yaml config/cloud_infra.yaml
 # BMC settings of the hosts booted by the ironic boot plugin (the default):
-cp config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
+install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
 # For plugin-specific config (e.g. restrict which disks LVMS manages):
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
@@ -1410,7 +1410,7 @@ Configuration of the `ironic` boot plugin (`plugins/boot/ironic/`), which boots 
 Copy from the example template before editing:
 
 ```bash
-cp config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
+install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
 ```
 
 **Example**:
@@ -1763,7 +1763,7 @@ Before running the deployment, validate your configuration:
    `config/plugins/boot/ironic.yaml`):
    ```bash
    curl -k -u $username:$password \
-     https://$address/redfish/v1/Systems/1
+     https://$address/redfish/v1/Systems
    ```
 
 4. **File paths**:
