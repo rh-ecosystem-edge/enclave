@@ -1319,7 +1319,7 @@ discovery_hosts:
 | `interfaceName` | Network interface name. Defaults to `eno1` | `ens3f0` |
 
 **Notes**:
-- For simple IP-based hosts, the Landing Zone reads MAC addresses from Redfish. If Redfish associates the configured IP with an interface, that MAC is used; otherwise discovery succeeds only when Redfish reports one unique MAC.
+- For simple IP-based hosts, the Landing Zone reads MAC addresses from Redfish and prefers the MAC associated with the configured IP. If Redfish returns no MAC candidates or multiple candidates without an IP match, set `macAddress` explicitly.
 - Set `macAddress` explicitly if you want to choose the address used for a host
 - For advanced networking, omit top-level `ipAddress` and provide `networkConfig`, `mapInterfaces`, and top-level `macAddress`. See [Advanced Network Configuration](#advanced-network-configuration) for an example.
 - MAC addresses must be unique

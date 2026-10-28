@@ -586,8 +586,8 @@ Each `agent_hosts` entry requires:
 
 For simple IP-based network configuration, `macAddress` is optional. The Landing Zone
 reads interface data from the host's Redfish BMC and matches the configured IP when
-Redfish reports it. If no IP match is available, discovery uses a MAC only when there
-is one unique candidate. Set `macAddress` explicitly to select a specific interface.
+Redfish reports it. If Redfish returns no MAC candidates or multiple candidates without
+an IP match, set `macAddress` explicitly.
 Advanced network configurations must set `macAddress` explicitly.
 
 Optional fields for advanced network configuration:
@@ -930,7 +930,8 @@ Each node in `discovery_hosts` requires:
 
 For simple IP-based configuration, `macAddress` is optional. The Landing Zone reads
 the host's Redfish interface data and prefers the MAC associated with `ipAddress`.
-If Redfish reports multiple candidates without an IP match, set `macAddress` explicitly.
+If Redfish returns no MAC candidates or multiple candidates without an IP match, set
+`macAddress` explicitly.
 Advanced discovery hosts omit top-level `ipAddress` and require `networkConfig`,
 `mapInterfaces`, and top-level `macAddress`; see [Advanced Network Configuration](#advanced-network-configuration-optional).
 

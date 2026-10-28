@@ -134,7 +134,7 @@
 - name: Collect Redfish MAC addresses
   ansible.builtin.set_fact:
     redfish_host_macs: >-
-      {{ redfish_host_macs + [redfish_interface_detail.json.MACAddress | lower] }}
+      {{ redfish_host_macs + [redfish_interface_detail.json.MACAddress | lower | replace('-', ':')] }}
   loop: "{{ r_redfish_ethernet_interface_details.results }}"
   loop_control:
     loop_var: redfish_interface_detail
@@ -142,13 +142,15 @@
   when:
     - redfish_interface_detail.json.MACAddress is defined
     - redfish_interface_detail.json.MACAddress is string
-    - redfish_interface_detail.json.MACAddress | length > 0
+    - >-
+      redfish_interface_detail.json.MACAddress | replace('-', ':') |
+      regex_search('^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$') is not none
   no_log: true
 
 - name: Match Redfish MAC addresses to the configured IP when available
   ansible.builtin.set_fact:
     redfish_ip_macs: >-
-      {{ redfish_ip_macs + [redfish_interface_detail.json.MACAddress | lower] }}
+      {{ redfish_ip_macs + [redfish_interface_detail.json.MACAddress | lower | replace('-', ':')] }}
   loop: "{{ r_redfish_ethernet_interface_details.results }}"
   loop_control:
     loop_var: redfish_interface_detail
@@ -156,7 +158,9 @@
   when:
     - redfish_interface_detail.json.MACAddress is defined
     - redfish_interface_detail.json.MACAddress is string
-    - redfish_interface_detail.json.MACAddress | length > 0
+    - >-
+      redfish_interface_detail.json.MACAddress | replace('-', ':') |
+      regex_search('^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$') is not none
     - >-
       host_to_resolve.ipAddress in
       (redfish_interface_detail.json.IPv4Addresses | default([], true) |
