@@ -13,3 +13,4 @@
   loop_control:
     loop_var: host_to_resolve
     label: configured host
+  no_log: true

@@ -354,7 +354,7 @@ agent_hosts:
     redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
 
-# Rendezvous IP (first control plane node)
+# Rendezvous IP (selected control plane node)
 rendezvousIP: 192.168.2.24
 ```
 
@@ -418,11 +418,12 @@ agent_hosts:
 ```
 
 **Notes**:
-- `ipAddress` is required for simple IP-based hosts; when using `networkConfig`, it is not required because the address is part of `networkConfig`
+- `ipAddress` is required for simple IP-based hosts; omit it when `networkConfig` provides the address
 - Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - `mapInterfaces` maps interface names to MAC addresses for the agent installer
 - `networkConfig` follows the [nmstate](https://nmstate.io/) format
 - You can mix hosts with simple and advanced configurations in the same list
+- `rendezvousIP` must match an address assigned to the selected host, which can be any `agent_hosts` entry; with advanced networking, use an address from that host's `networkConfig`
 
 ### Registry Configuration
 
@@ -566,7 +567,7 @@ control_binaries:
 | `defaultDNS` | DNS server IP | `192.168.2.10` |
 | `defaultGateway` | Default gateway IP | `192.168.2.10` |
 | `defaultPrefix` | Network prefix length | `24` |
-| `rendezvousIP` | IP of first control plane node | `192.168.2.24` |
+| `rendezvousIP` | IP of the selected rendezvous host, which can be any entry in `agent_hosts` | `192.168.2.24` |
 
 ### Hardware Configuration
 
@@ -584,9 +585,10 @@ Each `agent_hosts` entry requires:
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
 
 For simple IP-based network configuration, `macAddress` is optional. The Landing Zone
-probes the node IP and uses the MAC from its neighbor table without prompting. Set
-`macAddress` explicitly if you want to choose the exact address. Advanced network
-configurations must set `macAddress` explicitly.
+reads interface data from the host's Redfish BMC and matches the configured IP when
+Redfish reports it. If no IP match is available, discovery uses a MAC only when there
+is one unique candidate. Set `macAddress` explicitly to select a specific interface.
+Advanced network configurations must set `macAddress` explicitly.
 
 Optional fields for advanced network configuration:
 - `mapInterfaces`: List of interface name to MAC address mappings
@@ -920,15 +922,17 @@ Each node in `discovery_hosts` requires:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `ipAddress` | Static IP address for simple IP-based hosts; omit when `networkConfig` provides the address. | `192.168.2.21` |
+| `ipAddress` | Static IP address for simple IP-based hosts; omit it for advanced networking, where `networkConfig` provides the address. | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Redfish username | `admin` |
 | `redfishPassword` | Redfish password | `Password` |
 
-For IP-based network configuration, `macAddress` is optional. The Landing Zone probes
-the host IP and uses the resolved MAC without prompting. Set `macAddress` explicitly
-to use a specific address.
+For simple IP-based configuration, `macAddress` is optional. The Landing Zone reads
+the host's Redfish interface data and prefers the MAC associated with `ipAddress`.
+If Redfish reports multiple candidates without an IP match, set `macAddress` explicitly.
+Advanced discovery hosts omit top-level `ipAddress` and require `networkConfig`,
+`mapInterfaces`, and top-level `macAddress`; see [Advanced Network Configuration](#advanced-network-configuration-optional).
 
 ### Running Discovery (One-Time Setup Only)
 

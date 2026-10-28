@@ -8,8 +8,8 @@
     that:
       - host_to_resolve.ipAddress is defined
     fail_msg: >-
-      A host without macAddress must provide ipAddress for MAC discovery. Set
-      macAddress explicitly or use a simple IP-based host configuration.
+      A host without macAddress must provide ipAddress for simple IP-based
+      configuration. Advanced network configurations must set macAddress explicitly.
   when: resolved_mac_address | length == 0
 
 - name: Discover the MAC address when omitted
