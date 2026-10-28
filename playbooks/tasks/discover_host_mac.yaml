@@ -24,7 +24,6 @@
       Could not identify one Redfish system for a configured host. Set
       bmcSystemId for a multi-system BMC or set macAddress explicitly.
   when: host_to_resolve.bmcSystemId is not defined
-  no_log: true
 
 - name: Select the Redfish system resource
   ansible.builtin.set_fact:
@@ -60,7 +59,6 @@
     fail_msg: >-
       Could not read Ethernet interface information from Redfish for a
       configured host. Verify BMC access or set macAddress explicitly.
-  no_log: true
 
 - name: Select the Redfish Ethernet interface collection
   ansible.builtin.set_fact:
@@ -94,7 +92,6 @@
     fail_msg: >-
       Redfish returned no Ethernet interfaces for a configured host. Verify BMC
       access or set macAddress explicitly.
-  no_log: true
 
 - name: Read each Redfish Ethernet interface
   ansible.builtin.uri:
@@ -127,7 +124,6 @@
     fail_msg: >-
       Could not read all Redfish Ethernet interfaces for a configured host.
       Verify BMC access or set macAddress explicitly.
-  no_log: true
 
 - name: Initialize Redfish MAC candidate lists
   ansible.builtin.set_fact:
