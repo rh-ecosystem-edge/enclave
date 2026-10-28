@@ -6,15 +6,25 @@
     - name: Load common variables
       ansible.builtin.include_tasks: common/load-vars.yaml
 
+    - name: Check that lzBmcIP is set
+      ansible.builtin.assert:
+        that:
+          - lzBmcIP is defined
+          - lzBmcIP | string | length > 0
+        fail_msg: >-
+          lzBmcIP must be set in config/global.yaml: the BMCs of the discovery hosts fetch the
+          discovery ISO from the persistent Ironic on it.
+        quiet: true
+
     - name: Enable persistent Metal3 deployment
       ansible.builtin.set_fact:
         metal3_persistent: true
 
     - name: Deploy Metal3 common resources
-      ansible.builtin.include_tasks: "../playbooks/tasks/deploy_metal3_common.yaml"
+      ansible.builtin.include_tasks: "../playbooks/tasks/ironic/deploy_metal3_common.yaml"
 
     - name: Deploy Ironic
-      ansible.builtin.include_tasks: "../playbooks/tasks/deploy_ironic.yaml"
+      ansible.builtin.include_tasks: "../playbooks/tasks/ironic/deploy_ironic.yaml"
 
     - name: Deploy Baremetal Operator
       ansible.builtin.include_tasks: "../playbooks/tasks/deploy_bmo.yaml"

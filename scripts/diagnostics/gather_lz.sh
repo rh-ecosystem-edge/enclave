@@ -205,3 +205,35 @@ PYTHON_SCRIPT
 
     log_info "  OK Collected cloud infra configuration (sanitized)"
 fi
+
+for BOOT_PLUGIN_FILE in "${ENCLAVE_DIR}"/config/plugins/boot/*.yaml; do
+    [ -f "${BOOT_PLUGIN_FILE}" ] || continue
+    case "${BOOT_PLUGIN_FILE}" in *.example.yaml) continue ;; esac
+    BOOT_PLUGIN_OUTPUT="${COLLECTION_DIR}/config/plugins/boot/$(basename "${BOOT_PLUGIN_FILE}")"
+    mkdir -p "$(dirname "${BOOT_PLUGIN_OUTPUT}")"
+    # Redact every password key, at any depth (e.g. hosts.<name>.password)
+    python3 - "${BOOT_PLUGIN_FILE}" <<'PYTHON_SCRIPT' > "${BOOT_PLUGIN_OUTPUT}" 2>/dev/null || true
+import sys
+import yaml
+
+def redact(node):
+    if isinstance(node, dict):
+        return {k: 'REDACTED' if 'password' in str(k).lower() else redact(v) for k, v in node.items()}
+    if isinstance(node, list):
+        return [redact(item) for item in node]
+    return node
+
+with open(sys.argv[1], 'r') as f:
+    data = yaml.safe_load(f)
+
+yaml.dump(redact(data), sys.stdout, default_flow_style=False, sort_keys=False)
+PYTHON_SCRIPT
+
+    if [ ! -s "${BOOT_PLUGIN_OUTPUT}" ]; then
+        log_warning "Python sanitization failed for $(basename "${BOOT_PLUGIN_FILE}"), using sed fallback"
+        sed -e 's/\([Pp]assword:\).*/\1 REDACTED/' \
+            "${BOOT_PLUGIN_FILE}" > "${BOOT_PLUGIN_OUTPUT}" 2>/dev/null || true
+    fi
+
+    log_info "  OK Collected boot plugin configuration $(basename "${BOOT_PLUGIN_FILE}") (sanitized)"
+done

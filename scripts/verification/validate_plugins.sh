@@ -33,8 +33,13 @@ fi
 
 # Count plugins
 PLUGIN_COUNT=0
+# plugins/boot holds boot plugins, not foundation/addon plugins; "boot" is a
+# reserved plugin name.
+BOOT_PLUGINS_DIR="${PLUGINS_DIR}/boot/"
+
 for plugin_dir in "$PLUGINS_DIR"/*/; do
     [ -d "$plugin_dir" ] || continue
+    [ "$plugin_dir" = "$BOOT_PLUGINS_DIR" ] && continue
     PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
 done
 
@@ -68,6 +73,7 @@ for i, item in enumerate(data):
 
 for plugin_dir in "$PLUGINS_DIR"/*/; do
     [ -d "$plugin_dir" ] || continue
+    [ "$plugin_dir" = "$BOOT_PLUGINS_DIR" ] && continue
     plugin_name=$(basename "$plugin_dir")
     plugin_failed=0
     echo "--- Plugin: $plugin_name ---"

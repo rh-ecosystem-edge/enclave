@@ -26,7 +26,9 @@ defaultPrefix: 24
 # First control plane node IP (in the machineNetwork)
 rendezvousIP: YOUR_RENDEZVOUS_IP      # Example: 192.168.2.24
 
-# LZ IP where HTTP server serves the installation ISO to IPMI nodes
+# LZ IP where HTTP server serves the installation ISO to IPMI nodes.
+# Required when any agent host is booted by the ironic boot plugin, and for
+# discovery_hosts.
 lzBmcIP: YOUR_LZ_WEB_SERVER_IP        # Example: 100.64.1.10
 
 # DNS hostname for the LZ BMC interface (optional).
@@ -144,15 +146,21 @@ sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
 # ============================================================================
 # Cluster Hosts Configuration (Agent Hosts)
 # ============================================================================
+# Boot plugin that boots the agent hosts (plugins/boot/<name>). Default: ironic,
+# which boots them through their Redfish BMC; its BMC settings go in
+# config/plugins/boot/ironic.yaml (see config/plugins/boot/ironic.example.yaml).
+# bootPlugin: ironic
+
+# Seconds to wait for the agent hosts to boot and register (optional). Default:
+# the largest discoveryTimeout of the boot plugins in use (600 for ironic).
+# bootDiscoveryTimeout: 600
+
 agent_hosts:
   - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
     macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
     ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
-    redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: YOUR_REDFISH_USER
-    redfishPassword: YOUR_REDFISH_PASSWORD
-    # bmcSystemId: System.Embedded.1   # Optional. Redfish System ID. Only needed for multi-system BMCs
+    # bootPlugin: ironic              # Optional. Overrides the top-level bootPlugin for this host
   # Add a total of 3 agent hosts, no more, no less
 
 # For complex network setups you can use mapInterfaces and networkConfig

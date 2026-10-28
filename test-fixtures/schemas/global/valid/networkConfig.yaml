@@ -23,11 +23,8 @@ pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
   - name: mgmt-ctl01
-    redfish: 192.168.2.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     macAddress: 0c:c4:7a:62:fe:ec
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
     mapInterfaces:
       - name: eth0
         macAddress: 0c:c4:7a:62:fe:ec
@@ -56,14 +53,8 @@ agent_hosts:
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
-    redfish: 192.168.1.102
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:62:fe:ee
     ipAddress: 192.168.2.26
-    redfish: 192.168.1.103
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD

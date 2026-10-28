@@ -1,0 +1,8 @@
+---
+# Invalid fixture: driver other than redfish.
+driver: ipmi
+hosts:
+  mgmt-ctl01:
+    address: 192.168.1.101
+    username: admin
+    password: YOUR_BMC_PASSWORD

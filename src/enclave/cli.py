@@ -1,5 +1,7 @@
 import click
 
+from enclave.migrations.cli import cli as migrations_cli
+from enclave.plugins.cli import cli as plugins_cli
 from enclave.reconcile.cli import cli as reconcile_cli
 from enclave.tools.cli import cli as tools_cli
 from enclave.utils import LOG_FORMATS, LOG_LEVELS, configure_logging
@@ -31,6 +33,8 @@ def cli(log_level: str, log_format: str) -> None:
 # Add existing command groups as subcommands
 cli.add_command(reconcile_cli, name="reconcile")
 cli.add_command(tools_cli, name="tools")
+cli.add_command(plugins_cli, name="plugins")
+cli.add_command(migrations_cli, name="migrations")
 
 
 if __name__ == "__main__":

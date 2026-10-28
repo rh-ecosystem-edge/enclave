@@ -1,0 +1,260 @@
+---
+# Enroll each host to provision as an Ironic node, set the agent ISO as its boot
+# ISO, deploy it (power on from virtual media) and wait until all nodes are active.
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Set Ironic driver interfaces
+  ansible.builtin.set_fact:
+    _ironic_boot_interface: "{{ {'redfish': 'redfish-virtual-media'}[bootPluginConfig.driver] }}"
+
+- name: Check if baremetal nodes already exist
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ item.name }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200, 404]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_existing_nodes
+
+- name: Create baremetal nodes in Ironic (without auto-transitioning to available)
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ item.item.name }}"
+      driver: "{{ bootPluginConfig.driver }}"
+      automated_clean: false
+      deploy_interface: "ramdisk"
+      boot_interface: "{{ _ironic_boot_interface }}"
+      resource_class: "baremetal"
+      driver_info:
+        redfish_address: "https://{{ _bmc.address }}"
+        redfish_username: "{{ _bmc.username }}"
+        redfish_password: "{{ _bmc.password }}"
+        redfish_verify_ca: false
+        force_persistent_boot_device: "Never"
+        redfish_system_id: "{{ '/redfish/v1/Systems/' + _bmc.systemId if _bmc.systemId is defined else omit }}"
+      properties:
+        capabilities: "boot_mode:uefi"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [201]
+  vars:
+    _bmc: "{{ bootPluginConfig.hosts[item.item.name] }}"
+  loop: "{{ r_existing_nodes.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  register: r_created_nodes
+  when: item.status == 404
+
+- name: Initialize Ironic node states
+  ansible.builtin.set_fact:
+    _ironic_nodes: {}
+
+- name: Set node UUIDs and initial states
+  ansible.builtin.set_fact:
+    _ironic_nodes: >-
+      {{ _ironic_nodes | combine({item.0.item.name: {
+           'uuid': item.0.json.uuid if item.0.status == 200 else item.1.json.uuid,
+           'state': item.0.json.provision_state if item.0.status == 200 else 'enroll'}}) }}
+  loop: "{{ r_existing_nodes.results | zip(r_created_nodes.results) | list }}"
+  loop_control:
+    label: "{{ item.0.item.name }}"
+
+- name: Create ports for nodes
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/ports"
+    method: POST
+    body_format: json
+    body:
+      node_uuid: "{{ _ironic_nodes[item.name].uuid }}"
+      address: "{{ item.macAddress }}"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [201, 409]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Transition nodes to manageable state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "manage"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: _ironic_nodes[item.name].state == "enroll"
+
+- name: Wait for nodes to reach manageable state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_node_states
+  until: r_node_states.json.provision_state == "manageable"
+  retries: 30
+  delay: 2
+  when: _ironic_nodes[item.name].state == "enroll"
+
+- name: Update provision states after manageable transition
+  ansible.builtin.set_fact:
+    _ironic_nodes: >-
+      {{ _ironic_nodes | combine({item.item.name: {'state': item.json.provision_state}}, recursive=True) }}
+  loop: "{{ r_node_states.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Transition nodes to available state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "provide"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: _ironic_nodes[item.name].state == "manageable"
+
+- name: Wait for nodes to reach available state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_node_states
+  until: r_node_states.json.provision_state == "available"
+  retries: 30
+  delay: 2
+  when: _ironic_nodes[item.name].state == "manageable"
+
+- name: Update provision states after available transition
+  ansible.builtin.set_fact:
+    _ironic_nodes: >-
+      {{ _ironic_nodes | combine({item.item.name: {'state': item.json.provision_state}}, recursive=True) }}
+  loop: "{{ r_node_states.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Set instance_info with boot ISO
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
+    method: PATCH
+    body_format: json
+    body:
+      - op: add
+        path: /instance_info/boot_iso
+        value: "file:///iso/agent.x86_64.iso"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: _ironic_nodes[item.name].state == "available"
+
+- name: Deploy nodes (transition available -> active)
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}/states/provision"
+    method: PUT
+    body_format: json
+    body:
+      target: "active"
+    headers:
+      Content-Type: "application/json"
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [202]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: _ironic_nodes[item.name].state == "available"
+
+- name: Display boot status
+  ansible.builtin.debug:
+    msg: "Node {{ item.name }} ({{ _ironic_nodes[item.name].uuid }}) boot initiated"
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Wait for nodes to reach active state
+  ansible.builtin.uri:
+    url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
+    method: GET
+    headers:
+      X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+    user: "{{ metal3_ironic_username }}"
+    password: "{{ metal3_ironic_password }}"
+    force_basic_auth: true
+    status_code: [200]
+  loop: "{{ bootHostsToProvision }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_active_nodes
+  until: r_active_nodes.json.provision_state in ["active", "deploy failed"]
+  failed_when: r_active_nodes.json.provision_state == "deploy failed"
+  retries: 60
+  delay: 10
+
+- name: Display node status
+  ansible.builtin.debug:
+    msg: "Node {{ item.item.name }} ({{ item.json.uuid }}) is now in state: {{ item.json.provision_state }}"
+  loop: "{{ r_active_nodes.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

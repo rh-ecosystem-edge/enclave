@@ -18,6 +18,7 @@ ingress into air-gapped environments.
 ```
 playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
 plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, vast-csi)
+  boot/          Boot plugins that boot the management cluster hosts (ironic)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
 src/             Python source root (src layout)
   reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
@@ -111,6 +112,9 @@ artifact map and step-by-step recipes.
 - Each plugin has a single `plugin.yaml` descriptor validated against `schemas/plugin.yaml`
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
+- Boot plugins (`plugins/boot/<name>/`) follow a separate contract (`schemas/boot-plugin.yaml`, hook
+  files `tasks/{validate,setup,boot,post-install,cleanup}.yaml`), checked by
+  `enclave plugins validate --type boot`; see `docs/design/boot-plugins.md`
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
 

@@ -102,6 +102,34 @@ If the control file is absent (a pre-migration-system installation), all migrati
 the next `upgrade.sh` execution. They are designed to be safe to run on an up-to-date enclave
 installation.
 
+### Redfish settings move to the ironic boot plugin
+
+The management cluster hosts (`agent_hosts`) are booted by a boot plugin, `ironic` by default.
+Their BMC settings no longer live in `agent_hosts`: the migration
+`20261028144317_move_redfish_settings_to_ironic_boot_plugin.yaml` moves them from each
+`agent_hosts` entry of `config/global.yaml` into `hosts.<name>` of
+`config/plugins/boot/ironic.yaml`, renaming them:
+
+| `agent_hosts[]` field | `config/plugins/boot/ironic.yaml` `hosts.<name>` field |
+|---|---|
+| `redfish` | `address` |
+| `redfishUser` | `username` |
+| `redfishPassword` | `password` |
+| `bmcSystemId` | `systemId` |
+
+- `discovery_hosts` in `config/cloud_infra.yaml` is not changed.
+- The migration is safe to run again. A host entry already in `ironic.yaml` with identical values
+  is left as is; if it has different values, the migration fails naming the host and changes
+  nothing. Resolve the conflict by removing one of the two entries and run `./upgrade.sh` again.
+- Both files keep their comments and formatting. In `config/global.yaml` only the lines of the
+  moved fields are removed; the migration output shows the changes, with passwords masked.
+- If a file cannot be edited that way, the migration rewrites it from its content and says so in
+  its output; its comments and formatting are then kept only in the backup.
+- Both files are backed up before being changed, next to the original, as
+  `<file>.<pid>.<date>@<time>~` (e.g. `config/global.yaml.12345.2026-10-28@14:43:17~`). The
+  migration output lists the backups.
+- `./sync.sh` does not validate boot plugins, so it works before this migration has run.
+
 ### Adding a migration
 
 Create a new file under `playbooks/tasks/migrations/` with a UTC timestamp prefix:

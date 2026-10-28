@@ -17,6 +17,10 @@ ocMirrorLogLevel: info
 # Default storage plugin. Override in config/global.yaml to use odf.
 storage_plugin: lvms
 
+# Default boot plugin for agent_hosts. Override in config/global.yaml, or per host with
+# agent_hosts[].bootPlugin.
+bootPlugin: ironic
+
 # Plugins to deploy during the pipeline. Override in config/global.yaml to add or remove plugins.
 # By default only the selected storage plugin is enabled.
 enabled_plugins:

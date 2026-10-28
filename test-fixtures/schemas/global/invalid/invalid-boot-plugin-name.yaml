@@ -1,6 +1,6 @@
 ---
-# Fixture: redfish BMC address with out-of-range port (99999 > 65535)
-# Validates that ipv4AddressWithOptionalPort rejects ports outside 1-65535.
+# Fixture: per-host bootPlugin that is not a valid plugin name
+# Expected failure: bootPlugin must match the boot plugin name pattern
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -22,7 +22,13 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.1:99999
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
+  - name: mgmt-ctl02
+    macAddress: 0c:c4:7a:62:fe:ed
+    ipAddress: 192.168.2.25
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+  - name: mgmt-ctl03
+    macAddress: 0c:c4:7a:62:fe:ee
+    ipAddress: 192.168.2.26
+    bootPlugin: ../ironic
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0

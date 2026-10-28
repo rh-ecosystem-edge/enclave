@@ -1,5 +1,10 @@
 ---
-# Clean up Ironic deployment after hardware configuration is complete
+# Shared Ironic tasks library: tear down the ephemeral (rootless) Ironic pod.
+# Idempotent: does nothing when the pod does not exist.
+#
+# Inputs:
+#   metal3_cleanup_volumes  optional, also remove the metal3-ironic-shared volume
+#   metal3_cleanup_secrets  optional, also remove the Ironic podman secrets
 - name: Stop and remove Ironic pod
   containers.podman.podman_pod:
     name: metal3-ironic

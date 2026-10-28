@@ -1,0 +1,114 @@
+---
+# Preflight checks of the ironic boot plugin: settings it needs from outside
+# config/plugins/boot/ironic.yaml, the BMC entries of its hosts, and Redfish
+# access to each BMC.
+
+- name: Check that lzBmcIP is set
+  ansible.builtin.assert:
+    that:
+      - lzBmcIP is defined
+      - lzBmcIP | string | length > 0
+    fail_msg: >-
+      lzBmcIP must be set in config/global.yaml: the BMCs of the hosts booted by the ironic
+      boot plugin fetch the agent ISO from it.
+    quiet: true
+
+- name: Check that the Ironic HTTPS settings are complete
+  ansible.builtin.assert:
+    that:
+      - ironicHTTPSCertificate | default('') | length > 0
+      - ironicHTTPSKey | default('') | length > 0
+    fail_msg: >-
+      Set both ironicHTTPSCertificate and ironicHTTPSKey in config/certificates.yaml to enable
+      Ironic HTTPS, or neither to disable it.
+    quiet: true
+  when: >-
+    ironicHTTPSCertificate | default('') | length > 0
+    or ironicHTTPSKey | default('') | length > 0
+
+- name: Set host names to compare with the BMC entries
+  ansible.builtin.set_fact:
+    _ironic_host_names: "{{ bootHosts | map(attribute='name') | list }}"
+    _ironic_bmc_names: "{{ (bootPluginConfig.hosts | default({})).keys() | list }}"
+
+- name: Check that the BMC entries match the hosts booted by ironic
+  ansible.builtin.assert:
+    that:
+      - _ironic_host_names | difference(_ironic_bmc_names) | length == 0
+      - _ironic_bmc_names | difference(_ironic_host_names) | length == 0
+    fail_msg: >-
+      The hosts in config/plugins/boot/ironic.yaml must match exactly the agent_hosts booted by
+      the ironic boot plugin.
+      Missing BMC entries: {{ _ironic_host_names | difference(_ironic_bmc_names) | join(', ') or 'none' }}.
+      BMC entries for hosts not booted by ironic: {{ _ironic_bmc_names | difference(_ironic_host_names) | join(', ') or 'none' }}.
+    quiet: true
+
+- name: Check that the hosts booted by ironic have a MAC address
+  ansible.builtin.assert:
+    that:
+      - item.macAddress is defined
+    fail_msg: "agent_hosts entry {{ item.name }} has no macAddress, needed to create its Ironic port."
+    quiet: true
+  loop: "{{ bootHosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Query Redfish systems of each BMC
+  ansible.builtin.uri:
+    url: "https://{{ bootPluginConfig.hosts[item.name].address }}/redfish/v1/Systems"
+    method: GET
+    user: "{{ bootPluginConfig.hosts[item.name].username }}"
+    password: "{{ bootPluginConfig.hosts[item.name].password }}"
+    force_basic_auth: true
+    validate_certs: false
+    timeout: 30
+    return_content: true
+    status_code: [200]
+  loop: "{{ bootHosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_redfish_systems
+  failed_when: false
+
+- name: Check Redfish access to each BMC
+  ansible.builtin.assert:
+    that:
+      - item.status == 200
+    fail_msg: >-
+      Redfish connection to {{ item.item.name }}
+      ({{ bootPluginConfig.hosts[item.item.name].address }}) is not healthy.
+      Return code: {{ item.status }}. {{ item.msg | default('') }}
+    success_msg: >-
+      Redfish connection to {{ item.item.name }}
+      ({{ bootPluginConfig.hosts[item.item.name].address }}) successful
+  loop: "{{ r_redfish_systems.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Check the Redfish system of each BMC
+  ansible.builtin.assert:
+    that: >-
+      (_system_ids | length == 1)
+      if _bmc.systemId is not defined
+      else ('/redfish/v1/Systems/' + _bmc.systemId) in _system_ids
+    fail_msg: >-
+      {%- if _bmc.systemId is not defined -%}
+      BMC on {{ item.item.name }} ({{ _bmc.address }}) manages {{ _system_ids | length }} systems
+      but systemId is not set. Set hosts.{{ item.item.name }}.systemId in
+      config/plugins/boot/ironic.yaml.
+      {%- else -%}
+      systemId '{{ _bmc.systemId }}' not found on {{ item.item.name }} ({{ _bmc.address }}).
+      Available systems: {{ _system_ids | map('regex_replace', '^/redfish/v1/Systems/', '') | join(', ') }}
+      {%- endif -%}
+    success_msg: >-
+      {{ 'systemId ' ~ _bmc.systemId ~ ' found' if _bmc.systemId is defined else 'Single system' }}
+      on {{ item.item.name }} ({{ _bmc.address }})
+  vars:
+    _bmc: "{{ bootPluginConfig.hosts[item.item.name] }}"
+    _system_ids: >-
+      {{ (item.json | default(item.content | default('{}', true) | from_json)).Members | default([])
+         | map('dict2items') | flatten | selectattr('key', 'eq', '@odata.id')
+         | map(attribute='value') | list }}
+  loop: "{{ r_redfish_systems.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

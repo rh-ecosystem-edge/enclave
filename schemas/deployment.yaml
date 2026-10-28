@@ -24,6 +24,8 @@ properties:
     enum: [lvms, odf, vast-csi]
     description: >-
       Which storage plugin to deploy. Default: lvms.
+  bootPlugin:
+    "$ref": "#/definitions/bootPluginName"
   enabled_plugins:
     type: array
     items:
@@ -55,3 +57,4 @@ required:
   - ocMirrorLogLevel
   - pullSecretPath
   - defaultInterfaceName
+  - bootPlugin

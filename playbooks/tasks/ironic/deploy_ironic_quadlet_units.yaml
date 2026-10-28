@@ -1,5 +1,6 @@
 ---
-# Ironic persistent deployment via quadlet units
+# Shared Ironic tasks library: persistent Ironic via root quadlet units.
+# Included by deploy_ironic.yaml; not meant to be included directly.
 
 - name: Ensure /etc/containers/systemd/ directory exists
   become: true

@@ -20,6 +20,7 @@ dependencies = [
     "requests-oauthlib ==2.0.0",
     "rpds-py ==2026.6.3",
     "rsa ==4.9.1",
+    "ruamel.yaml ==0.19.1",
     "requests ==2.34.2",
     "websocket-client ==1.9.2",
 ]
@@ -54,14 +55,15 @@ constraint-dependencies = [
 ]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml", "schemas/boot-plugin.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml", "schemas/boot-plugin.yaml"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
 "defaults" = "enclave/defaults"
+"schemas" = "enclave/schemas"
 
 [tool.ruff]
 line-length = 88
@@ -155,6 +157,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["yaml"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
 ignore_missing_imports = true
 
 [tool.coverage.run]

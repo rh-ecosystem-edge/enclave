@@ -191,7 +191,7 @@ step_setup() {
 
 step_validate() {
     echo "Validating Config .. "  | tee -a ${log}
-    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml $EXTRA_VARS --tags validate-config
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/validation/validate-schema.yaml $EXTRA_VARS --tags validate-config,validate-boot-plugins
     bash ./validations.sh 2>&1 | tee -a ${log}
     step_done
 }

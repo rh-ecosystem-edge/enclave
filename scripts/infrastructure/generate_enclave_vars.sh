@@ -29,6 +29,11 @@ BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
 GLOBAL_VARS_OUTPUT="${WORKING_DIR}/config/global.yaml"
 CERTS_VARS_OUTPUT="${WORKING_DIR}/config/certificates.yaml"
 CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
+IRONIC_BOOT_VARS_OUTPUT="${WORKING_DIR}/config/plugins/boot/ironic.yaml"
+
+# Boot plugin of all agent hosts, written to config/global.yaml (not to extra
+# vars) so that it is part of the validated configuration.
+BOOT_PLUGIN="${BOOT_PLUGIN:-ironic}"
 
 info "Generating Enclave Lab configuration from cluster-env.sh..."
 
@@ -65,6 +70,7 @@ info "  Ingress VIP: $INGRESS_VIP"
 info "  Rendezvous IP: $RENDEZVOUS_IP"
 info "  Masters: $MASTER_COUNT"
 info "  Disconnected: $DISCONNECTED"
+info "  Boot plugin: $BOOT_PLUGIN"
 
 # Generate config/global.yaml
 mkdir -p "$(dirname "$GLOBAL_VARS_OUTPUT")"
@@ -100,6 +106,9 @@ rendezvousIP: ${RENDEZVOUS_IP}
 
 # LZ IP where HTTP server serves the installation ISO to IPMI nodes
 lzBmcIP: ${LZ_BMC_IP}
+
+# Boot plugin that boots the agent hosts
+bootPlugin: ${BOOT_PLUGIN}
 
 # ============================================================================
 # Quay Registry Configuration
@@ -150,6 +159,19 @@ sshPubPath: "{{ workingDir }}/.ssh/id_rsa.pub"
 agent_hosts:
 EOF
 
+rm -f "$IRONIC_BOOT_VARS_OUTPUT"
+if [ "$BOOT_PLUGIN" = "ironic" ]; then
+    mkdir -p "$(dirname "$IRONIC_BOOT_VARS_OUTPUT")"
+    cat > "$IRONIC_BOOT_VARS_OUTPUT" <<EOF
+---
+# ironic boot plugin configuration
+# Auto-generated from infrastructure metadata
+# Generated: $(date -Iseconds)
+driver: redfish
+hosts:
+EOF
+fi
+
 # Add each master VM to agent_hosts
 for i in $(seq 0 $((MASTER_COUNT - 1))); do
     info "Processing master $i..."
@@ -176,12 +198,18 @@ for i in $(seq 0 $((MASTER_COUNT - 1))); do
   - name: ${CLUSTER_NAME}-${MASTER_SHORT_NAME}
     macAddress: "${MASTER_MAC}"
     ipAddress: ${MASTER_IP}
-    redfish: ${BMC_BASEURI}
-    bmcSystemId: ${MASTER_UUID}
     rootDisk: "${ROOT_DISK}"
-    redfishUser: admin
-    redfishPassword: password
 EOF
+
+    if [ "$BOOT_PLUGIN" = "ironic" ]; then
+        cat >> "$IRONIC_BOOT_VARS_OUTPUT" <<EOF
+  ${CLUSTER_NAME}-${MASTER_SHORT_NAME}:
+    address: ${BMC_BASEURI}
+    username: admin
+    password: password
+    systemId: ${MASTER_UUID}
+EOF
+    fi
 done
 
 # Generate SSL certificates for CI
@@ -325,6 +353,9 @@ EOF
 fi
 
 info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
+if [ "$BOOT_PLUGIN" = "ironic" ]; then
+    info "✓ ironic boot plugin configuration generated: $IRONIC_BOOT_VARS_OUTPUT"
+fi
 echo ""
 info "Configuration summary:"
 info "  Global vars file: $GLOBAL_VARS_OUTPUT"

@@ -1,0 +1,10 @@
+---
+- name: Include load-vars to resolve user config
+  ansible.builtin.include_tasks:
+    file: ../../common/load-vars.yaml
+
+- name: Validate boot plugins
+  ansible.builtin.include_tasks:
+    file: ../../tasks/boot/validate.yaml
+  vars:
+    enclave_dir: "{{ playbook_dir }}/../.."

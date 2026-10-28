@@ -1,0 +1,8 @@
+---
+# Deploy the ephemeral Ironic from the shared Ironic tasks library.
+
+- name: Deploy Metal3 common resources
+  ansible.builtin.include_tasks: "../../../../playbooks/tasks/ironic/deploy_metal3_common.yaml"
+
+- name: Deploy Ironic pod
+  ansible.builtin.include_tasks: "../../../../playbooks/tasks/ironic/deploy_ironic.yaml"

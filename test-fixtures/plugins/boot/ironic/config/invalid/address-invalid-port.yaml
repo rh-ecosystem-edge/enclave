@@ -1,0 +1,7 @@
+---
+# Invalid fixture: BMC address with out-of-range port (99999 > 65535).
+hosts:
+  mgmt-ctl01:
+    address: 100.64.1.1:99999
+    username: admin
+    password: YOUR_BMC_PASSWORD

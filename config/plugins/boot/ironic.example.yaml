@@ -1,0 +1,24 @@
+---
+# Configuration of the ironic boot plugin (plugins/boot/ironic).
+# Copy to config/plugins/boot/ironic.yaml when any agent_hosts entry is booted by
+# ironic (the default bootPlugin).
+
+# Ironic hardware type used to drive the BMCs. Only redfish is supported.
+# driver: redfish
+
+# BMC settings of each host booted by ironic, keyed by agent_hosts[].name.
+# The keys must match exactly the names of the agent_hosts booted by ironic.
+hosts:
+  YOUR_HOST_NAME_1:
+    address: YOUR_BMC_IP                # Redfish BMC address, ip or ip:port
+    username: YOUR_BMC_USER
+    password: YOUR_BMC_PASSWORD
+    # systemId: System.Embedded.1       # Optional. Only needed for multi-system BMCs
+  YOUR_HOST_NAME_2:
+    address: YOUR_BMC_IP
+    username: YOUR_BMC_USER
+    password: YOUR_BMC_PASSWORD
+  YOUR_HOST_NAME_3:
+    address: YOUR_BMC_IP
+    username: YOUR_BMC_USER
+    password: YOUR_BMC_PASSWORD

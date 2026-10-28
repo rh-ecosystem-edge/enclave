@@ -1,0 +1,102 @@
+---
+# Detach the virtual media ISO from every host of this plugin known to the
+# running ephemeral Ironic. A host that cannot be detached (Ironic not running,
+# or the host was not enrolled in this run) gets a warning instead of a failure.
+#
+# Runs after install-complete on purpose: on hardware where coreos-installer
+# streams the RHCOS disk image from the mounted ISO, detaching earlier (e.g. as
+# soon as the Ironic node is active) aborts the disk write with an I/O error.
+
+- name: Set Ironic API version
+  ansible.builtin.set_fact:
+    ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
+
+- name: Check whether the ephemeral Ironic pod is running
+  containers.podman.podman_pod_info:
+    name: metal3-ironic
+  register: r_ironic_pod
+  failed_when: false
+
+- name: Read Ironic credentials
+  when: (r_ironic_pod.pods | default([]) | selectattr('State', 'equalto', 'Running') | list | length) > 0
+  block:
+    - name: Get metal3-ironic-username
+      ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-username --format "{{ '{{' }}.SecretData{{ '}}' }}"
+      register: r_username_secret
+      failed_when: false
+      changed_when: false
+      no_log: true
+
+    - name: Get metal3-ironic-password
+      ansible.builtin.command: podman secret inspect --showsecret metal3-ironic-password --format "{{ '{{' }}.SecretData{{ '}}' }}"
+      register: r_password_secret
+      failed_when: false
+      changed_when: false
+      no_log: true
+
+- name: Set whether Ironic can be used to detach virtual media
+  ansible.builtin.set_fact:
+    _ironic_available: >-
+      {{ r_username_secret.rc | default(1) == 0 and r_password_secret.rc | default(1) == 0 }}
+
+- name: Detach virtual media through Ironic
+  when: _ironic_available | bool
+  block:
+    - name: Set Ironic credentials from secrets
+      ansible.builtin.set_fact:
+        metal3_ironic_username: "{{ r_username_secret.stdout }}"
+        metal3_ironic_password: "{{ r_password_secret.stdout }}"
+      no_log: true
+
+    - name: Look up Ironic nodes
+      ansible.builtin.uri:
+        url: "http://localhost:6385/v1/nodes/{{ item.name }}"
+        method: GET
+        headers:
+          X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+        user: "{{ metal3_ironic_username }}"
+        password: "{{ metal3_ironic_password }}"
+        force_basic_auth: true
+        status_code: [200, 404]
+      loop: "{{ bootHosts }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: r_detach_nodes
+
+    - name: Detach virtual media ISO from nodes
+      ansible.builtin.uri:
+        url: "http://localhost:6385/v1/nodes/{{ item.json.uuid }}/vmedia"
+        method: DELETE
+        headers:
+          X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
+        user: "{{ metal3_ironic_username }}"
+        password: "{{ metal3_ironic_password }}"
+        force_basic_auth: true
+        status_code: [204, 404]
+      loop: "{{ r_detach_nodes.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+      when: item.status == 200
+
+- name: Collect hosts whose virtual media was detached
+  ansible.builtin.set_fact:
+    _detached_hosts: >-
+      {{ (r_detach_nodes.results | default([]) | selectattr('status', 'defined')
+          | selectattr('status', 'equalto', 200) | map(attribute='item.name') | list)
+         if _ironic_available | bool else [] }}
+
+- name: Report hosts whose virtual media was detached
+  ansible.builtin.debug:
+    msg: "Virtual media detached from: {{ _detached_hosts | join(', ') }}"
+  when: _detached_hosts | length > 0
+
+- name: Warn about hosts whose virtual media could not be detached
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: virtual media could not be detached from
+      {{ bootHosts | map(attribute='name') | reject('in', _detached_hosts) | join(', ') }}:
+      {{ 'they are not enrolled in the running ephemeral Ironic (not provisioned in this run)'
+         if _ironic_available | bool else 'the ephemeral Ironic is not running' }}.
+      Ironic booted them from the ISO only once, so this only matters on hardware that ignores
+      one-time boot; in that case remove the media from the BMC.
+  when: (bootHosts | map(attribute='name') | reject('in', _detached_hosts) | list | length) > 0

@@ -1,7 +1,7 @@
 ---
 # Fixture: RadosGWStorage + lvms with all optional global.yaml fields set.
 # Exercises: disconnected, masterMaxPods, diskEncryption, ocMirrorLogLevel,
-# defaultNtpServers, bmcSystemId, all quayBackendRGWConfiguration overrides.
+# defaultNtpServers, all quayBackendRGWConfiguration overrides.
 # Certificate and discovery_hosts fields are tested in their own schema fixtures.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
@@ -42,24 +42,12 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 192.168.1.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
-    bmcSystemId: "1"
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
-    redfish: 192.168.1.102
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
-    bmcSystemId: "2"
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:62:fe:ee
     ipAddress: 192.168.2.26
-    redfish: 192.168.1.103
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
-    bmcSystemId: "3"

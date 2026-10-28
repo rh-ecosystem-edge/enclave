@@ -1,0 +1,82 @@
+---
+# Validate the boot plugins in use: plugin contract, plugin configuration, and
+# each plugin's own validate hook.
+#
+# Inputs:
+#   enclave_dir  optional, repository root (default: {{ playbook_dir }}/..)
+
+- name: Collect agent_hosts entries with BMC fields
+  ansible.builtin.set_fact:
+    _legacy_bmc_hosts: >-
+      {{ agent_hosts | selectattr('redfish', 'defined') | map(attribute='name') | list
+         + agent_hosts | selectattr('redfishUser', 'defined') | map(attribute='name') | list
+         + agent_hosts | selectattr('redfishPassword', 'defined') | map(attribute='name') | list
+         + agent_hosts | selectattr('bmcSystemId', 'defined') | map(attribute='name') | list }}
+
+- name: Check that agent_hosts entries have no BMC fields
+  ansible.builtin.assert:
+    that:
+      - _legacy_bmc_hosts | length == 0
+    fail_msg: >-
+      agent_hosts entries {{ _legacy_bmc_hosts | unique | join(', ') }} still set redfish,
+      redfishUser, redfishPassword or bmcSystemId. These settings moved to
+      config/plugins/boot/ironic.yaml (see config/plugins/boot/ironic.example.yaml); on an
+      existing installation, run ./upgrade.sh to migrate them.
+    quiet: true
+
+- name: Load boot plugins
+  ansible.builtin.include_tasks: load_plugins.yaml
+
+- name: Validate the contract of the boot plugins in use
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - --log-format
+      - plain
+      - plugins
+      - validate
+      - --type
+      - boot
+      - "{{ item.path }}"
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: false
+
+- name: Check configuration schemas of the boot plugins in use
+  ansible.builtin.stat:
+    path: "{{ item.path }}/schemas/config.yaml"
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_boot_config_schemas
+
+- name: Check configuration files of the boot plugins in use
+  ansible.builtin.stat:
+    path: "{{ enclave_dir | default(playbook_dir ~ '/..') }}/config/plugins/boot/{{ item.name }}.yaml"
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_boot_config_files
+
+- name: Validate configuration of the boot plugins in use
+  ansible.utils.validate:
+    data: >-
+      {{ ((lookup('ansible.builtin.file', item.1.stat.path) | from_yaml) if item.1.stat.exists else {})
+         | default({}, true) | to_json }}
+    criteria: "{{ lookup('ansible.builtin.file', item.0.stat.path) | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+  loop: "{{ r_boot_config_schemas.results | zip(r_boot_config_files.results) | list }}"
+  loop_control:
+    label: "config/plugins/boot/{{ item.0.item.name }}.yaml"
+  when: item.0.stat.exists
+  no_log: "{{ schemaValidationNoLog | default(false) }}"
+
+- name: Run validate hook of each boot plugin
+  ansible.builtin.include_tasks: run_hook.yaml
+  vars:
+    boot_hook: validate
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    loop_var: boot_plugin
+    label: "{{ boot_plugin.name }}"

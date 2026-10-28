@@ -29,3 +29,10 @@
         apply:
           tags: validate-config
       tags: validate-config
+
+    - name: Include boot plugin validation tasks
+      ansible.builtin.include_tasks:
+        file: tasks/boot_plugins_validation.yaml
+        apply:
+          tags: validate-boot-plugins
+      tags: validate-boot-plugins

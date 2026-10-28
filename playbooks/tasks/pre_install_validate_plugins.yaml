@@ -1,4 +1,7 @@
 ---
+- name: Load boot plugins
+  ansible.builtin.include_tasks: boot/load_plugins.yaml
+
 - name: Add rendezvous node to inventory
   ansible.builtin.add_host:
     name: rendezvous
@@ -7,13 +10,13 @@
     ansible_ssh_private_key_file: "{{ sshPubPath | replace('.pub', '') }}"
     ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
 
-# Nodes were just booted via Ironic and may not have SSH ready yet.
+# Nodes were just booted by the boot plugins and may not have SSH ready yet.
 # delegate_to connection failures (UNREACHABLE) are fatal and bypass
 # Ansible's retries/until mechanism, so we must wait for connectivity
 # explicitly before any delegated tasks.
 - name: Wait for rendezvous node to become reachable
   ansible.builtin.wait_for_connection:
-    timeout: 600
+    timeout: "{{ boot_discovery_timeout | int }}"
     sleep: 10
   delegate_to: rendezvous
 
@@ -68,25 +71,113 @@
   ansible.builtin.debug:
     msg: "Assisted Service cluster status: {{ r_assisted_clusters.json[0].status }}"
 
-- name: Wait for all hosts to be ready
-  ansible.builtin.uri:
-    url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
-    method: GET
-    headers:
-      Authorization: "{{ assisted_auth_token }}"
-  register: r_assisted_hosts
-  retries: 60
-  delay: 5
-  until: >-
-    r_assisted_hosts.json | length >= (agent_hosts | length)
-    and (r_assisted_hosts.json
-        | selectattr('status', 'equalto', 'known')
-        | list | length) >= (agent_hosts | length)
-  no_log: true
+- name: Initialize MAC addresses of each agent host
+  ansible.builtin.set_fact:
+    _agent_host_macs: {}
+
+- name: Collect MAC addresses of each agent host
+  ansible.builtin.set_fact:
+    _agent_host_macs: >-
+      {{ _agent_host_macs | combine({item.name:
+           ([item.macAddress] + (item.mapInterfaces | default([]) | map(attribute='macAddress') | list))
+           | map('lower') | unique | list}) }}
+  loop: "{{ agent_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Host records are matched to agent_hosts entries by MAC address (macAddress and
+# mapInterfaces against the inventory interfaces). Records that have not
+# reported an inventory yet match nothing and are ignored. The match must be
+# one-to-one: a record matching no entry or several entries, or an entry
+# matched by several records, stops the wait immediately.
+- name: Wait for all agent hosts to be ready
+  vars:
+    _host_match: >-
+      {%- set ns = namespace(unknown=[], ambiguous=[], matches={}, entries=[], duplicated=[], pending=[]) -%}
+      {%- for host in r_assisted_hosts.json | default([]) if host is mapping -%}
+        {%- set inventory = (host.inventory | default('', true) | from_json) if host.inventory | default('', true) | length > 0 else {} -%}
+        {%- set macs = inventory.interfaces | default([]) | map(attribute='mac_address') | select | map('lower') | list -%}
+        {%- set label = (host.requested_hostname | default(host.id, true)) ~ ' (' ~ (macs | join(', ')) ~ ')' -%}
+        {%- set ns.entries = [] -%}
+        {%- for name, entry_macs in _agent_host_macs.items() if entry_macs | intersect(macs) | length > 0 -%}
+          {%- set ns.entries = ns.entries + [name] -%}
+        {%- endfor -%}
+        {%- if macs | length > 0 and ns.entries | length == 0 -%}
+          {%- set ns.unknown = ns.unknown + [label] -%}
+        {%- elif ns.entries | length > 1 -%}
+          {%- set ns.ambiguous = ns.ambiguous + [label ~ ' matches ' ~ (ns.entries | join(', '))] -%}
+        {%- elif ns.entries | length == 1 -%}
+          {%- set ns.matches = ns.matches | combine({ns.entries[0]: ns.matches.get(ns.entries[0], []) + [{'label': label, 'status': host.status}]}) -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- for name in _agent_host_macs -%}
+        {%- set records = ns.matches.get(name, []) -%}
+        {%- if records | length > 1 -%}
+          {%- set ns.duplicated = ns.duplicated + [name] -%}
+        {%- elif records | length == 0 or records[0].status != 'known' -%}
+          {%- set ns.pending = ns.pending + [name] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {{ {'unknown': ns.unknown, 'ambiguous': ns.ambiguous, 'duplicated': ns.duplicated,
+          'pending': ns.pending, 'records': ns.matches} | to_json }}
+  block:
+    - name: Wait for all agent hosts to be known to Assisted Service
+      ansible.builtin.uri:
+        url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
+        method: GET
+        headers:
+          Authorization: "{{ assisted_auth_token }}"
+      register: r_assisted_hosts
+      retries: "{{ ((boot_discovery_timeout | int) / 5) | round(0, 'ceil') | int }}"
+      delay: 5
+      until: >-
+        (_host_match | from_json).unknown | length > 0
+        or (_host_match | from_json).ambiguous | length > 0
+        or (_host_match | from_json).duplicated | length > 0
+        or (_host_match | from_json).pending | length == 0
+      # Running out of retries is not fatal here: _host_match_result is checked instead.
+      ignore_errors: true
+      no_log: true
+
+    - name: Set host match result
+      ansible.builtin.set_fact:
+        _host_match_result: "{{ _host_match | from_json }}"
+
+- name: Fail if a registered host matches no agent_hosts entry
+  ansible.builtin.fail:
+    msg: >-
+      Hosts registered with Assisted Service whose MAC addresses match no agent_hosts entry:
+      {{ _host_match_result.unknown | join('; ') }}. Check that the right machines were booted
+      from the agent ISO and that the macAddress/mapInterfaces of agent_hosts are correct.
+  when: _host_match_result.unknown | length > 0
+
+- name: Fail if a registered host matches several agent_hosts entries
+  ansible.builtin.fail:
+    msg: >-
+      Hosts registered with Assisted Service whose MAC addresses match more than one
+      agent_hosts entry: {{ _host_match_result.ambiguous | join('; ') }}.
+  when: _host_match_result.ambiguous | length > 0
+
+- name: Fail if an agent_hosts entry matches several registered hosts
+  ansible.builtin.fail:
+    msg: >-
+      agent_hosts entries matched by more than one host registered with Assisted Service:
+      {% for name in _host_match_result.duplicated %}{{ name }}
+      ({{ _host_match_result.records[name] | map(attribute='label') | join(', ') }}){{ '; ' if not loop.last }}{% endfor %}.
+  when: _host_match_result.duplicated | length > 0
+
+- name: Fail if agent hosts did not become known in time
+  ansible.builtin.fail:
+    msg: >-
+      Timed out after {{ boot_discovery_timeout }} seconds waiting for agent_hosts to register
+      with Assisted Service and reach status known: {% for name in _host_match_result.pending %}{{ name }}
+      ({{ _host_match_result.records[name] | default([]) | map(attribute='status') | first | default('not registered') }}){{ ', ' if not loop.last }}{% endfor %}.
+      Set bootDiscoveryTimeout in config/global.yaml to wait longer.
+  when: _host_match_result.pending | length > 0
 
 - name: Display discovered hosts
   ansible.builtin.debug:
-    msg: "All {{ r_assisted_hosts.json | length }} hosts are ready (status: known)"
+    msg: "All {{ agent_hosts | length }} agent hosts are ready (status: known)"
 
 - name: Set discovered hosts fact
   ansible.builtin.set_fact:
