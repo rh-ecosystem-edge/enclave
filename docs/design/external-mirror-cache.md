@@ -110,8 +110,12 @@ in config and covered by the schema.
 New optional config (schema-validated):
 
 - cache endpoint (host:port, optional namespace/prefix)
-- credentials (secret)
+- pull-only credentials (secret)
 - CA bundle used to trust the cache (no `tls-verify=false`)
+
+The installation never holds credentials that can write to the cache. Push credentials belong to
+`cache.sh build` only (see [Cache maintenance](#cache-maintenance)) and are not part of an
+installation's config.
 
 ### Cache maintenance
 
@@ -122,7 +126,8 @@ A separate entry point (working name `cache.sh`) owned by whoever operates the c
 - `verify` — the same check `bootstrap.sh` / `sync.sh` run (see
   [Validity](#validity-fingerprint--dry-run)), usable standalone.
 
-`build` is the only writer. It is also what CI uses to create a cache.
+`build` is the only writer, and the only user of push credentials, which it takes separately from
+the installation's config. It is also what CI uses to create a cache.
 
 It runs on any host with the enclave content and the installation's config, using the same config
 layout as the LZ:
@@ -137,6 +142,13 @@ layout as the LZ:
 `build` is idempotent and safe to re-run: for every requested unit it runs oc-mirror (which skips
 images already in the destination, and restores any deleted after a previous build) and
 republishes the unit's metadata image.
+
+`build` never overwrites what another key published. Images are only added, and everything a
+build writes under a tag (filtered catalogs and metadata images) is tagged with the unit key, so
+builds from different configs sharing the cache cannot replace each other's content. Re-running
+`build` with the same key republishes that key's catalog and metadata together; for catalog units
+this refreshes the catalog from the current upstream index, as `sync.sh` does today in LZ mode
+(see [Validity](#validity-fingerprint--dry-run)).
 
 #### Reusing the mirroring code
 
@@ -169,9 +181,8 @@ Applying is decoupled from mirroring:
   `{{ workingDir }}/config/cluster-resources/`), rebuilt from scratch on every run:
   - LZ mode: copied from the oc-mirror workspace (same content as today).
   - Cache mode: resolve the units the config requires (shared render step), pull each unit's
-    metadata image from the cache (exact key, else `<unit>:latest`, see
-    [Validity](#validity-fingerprint--dry-run)), substitute the host/prefix placeholder with the
-    configured endpoint.
+    metadata image selected for it (see [Metadata selection](#metadata-selection)), substitute the
+    host/prefix placeholder with the configured endpoint.
 - Consumers read only that directory:
 
 | Entry point | Units | Action |
@@ -203,7 +214,10 @@ ships (no new binary such as `oras` on the LZ), and any registry accepts it. It 
 
 - the cache key (see [Cache key](#cache-key)), metadata format version and build timestamp
 - the canonical unit imageset and resolved catalog index digests (traceability)
-- the list of images the unit mirrored (keeps a later per-unit pruning possible)
+- for `ocp-<version>` units, the release image digest (see
+  [Landing Zone pulls](#landing-zone-pulls))
+- the list of images the unit mirrored (used by [Metadata selection](#metadata-selection), and
+  keeps a later per-unit pruning possible)
 - oc-mirror `cluster-resources/` (IDMS, ITMS, CatalogSources, signature ConfigMaps) that enclave
   needs to configure the cluster, already named per unit (see
   [Outputs stored in the cache](#outputs-stored-in-the-cache))
@@ -228,9 +242,6 @@ No enclave version. Validity is defined by content.
 - **Keys** select the metadata image to use, drive CI snapshot lookup, and give diagnostics ("unit
   `catalog-odf` has no matching key"). A key mismatch is not a failure by itself: the cache may
   hold a superset (e.g. a wider operator version range).
-- **Metadata lookup:** `build` tags each unit's metadata image with its key and also moves
-  `<unit>:latest`. Consumers fetch the exact key if present, otherwise `<unit>:latest`; in both
-  cases the dry-run is what makes the cache valid.
 - To verify at implementation time: a mirror-to-mirror dry-run checks the destination registry for
   missing images. A mirror-to-disk dry-run does not (observed with oc-mirror v2 4.20: it only
   checks its local storage and never contacts the source).
@@ -239,11 +250,36 @@ Catalogs are referenced by floating tags (`redhat-operator-index:v4.20`). Once t
 it defines what those tags point to for every installation using it:
 
 - The key hashes the tag as written. Computing it never resolves the tag upstream.
-- The dry-run validates against the index stored in the cache, not the current upstream index,
+- The dry-run validates against the index stored in the cache (the catalog of the metadata being
+  checked, see [Metadata selection](#metadata-selection)), not the current upstream index,
   otherwise any newer upstream publish would report missing images.
 - Catalog freshness changes owner. Today every `sync.sh` run re-resolves the tags and mirrors the
   latest upstream index into the LZ mirror. In cache mode `sync.sh` does not mirror, so catalog
-  content is as fresh as the last `cache.sh build`.
+  content is as fresh as the last `cache.sh build` of that key.
+
+#### Metadata selection
+
+Each unit's metadata image is tagged with its key (`enclave-cache/<unit>:<key>`). There is no
+moving tag such as `<unit>:latest`: it would point at the metadata of the last build, which can
+describe less than another config needs (fewer packages, so IDMS/ITMS missing repositories it
+pulls from) even when the dry-run passes on images other builds mirrored.
+
+For each unit it needs, a flow selects metadata as follows:
+
+1. **Exact key** present: use it. The dry-run against its catalog must report no missing images.
+1. Otherwise, try the unit's other metadata tags, newest build first. A candidate is accepted when
+   the dry-run of the required unit against the candidate's catalog reports no missing images,
+   and the candidate's recorded image list covers every image that dry-run resolved, so its
+   IDMS/ITMS map every repository the config pulls from. Its catalog and cluster resources are
+   then used as a pair.
+1. No candidate accepted: fail before changing anything, naming the unit and pointing to
+   `cache.sh build`.
+
+Catalogs follow the same rule: `build` pushes each filtered catalog with `targetTag` derived from
+the unit key, never to the source tag. Today's imagesets set `targetCatalog` only, so every run
+pushes its filtered catalog to the same tag (e.g. `redhat/redhat-operator-index:v4.20`), and a
+build for a config with fewer packages would remove operators from catalogs that other
+installations already use.
 
 ### Cache key
 
@@ -316,7 +352,9 @@ Object names:
 - **CatalogSources** follow the stable convention from enclave PR #977: `cs-<index>` and
   `cs-<index>-<plugin>`, derived only from the target catalog name. `cache.sh build` uses the same
   templates, so it produces the same names and enclave keeps building them by convention. A
-  catalog version bump does not rename them.
+  catalog version bump does not rename them. Their `image:` points at the catalog tagged with the
+  selected key (see [Metadata selection](#metadata-selection)); a new key updates the image in
+  place, not the name.
 
 Object names differ between LZ mode and cache mode; this is fine because modes are never mixed
 (see [Consumption model](#consumption-model)).
@@ -332,10 +370,15 @@ from the release payload and pulls them straight from upstream:
 | `ironic` | `deploy_ironic.yaml` | 07 / hardware setup / upgrade |
 | `baremetal-operator` | `deploy_bmo.yaml` | 07 / hardware setup / upgrade |
 
-All three are resolved with `oc adm release info quay.io/openshift-release-dev/ocp-release:<v>` and
-pulled by digest, so they are already part of the `ocp-<version>` unit. No new cache units: the fix
-is consumer side, redirecting the LZ to the cache using the same source→mirror mapping as the
-cluster (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)).
+All three are resolved with `oc adm release info quay.io/openshift-release-dev/ocp-release:<v>`
+(a tag) and pulled by digest, so they are already part of the `ocp-<version>` unit. No new cache
+units: the fix is consumer side, redirecting the LZ to the cache using the same source→mirror
+mapping as the cluster (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)).
+
+IDMS only applies to digest references, so the tagged release lookup would still go upstream. In
+cache mode consumers reference the release by the digest recorded in the `ocp-<version>` unit
+metadata (`ocp-release@sha256:...`) instead of the tag, so the release lookup and the component
+pulls all go through the IDMS mapping. The tag is never resolved, as for catalogs.
 
 Ordering: with a cache the content exists before phase 01. Applying the same rule to the LZ
 mirror-registry path (no cache) would require moving ISO extraction after phase 02; out of scope,
@@ -380,8 +423,9 @@ and Quay seeding keeps using `templates/registries.conf.j2` and the user-level f
 **Design.** The upstream→mirror mapping exists only once: the IDMS/ITMS stored per unit. Every LZ
 consumer derives its format from it at consume time:
 
-- `oc adm release info` / `oc image extract` take the IDMS directly (`--idms-file`); they do not
-  read registries.conf.
+- `oc adm release info` / `oc image extract` take the IDMS directly (`--idms-file`), with the
+  release referenced by digest (see [Landing Zone pulls](#landing-zone-pulls)); they do not read
+  registries.conf.
 - podman and oc-mirror get a registries.conf generated from IDMS/ITMS (digest-only for IDMS
   entries, tag-only for ITMS), with the cache endpoint substituted.
 
@@ -477,6 +521,8 @@ previous content.
 ### Security
 
 - Credentials handled as secrets end to end (`no_log`, not in artifacts).
+- Installations only hold pull-only credentials: a compromised LZ cannot overwrite cache images
+  or metadata that other installations share.
 - User-provided CA bundle trusted by LZ and cluster.
 - Diagnostics bundle redacts cache credentials.
 
@@ -530,8 +576,7 @@ cluster name) so the snapshot's certs stay valid; the CI CA lives in CI secrets.
 
 The content key removes the race condition: a PR that needs content not yet published misses and
 builds its own; once the protected branch publishes, later PRs hit. No moving "latest" snapshot
-pointer to coordinate (unlike the per-unit metadata `<unit>:latest` tag inside a cache, which only
-selects metadata).
+pointer to coordinate.
 
 #### Mirror validation gate
 
@@ -567,12 +612,17 @@ images (no OCP payload, no hardware, minutes per run), run on PRs touching the c
 
 - exact hit → valid
 - superset (wider range, extra plugin) → key mismatch, dry-run passes → valid
+- newest candidate metadata does not cover the required images, an older one does → older one
+  selected
+- two configs build the same unit with different packages → neither catalog nor metadata is
+  overwritten
 - missing unit → fails before changing anything
 - day-2 plugin with units missing / present
 - oc-mirror version change → key mismatch, dry-run decides
 - key matches but an image was deleted after the build → fails
 - host alias / prefix → placeholder substituted correctly
 - wrong CA or credentials → clear error, not an oc-mirror failure
+- LZ release lookups in cache mode → no request to upstream registries
 
 ## Alternatives considered
 
@@ -600,6 +650,12 @@ enclave already ships.
 
 **Storing registries.conf in the cache metadata.** It would be a second, podman-specific copy of
 the upstream→mirror mapping that can drift from the IDMS/ITMS.
+
+**A moving `<unit>:latest` metadata tag and catalogs pushed to their source tag.** Each build
+would replace what the previous one published, so a build for a config with fewer packages
+would remove operators from catalogs and repositories from IDMS/ITMS that other installations
+sharing the cache rely on. Everything a build tags is keyed instead (see
+[Metadata selection](#metadata-selection)).
 
 **Keying OCP per channel range.** Bootstrap and `sync.sh` mirror different ranges, so the same
 enclave and config would produce different keys depending on the entry point.
