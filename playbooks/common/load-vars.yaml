@@ -76,7 +76,7 @@
 
 - name: Find plugin directories
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../plugins"
+    paths: "{{ (playbook_dir ~ '/../plugins') | realpath }}"
     file_type: directory
     depth: 1
   register: r_plugin_dirs

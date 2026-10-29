@@ -190,7 +190,7 @@
 
 - name: Find plugins with tasks/pre-install-validate.yaml
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../plugins"
+    paths: "{{ (playbook_dir ~ '/../plugins') | realpath }}"
     patterns: "pre-install-validate.yaml"
     recurse: true
     depth: 3

@@ -64,7 +64,7 @@
 
 - name: Find all plugin.yaml files
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../../plugins"
+    paths: "{{ (playbook_dir ~ '/../../plugins') | realpath }}"
     patterns: "plugin.yaml"
     recurse: true
     depth: 2
@@ -75,16 +75,14 @@
     data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/plugin.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
-  # find miscounts depth on paths containing '..', so boot plugin descriptors
-  # (plugins/boot/<name>/plugin.yaml) are found too; they follow another schema.
-  loop: "{{ r_plugin_files.files | rejectattr('path', 'search', '/plugins/boot/') | list }}"
+  loop: "{{ r_plugin_files.files }}"
   loop_control:
     label: "{{ item.path | dirname | basename }}"
 
 # plugins/boot holds boot plugins (plugins/boot/<name>), not a foundation/addon plugin.
 - name: Find plugin directories
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../../plugins"
+    paths: "{{ (playbook_dir ~ '/../../plugins') | realpath }}"
     file_type: directory
     depth: 1
     excludes: boot
