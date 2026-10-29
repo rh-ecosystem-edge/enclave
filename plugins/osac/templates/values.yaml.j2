@@ -72,7 +72,8 @@ operator:
     statusPollInterval: 30s
     templatePrefix: osac
   fulfillment:
-    serverAddress: fulfillment-api:8000
+    # Internal listener: operator uses private gRPC methods the public one rejects.
+    serverAddress: fulfillment-internal-api:8001
   controllers:
     # clusterOrder (caas), computeInstance (vmaas) and bareMetalInstance (bmaas)
     # are intentionally omitted: the chart derives them from global.services.*
