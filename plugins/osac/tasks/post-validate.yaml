@@ -1,155 +1,143 @@
 ---
 # Post-deployment validation for OSAC plugin.
 # Verifies all components are healthy after deployment.
+#
+# Each check polls with retries/until rather than asserting once: several
+# components (notably the AAP instance and its bootstrap job) keep converging
+# after the deploy step returns, so a single-shot check races and fails even
+# though the component becomes ready moments later.
 
 # 1. PostgreSQL running (when not BYO database)
-- name: Check PostgreSQL deployment is running
+- name: Wait for PostgreSQL deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: "{{ osac_db_name }}"
     namespace: osac
   register: __r_postgres
-  when: not osacBYODatabase | bool
-
-- name: Assert PostgreSQL is running
-  ansible.builtin.assert:
-    that:
-      - __r_postgres.resources | length > 0
-      - __r_postgres.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "PostgreSQL deployment is not running in osac namespace"
+  until:
+    - __r_postgres.resources | length > 0
+    - __r_postgres.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
   when: not osacBYODatabase | bool
 
 # 2. fulfillment-grpc-server deployment
-- name: Check fulfillment-grpc-server deployment
+- name: Wait for fulfillment-grpc-server deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: fulfillment-grpc-server
     namespace: osac
   register: __r_grpc_server
-
-- name: Assert fulfillment-grpc-server is running
-  ansible.builtin.assert:
-    that:
-      - __r_grpc_server.resources | length > 0
-      - __r_grpc_server.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "fulfillment-grpc-server deployment is not running in osac namespace"
+  until:
+    - __r_grpc_server.resources | length > 0
+    - __r_grpc_server.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 # 3. fulfillment-rest-gateway deployment
-- name: Check fulfillment-rest-gateway deployment
+- name: Wait for fulfillment-rest-gateway deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: fulfillment-rest-gateway
     namespace: osac
   register: __r_rest_gateway
-
-- name: Assert fulfillment-rest-gateway is running
-  ansible.builtin.assert:
-    that:
-      - __r_rest_gateway.resources | length > 0
-      - __r_rest_gateway.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "fulfillment-rest-gateway deployment is not running in osac namespace"
+  until:
+    - __r_rest_gateway.resources | length > 0
+    - __r_rest_gateway.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 # 4. fulfillment-controller deployment
-- name: Check fulfillment-controller deployment
+- name: Wait for fulfillment-controller deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: fulfillment-controller
     namespace: osac
   register: __r_controller
-
-- name: Assert fulfillment-controller is running
-  ansible.builtin.assert:
-    that:
-      - __r_controller.resources | length > 0
-      - __r_controller.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "fulfillment-controller deployment is not running in osac namespace"
+  until:
+    - __r_controller.resources | length > 0
+    - __r_controller.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 # 5. fulfillment-ingress-proxy deployment
-- name: Check fulfillment-ingress-proxy deployment
+- name: Wait for fulfillment-ingress-proxy deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: fulfillment-ingress-proxy
     namespace: osac
   register: __r_ingress_proxy
-
-- name: Assert fulfillment-ingress-proxy is running
-  ansible.builtin.assert:
-    that:
-      - __r_ingress_proxy.resources | length > 0
-      - __r_ingress_proxy.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "fulfillment-ingress-proxy deployment is not running in osac namespace"
+  until:
+    - __r_ingress_proxy.resources | length > 0
+    - __r_ingress_proxy.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 # 6. osac-operator deployment
-- name: Check osac-operator deployment
+- name: Wait for osac-operator deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: osac-operator
     namespace: osac
   register: __r_osac_operator
-
-- name: Assert osac-operator is running
-  ansible.builtin.assert:
-    that:
-      - __r_osac_operator.resources | length > 0
-      - __r_osac_operator.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "osac-operator deployment is not running in osac namespace"
+  until:
+    - __r_osac_operator.resources | length > 0
+    - __r_osac_operator.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 # 7. AAP instance ready
-- name: Check AAP instance is ready
+#    The AAP operator flips the aggregate Successful condition well after the
+#    gateway deployment the deploy step waits on, so give it a generous budget.
+- name: Wait for AAP instance to be ready
   kubernetes.core.k8s_info:
     api_version: aap.ansible.com/v1alpha1
     kind: AnsibleAutomationPlatform
     name: "{{ osac_aap_name }}"
     namespace: osac
   register: __r_aap_instance
-
-- name: Assert AAP instance is ready
-  ansible.builtin.assert:
-    that:
-      - __r_aap_instance.resources | length > 0
-      - __r_aap_instance.resources[0].status.conditions | default([])
-        | selectattr('type', 'equalto', 'Successful')
-        | selectattr('status', 'equalto', 'True')
-        | list | length > 0
-    fail_msg: "AAP instance {{ osac_aap_name }} is not ready in osac namespace"
+  until:
+    - __r_aap_instance.resources | length > 0
+    - __r_aap_instance.resources[0].status.conditions | default([])
+      | selectattr('type', 'equalto', 'Successful')
+      | selectattr('status', 'equalto', 'True')
+      | list | length > 0
+  retries: 60
+  delay: 15
 
 # 8. AAP bootstrap job completed
-- name: Check AAP bootstrap job completed
+- name: Wait for AAP bootstrap job to complete
   kubernetes.core.k8s_info:
     api_version: batch/v1
     kind: Job
     name: "{{ osac_aap_name }}-bootstrap"
     namespace: osac
   register: __r_bootstrap_job
-
-- name: Assert AAP bootstrap job completed
-  ansible.builtin.assert:
-    that:
-      - __r_bootstrap_job.resources | length > 0
-      - __r_bootstrap_job.resources[0].status.succeeded | default(0) | int >= 1
-    fail_msg: "AAP bootstrap job has not completed successfully in osac namespace"
+  until:
+    - __r_bootstrap_job.resources | length > 0
+    - __r_bootstrap_job.resources[0].status.succeeded | default(0) | int >= 1
+  retries: 30
+  delay: 20
 
 # 9. OpenBao secret store running
-- name: Check OpenBao deployment is running
+- name: Wait for OpenBao deployment to be running
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
     name: openbao
     namespace: "{{ osac_vault_ns }}"
   register: __r_openbao
-
-- name: Assert OpenBao is running
-  ansible.builtin.assert:
-    that:
-      - __r_openbao.resources | length > 0
-      - __r_openbao.resources[0].status.availableReplicas | default(0) | int > 0
-    fail_msg: "OpenBao deployment is not running in {{ osac_vault_ns }} namespace"
+  until:
+    - __r_openbao.resources | length > 0
+    - __r_openbao.resources[0].status.availableReplicas | default(0) | int > 0
+  retries: 30
+  delay: 10
 
 - name: Log OSAC validation success
   ansible.builtin.debug:
