@@ -36,7 +36,7 @@ def plugin_dir(tmp_path: Path) -> Path:
     root = tmp_path / "plugins" / "boot" / "sample"
     _write(
         root / "plugin.yaml",
-        "name: sample\ndescription: Sample boot plugin\ndiscoveryTimeout: 900\n",
+        "name: sample\ntype: boot\ndescription: Sample boot plugin\ndiscoveryTimeout: 900\n",
     )
     _write(root / "defaults.yaml", "driver: redfish\n")
     _write(root / "schemas" / "defaults.yaml", DEFAULTS_SCHEMA)
@@ -55,7 +55,7 @@ def test_valid_plugin(plugin_dir: Path) -> None:
 
 def test_minimal_plugin(tmp_path: Path) -> None:
     root = tmp_path / "plugins" / "boot" / "minimal"
-    _write(root / "plugin.yaml", "name: minimal\ndescription: Minimal\n")
+    _write(root / "plugin.yaml", "name: minimal\ntype: boot\ndescription: Minimal\n")
     _write(root / "tasks" / "boot.yaml", "[]\n")
     assert validate_boot_plugin(root) == []
 
@@ -81,9 +81,20 @@ BROKEN_CASES: dict[str, BrokenCase] = {
     ),
     "descriptor unknown field": (
         lambda d: _write(
-            d / "plugin.yaml", "name: sample\ndescription: x\ndefaults: {}\n"
+            d / "plugin.yaml",
+            "name: sample\ntype: boot\ndescription: x\ndefaults: {}\n",
         ),
         "Additional properties are not allowed",
+    ),
+    "descriptor missing type": (
+        lambda d: _write(d / "plugin.yaml", "name: sample\ndescription: x\n"),
+        "'type' is a required property",
+    ),
+    "descriptor wrong type": (
+        lambda d: _write(
+            d / "plugin.yaml", "name: sample\ntype: foundation\ndescription: x\n"
+        ),
+        "plugin.yaml: type: 'boot' was expected",
     ),
     "descriptor missing description": (
         lambda d: _write(d / "plugin.yaml", "name: sample\n"),
@@ -91,12 +102,15 @@ BROKEN_CASES: dict[str, BrokenCase] = {
     ),
     "descriptor timeout too low": (
         lambda d: _write(
-            d / "plugin.yaml", "name: sample\ndescription: x\ndiscoveryTimeout: 5\n"
+            d / "plugin.yaml",
+            "name: sample\ntype: boot\ndescription: x\ndiscoveryTimeout: 5\n",
         ),
         "plugin.yaml: discoveryTimeout: 5 is less than the minimum",
     ),
     "name mismatch": (
-        lambda d: _write(d / "plugin.yaml", "name: other\ndescription: x\n"),
+        lambda d: _write(
+            d / "plugin.yaml", "name: other\ntype: boot\ndescription: x\n"
+        ),
         "must match the directory name 'sample'",
     ),
     "missing boot hook": (
@@ -177,7 +191,7 @@ def test_broken_plugin(plugin_dir: Path, case: str) -> None:
 
 def test_plugin_outside_plugins_boot(tmp_path: Path) -> None:
     root = tmp_path / "elsewhere" / "sample"
-    _write(root / "plugin.yaml", "name: sample\ndescription: x\n")
+    _write(root / "plugin.yaml", "name: sample\ntype: boot\ndescription: x\n")
     _write(root / "tasks" / "boot.yaml", "[]\n")
     assert validate_boot_plugin(root) == [
         "the plugin directory must be under plugins/boot/"

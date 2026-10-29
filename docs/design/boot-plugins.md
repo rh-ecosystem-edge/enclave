@@ -165,9 +165,13 @@ The descriptor is small:
 
 ```yaml
 name: manual               # must match the directory name
+type: boot                 # always boot
 description: Boot hosts manually from the agent ISO
 discoveryTimeout: 3600     # optional, seconds; default 600
 ```
+
+`type: boot` keeps boot plugin descriptors compatible with code that reads every `plugin.yaml` under
+`plugins/` and filters on `type`, such as the applied catalog migrations, which are immutable.
 
 Defaults live only in `defaults.yaml`; boot plugin descriptors have no `defaults:` field.
 

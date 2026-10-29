@@ -1,3 +1,4 @@
 ---
 name: ironic
+type: boot
 description: Boot hosts from the agent ISO through an ephemeral Ironic on the Landing Zone

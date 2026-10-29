@@ -13,6 +13,9 @@ properties:
     type: string
     pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     description: Plugin name. Must match the plugin directory name.
+  type:
+    const: boot
+    description: Plugin type. Always boot.
   description:
     type: string
     minLength: 1
@@ -25,4 +28,5 @@ properties:
       with Assisted Service. Default: 600.
 required:
   - name
+  - type
   - description
