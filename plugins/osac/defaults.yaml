@@ -46,6 +46,17 @@ osac_keycloak_admin_client_id: osac-admin
 osac_keycloak_service_port: 8443
 osac_keycloak_validate_certs: true
 
+# Keycloak realm roles required for OSAC tenant reconciliation
+osac_keycloak_realm_roles:
+  - name: tenant-admin
+    description: Full administration of a tenant
+  - name: tenant-user-manager
+    description: Manage users within a tenant
+  - name: tenant-idp-manager
+    description: Manage identity providers within a tenant
+  - name: osac-csi-driver
+    description: OSAC CSI driver service identity
+
 # Keycloak client scopes required for OSAC token claims
 osac_keycloak_client_scopes:
   - name: groups
