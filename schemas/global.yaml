@@ -162,6 +162,7 @@ required:
   - defaultGateway
   - defaultPrefix
   - ingressVIP
+  - lzBmcIP
   - machineNetwork
   - pullSecret
   - quayBackend

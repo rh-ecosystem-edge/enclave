@@ -24,8 +24,8 @@ The Redfish path is also hardwired across the codebase, which makes adding an al
    method can only be added by sprinkling conditionals over those files, e.g.
    [enclave PR #979](https://github.com/rh-ecosystem-edge/enclave/pull/979).
 1. **Redfish settings are core configuration.** `redfish`, `redfishUser`, `redfishPassword` and
-   `bmcSystemId` are required fields of every `agent_hosts` entry, and `lzBmcIP` is required
-   globally, even for an installation that never talks to a BMC.
+   `bmcSystemId` are required fields of every `agent_hosts` entry, even for an installation that
+   boots its hosts without a BMC.
 1. **Validation assumes Redfish.** `validations.sh` always checks Redfish connectivity of the
    agent hosts.
 1. **Plugins are not an option as they are today.** The existing plugin system mixes very
@@ -136,11 +136,13 @@ validation checks it explicitly; the host identity check in [Hook points](#hook-
 it.
 
 `lzBmcIP`, `lzBmcHostname` and the Ironic HTTPS certificates stay in global and certificates
-configuration, since the Day 2 discovery path needs them as well. `lzBmcIP` is no longer
-unconditionally required by `schemas/global.yaml`; the `ironic` plugin (when any host uses it) and
-the discovery path each check it explicitly. As a consequence, the `httpd` check in
-`validations.sh` (which guards the LZ host httpd serving the RHCOS live ISOs) switches from
-`lzBmcIP` to `quayHostname`, the address its consumer actually uses: the MCE
+configuration, since the Day 2 discovery path needs them as well. `lzBmcIP` stays required by
+`schemas/global.yaml`: the discovery playbook (`playbooks/07-configure-discovery.yaml`) and the
+upgrade (`playbooks/tasks/upgrade/metal3-components.yaml`) deploy the persistent Ironic, which uses
+it, on every installation, whatever boot plugins are in use. The `ironic` plugin still checks it
+explicitly, as it checks every setting it needs from outside its own configuration file. The
+`httpd` check in `validations.sh` (which guards the LZ host httpd serving the RHCOS live ISOs)
+switches from `lzBmcIP` to `quayHostname`, the address its consumer actually uses: the MCE
 `AgentServiceConfig.osImages` reference the ISOs as `http://{{ quayHostname }}/...`
 (`operators/multicluster-engine/configure_asc.yaml`).
 

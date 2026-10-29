@@ -1,6 +1,6 @@
 ---
 # Fixture: top-level bootPlugin, per-host bootPlugin override and bootDiscoveryTimeout.
-# Validates that agent_hosts need no BMC fields and that lzBmcIP is optional.
+# Validates that agent_hosts need no BMC fields.
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -11,6 +11,7 @@ defaultDNS: 9.30.31.32
 defaultGateway: 192.168.2.10
 defaultPrefix: 24
 rendezvousIP: 192.168.2.24
+lzBmcIP: 100.64.1.10
 bootPlugin: ironic
 bootDiscoveryTimeout: 3600
 quayUser: admin

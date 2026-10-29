@@ -6,16 +6,6 @@
     - name: Load common variables
       ansible.builtin.include_tasks: common/load-vars.yaml
 
-    - name: Check that lzBmcIP is set
-      ansible.builtin.assert:
-        that:
-          - lzBmcIP is defined
-          - lzBmcIP | string | length > 0
-        fail_msg: >-
-          lzBmcIP must be set in config/global.yaml: the BMCs of the discovery hosts fetch the
-          discovery ISO from the persistent Ironic on it.
-        quiet: true
-
     - name: Enable persistent Metal3 deployment
       ansible.builtin.set_fact:
         metal3_persistent: true

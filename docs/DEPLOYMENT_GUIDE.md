@@ -593,7 +593,7 @@ control_binaries:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `lzBmcIP` | IP address serving ISO files. Required when any host is booted by `ironic` | `100.64.1.10` |
+| `lzBmcIP` | IP address serving ISO files | `100.64.1.10` |
 | `bootPlugin` | Boot plugin for `agent_hosts` (optional). Default: `ironic` | `ironic` |
 | `bootDiscoveryTimeout` | Seconds to wait for all `agent_hosts` to register in Assisted Service (optional, minimum 60). Default: largest `discoveryTimeout` of the boot plugins in use (600 for `ironic`) | `1200` |
 | `agent_hosts` | List of control plane nodes | See example above |

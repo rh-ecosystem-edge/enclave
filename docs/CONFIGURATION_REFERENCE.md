@@ -280,8 +280,6 @@ rendezvousIP: 192.168.2.24
 
 **Type**: String (IP address)
 
-**Required**: Only when any `agent_hosts` entry is booted by the `ironic` boot plugin (checked by the plugin's validation), and for discovery of `discovery_hosts` (checked by `playbooks/07-configure-discovery.yaml`).
-
 **Example**:
 ```yaml
 lzBmcIP: 100.64.1.10
