@@ -23,6 +23,9 @@ experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
 src/             Python source root (src layout)
   reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
   tools/         Additional Python tools (enclave tools subcommand); new tools go here
+  boot/          Boot flow helpers (enclave boot subcommand), e.g. waiting for agent hosts
+  plugins/       Plugin contract validation (enclave plugins subcommand)
+  migrations/    Configuration migrations called from upgrade migrations (enclave migrations)
   cli.py         Unified CLI entry point (reconcile + tools subcommands)
   utils.py       Shared utilities for all Python packages under src/
   tests/         All Python tests (pytest, shared fixtures)

@@ -1,5 +1,6 @@
 import click
 
+from enclave.boot.cli import cli as boot_cli
 from enclave.migrations.cli import cli as migrations_cli
 from enclave.plugins.cli import cli as plugins_cli
 from enclave.reconcile.cli import cli as reconcile_cli
@@ -35,6 +36,7 @@ cli.add_command(reconcile_cli, name="reconcile")
 cli.add_command(tools_cli, name="tools")
 cli.add_command(plugins_cli, name="plugins")
 cli.add_command(migrations_cli, name="migrations")
+cli.add_command(boot_cli, name="boot")
 
 
 if __name__ == "__main__":
