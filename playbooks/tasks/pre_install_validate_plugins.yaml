@@ -86,23 +86,26 @@
     label: "{{ item.name }}"
 
 # Host records are matched to agent_hosts entries by MAC address (macAddress and
-# mapInterfaces against the inventory interfaces). Records that have not
-# reported an inventory yet match nothing and are ignored. The match must be
+# mapInterfaces against the inventory interfaces, requested with
+# with-inventory=true). Records without an inventory yet match nothing; they are
+# named if the wait times out. The match must be
 # one-to-one: a record matching no entry or several entries, or an entry
 # matched by several records, stops the wait immediately.
 - name: Wait for all agent hosts to be ready
   vars:
     _host_match: >-
-      {%- set ns = namespace(unknown=[], ambiguous=[], matches={}, entries=[], duplicated=[], pending=[]) -%}
+      {%- set ns = namespace(unknown=[], ambiguous=[], matches={}, entries=[], duplicated=[], pending=[], no_inventory=[]) -%}
       {%- for host in r_assisted_hosts.json | default([]) if host is mapping -%}
         {%- set inventory = (host.inventory | default('', true) | from_json) if host.inventory | default('', true) | length > 0 else {} -%}
         {%- set macs = inventory.interfaces | default([]) | map(attribute='mac_address') | select | map('lower') | list -%}
-        {%- set label = (host.requested_hostname | default(host.id, true)) ~ ' (' ~ (macs | join(', ')) ~ ')' -%}
+        {%- set label = (host.requested_hostname | default(host.id, true)) ~ ((' (' ~ (macs | join(', ')) ~ ')') if macs else '') -%}
         {%- set ns.entries = [] -%}
         {%- for name, entry_macs in _agent_host_macs.items() if entry_macs | intersect(macs) | length > 0 -%}
           {%- set ns.entries = ns.entries + [name] -%}
         {%- endfor -%}
-        {%- if macs | length > 0 and ns.entries | length == 0 -%}
+        {%- if macs | length == 0 -%}
+          {%- set ns.no_inventory = ns.no_inventory + [label] -%}
+        {%- elif ns.entries | length == 0 -%}
           {%- set ns.unknown = ns.unknown + [label] -%}
         {%- elif ns.entries | length > 1 -%}
           {%- set ns.ambiguous = ns.ambiguous + [label ~ ' matches ' ~ (ns.entries | join(', '))] -%}
@@ -119,11 +122,11 @@
         {%- endif -%}
       {%- endfor -%}
       {{ {'unknown': ns.unknown, 'ambiguous': ns.ambiguous, 'duplicated': ns.duplicated,
-          'pending': ns.pending, 'records': ns.matches} | to_json }}
+          'pending': ns.pending, 'records': ns.matches, 'no_inventory': ns.no_inventory} | to_json }}
   block:
     - name: Wait for all agent hosts to be known to Assisted Service
       ansible.builtin.uri:
-        url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
+        url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts?with-inventory=true"
         method: GET
         headers:
           Authorization: "{{ assisted_auth_token }}"
@@ -169,10 +172,12 @@
 - name: Fail if agent hosts did not become known in time
   ansible.builtin.fail:
     msg: >-
-      Timed out after {{ boot_discovery_timeout }} seconds waiting for agent_hosts to register
-      with Assisted Service and reach status known: {% for name in _host_match_result.pending %}{{ name }}
-      ({{ _host_match_result.records[name] | default([]) | map(attribute='status') | first | default('not registered') }}){{ ', ' if not loop.last else '' }}{% endfor %}.
-      Set bootDiscoveryTimeout in config/global.yaml to wait longer.
+      Timed out after {{ boot_discovery_timeout }} seconds waiting for agent_hosts to be matched
+      to a host registered with Assisted Service and reach status known: {% for name in _host_match_result.pending %}{{ name }}
+      ({{ _host_match_result.records[name] | default([]) | map(attribute='status') | first | default('not matched') }}){{ ', ' if not loop.last else '' }}{% endfor %}.
+      {% if _host_match_result.no_inventory | length > 0 %}Hosts registered without an inventory
+      yet, so they cannot be matched by MAC address: {{ _host_match_result.no_inventory | join('; ') }}.
+      {% endif %}Set bootDiscoveryTimeout in config/global.yaml to wait longer.
   when: _host_match_result.pending | length > 0
 
 - name: Display discovered hosts
