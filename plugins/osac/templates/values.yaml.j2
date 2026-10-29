@@ -234,6 +234,8 @@ bmf:
 {% endif %}
   env:
     aapInsecureSkipVerify: "true"
+    # Declares OSAC_AAP_URL so deploy.yaml can patch in the external AAP route.
+    aapUrl: "http://osac-aap/api/controller"
 {% if osacBcmEnabled | default(false) | bool %}
   bcm:
     enabled: true

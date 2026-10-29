@@ -200,9 +200,11 @@ runs the following checks in order:
 
 1. **Debug info** — dumps cluster and OSAC namespace state up front to aid triage.
 2. **Deployment health** — gates on the core fulfillment/operator deployments
-   being fully rolled out and on the AAP gateway being reachable as admin (per the
+   being fully rolled out; on the AAP gateway being reachable as admin (per the
    osac-installer "Accessing AAP" flow: resolve the route, read the admin
-   password, and make an authenticated request).
+   password, and make an authenticated request); on the AAP controller API
+   answering JSON at `/api/controller/v2/ping/`; and on every OSAC operator's
+   `OSAC_AAP_URL` matching that controller base (`<route>/api/controller`).
 3. **Setup & login** — resolves the fulfillment-api route, extracts the `osac` CLI
    from the deployed image, and logs in with the controller credentials
    (`fulfillment-controller-credentials`, OAuth credentials flow).
