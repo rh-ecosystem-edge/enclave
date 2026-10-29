@@ -28,6 +28,7 @@ EXPECTED = {
 def _record(
     host_id: str, *macs: str, status: str = "known", name: str | None = None
 ) -> dict[str, Any]:
+    """Return an Assisted Service host record with an inventory holding macs."""
     record: dict[str, Any] = {"id": host_id, "status": status}
     if name:
         record["requested_hostname"] = name
@@ -49,23 +50,31 @@ ALL_KNOWN = [
 
 class FakeClock:
     def __init__(self) -> None:
+        """Start the clock at 0."""
         self.now = 0.0
 
     def time(self) -> float:
+        """Return the current fake time."""
         return self.now
 
     def sleep(self, seconds: float) -> None:
+        """Advance the fake time by seconds."""
         self.now += seconds
 
 
 def _wait(
     responses: list[list[dict[str, Any]] | None], timeout: int = 20
 ) -> list[dict[str, Any]]:
+    """Wait for EXPECTED with a fake clock, answering each poll with the next response.
+
+    The last response is repeated once responses run out.
+    """
     clock = FakeClock()
     pending = iter(responses)
     last: list[list[dict[str, Any]] | None] = [None]
 
     def fetch() -> list[dict[str, Any]] | None:
+        """Return the next response, or the last one again."""
         last[0] = next(pending, last[0])
         return last[0]
 
@@ -75,6 +84,7 @@ def _wait(
 
 
 def test_match_by_any_mac_case_insensitively() -> None:
+    """Match records by any of their MACs, ignoring case."""
     match = match_hosts(ALL_KNOWN, EXPECTED)
     assert {name: [r["id"] for r in rs] for name, rs in match.records.items()} == {
         "m0": ["a"],
@@ -85,6 +95,7 @@ def test_match_by_any_mac_case_insensitively() -> None:
 
 
 def test_wait_returns_records_once_all_known() -> None:
+    """Keep polling through API failures until all hosts are known."""
     first = [_record("a", "aa:00:00:00:00:01", status="discovering")]
     assert _wait([first, None, ALL_KNOWN]) == ALL_KNOWN
 
@@ -112,9 +123,11 @@ def test_wait_returns_records_once_all_known() -> None:
 def test_wait_fails_fast_on_mismatch(
     records: list[dict[str, Any]], message: str
 ) -> None:
+    """Fail on the first poll when a record matches no host, several, or a host twice."""
     calls: list[int] = []
 
     def fetch() -> list[dict[str, Any]]:
+        """Return records, counting the polls."""
         calls.append(1)
         return records
 
@@ -124,6 +137,7 @@ def test_wait_fails_fast_on_mismatch(
 
 
 def test_wait_times_out_naming_pending_hosts() -> None:
+    """Name pending hosts and records without inventory on timeout."""
     records = [
         _record("a", "aa:00:00:00:00:01"),
         _record("c", "aa:00:00:00:00:03", status="insufficient"),
@@ -141,6 +155,7 @@ def test_wait_times_out_naming_pending_hosts() -> None:
 
 
 def test_wait_times_out_when_the_api_never_answers() -> None:
+    """Report every host as not matched when the API never answers."""
     with pytest.raises(HostMatchError, match=r"m0 \(not matched\), m1 \(not matched\)"):
         _wait([None])
 
@@ -149,11 +164,13 @@ def test_wait_times_out_when_the_api_never_answers() -> None:
     "inventory", ["not json", json.dumps(["a list"]), json.dumps({"interfaces": None})]
 )
 def test_unusable_inventory_counts_as_no_inventory(inventory: str) -> None:
+    """Treat an inventory that cannot be read as missing."""
     match = match_hosts([{"id": "a", "inventory": inventory}], EXPECTED)
     assert match.no_inventory == ["a"]
 
 
 def _response(payload: object, status: int = 200) -> requests.Response:
+    """Return a requests response with payload as JSON body."""
     response = requests.Response()
     response.status_code = status
     response._content = json.dumps(payload).encode()  # ruff: ignore[private-member-access]
@@ -161,6 +178,7 @@ def _response(payload: object, status: int = 200) -> requests.Response:
 
 
 def test_fetcher_requests_inventory(mocker: MockerFixture) -> None:
+    """Request the cluster hosts with inventory and the auth token."""
     get = mocker.patch(
         "enclave.boot.hosts.requests.get",
         return_value=_response([*ALL_KNOWN, "not a host"]),
@@ -187,6 +205,7 @@ def test_fetcher_requests_inventory(mocker: MockerFixture) -> None:
 def test_fetcher_returns_none_on_failure(
     mocker: MockerFixture, side_effect: Callable[..., object] | Exception
 ) -> None:
+    """Return None on HTTP errors, unexpected bodies and connection errors."""
     mocker.patch("enclave.boot.hosts.requests.get", side_effect=side_effect)
     assert assisted_hosts_fetcher("http://as", "c1", "tok")() is None
 
@@ -203,6 +222,7 @@ BASE_ARGS = ["wait-for-hosts", "--url", "http://as", "--cluster-id", "c1"]
 
 
 def test_cli_prints_records(mocker: MockerFixture) -> None:
+    """Print the host records as JSON and pass the parsed hosts to the wait."""
     wait = mocker.patch("enclave.boot.cli.wait_for_hosts", return_value=ALL_KNOWN)
     result = CliRunner().invoke(
         cli,
@@ -217,6 +237,7 @@ def test_cli_prints_records(mocker: MockerFixture) -> None:
 
 
 def test_cli_reports_match_errors(mocker: MockerFixture) -> None:
+    """Exit 1 with the error message when the wait fails."""
     mocker.patch(
         "enclave.boot.cli.wait_for_hosts", side_effect=HostMatchError("no match")
     )
@@ -241,6 +262,7 @@ def test_cli_reports_match_errors(mocker: MockerFixture) -> None:
     ],
 )
 def test_cli_rejects_bad_hosts(host_args: list[str], message: str) -> None:
+    """Reject malformed and duplicated --host values."""
     result = CliRunner().invoke(
         cli,
         [*BASE_ARGS, "--timeout", "5", *host_args],
@@ -251,6 +273,7 @@ def test_cli_rejects_bad_hosts(host_args: list[str], message: str) -> None:
 
 
 def test_cli_requires_token() -> None:
+    """Require the Assisted Service auth token."""
     result = CliRunner().invoke(
         cli, [*BASE_ARGS, "--timeout", "5", *HOST_ARGS], env={"ASSISTED_AUTH_TOKEN": ""}
     )

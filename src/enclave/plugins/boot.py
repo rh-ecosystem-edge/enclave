@@ -23,6 +23,10 @@ TOP_LEVEL_DIRS = frozenset({"schemas", "tasks"})
 
 
 def descriptor_schema_path() -> Path:
+    """Return the path of the boot plugin descriptor schema.
+
+    It is package data when enclave is installed, else schemas/ of the repository.
+    """
     # Installed: site-packages/enclave/plugins/boot.py → site-packages/enclave/schemas/
     # Editable:  src/enclave/plugins/boot.py → src/enclave/ (no schemas/) → repo_root/schemas/
     enclave_pkg = Path(__file__).resolve().parent.parent
@@ -33,6 +37,10 @@ def descriptor_schema_path() -> Path:
 
 
 def _load_yaml(path: Path, errors: list[str]) -> tuple[bool, Any]:
+    """Load path as YAML, returning whether it succeeded and the data.
+
+    A failure is appended to errors.
+    """
     try:
         return True, yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
@@ -41,6 +49,7 @@ def _load_yaml(path: Path, errors: list[str]) -> tuple[bool, Any]:
 
 
 def _check_layout(plugin_dir: Path, errors: list[str]) -> None:
+    """Check that plugin_dir is under plugins/boot/ and has only the allowed entries."""
     if plugin_dir.parent.name != "boot" or plugin_dir.parent.parent.name != "plugins":
         errors.append("the plugin directory must be under plugins/boot/")
     for entry in sorted(plugin_dir.iterdir()):
@@ -52,6 +61,7 @@ def _check_layout(plugin_dir: Path, errors: list[str]) -> None:
 
 
 def _check_descriptor(plugin_dir: Path, errors: list[str]) -> None:
+    """Check plugin.yaml against the descriptor schema and its name against the directory."""
     descriptor_path = plugin_dir / "plugin.yaml"
     if not descriptor_path.is_file():
         errors.append("missing plugin.yaml")
@@ -73,6 +83,7 @@ def _check_descriptor(plugin_dir: Path, errors: list[str]) -> None:
 
 
 def _check_task_list(path: Path, display: str, errors: list[str]) -> None:
+    """Check that path is a YAML list of tasks, reporting it as display."""
     ok, tasks = _load_yaml(path, errors)
     if ok and (
         not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks)
@@ -81,6 +92,7 @@ def _check_task_list(path: Path, display: str, errors: list[str]) -> None:
 
 
 def _check_lib(lib_dir: Path, errors: list[str]) -> None:
+    """Check that tasks/lib/ holds only YAML task files."""
     for entry in sorted(lib_dir.iterdir()):
         display = f"tasks/{LIB_DIR}/{entry.name}"
         if not entry.is_file() or entry.suffix != ".yaml":
@@ -90,6 +102,7 @@ def _check_lib(lib_dir: Path, errors: list[str]) -> None:
 
 
 def _check_tasks(plugin_dir: Path, errors: list[str]) -> None:
+    """Check that tasks/ has boot.yaml, only known hook files and lib/, all task lists."""
     tasks_dir = plugin_dir / "tasks"
     if not (tasks_dir / "boot.yaml").is_file():
         errors.append("missing tasks/boot.yaml")
@@ -109,6 +122,10 @@ def _check_tasks(plugin_dir: Path, errors: list[str]) -> None:
 
 
 def _load_schema(path: Path, errors: list[str]) -> dict[str, Any] | None:
+    """Load path as a JSON Schema, returning it, or None if it is invalid.
+
+    Failures are appended to errors.
+    """
     ok, schema = _load_yaml(path, errors)
     if not ok:
         return None
@@ -124,6 +141,10 @@ def _load_schema(path: Path, errors: list[str]) -> dict[str, Any] | None:
 
 
 def _check_schemas(plugin_dir: Path, errors: list[str]) -> None:
+    """Check the plugin schemas, and defaults.yaml against schemas/defaults.yaml.
+
+    defaults.yaml and schemas/defaults.yaml must both exist or both be absent.
+    """
     schemas_dir = plugin_dir / "schemas"
     schemas: dict[str, dict[str, Any] | None] = {}
     if schemas_dir.is_dir():
@@ -163,6 +184,7 @@ def _check_schemas(plugin_dir: Path, errors: list[str]) -> None:
 
 
 def _error_location(error: ValidationError) -> str:
+    """Return the path of a validation error in the instance, as a message prefix."""
     if not error.absolute_path:
         return ""
     return "/".join(str(p) for p in error.absolute_path) + ": "

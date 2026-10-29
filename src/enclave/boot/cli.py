@@ -6,6 +6,7 @@ from enclave.boot.hosts import HostMatchError, assisted_hosts_fetcher, wait_for_
 
 
 def _parse_host(value: str) -> tuple[str, frozenset[str]]:
+    """Parse a --host value NAME=MAC[,MAC...] into the name and its lowercase MACs."""
     name, sep, macs = value.partition("=")
     mac_set = frozenset(m.strip().lower() for m in macs.split(",") if m.strip())
     if not sep or not name or not mac_set:

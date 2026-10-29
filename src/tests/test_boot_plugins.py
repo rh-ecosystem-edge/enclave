@@ -26,6 +26,7 @@ required: [driver]
 
 
 def _write(path: Path, content: str) -> None:
+    """Write content to path, creating its parent directories."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -50,10 +51,12 @@ def plugin_dir(tmp_path: Path) -> Path:
 
 
 def test_valid_plugin(plugin_dir: Path) -> None:
+    """Accept a plugin with every hook, defaults and schemas."""
     assert validate_boot_plugin(plugin_dir) == []
 
 
 def test_plugin_with_lib(plugin_dir: Path) -> None:
+    """Accept YAML task files in tasks/lib/."""
     _write(
         plugin_dir / "tasks" / "lib" / "helper.yaml",
         "- name: Noop\n  ansible.builtin.debug:\n    msg: noop\n",
@@ -62,6 +65,7 @@ def test_plugin_with_lib(plugin_dir: Path) -> None:
 
 
 def test_minimal_plugin(tmp_path: Path) -> None:
+    """Accept a plugin with only a descriptor and tasks/boot.yaml."""
     root = tmp_path / "plugins" / "boot" / "minimal"
     _write(root / "plugin.yaml", "name: minimal\ntype: boot\ndescription: Minimal\n")
     _write(root / "tasks" / "boot.yaml", "[]\n")
@@ -72,10 +76,12 @@ def test_minimal_plugin(tmp_path: Path) -> None:
     "plugin", sorted(p.name for p in (REPO_ROOT / "plugins" / "boot").iterdir())
 )
 def test_in_repo_boot_plugins(plugin: str) -> None:
+    """Accept every boot plugin in the repository."""
     assert validate_boot_plugin(REPO_ROOT / "plugins" / "boot" / plugin) == []
 
 
 def _rm(path: Path) -> None:
+    """Remove the file at path."""
     path.unlink()
 
 
@@ -207,6 +213,7 @@ BROKEN_CASES: dict[str, BrokenCase] = {
 
 @pytest.mark.parametrize("case", sorted(BROKEN_CASES))
 def test_broken_plugin(plugin_dir: Path, case: str) -> None:
+    """Report the expected error for each broken plugin."""
     breaker, expected = BROKEN_CASES[case]
     breaker(plugin_dir)
     errors = validate_boot_plugin(plugin_dir)
@@ -214,6 +221,7 @@ def test_broken_plugin(plugin_dir: Path, case: str) -> None:
 
 
 def test_plugin_outside_plugins_boot(tmp_path: Path) -> None:
+    """Reject a plugin directory that is not under plugins/boot/."""
     root = tmp_path / "elsewhere" / "sample"
     _write(root / "plugin.yaml", "name: sample\ntype: boot\ndescription: x\n")
     _write(root / "tasks" / "boot.yaml", "[]\n")
@@ -223,6 +231,7 @@ def test_plugin_outside_plugins_boot(tmp_path: Path) -> None:
 
 
 def test_not_a_directory(tmp_path: Path) -> None:
+    """Reject a path that is not a directory."""
     errors = validate_boot_plugin(tmp_path / "missing")
     assert len(errors) == 1
     assert "is not a directory" in errors[0]
@@ -231,6 +240,7 @@ def test_not_a_directory(tmp_path: Path) -> None:
 def test_descriptor_schema_path_prefers_package_data(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Use the schema shipped as package data when it exists."""
     pkg = tmp_path / "site-packages" / "enclave"
     _write(pkg / "schemas" / "boot-plugin.yaml", "type: object\n")
     monkeypatch.setattr(boot, "__file__", str(pkg / "plugins" / "boot.py"))
@@ -238,10 +248,12 @@ def test_descriptor_schema_path_prefers_package_data(
 
 
 def test_descriptor_schema_path_falls_back_to_repo() -> None:
+    """Use the repository schema when there is no package data."""
     assert boot.descriptor_schema_path() == REPO_ROOT / "schemas" / "boot-plugin.yaml"
 
 
 def test_cli_validate_valid(plugin_dir: Path) -> None:
+    """Exit 0 for a valid plugin."""
     result = CliRunner().invoke(cli, ["validate", "--type", "boot", str(plugin_dir)])
     assert result.exit_code == 0, result.output
 
@@ -249,6 +261,7 @@ def test_cli_validate_valid(plugin_dir: Path) -> None:
 def test_cli_validate_invalid(
     plugin_dir: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Exit 1 and log the errors when a plugin is invalid."""
     _rm(plugin_dir / "tasks" / "boot.yaml")
     result = CliRunner().invoke(
         cli,
@@ -266,12 +279,14 @@ def test_cli_validate_invalid(
 
 
 def test_cli_validate_requires_type(plugin_dir: Path) -> None:
+    """Require --type."""
     result = CliRunner().invoke(cli, ["validate", str(plugin_dir)])
     assert result.exit_code == 2
     assert "--type" in result.output
 
 
 def test_enclave_cli_has_plugins_group() -> None:
+    """Expose the plugins group in the enclave CLI."""
     result = CliRunner().invoke(enclave_cli, ["plugins", "--help"])
     assert result.exit_code == 0
     assert "validate" in result.output

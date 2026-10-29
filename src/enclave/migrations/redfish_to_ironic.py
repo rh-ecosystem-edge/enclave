@@ -84,10 +84,12 @@ class MigrationResult:
 
     @property
     def changed(self) -> bool:
+        """Return whether the migration wrote any file."""
         return bool(self.written)
 
 
 def _load_data(path: Path, text: str) -> object:
+    """Parse text read from path as YAML, raising MigrationError if it is invalid."""
     try:
         return yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -95,6 +97,10 @@ def _load_data(path: Path, text: str) -> object:
 
 
 def _bmc_entries(global_path: Path, global_data: dict[str, Any]) -> dict[str, Any]:
+    """Return the ironic.yaml host entries built from the Redfish settings of agent_hosts.
+
+    Entries are keyed by host name; hosts without Redfish settings are skipped.
+    """
     entries: dict[str, Any] = {}
     for host in global_data.get("agent_hosts") or []:
         if not isinstance(host, dict) or not any(f in host for f in BMC_FIELDS):
@@ -117,6 +123,7 @@ def _bmc_entries(global_path: Path, global_data: dict[str, Any]) -> dict[str, An
 
 
 def _without_bmc_fields(global_data: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of the global configuration without the Redfish settings of agent_hosts."""
     expected = copy.deepcopy(global_data)
     for host in expected.get("agent_hosts") or []:
         if isinstance(host, dict):
@@ -141,6 +148,11 @@ def _guess_mapping_indent(text: str) -> int:
 
 
 def _round_trip_yaml(text: str) -> YAML:
+    """Return a ruamel.yaml round-trip instance matching the formatting of text.
+
+    It keeps quotes, the indentation of sequences and mappings, long lines and the
+    explicit document start of text.
+    """
     # ruamel guesses the sequence style (e.g. "  - name:" is indent 4, offset 2);
     # block mappings may use another indentation, guessed separately.
     _, sequence_indent, block_seq_indent = load_yaml_guess_indent(text)
@@ -157,6 +169,7 @@ def _round_trip_yaml(text: str) -> YAML:
 
 
 def _dump(rt: YAML, data: object) -> str:
+    """Serialize data with the round-trip instance rt and return the text."""
     stream = io.StringIO()
     rt.dump(data, stream)
     return stream.getvalue()
@@ -177,6 +190,7 @@ def _last_comment_holder(node: CommentedMap, key: Any) -> tuple[Any, Any, int]: 
 
 
 def _append_comment(node: CommentedMap, key: Any, text: str) -> None:  # ruff: ignore[any-type]
+    """Append comment lines after node[key], inside its last nested value if any."""
     container, holder_key, slot = _last_comment_holder(node, key)
     entry = container.ca.items.setdefault(holder_key, [None, None, None, None])
     token = entry[slot]
@@ -228,6 +242,11 @@ def _value_line_count(lines: list[str], line: int, col: int) -> int:
 
 
 def _remove_bmc_fields_by_lines(text: str) -> str:
+    """Return text without the lines of the Redfish settings of agent_hosts.
+
+    Nothing else changes, except that the "- " starting a sequence item moves to its
+    first remaining key when a removed field was the first key of the item.
+    """
     data = YAML().load(text)
     lines = text.splitlines(keepends=True)
     removed: set[int] = set()
@@ -257,6 +276,10 @@ def _move_item_indicator(host: CommentedMap, keys: list[str], lines: list[str]) 
 
 
 def _remove_bmc_fields_round_trip(text: str) -> str:
+    """Return text without the Redfish settings of agent_hosts, edited with ruamel.yaml.
+
+    Comments are kept, but some formatting may be normalized.
+    """
     rt = _round_trip_yaml(text)
     data = rt.load(text)
     for host in data.get("agent_hosts") or []:
@@ -268,6 +291,10 @@ def _remove_bmc_fields_round_trip(text: str) -> str:
 
 
 def _add_hosts_round_trip(text: str, entries: dict[str, Any]) -> str:
+    """Return ironic.yaml text with the entries added to hosts, edited with ruamel.yaml.
+
+    Hosts already present are left as they are.
+    """
     rt = _round_trip_yaml(text)
     data = rt.load(text)
     if data is None:
@@ -286,6 +313,7 @@ def _add_hosts_round_trip(text: str, entries: dict[str, Any]) -> str:
 
 
 def _plain_dump(data: object, header: str = "---\n") -> str:
+    """Return data serialized as YAML after header, without comments."""
     return header + yaml.safe_dump(
         data, default_flow_style=False, sort_keys=False, width=4096
     )
@@ -322,6 +350,7 @@ def _render(
 
 
 def _write_fd(fd: int, text: str) -> None:
+    """Write text to the open file descriptor fd and flush it to disk."""
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(text)
         fh.flush()
@@ -353,6 +382,10 @@ def _write(path: Path, text: str, result: MigrationResult) -> None:
 
 
 def _validate_ironic(schema_path: Path, data: dict[str, Any]) -> None:
+    """Validate the ironic boot plugin configuration data against the schema at schema_path.
+
+    Raises MigrationError naming every violation.
+    """
     try:
         schema = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
@@ -371,6 +404,7 @@ def _validate_ironic(schema_path: Path, data: dict[str, Any]) -> None:
 
 
 def _read_ironic(ironic_path: Path) -> tuple[str | None, dict[str, Any]]:
+    """Read ironic.yaml, returning its text (None if missing) and its data."""
     text = ironic_path.read_text(encoding="utf-8") if ironic_path.exists() else None
     data = (_load_data(ironic_path, text) if text is not None else None) or {}
     if not isinstance(data, dict):
@@ -387,6 +421,7 @@ def _update_ironic(
     added: dict[str, Any],
     result: MigrationResult,
 ) -> None:
+    """Write ironic.yaml with the added host entries, keeping its comments if it exists."""
     if ironic_text is None:
         new_text = _plain_dump(new_data, IRONIC_HEADER)
     else:
@@ -405,6 +440,11 @@ def _update_global(
     removed: dict[str, list[str]],
     result: MigrationResult,
 ) -> None:
+    """Write global.yaml without the Redfish settings of agent_hosts and log the outcome.
+
+    removed maps each host name to the fields removed from its entry. No field value
+    is logged.
+    """
     new_text, exact = _render(
         global_path,
         expected,

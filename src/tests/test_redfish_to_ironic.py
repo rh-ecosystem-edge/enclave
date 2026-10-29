@@ -133,6 +133,7 @@ EXPECTED_HOSTS = {
 
 @pytest.fixture
 def paths(tmp_path: Path) -> tuple[Path, Path]:
+    """Return the paths of global.yaml, holding GLOBAL, and of ironic.yaml."""
     config = tmp_path / "config"
     config.mkdir()
     global_path = config / "global.yaml"
@@ -142,10 +143,12 @@ def paths(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def _backups(path: Path) -> list[Path]:
+    """Return the backups of path, oldest first."""
     return sorted(path.parent.glob(f"{path.name}.*~"))
 
 
 def test_migrate_keeps_global_byte_for_byte(paths: tuple[Path, Path]) -> None:
+    """Remove only the Redfish field lines and create ironic.yaml with mode 600."""
     global_path, ironic_path = paths
     result = migrate(global_path, ironic_path, SCHEMA)
 
@@ -164,6 +167,7 @@ def test_migrate_keeps_global_byte_for_byte(paths: tuple[Path, Path]) -> None:
 
 
 def test_migrate_is_idempotent(paths: tuple[Path, Path]) -> None:
+    """Change nothing when run again."""
     global_path, ironic_path = paths
     migrate(global_path, ironic_path, SCHEMA)
     ironic_text = ironic_path.read_text(encoding="utf-8")
@@ -176,6 +180,7 @@ def test_migrate_is_idempotent(paths: tuple[Path, Path]) -> None:
 
 
 def test_migrate_after_interrupted_run(paths: tuple[Path, Path]) -> None:
+    """Only clean global.yaml when ironic.yaml already holds the settings."""
     global_path, ironic_path = paths
     migrate(global_path, ironic_path, SCHEMA)
     ironic_text = ironic_path.read_text(encoding="utf-8")
@@ -191,6 +196,7 @@ def test_migrate_after_interrupted_run(paths: tuple[Path, Path]) -> None:
 def test_migrate_merges_into_existing_ironic_config(
     paths: tuple[Path, Path],
 ) -> None:
+    """Add hosts to an existing ironic.yaml, keeping its comments and entries."""
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
     existing = (
@@ -234,6 +240,7 @@ def test_migrate_merges_into_existing_ironic_config(
 def test_migrate_adds_hosts_to_ironic_config_without_hosts(
     paths: tuple[Path, Path],
 ) -> None:
+    """Add hosts to an ironic.yaml with an empty hosts mapping."""
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
     ironic_path.write_text("# only a comment\nhosts: {}\n", encoding="utf-8")
@@ -246,6 +253,7 @@ def test_migrate_adds_hosts_to_ironic_config_without_hosts(
 
 
 def test_migrate_conflict_changes_nothing(paths: tuple[Path, Path]) -> None:
+    """Fail without writing when ironic.yaml holds different settings for a host."""
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
     existing = (
@@ -263,6 +271,7 @@ def test_migrate_conflict_changes_nothing(paths: tuple[Path, Path]) -> None:
 
 
 def test_migrate_invalid_result_changes_nothing(paths: tuple[Path, Path]) -> None:
+    """Fail without writing when the result does not match the plugin schema."""
     global_path, ironic_path = paths
     global_path.write_text(
         "agent_hosts:\n  - name: m0\n    redfish: 10.0.0.1\n    redfishUser: admin\n",
@@ -276,6 +285,7 @@ def test_migrate_invalid_result_changes_nothing(paths: tuple[Path, Path]) -> Non
 
 
 def test_migrate_without_redfish_settings(paths: tuple[Path, Path]) -> None:
+    """Do nothing when agent_hosts have no Redfish settings."""
     global_path, ironic_path = paths
     global_path.write_text(EXPECTED_GLOBAL, encoding="utf-8")
 
@@ -297,6 +307,7 @@ def test_migrate_without_redfish_settings(paths: tuple[Path, Path]) -> None:
 def test_migrate_invalid_global(
     paths: tuple[Path, Path], global_text: str, message: str
 ) -> None:
+    """Reject an unusable global.yaml."""
     global_path, ironic_path = paths
     global_path.write_text(global_text, encoding="utf-8")
     with pytest.raises(MigrationError, match=message):
@@ -310,6 +321,7 @@ def test_migrate_invalid_global(
 def test_migrate_invalid_ironic_config(
     paths: tuple[Path, Path], ironic_text: str, message: str
 ) -> None:
+    """Reject an unusable ironic.yaml."""
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
     ironic_path.write_text(ironic_text, encoding="utf-8")
@@ -318,11 +330,13 @@ def test_migrate_invalid_ironic_config(
 
 
 def test_migrate_missing_global(tmp_path: Path) -> None:
+    """Fail when global.yaml cannot be read."""
     with pytest.raises(MigrationError, match="cannot read"):
         migrate(tmp_path / "missing.yaml", tmp_path / "ironic.yaml", SCHEMA)
 
 
 def test_migrate_unreadable_schema(paths: tuple[Path, Path], tmp_path: Path) -> None:
+    """Fail when the plugin schema cannot be read."""
     global_path, ironic_path = paths
     with pytest.raises(MigrationError, match="cannot read"):
         migrate(global_path, ironic_path, tmp_path / "missing-schema.yaml")
@@ -349,6 +363,7 @@ agent_hosts:
 def test_migrate_moves_item_indicator_to_first_remaining_key(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Move the "- " of an entry whose first key is removed to its next key."""
     global_path, ironic_path = paths
     global_path.write_text(ROUND_TRIP_GLOBAL, encoding="utf-8")
 
@@ -381,6 +396,7 @@ def test_migrate_moves_item_indicator_to_first_remaining_key(
     ],
 )
 def test_line_removal_refuses_entries_it_cannot_restart(global_text: str) -> None:
+    """Refuse to remove every key of an entry by deleting lines."""
     with pytest.raises(RoundTripError):
         _remove_bmc_fields_by_lines(global_text)
 
@@ -388,6 +404,7 @@ def test_line_removal_refuses_entries_it_cannot_restart(global_text: str) -> Non
 def test_migrate_falls_back_to_round_trip(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture, mocker: MockerFixture
 ) -> None:
+    """Edit with ruamel.yaml, keeping comments, when lines cannot be deleted."""
     global_path, ironic_path = paths
     global_path.write_text(ROUND_TRIP_GLOBAL, encoding="utf-8")
     mocker.patch(
@@ -415,6 +432,7 @@ def test_migrate_falls_back_to_round_trip(
 
 
 def test_round_trip_refuses_comments_after_first_key() -> None:
+    """Refuse to drop comments that follow a removed first key."""
     with pytest.raises(RoundTripError, match="first key"):
         _remove_bmc_fields_round_trip(
             "agent_hosts:\n  - redfish: 1.1.1.1\n    # after\n    name: m0\n"
@@ -424,6 +442,7 @@ def test_round_trip_refuses_comments_after_first_key() -> None:
 def test_migrate_falls_back_to_rewrite(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture, mocker: MockerFixture
 ) -> None:
+    """Rewrite global.yaml from its data, keeping a backup, when no edit works."""
     global_path, ironic_path = paths
     original = (
         "# a comment that is lost\n"
@@ -456,6 +475,7 @@ def test_migrate_falls_back_to_rewrite(
 def test_migrate_logs_removed_fields_without_values(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Log the removed fields of each host, never their values."""
     global_path, ironic_path = paths
     with caplog.at_level(logging.INFO):
         migrate(global_path, ironic_path, SCHEMA)
@@ -502,6 +522,7 @@ def test_migrate_logs_removed_fields_without_values(
 def test_migrate_exact_edit_never_logs_secrets(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture, global_text: str
 ) -> None:
+    """Log no secret next to or inside the removed fields."""
     global_path, ironic_path = paths
     global_path.write_text(global_text, encoding="utf-8")
 
@@ -517,6 +538,7 @@ def test_migrate_exact_edit_never_logs_secrets(
 def test_migrate_never_logs_flow_style_passwords_or_other_secrets(
     paths: tuple[Path, Path], caplog: pytest.LogCaptureFixture
 ) -> None:
+    """Log no password or pull secret when the edit is not exact."""
     global_path, ironic_path = paths
     global_path.write_text(
         'pullSecret: {"auths":{"quay.io":{"auth":"fake-pull-secret"}}}\n'
@@ -539,11 +561,13 @@ def test_migrate_never_logs_flow_style_passwords_or_other_secrets(
 
 
 def test_guess_mapping_indent() -> None:
+    """Guess the mapping indentation, defaulting to 2."""
     assert _guess_mapping_indent("a:\n    b: 1\n") == 4
     assert _guess_mapping_indent("a: 1\n- b\n") == 2
 
 
 def test_write_cleans_up_on_failure(tmp_path: Path, mocker: MockerFixture) -> None:
+    """Remove the temporary file when writing fails."""
     target = tmp_path / "file.yaml"
     mocker.patch.object(Path, "replace", side_effect=OSError("boom"))
     with pytest.raises(OSError, match="boom"):
@@ -552,6 +576,7 @@ def test_write_cleans_up_on_failure(tmp_path: Path, mocker: MockerFixture) -> No
 
 
 def test_cli_changed_and_unchanged(paths: tuple[Path, Path]) -> None:
+    """Print changed, then unchanged on a second run."""
     global_path, ironic_path = paths
     args = [
         "redfish-to-ironic",
@@ -570,6 +595,7 @@ def test_cli_changed_and_unchanged(paths: tuple[Path, Path]) -> None:
 
 
 def test_cli_error(paths: tuple[Path, Path]) -> None:
+    """Exit 1 with the error message when the migration fails."""
     global_path, ironic_path = paths
     global_path.write_text("- a\n", encoding="utf-8")
     result = CliRunner().invoke(

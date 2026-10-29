@@ -36,9 +36,11 @@ class HostMatch:
 
     @property
     def duplicated(self) -> list[str]:
+        """Return the expected hosts matched by more than one host record."""
         return [name for name, matched in self.records.items() if len(matched) > 1]
 
     def pending(self, expected: dict[str, frozenset[str]]) -> list[str]:
+        """Return the expected hosts not yet matched by one host record in status known."""
         return [
             name
             for name in expected
@@ -48,6 +50,10 @@ class HostMatch:
 
 
 def _record_macs(record: dict[str, Any]) -> frozenset[str]:
+    """Return the lowercase MAC addresses in the inventory of a host record.
+
+    A record without a usable inventory has none.
+    """
     inventory = record.get("inventory") or "{}"
     try:
         interfaces = json.loads(inventory).get("interfaces") or []
@@ -61,6 +67,7 @@ def _record_macs(record: dict[str, Any]) -> frozenset[str]:
 
 
 def _label(record: dict[str, Any], macs: frozenset[str]) -> str:
+    """Return a label naming a host record and its MAC addresses, for messages."""
     name = record.get("requested_hostname") or record.get("id") or "unnamed host"
     return f"{name} ({', '.join(sorted(macs))})" if macs else str(name)
 
@@ -114,6 +121,7 @@ def check_match(match: HostMatch) -> None:
 def timeout_message(
     match: HostMatch, expected: dict[str, frozenset[str]], timeout: int
 ) -> str:
+    """Return the error message for a wait that timed out with the given match."""
     pending = ", ".join(
         f"{name} ({match.records[name][0].get('status')})"
         if match.records.get(name)
@@ -138,6 +146,7 @@ def assisted_hosts_fetcher(
     """Return a function listing the cluster hosts, or None if the call fails."""
 
     def fetch() -> list[dict[str, Any]] | None:
+        """List the cluster hosts with their inventory, or return None if the call fails."""
         try:
             response = requests.get(
                 f"{url.rstrip('/')}/clusters/{cluster_id}/hosts",
