@@ -278,6 +278,7 @@ def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) ->
     assert "not in defaults/platforms.yaml" in result.output
     assert "4.20.21" in result.output
     assert "4.20.32" in result.output
+    assert "4.21.32" in result.output
     mock_reconcile.assert_not_called()
 
 
@@ -312,7 +313,7 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.32", dry_run, 180, 60, allow_not_recommended
+        "4.21.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
@@ -333,7 +334,7 @@ def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.32", dry_run, 180, 60, allow_not_recommended
+        "4.21.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
