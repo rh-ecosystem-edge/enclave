@@ -1,0 +1,10 @@
+---
+# Invalid fixture: settings section of a driver other than the host's.
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    address: 192.168.1.101
+    username: admin
+    password: YOUR_BMC_PASSWORD
+    ilo:
+      foo: bar

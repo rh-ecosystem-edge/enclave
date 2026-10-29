@@ -1,0 +1,75 @@
+---
+# Redfish checks of the BMCs of _driver_hosts: Redfish access, and the system
+# to boot (systemId when set, else a single system).
+
+- name: Set Redfish base URL of each BMC
+  ansible.builtin.set_fact:
+    _redfish_urls: >-
+      {{ _redfish_urls | default({}) | combine({item.name:
+           _address if _address is search('^https?://') else 'https://' ~ _address}) }}
+  vars:
+    _address: "{{ bootPluginConfig.hosts[item.name].address }}"
+  loop: "{{ _driver_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Query Redfish systems of each BMC
+  ansible.builtin.uri:
+    url: "{{ _redfish_urls[item.name] }}/redfish/v1/Systems"
+    method: GET
+    user: "{{ bootPluginConfig.hosts[item.name].username }}"
+    password: "{{ bootPluginConfig.hosts[item.name].password }}"
+    force_basic_auth: true
+    validate_certs: false
+    timeout: 30
+    return_content: true
+    status_code: [200]
+  loop: "{{ _driver_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: r_redfish_systems
+  failed_when: false
+
+- name: Check Redfish access to each BMC
+  ansible.builtin.assert:
+    that:
+      - item.status == 200
+    fail_msg: >-
+      Redfish connection to {{ item.item.name }}
+      ({{ bootPluginConfig.hosts[item.item.name].address }}) is not healthy.
+      Return code: {{ item.status }}. {{ item.msg | default('') }}
+    success_msg: >-
+      Redfish connection to {{ item.item.name }}
+      ({{ bootPluginConfig.hosts[item.item.name].address }}) successful
+  loop: "{{ r_redfish_systems.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Check the Redfish system of each BMC
+  ansible.builtin.assert:
+    that: >-
+      (_system_ids | length == 1)
+      if _system_id is none
+      else ('/redfish/v1/Systems/' + _system_id) in _system_ids
+    fail_msg: >-
+      {%- if _system_id is none -%}
+      BMC on {{ item.item.name }} ({{ _bmc.address }}) manages {{ _system_ids | length }} systems
+      but no system ID is set. Set hosts.{{ item.item.name }}.redfish.systemId in
+      config/plugins/boot/ironic.yaml.
+      {%- else -%}
+      systemId '{{ _system_id }}' not found on {{ item.item.name }} ({{ _bmc.address }}).
+      Available systems: {{ _system_ids | map('regex_replace', '^/redfish/v1/Systems/', '') | join(', ') }}
+      {%- endif -%}
+    success_msg: >-
+      {{ 'systemId ' ~ _system_id ~ ' found' if _system_id is not none else 'Single system' }}
+      on {{ item.item.name }} ({{ _bmc.address }})
+  vars:
+    _bmc: "{{ bootPluginConfig.hosts[item.item.name] }}"
+    _system_id: "{{ (_bmc.redfish | default({})).systemId | default(none) }}"
+    _system_ids: >-
+      {{ (item.json | default(item.content | default('{}', true) | from_json)).Members | default([])
+         | map('dict2items') | flatten | selectattr('key', 'eq', '@odata.id')
+         | map(attribute='value') | list }}
+  loop: "{{ r_redfish_systems.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

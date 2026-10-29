@@ -53,6 +53,14 @@ def test_valid_plugin(plugin_dir: Path) -> None:
     assert validate_boot_plugin(plugin_dir) == []
 
 
+def test_plugin_with_lib(plugin_dir: Path) -> None:
+    _write(
+        plugin_dir / "tasks" / "lib" / "helper.yaml",
+        "- name: Noop\n  ansible.builtin.debug:\n    msg: noop\n",
+    )
+    assert validate_boot_plugin(plugin_dir) == []
+
+
 def test_minimal_plugin(tmp_path: Path) -> None:
     root = tmp_path / "plugins" / "boot" / "minimal"
     _write(root / "plugin.yaml", "name: minimal\ntype: boot\ndescription: Minimal\n")
@@ -130,6 +138,22 @@ BROKEN_CASES: dict[str, BrokenCase] = {
     "hook with non-mapping task": (
         lambda d: _write(d / "tasks" / "setup.yaml", "- just a string\n"),
         "tasks/setup.yaml: must be a YAML list of tasks",
+    ),
+    "lib file not yaml": (
+        lambda d: _write(d / "tasks" / "lib" / "notes.txt", "notes\n"),
+        "tasks/lib/notes.txt: only YAML task files are allowed in tasks/lib/",
+    ),
+    "lib subdirectory": (
+        lambda d: _write(d / "tasks" / "lib" / "sub" / "x.yaml", "[]\n"),
+        "tasks/lib/sub: only YAML task files are allowed in tasks/lib/",
+    ),
+    "lib file not a task list": (
+        lambda d: _write(d / "tasks" / "lib" / "helper.yaml", "a: b\n"),
+        "tasks/lib/helper.yaml: must be a YAML list of tasks",
+    ),
+    "other tasks subdirectory": (
+        lambda d: (d / "tasks" / "helpers").mkdir(),
+        "tasks/helpers: not a boot plugin hook",
     ),
     "hook not yaml": (
         lambda d: _write(d / "tasks" / "setup.yaml", "- [unclosed\n"),

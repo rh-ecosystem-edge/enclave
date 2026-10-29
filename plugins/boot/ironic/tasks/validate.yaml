@@ -1,7 +1,7 @@
 ---
 # Preflight checks of the ironic boot plugin: settings it needs from outside
-# config/plugins/boot/ironic.yaml, the BMC entries of its hosts, and Redfish
-# access to each BMC.
+# config/plugins/boot/ironic.yaml, the BMC entries of its hosts, and the
+# driver-specific checks of each driver in use (tasks/lib/<driver>-validate.yaml).
 
 - name: Check that lzBmcIP is set
   ansible.builtin.assert:
@@ -53,62 +53,13 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Query Redfish systems of each BMC
-  ansible.builtin.uri:
-    url: "https://{{ bootPluginConfig.hosts[item.name].address }}/redfish/v1/Systems"
-    method: GET
-    user: "{{ bootPluginConfig.hosts[item.name].username }}"
-    password: "{{ bootPluginConfig.hosts[item.name].password }}"
-    force_basic_auth: true
-    validate_certs: false
-    timeout: 30
-    return_content: true
-    status_code: [200]
-  loop: "{{ bootHosts }}"
-  loop_control:
-    label: "{{ item.name }}"
-  register: r_redfish_systems
-  failed_when: false
-
-- name: Check Redfish access to each BMC
-  ansible.builtin.assert:
-    that:
-      - item.status == 200
-    fail_msg: >-
-      Redfish connection to {{ item.item.name }}
-      ({{ bootPluginConfig.hosts[item.item.name].address }}) is not healthy.
-      Return code: {{ item.status }}. {{ item.msg | default('') }}
-    success_msg: >-
-      Redfish connection to {{ item.item.name }}
-      ({{ bootPluginConfig.hosts[item.item.name].address }}) successful
-  loop: "{{ r_redfish_systems.results }}"
-  loop_control:
-    label: "{{ item.item.name }}"
-
-- name: Check the Redfish system of each BMC
-  ansible.builtin.assert:
-    that: >-
-      (_system_ids | length == 1)
-      if _bmc.systemId is not defined
-      else ('/redfish/v1/Systems/' + _bmc.systemId) in _system_ids
-    fail_msg: >-
-      {%- if _bmc.systemId is not defined -%}
-      BMC on {{ item.item.name }} ({{ _bmc.address }}) manages {{ _system_ids | length }} systems
-      but systemId is not set. Set hosts.{{ item.item.name }}.systemId in
-      config/plugins/boot/ironic.yaml.
-      {%- else -%}
-      systemId '{{ _bmc.systemId }}' not found on {{ item.item.name }} ({{ _bmc.address }}).
-      Available systems: {{ _system_ids | map('regex_replace', '^/redfish/v1/Systems/', '') | join(', ') }}
-      {%- endif -%}
-    success_msg: >-
-      {{ 'systemId ' ~ _bmc.systemId ~ ' found' if _bmc.systemId is defined else 'Single system' }}
-      on {{ item.item.name }} ({{ _bmc.address }})
+- name: Run the checks of each driver in use
+  ansible.builtin.include_tasks: "lib/{{ _driver }}-validate.yaml"
   vars:
-    _bmc: "{{ bootPluginConfig.hosts[item.item.name] }}"
-    _system_ids: >-
-      {{ (item.json | default(item.content | default('{}', true) | from_json)).Members | default([])
-         | map('dict2items') | flatten | selectattr('key', 'eq', '@odata.id')
-         | map(attribute='value') | list }}
-  loop: "{{ r_redfish_systems.results }}"
+    _driver_hosts: >-
+      {{ bootHosts | selectattr('name', 'in', bootPluginConfig.hosts | dict2items
+                                | selectattr('value.driver', 'equalto', _driver)
+                                | map(attribute='key') | list) | list }}
+  loop: "{{ bootPluginConfig.hosts.values() | map(attribute='driver') | unique | list }}"
   loop_control:
-    label: "{{ item.item.name }}"
+    loop_var: _driver

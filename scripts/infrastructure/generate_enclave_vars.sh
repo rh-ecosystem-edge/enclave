@@ -167,7 +167,6 @@ if [ "$BOOT_PLUGIN" = "ironic" ]; then
 # ironic boot plugin configuration
 # Auto-generated from infrastructure metadata
 # Generated: $(date -Iseconds)
-driver: redfish
 hosts:
 EOF
 fi
@@ -204,10 +203,12 @@ EOF
     if [ "$BOOT_PLUGIN" = "ironic" ]; then
         cat >> "$IRONIC_BOOT_VARS_OUTPUT" <<EOF
   ${CLUSTER_NAME}-${MASTER_SHORT_NAME}:
+    driver: redfish
     address: ${BMC_BASEURI}
     username: admin
     password: password
-    systemId: ${MASTER_UUID}
+    redfish:
+      systemId: ${MASTER_UUID}
 EOF
     fi
 done

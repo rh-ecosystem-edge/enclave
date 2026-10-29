@@ -2,7 +2,8 @@
 
 The redfish, redfishUser, redfishPassword and bmcSystemId fields of each
 agent_hosts entry in config/global.yaml move to hosts.<name> of
-config/plugins/boot/ironic.yaml as address, username, password and systemId.
+config/plugins/boot/ironic.yaml as address, username, password and
+redfish.systemId, with driver redfish.
 
 Edits keep comments and formatting, trying in order:
 1. deleting the lines of the fields from global.yaml, located with ruamel.yaml,
@@ -41,12 +42,14 @@ from ruamel.yaml.util import load_yaml_guess_indent
 
 logger = logging.getLogger(__name__)
 
+# agent_hosts field -> path in an ironic.yaml host entry
 BMC_FIELDS = {
-    "redfish": "address",
-    "redfishUser": "username",
-    "redfishPassword": "password",
-    "bmcSystemId": "systemId",
+    "redfish": ("address",),
+    "redfishUser": ("username",),
+    "redfishPassword": ("password",),
+    "bmcSystemId": ("redfish", "systemId"),
 }
+DRIVER = "redfish"
 
 IRONIC_HEADER = (
     "---\n"
@@ -101,7 +104,15 @@ def _bmc_entries(global_path: Path, global_data: dict[str, Any]) -> dict[str, An
             raise MigrationError(
                 f"{global_path}: an agent_hosts entry with Redfish settings has no name"
             )
-        entries[name] = {BMC_FIELDS[f]: host[f] for f in BMC_FIELDS if f in host}
+        entry: dict[str, Any] = {"driver": DRIVER}
+        for bmc_field, path in BMC_FIELDS.items():
+            if bmc_field in host:
+                *parents, key = path
+                target = entry
+                for parent in parents:
+                    target = target.setdefault(parent, {})
+                target[key] = host[bmc_field]
+        entries[name] = entry
     return entries
 
 
@@ -391,7 +402,7 @@ def _update_global(
     global_path: Path,
     global_text: str,
     expected: dict[str, Any],
-    removed: dict[str, Any],
+    removed: dict[str, list[str]],
     result: MigrationResult,
 ) -> None:
     new_text, exact = _render(
@@ -407,11 +418,11 @@ def _update_global(
     # Field values are never logged: they include passwords, and other edits
     # may also change lines holding unrelated secrets (e.g. pullSecret).
     if exact:
-        for name, entry in removed.items():
+        for name, fields in removed.items():
             logger.info(
                 "%s: removed the lines of %s from agent_hosts entry %s",
                 global_path,
-                ", ".join(f for f, key in BMC_FIELDS.items() if key in entry),
+                ", ".join(fields),
                 name,
             )
     elif global_path not in result.rewritten:
@@ -463,8 +474,13 @@ def migrate(global_path: Path, ironic_path: Path, schema_path: Path) -> Migratio
         _update_ironic(ironic_path, ironic_text, new_ironic_data, added, result)
     else:
         logger.info("%s already has the BMC settings of all hosts", ironic_path)
+    removed = {
+        host["name"]: [f for f in BMC_FIELDS if f in host]
+        for host in global_data.get("agent_hosts") or []
+        if isinstance(host, dict) and host.get("name") in entries
+    }
     _update_global(
-        global_path, global_text, _without_bmc_fields(global_data), entries, result
+        global_path, global_text, _without_bmc_fields(global_data), removed, result
     )
 
     logger.info(

@@ -15,6 +15,8 @@ HOOKS = frozenset({
     "post-install.yaml",
     "cleanup.yaml",
 })
+# Plugin-internal task files, included by the hooks and never by the runner.
+LIB_DIR = "lib"
 SCHEMA_FILES = frozenset({"config.yaml", "defaults.yaml"})
 TOP_LEVEL_FILES = frozenset({"plugin.yaml", "defaults.yaml"})
 TOP_LEVEL_DIRS = frozenset({"schemas", "tasks"})
@@ -70,6 +72,23 @@ def _check_descriptor(plugin_dir: Path, errors: list[str]) -> None:
         )
 
 
+def _check_task_list(path: Path, display: str, errors: list[str]) -> None:
+    ok, tasks = _load_yaml(path, errors)
+    if ok and (
+        not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks)
+    ):
+        errors.append(f"{display}: must be a YAML list of tasks")
+
+
+def _check_lib(lib_dir: Path, errors: list[str]) -> None:
+    for entry in sorted(lib_dir.iterdir()):
+        display = f"tasks/{LIB_DIR}/{entry.name}"
+        if not entry.is_file() or entry.suffix != ".yaml":
+            errors.append(f"{display}: only YAML task files are allowed in tasks/lib/")
+            continue
+        _check_task_list(entry, display, errors)
+
+
 def _check_tasks(plugin_dir: Path, errors: list[str]) -> None:
     tasks_dir = plugin_dir / "tasks"
     if not (tasks_dir / "boot.yaml").is_file():
@@ -77,17 +96,16 @@ def _check_tasks(plugin_dir: Path, errors: list[str]) -> None:
     if not tasks_dir.is_dir():
         return
     for entry in sorted(tasks_dir.iterdir()):
+        if entry.is_dir() and entry.name == LIB_DIR:
+            _check_lib(entry, errors)
+            continue
         if not entry.is_file() or entry.name not in HOOKS:
             errors.append(
                 f"tasks/{entry.name}: not a boot plugin hook "
-                f"(allowed: {', '.join(sorted(HOOKS))})"
+                f"(allowed: {', '.join(sorted(HOOKS))}, and {LIB_DIR}/)"
             )
             continue
-        ok, tasks = _load_yaml(entry, errors)
-        if not ok:
-            continue
-        if not isinstance(tasks, list) or not all(isinstance(t, dict) for t in tasks):
-            errors.append(f"tasks/{entry.name}: must be a YAML list of tasks")
+        _check_task_list(entry, f"tasks/{entry.name}", errors)
 
 
 def _load_schema(path: Path, errors: list[str]) -> dict[str, Any] | None:

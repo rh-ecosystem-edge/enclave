@@ -6,9 +6,10 @@
   ansible.builtin.set_fact:
     ironic_api_version: "{{ ironic_api_version | default('1.89') }}"
 
-- name: Set Ironic driver interfaces
-  ansible.builtin.set_fact:
-    _ironic_boot_interface: "{{ {'redfish': 'redfish-virtual-media'}[bootPluginConfig.driver] }}"
+- name: Set Ironic settings of the hosts to provision
+  ansible.builtin.include_tasks: lib/settings.yaml
+  vars:
+    _settings_hosts: "{{ bootHostsToProvision }}"
 
 - name: Check if baremetal nodes already exist
   ansible.builtin.uri:
@@ -32,17 +33,12 @@
     body_format: json
     body:
       name: "{{ item.item.name }}"
-      driver: "{{ bootPluginConfig.driver }}"
+      driver: "{{ _settings.driver }}"
       automated_clean: false
       deploy_interface: "ramdisk"
-      boot_interface: "{{ _ironic_boot_interface }}"
+      boot_interface: "{{ _settings.boot_interface }}"
       resource_class: "baremetal"
-      driver_info:
-        redfish_address: "https://{{ _bmc.address }}"
-        redfish_username: "{{ _bmc.username }}"
-        redfish_verify_ca: false
-        force_persistent_boot_device: "Never"
-        redfish_system_id: "{{ '/redfish/v1/Systems/' + _bmc.systemId if _bmc.systemId is defined else omit }}"
+      driver_info: "{{ _settings.driver_info }}"
       properties:
         capabilities: "boot_mode:uefi"
     headers:
@@ -53,7 +49,7 @@
     force_basic_auth: true
     status_code: [201]
   vars:
-    _bmc: "{{ bootPluginConfig.hosts[item.item.name] }}"
+    _settings: "{{ _ironic_settings[item.item.name] }}"
   loop: "{{ r_existing_nodes.results }}"
   loop_control:
     label: "{{ item.item.name }}"
@@ -76,23 +72,21 @@
     label: "{{ item.0.item.name }}"
 
 # The BMC password is set apart from node creation so that only this task
-# needs no_log. The BMC settings are set together, in one request, on every
+# needs no_log. The whole driver_info is replaced, in one request, on every
 # node not deployed yet, so that nodes left by an earlier run get the current
-# settings and the password is never stored with a stale address. Nodes whose
-# deployment is in progress are left alone.
+# BMC settings and the password is never stored with a stale address. Nodes
+# whose deployment is in progress are left alone.
 - name: Set BMC settings of nodes to deploy
   ansible.builtin.uri:
     url: "http://localhost:6385/v1/nodes/{{ _ironic_nodes[item.name].uuid }}"
     method: PATCH
     body_format: json
-    body: >-
-      {{ [
-           {'op': 'add', 'path': '/driver_info/redfish_address', 'value': 'https://' ~ _bmc.address},
-           {'op': 'add', 'path': '/driver_info/redfish_username', 'value': _bmc.username},
-         ]
-         + ([{'op': 'add', 'path': '/driver_info/redfish_system_id',
-              'value': '/redfish/v1/Systems/' ~ _bmc.systemId}] if _bmc.systemId is defined else [])
-         + [{'op': 'add', 'path': '/driver_info/redfish_password', 'value': _bmc.password}] }}
+    body:
+      - op: add
+        path: /driver_info
+        value: >-
+          {{ _settings.driver_info
+             | combine({_settings.password_field: bootPluginConfig.hosts[item.name].password}) }}
     headers:
       Content-Type: "application/json"
       X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"
@@ -101,7 +95,7 @@
     force_basic_auth: true
     status_code: [200]
   vars:
-    _bmc: "{{ bootPluginConfig.hosts[item.name] }}"
+    _settings: "{{ _ironic_settings[item.name] }}"
   loop: "{{ bootHostsToProvision }}"
   register: r_bmc_settings
   when: _ironic_nodes[item.name].state in ["enroll", "manageable", "available"]

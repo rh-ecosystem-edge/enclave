@@ -1,13 +1,15 @@
 ---
-# Valid fixture: explicit driver, BMC address with port (e.g. sushy-tools) and systemId.
-driver: redfish
+# Valid fixture: host name, scheme and port in the address, and a Redfish System ID.
 hosts:
   mgmt-ctl01:
-    address: 192.168.1.101:8000
+    driver: redfish
+    address: http://192.168.1.101:8000
     username: admin
     password: YOUR_BMC_PASSWORD
-    systemId: System.Embedded.1
+    redfish:
+      systemId: System.Embedded.1
   mgmt-ctl02:
-    address: 192.168.1.102
+    driver: redfish
+    address: bmc02.example.com:8443
     username: admin
     password: YOUR_BMC_PASSWORD

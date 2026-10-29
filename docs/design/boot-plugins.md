@@ -105,14 +105,21 @@ the four boot-only fields move out: `redfish`, `redfishUser`, `redfishPassword` 
 
 ```yaml
 # config/plugins/boot/ironic.yaml
-driver: redfish
 hosts:
   master-0:                       # agent_hosts[].name
-    address: 100.64.1.24          # BMC address (ip or ip:port)
+    driver: redfish               # Ironic hardware type of this host's BMC
+    address: 100.64.1.24          # [http(s)://]host[:port], default https
     username: admin
     password: secret
-    systemId: System.Embedded.1   # optional, only for multi-system BMCs
+    redfish:                      # settings only valid for driver redfish
+      systemId: System.Embedded.1 # optional, only for multi-system BMCs
 ```
+
+`driver` is required on each host, so a cluster can mix BMC types, and it selects the settings the
+host accepts. The schema gives each driver its own complete host definition: common fields
+(`address`, `username`, `password`) plus a section named after the driver for its own settings.
+Adding a driver adds an enum value, its host definition and its section, without changing existing
+files. Only `redfish` is supported for now.
 
 The boot plugin runner loads the plugin's `defaults.yaml` merged with
 `config/plugins/boot/<name>.yaml` (user values win) into a single variable, `bootPluginConfig`.
@@ -161,6 +168,7 @@ plugins/boot/<name>/
     boot.yaml              # required
     post-install.yaml      # optional
     cleanup.yaml           # optional
+    lib/                   # optional, task files included by the hooks only
 ```
 
 The descriptor is small:
@@ -248,20 +256,21 @@ Two things change there:
 ```
 plugins/boot/ironic/
   plugin.yaml
-  defaults.yaml            # driver: redfish
-  schemas/config.yaml      # driver enum [redfish], hosts map
-  schemas/defaults.yaml
-  tasks/validate.yaml      # Redfish connectivity and systemId checks, out-of-config dependencies
-  tasks/setup.yaml         # deploy ephemeral Ironic (shared library)
-  tasks/boot.yaml          # enroll nodes, set boot_iso, deploy, wait for active
-  tasks/post-install.yaml  # detach virtual media
-  tasks/cleanup.yaml       # tear down ephemeral Ironic (shared library)
+  schemas/config.yaml               # hosts map, one host definition per driver
+  tasks/validate.yaml               # out-of-config dependencies, then each driver's checks
+  tasks/setup.yaml                  # deploy ephemeral Ironic (shared library)
+  tasks/boot.yaml                   # enroll nodes, set boot_iso, deploy, wait for active
+  tasks/post-install.yaml           # detach virtual media
+  tasks/cleanup.yaml                # tear down ephemeral Ironic (shared library)
+  tasks/lib/settings.yaml           # Ironic settings of each host, from its driver
+  tasks/lib/redfish-settings.yaml   # redfish: driver_info, boot interface, capabilities
+  tasks/lib/redfish-validate.yaml   # redfish: connectivity and system ID checks
 ```
 
 The existing `configure_hardware_ironic_{boot,wait,detach_vmedia}.yaml` tasks move into the
 plugin. The hardcoded `driver: redfish`, `boot_interface: redfish-virtual-media` and
-`driver_info.redfish_*` node fields become driven by `bootPluginConfig.driver` and
-`bootPluginConfig.hosts`. Ironic's own httpd keeps serving the ISO, as today (the ISO directory is
+`driver_info.redfish_*` node fields come from `tasks/lib/<driver>-settings.yaml` of each host's
+driver, which also says whether Ironic can detach that driver's virtual media. Ironic's own httpd keeps serving the ISO, as today (the ISO directory is
 mounted at `/iso` and referenced as `file:///iso/agent.x86_64.iso` in `instance_info.boot_iso`).
 The per-node virtual media detach work belongs to this plugin's `post-install.yaml`.
 
@@ -276,7 +285,8 @@ Ironic management. Ironic boots from the ISO only once (`force_persistent_boot_d
 leftover media only matters on hardware that ignores one-time boot. Detaching stays out of
 `cleanup.yaml`, which only tears down Ironic.
 
-`tasks/validate.yaml` ports the Redfish checks from `validations.sh` to Ansible. It also checks
+`tasks/lib/redfish-validate.yaml` ports the Redfish checks from `validations.sh` to Ansible, and
+`tasks/validate.yaml` runs it for the hosts with driver `redfish`. `tasks/validate.yaml` also checks
 explicitly every setting the plugin needs from outside its own configuration file: `lzBmcIP`,
 `lzBmcHostname` and the Ironic certificates when HTTPS is configured, and that the `hosts` keys
 match the names in `bootHosts` exactly, so hosts booted by another plugin need no BMC entry (the
@@ -343,8 +353,8 @@ dropped into `plugins/boot/`. Checks:
   is part of the contract.
 - `name` matches the directory name, and the directory is under `plugins/boot/`.
 - `tasks/boot.yaml` exists, and `tasks/` contains only the known hook files, so a misspelled hook
-  such as `post_install.yaml` fails instead of being silently skipped. Each is a valid YAML task
-  list.
+  such as `post_install.yaml` fails instead of being silently skipped, plus an optional `lib/`
+  directory of task files that only the hooks include. Each is a valid YAML task list.
 - `schemas/` contains only `config.yaml` and `defaults.yaml`, each a valid JSON Schema.
   `defaults.yaml` exists if and only if `schemas/defaults.yaml` exists, and validates against it.
 - No other files.
@@ -390,7 +400,9 @@ again:
    | `redfish` | `address` |
    | `redfishUser` | `username` |
    | `redfishPassword` | `password` |
-   | `bmcSystemId` | `systemId` |
+   | `bmcSystemId` | `redfish.systemId` |
+
+   Each migrated host entry gets `driver: redfish`.
 
    An entry is added if missing, and left as is if it holds identical values. If it holds
    different values, the migration fails with a message naming the host and changes nothing.
@@ -477,8 +489,8 @@ working directory, and `collect_ci_artifacts.sh` adds the log to the diagnostics
 the boot plugin runner. `collect_ci_artifacts.sh` needs no change for configuration: it already
 collects `config/plugins/` recursively and redacts `password` keys.
 
-**Prerequisite.** The master VM UUIDs (needed for `systemId`, and by the CI operator) come from
-`cluster-env.sh` (`ENCLAVE_MASTER_<i>_UUID`): `vm_infra.py` sets deterministic domain UUIDs and
+**Prerequisite.** The master VM UUIDs (needed for `redfish.systemId`, and by the CI operator) come
+from `cluster-env.sh` (`ENCLAVE_MASTER_<i>_UUID`): `vm_infra.py` sets deterministic domain UUIDs and
 emits them, replacing the `virsh domuuid` call in `generate_enclave_vars.sh`
 ([PR #1011](https://github.com/rh-ecosystem-edge/enclave/pull/1011), OSAC-6911).
 

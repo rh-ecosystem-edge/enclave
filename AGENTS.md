@@ -116,8 +116,8 @@ artifact map and step-by-step recipes.
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
 - Boot plugins (`plugins/boot/<name>/`) follow a separate contract (`schemas/boot-plugin.yaml`, hook
-  files `tasks/{validate,setup,boot,post-install,cleanup}.yaml`), checked by
-  `enclave plugins validate --type boot`; see `docs/design/boot-plugins.md`
+  files `tasks/{validate,setup,boot,post-install,cleanup}.yaml`, helper task files in `tasks/lib/`),
+  checked by `enclave plugins validate --type boot`; see `docs/design/boot-plugins.md`
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
 

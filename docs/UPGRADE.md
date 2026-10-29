@@ -108,14 +108,14 @@ The management cluster hosts (`agent_hosts`) are booted by a boot plugin, `ironi
 Their BMC settings no longer live in `agent_hosts`: the migration
 `20261028144317_move_redfish_settings_to_ironic_boot_plugin.yaml` moves them from each
 `agent_hosts` entry of `config/global.yaml` into `hosts.<name>` of
-`config/plugins/boot/ironic.yaml`, renaming them:
+`config/plugins/boot/ironic.yaml`, with `driver: redfish`, renaming them:
 
 | `agent_hosts[]` field | `config/plugins/boot/ironic.yaml` `hosts.<name>` field |
 |---|---|
 | `redfish` | `address` |
 | `redfishUser` | `username` |
 | `redfishPassword` | `password` |
-| `bmcSystemId` | `systemId` |
+| `bmcSystemId` | `redfish.systemId` |
 
 - `discovery_hosts` in `config/cloud_infra.yaml` is not changed.
 - The migration is safe to run again. A host entry already in `ironic.yaml` with identical values

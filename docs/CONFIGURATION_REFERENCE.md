@@ -1416,40 +1416,47 @@ install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironi
 # config/plugins/boot/ironic.yaml
 hosts:
   mgmt-ctl01:
+    driver: redfish
     address: 100.64.1.24
     username: admin
     password: YourSecurePassword
   mgmt-ctl02:
+    driver: redfish
     address: 100.64.1.25
     username: admin
     password: YourSecurePassword
   mgmt-ctl03:
-    address: 100.64.1.26:8000
+    driver: redfish
+    address: https://bmc03.example.com:8443
     username: admin
     password: YourSecurePassword
-    systemId: System.Embedded.1
+    redfish:
+      systemId: System.Embedded.1
 ```
 
 **Top-level fields**:
 
 | Field | Required | Description | Example |
 |-------|----------|-------------|---------|
-| `driver` | No | Ironic hardware type used to drive the BMCs. Only `redfish` is supported. Default: `redfish` | `redfish` |
 | `hosts` | Yes | BMC settings of each host booted by `ironic`, keyed by `agent_hosts[].name` | See example above |
 
 **Fields for each `hosts` entry**:
 
+`driver` selects the Ironic hardware type of the host and the other fields it accepts. Only
+`redfish` is supported.
+
 | Field | Required | Description | Example |
 |-------|----------|-------------|---------|
-| `address` | Yes | Redfish BMC address, IPv4 with optional port | `100.64.1.24` or `100.64.1.1:8008` |
+| `driver` | Yes | Ironic hardware type used to drive the BMC of the host | `redfish` |
+| `address` | Yes | BMC address: host name or IPv4 address, with an optional port and an optional `http://` or `https://` scheme (default `https`) | `100.64.1.24`, `bmc01.example.com:8443` or `http://100.64.1.1:8000` |
 | `username` | Yes | BMC user name | `admin` |
 | `password` | Yes | BMC password | `YourSecurePassword` |
-| `systemId` | No | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
+| `redfish.systemId` | No | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
 
 **Notes**:
 - The `hosts` keys must match exactly the names of the `agent_hosts` entries booted by `ironic`: every such host needs an entry, and hosts booted by another boot plugin must not have one
-- The plugin's validation runs in the bootstrap `validate` step and checks Redfish connectivity and the `systemId` of each host, and that [`lzBmcIP`](#lzbmcip) is set
-- These fields were previously set on each `agent_hosts` entry as `redfish`, `redfishUser`, `redfishPassword` and `bmcSystemId`. `./upgrade.sh` moves them here (see [UPGRADE.md](UPGRADE.md))
+- The plugin's validation runs in the bootstrap `validate` step and checks Redfish connectivity and the system ID of each host, and that [`lzBmcIP`](#lzbmcip) is set
+- These fields were previously set on each `agent_hosts` entry as `redfish`, `redfishUser`, `redfishPassword` and `bmcSystemId`. `./upgrade.sh` moves them here, with `driver: redfish` (see [UPGRADE.md](UPGRADE.md))
 - `discovery_hosts` in `config/cloud_infra.yaml` keeps its own BMC fields and does not use this file
 
 ## System Defaults (read-only)
@@ -1696,14 +1703,17 @@ BMC settings of the `agent_hosts` above. Copy from `config/plugins/boot/ironic.e
 ```yaml
 hosts:
   mgmt-ctl01:
+    driver: redfish
     address: 100.64.1.24
     username: admin
     password: YourSecurePassword
   mgmt-ctl02:
+    driver: redfish
     address: 100.64.1.25
     username: admin
     password: YourSecurePassword
   mgmt-ctl03:
+    driver: redfish
     address: 100.64.1.26
     username: admin
     password: YourSecurePassword
@@ -1747,7 +1757,7 @@ Before running the deployment, validate your configuration:
    ```bash
    ping $apiVIP
    ping $ingressVIP
-   # each hosts.<name>.address in config/plugins/boot/ironic.yaml (without the port)
+   # the host part of each hosts.<name>.address in config/plugins/boot/ironic.yaml
    ping $bmc_address
    ```
 
@@ -1758,10 +1768,10 @@ Before running the deployment, validate your configuration:
    ```
 
 3. **Redfish API access** (with the `address`, `username` and `password` of each host in
-   `config/plugins/boot/ironic.yaml`):
+   `config/plugins/boot/ironic.yaml`; prefix `address` with `https://` when it has no scheme):
    ```bash
    curl -k -u $username:$password \
-     https://$address/redfish/v1/Systems
+     $address/redfish/v1/Systems
    ```
 
 4. **File paths**:

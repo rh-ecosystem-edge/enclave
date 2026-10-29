@@ -1,3 +1,0 @@
----
-# Ironic hardware type used to drive the BMCs. Only redfish is supported.
-driver: redfish

@@ -1,8 +1,7 @@
 ---
-# Invalid fixture: unknown top-level property.
+# Invalid fixture: host without driver.
 hosts:
   mgmt-ctl01:
     address: 192.168.1.101
     username: admin
     password: YOUR_BMC_PASSWORD
-bootTimeout: 600

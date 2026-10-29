@@ -1,0 +1,27 @@
+---
+# Add the Ironic settings of the Redfish hosts in _driver_hosts to
+# _ironic_settings (see settings.yaml).
+
+- name: Set Ironic settings of Redfish hosts
+  ansible.builtin.set_fact:
+    _ironic_settings: >-
+      {{ _ironic_settings | combine({item.name: {
+           'driver': 'redfish',
+           'boot_interface': 'redfish-virtual-media',
+           'password_field': 'redfish_password',
+           'vmedia_detach': true,
+           'driver_info': {
+             'redfish_address': _address if _address is search('^https?://') else 'https://' ~ _address,
+             'redfish_username': _bmc.username,
+             'redfish_verify_ca': false,
+             'force_persistent_boot_device': 'Never',
+           } | combine({'redfish_system_id': '/redfish/v1/Systems/' ~ _system_id}
+                       if _system_id is not none else {}),
+         }}) }}
+  vars:
+    _bmc: "{{ bootPluginConfig.hosts[item.name] }}"
+    _address: "{{ _bmc.address }}"
+    _system_id: "{{ (_bmc.redfish | default({})).systemId | default(none) }}"
+  loop: "{{ _driver_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"

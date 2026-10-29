@@ -110,17 +110,20 @@ quayUser: admin
 
 EXPECTED_HOSTS = {
     "mgmt-ctl01": {
+        "driver": "redfish",
         "address": "192.168.1.101",
         "username": "admin",
         "password": "fake-bmc-password-a",
     },
     "mgmt-ctl02": {
+        "driver": "redfish",
         "address": "192.168.1.102:8000",
         "username": "admin",
         "password": "fake-bmc-password-b\n",
-        "systemId": "abc-123",
+        "redfish": {"systemId": "abc-123"},
     },
     "mgmt-ctl03": {
+        "driver": "redfish",
         "address": "192.168.1.103",
         "username": "admin",
         "password": "Multi fake-bmc-password-c",
@@ -193,13 +196,14 @@ def test_migrate_merges_into_existing_ironic_config(
     existing = (
         "---\n"
         "# my ironic settings\n"
-        "driver: redfish   # only redfish\n"
         "hosts:\n"
         "  mgmt-ctl01:   # same values\n"
+        "    driver: redfish   # only redfish\n"
         "    address: 192.168.1.101\n"
         "    username: admin\n"
         "    password: fake-bmc-password-a\n"
         "  other:\n"
+        "    driver: redfish\n"
         "    address: 10.0.0.9\n"
         "    username: root\n"
         "    password: x\n"
@@ -212,10 +216,14 @@ def test_migrate_merges_into_existing_ironic_config(
     text = ironic_path.read_text(encoding="utf-8")
     assert text.startswith(existing)
     assert yaml.safe_load(text) == {
-        "driver": "redfish",
         "hosts": {
             "mgmt-ctl01": EXPECTED_HOSTS["mgmt-ctl01"],
-            "other": {"address": "10.0.0.9", "username": "root", "password": "x"},
+            "other": {
+                "driver": "redfish",
+                "address": "10.0.0.9",
+                "username": "root",
+                "password": "x",
+            },
             "mgmt-ctl02": EXPECTED_HOSTS["mgmt-ctl02"],
             "mgmt-ctl03": EXPECTED_HOSTS["mgmt-ctl03"],
         },
@@ -228,19 +236,22 @@ def test_migrate_adds_hosts_to_ironic_config_without_hosts(
 ) -> None:
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
-    ironic_path.write_text("# only a comment\ndriver: redfish\n", encoding="utf-8")
+    ironic_path.write_text("# only a comment\nhosts: {}\n", encoding="utf-8")
 
     migrate(global_path, ironic_path, SCHEMA)
 
     text = ironic_path.read_text(encoding="utf-8")
-    assert text.startswith("# only a comment\ndriver: redfish\n")
+    assert text.startswith("# only a comment\n")
     assert yaml.safe_load(text)["hosts"] == EXPECTED_HOSTS
 
 
 def test_migrate_conflict_changes_nothing(paths: tuple[Path, Path]) -> None:
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
-    existing = "hosts:\n  mgmt-ctl02:\n    address: 1.1.1.1\n    username: a\n    password: b\n"
+    existing = (
+        "hosts:\n  mgmt-ctl02:\n    driver: redfish\n    address: 1.1.1.1\n"
+        "    username: a\n    password: b\n"
+    )
     ironic_path.write_text(existing, encoding="utf-8")
 
     with pytest.raises(MigrationError, match=r"mgmt-ctl02 that differ"):

@@ -1,0 +1,9 @@
+---
+# Invalid fixture: driver at the top level instead of per host.
+driver: redfish
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    address: 192.168.1.101
+    username: admin
+    password: YOUR_BMC_PASSWORD

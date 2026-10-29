@@ -370,14 +370,17 @@ host name. The keys must match exactly the names of the `agent_hosts` booted by 
 # config/plugins/boot/ironic.yaml
 hosts:
   mgmt-ctl01:
-    address: 100.64.1.24  # BMC IP address (ip or ip:port)
+    driver: redfish
+    address: 100.64.1.24  # BMC host name or IP, optional :port and http(s):// (default https)
     username: admin
     password: YourSecurePassword
   mgmt-ctl02:
+    driver: redfish
     address: 100.64.1.25
     username: admin
     password: YourSecurePassword
   mgmt-ctl03:
+    driver: redfish
     address: 100.64.1.26
     username: admin
     password: YourSecurePassword
@@ -617,10 +620,11 @@ BMC settings of each host booted by `ironic` are set in `config/plugins/boot/iro
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `hosts.<name>.address` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` |
+| `hosts.<name>.driver` | Ironic hardware type of the host's BMC (only `redfish` is supported) | `redfish` |
+| `hosts.<name>.address` | BMC host name or IP, with optional port and `http://`/`https://` scheme (default `https`) | `100.64.1.24` |
 | `hosts.<name>.username` | Redfish API username | `admin` |
 | `hosts.<name>.password` | Redfish API password | `YourPassword` |
-| `hosts.<name>.systemId` | Redfish System ID (optional, only for multi-system BMCs) | `System.Embedded.1` |
+| `hosts.<name>.redfish.systemId` | Redfish System ID (optional, only for multi-system BMCs) | `System.Embedded.1` |
 
 ### Registry Configuration
 

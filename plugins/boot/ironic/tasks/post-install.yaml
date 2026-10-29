@@ -34,6 +34,18 @@
       changed_when: false
       no_log: true
 
+- name: Set Ironic settings of the hosts
+  ansible.builtin.include_tasks: lib/settings.yaml
+  vars:
+    _settings_hosts: "{{ bootHosts }}"
+
+- name: Set hosts whose driver supports detaching virtual media
+  ansible.builtin.set_fact:
+    _vmedia_hosts: >-
+      {{ bootHosts | selectattr('name', 'in', _ironic_settings | dict2items
+                                | selectattr('value.vmedia_detach') | map(attribute='key') | list)
+         | list }}
+
 - name: Set whether Ironic can be used to detach virtual media
   ansible.builtin.set_fact:
     _ironic_available: >-
@@ -58,7 +70,7 @@
         password: "{{ metal3_ironic_password }}"
         force_basic_auth: true
         status_code: [200, 404]
-      loop: "{{ bootHosts }}"
+      loop: "{{ _vmedia_hosts }}"
       loop_control:
         label: "{{ item.name }}"
       register: r_detach_nodes
@@ -90,13 +102,26 @@
     msg: "Virtual media detached from: {{ _detached_hosts | join(', ') }}"
   when: _detached_hosts | length > 0
 
+- name: Warn about hosts whose driver cannot detach virtual media
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: virtual media cannot be detached through Ironic from
+      {{ _no_vmedia | join(', ') }}: their driver does not support it.
+      Ironic booted them from the ISO only once, so this only matters on hardware that ignores
+      one-time boot; in that case remove the media from the BMC.
+  vars:
+    _no_vmedia: "{{ bootHosts | map(attribute='name') | reject('in', _vmedia_hosts | map(attribute='name')) | list }}"
+  when: _no_vmedia | length > 0
+
 - name: Warn about hosts whose virtual media could not be detached
   ansible.builtin.debug:
     msg: >-
       WARNING: virtual media could not be detached from
-      {{ bootHosts | map(attribute='name') | reject('in', _detached_hosts) | join(', ') }}:
+      {{ _not_detached | join(', ') }}:
       {{ 'they are not enrolled in the running ephemeral Ironic (not provisioned in this run)'
          if _ironic_available | bool else 'the ephemeral Ironic is not running' }}.
       Ironic booted them from the ISO only once, so this only matters on hardware that ignores
       one-time boot; in that case remove the media from the BMC.
-  when: (bootHosts | map(attribute='name') | reject('in', _detached_hosts) | list | length) > 0
+  vars:
+    _not_detached: "{{ _vmedia_hosts | map(attribute='name') | reject('in', _detached_hosts) | list }}"
+  when: _not_detached | length > 0
