@@ -229,11 +229,8 @@ validate_plugins() {
         failed=1
     fi
 
-    # Run the boot plugin contract check from this checkout, not from an
-    # installed enclave package.
     local boot_plugins=("${ENCLAVE_DIR}"/plugins/boot/*/)
-    if PYTHONPATH="${ENCLAVE_DIR}/src${PYTHONPATH:+:${PYTHONPATH}}" \
-        python3 -m enclave.cli plugins validate --type boot "${boot_plugins[@]}"; then
+    if uv run enclave plugins validate --type boot "${boot_plugins[@]}"; then
         print_success "Boot plugin validation passed"
     else
         print_error "Boot plugin validation failed"
