@@ -63,6 +63,8 @@ to deploy and operate disconnected clusters from a registry they own instead
   key misses. To be revisited after measuring restore times.
 - **Strict CI misses.** Failing PRs that miss without touching mirror inputs (which signals a
   broken publishing pipeline) instead of building on the host.
+- **TLS verification in LZ mode.** The LZ mirror path keeps its current `tls-verify=false` flags;
+  enabling verification there is a separate change.
 
 ## Proposal
 
@@ -162,6 +164,19 @@ Phase 02 keeps a single combined run: it calls "mirror one imageset" once with t
 imageset, so its behaviour, outputs and object names are unchanged. `cache.sh build` calls it once
 per mirroring unit, which gives each unit its own `cluster-resources` without post-processing. One
 mirroring code path, two callers.
+
+TLS verification is an input of "mirror one imageset", not hardcoded. Today `mirror_registry.yaml`
+runs oc-mirror with `--src-tls-verify=false` and `--dest-tls-verify=false`, and the intermediate
+index `skopeo copy` with `--dest-tls-verify=false`:
+
+- Phase 02 in LZ mode passes the current values, so its behaviour does not change.
+- In cache mode every access to the cache verifies TLS against the configured CA bundle:
+  `cache.sh build` pushes, dry-runs and Quay Enterprise seeding reads. The CA is installed in the
+  containers trust for the cache host (`/etc/containers/certs.d/<host:port>/`), never bypassed.
+  Upstream access verifies against the system trust.
+
+The prior art, `playbooks/tasks/mirror_cache.yaml` (the opt-in `mirror-cache` tag of
+`02-mirror.yaml`), is replaced by `cache.sh` and removed once cache mode lands.
 
 #### Applying cluster resources
 
@@ -280,6 +295,21 @@ the unit key, never to the source tag. Today's imagesets set `targetCatalog` onl
 pushes its filtered catalog to the same tag (e.g. `redhat/redhat-operator-index:v4.20`), and a
 build for a config with fewer packages would remove operators from catalogs that other
 installations already use.
+
+Each candidate is checked through one **resolved imageset**, used for everything that follows from
+selecting it:
+
+- It is the unit imageset from the shared render step with each `catalog:` rewritten to the keyed
+  catalog in the cache (`<cache>/<prefix>/redhat/<targetCatalog>:<candidate key>`), the same
+  rewrite the `*.internal.yaml` imagesets do today for the LZ mirror.
+- The dry-run runs on it with a per-run registries.conf generated from the candidate's IDMS/ITMS
+  (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)), so everything oc-mirror
+  fetches resolves to the cache and nothing goes upstream. A repository missing from the
+  candidate's IDMS/ITMS also makes the dry-run fail, backing the image list coverage check.
+- For the accepted candidate, the materialized CatalogSource `image:` is the same keyed reference,
+  and Quay Enterprise seeding uses the same imageset (see
+  [Day 2: Quay Enterprise seeding](#day-2-quay-enterprise-seeding)). The catalog that was
+  validated is the one deployed and seeded.
 
 ### Cache key
 
@@ -465,7 +495,9 @@ Today the seeding reads from the LZ mirror through two LZ-specific mechanisms:
 In cache mode:
 
 - Source catalogs and the upstream→mirror mapping point to the cache endpoint/prefix.
-- The imageset comes from the shared render step, since phase 02 no longer produces it.
+- The imageset is the resolved imageset of the selected metadata (see
+  [Metadata selection](#metadata-selection)), which replaces `*.internal.yaml`, since phase 02 no
+  longer produces an imageset.
 - The oc-mirror run uses a per-run registries.conf generated from the IDMS/ITMS stored in the cache
   (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)), not the static template,
   and does not touch the persistent LZ redirection.
@@ -682,7 +714,8 @@ misses for PRs that do not touch mirror inputs are listed in [Non-objectives](#n
    for existing installations.
 1. Shared render step and cache key (`enclave tools cache-key`) with its unit tests.
 1. `cache.sh build` / `verify`, cache configuration and mode file, and cache-mode consumption in
-   `bootstrap.sh`, `sync.sh` and `upgrade.sh`, including LZ registry redirection.
+   `bootstrap.sh`, `sync.sh` and `upgrade.sh`, including LZ registry redirection. Removal of
+   `playbooks/tasks/mirror_cache.yaml`.
 1. Cache mode for day 2: Quay Enterprise seeding and `deploy-plugin` / `mirror-plugin`.
 1. CI: cache host owned by `vm_infra.py`, EBS snapshot publishing and lookup, cache-mode mirror
    validation gate, and the validation scenarios.
