@@ -235,9 +235,11 @@ metadata:
   namespace: ${NS}
 spec: {}
 YAML
+    # Allow 5m: on a freshly deployed cluster the operator provisions the tenant
+    # via AAP job templates, whose first reconcile routinely exceeds 60s.
     info "Waiting for tenant ${TENANT_NAME} to become Ready"
     if ! oc wait --for=jsonpath='{.status.phase}'=Ready \
-            "tenant/${TENANT_NAME}" -n "${NS}" --timeout=60s; then
+            "tenant/${TENANT_NAME}" -n "${NS}" --timeout=300s; then
         error "tenant ${TENANT_NAME} did not reach Ready"
         oc get tenant "${TENANT_NAME}" -n "${NS}" -o yaml 2>&1 | tail -n 30 || true
         return 1
