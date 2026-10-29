@@ -1,0 +1,211 @@
+- name: Read the Redfish system collection
+  ansible.builtin.uri:
+    url: "https://{{ host_to_resolve.redfish }}/redfish/v1/Systems"
+    method: GET
+    user: "{{ host_to_resolve.redfishUser }}"
+    password: "{{ host_to_resolve.redfishPassword }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+    return_content: true
+  register: r_redfish_systems
+  failed_when: false
+  when: host_to_resolve.bmcSystemId is not defined
+  no_log: true
+
+- name: Require one Redfish system when its ID is omitted
+  ansible.builtin.assert:
+    that:
+      - >-
+        r_redfish_systems.status | default(0) == 200 and
+        r_redfish_systems.json.Members is defined and
+        r_redfish_systems.json.Members | length == 1
+    fail_msg: >-
+      Could not identify one Redfish system for a configured host. Set
+      bmcSystemId for a multi-system BMC or set macAddress explicitly.
+  when: host_to_resolve.bmcSystemId is not defined
+
+- name: Select the Redfish system resource
+  ansible.builtin.set_fact:
+    redfish_system_path: >-
+      {{ ('/redfish/v1/Systems/' ~ host_to_resolve.bmcSystemId)
+         if host_to_resolve.bmcSystemId is defined else
+         (r_redfish_systems.json.Members[0]['@odata.id']
+         | regex_replace('^https?://[^/]+', '')
+         | regex_replace('^(?!/)', '/')) }}
+  no_log: true
+
+- name: Read the configured host Redfish system
+  ansible.builtin.uri:
+    url: "https://{{ host_to_resolve.redfish }}{{ redfish_system_path }}"
+    method: GET
+    user: "{{ host_to_resolve.redfishUser }}"
+    password: "{{ host_to_resolve.redfishPassword }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+    return_content: true
+  register: r_redfish_system
+  failed_when: false
+  no_log: true
+
+- name: Require Redfish Ethernet interface information
+  ansible.builtin.assert:
+    that:
+      - >-
+        r_redfish_system.status | default(0) == 200 and
+        r_redfish_system.json.EthernetInterfaces is defined and
+        r_redfish_system.json.EthernetInterfaces['@odata.id'] is defined
+    fail_msg: >-
+      Could not read Ethernet interface information from Redfish for a
+      configured host. Verify BMC access or set macAddress explicitly.
+
+- name: Select the Redfish Ethernet interface collection
+  ansible.builtin.set_fact:
+    redfish_ethernet_interfaces_path: >-
+      {{ r_redfish_system.json.EthernetInterfaces['@odata.id']
+         | regex_replace('^https?://[^/]+', '')
+         | regex_replace('^(?!/)', '/') }}
+  no_log: true
+
+- name: Read the Redfish Ethernet interface collection
+  ansible.builtin.uri:
+    url: "https://{{ host_to_resolve.redfish }}{{ redfish_ethernet_interfaces_path }}"
+    method: GET
+    user: "{{ host_to_resolve.redfishUser }}"
+    password: "{{ host_to_resolve.redfishPassword }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+    return_content: true
+  register: r_redfish_ethernet_interfaces
+  failed_when: false
+  no_log: true
+
+- name: Require Redfish Ethernet interface entries
+  ansible.builtin.assert:
+    that:
+      - >-
+        r_redfish_ethernet_interfaces.status | default(0) == 200 and
+        r_redfish_ethernet_interfaces.json.Members is defined and
+        r_redfish_ethernet_interfaces.json.Members | length > 0
+    fail_msg: >-
+      Redfish returned no Ethernet interfaces for a configured host. Verify BMC
+      access or set macAddress explicitly.
+
+- name: Read each Redfish Ethernet interface
+  ansible.builtin.uri:
+    url: >-
+      https://{{ host_to_resolve.redfish }}{{ redfish_interface['@odata.id']
+      | regex_replace('^https?://[^/]+', '') | regex_replace('^(?!/)', '/') }}
+    method: GET
+    user: "{{ host_to_resolve.redfishUser }}"
+    password: "{{ host_to_resolve.redfishPassword }}"
+    force_basic_auth: true
+    validate_certs: false
+    status_code: [200]
+    return_content: true
+  loop: "{{ r_redfish_ethernet_interfaces.json.Members }}"
+  loop_control:
+    loop_var: redfish_interface
+    label: Redfish Ethernet interface
+  register: r_redfish_ethernet_interface_details
+  failed_when: false
+  no_log: true
+
+- name: Require readable Redfish Ethernet interfaces
+  ansible.builtin.assert:
+    that:
+      - >-
+        r_redfish_ethernet_interface_details.results |
+        selectattr('status', 'defined') |
+        selectattr('status', 'equalto', 200) |
+        list | length == r_redfish_ethernet_interfaces.json.Members | length
+    fail_msg: >-
+      Could not read all Redfish Ethernet interfaces for a configured host.
+      Verify BMC access or set macAddress explicitly.
+
+- name: Initialize Redfish MAC candidate lists
+  ansible.builtin.set_fact:
+    redfish_host_macs: []
+    redfish_ip_macs: []
+    redfish_ip_match_count: 0
+  no_log: true
+
+- name: Collect Redfish MAC addresses
+  ansible.builtin.set_fact:
+    redfish_host_macs: >-
+      {{ redfish_host_macs + [redfish_interface_detail.json.MACAddress | lower | replace('-', ':')] }}
+  loop: "{{ r_redfish_ethernet_interface_details.results }}"
+  loop_control:
+    loop_var: redfish_interface_detail
+    label: Redfish Ethernet interface
+  when:
+    - redfish_interface_detail.json.MACAddress is defined
+    - redfish_interface_detail.json.MACAddress is string
+    - >-
+      redfish_interface_detail.json.MACAddress | replace('-', ':') |
+      regex_search('^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$') is not none
+  no_log: true
+
+- name: Count Redfish interfaces matching the configured IP
+  ansible.builtin.set_fact:
+    redfish_ip_match_count: "{{ redfish_ip_match_count + 1 }}"
+  loop: "{{ r_redfish_ethernet_interface_details.results }}"
+  loop_control:
+    loop_var: redfish_interface_detail
+    label: Redfish Ethernet interface
+  when: >-
+    host_to_resolve.ipAddress in
+    (redfish_interface_detail.json.IPv4Addresses | default([], true) |
+    selectattr('Address', 'defined') | map(attribute='Address') | list)
+  no_log: true
+
+- name: Match Redfish MAC addresses to the configured IP when available
+  ansible.builtin.set_fact:
+    redfish_ip_macs: >-
+      {{ redfish_ip_macs + [redfish_interface_detail.json.MACAddress | lower | replace('-', ':')] }}
+  loop: "{{ r_redfish_ethernet_interface_details.results }}"
+  loop_control:
+    loop_var: redfish_interface_detail
+    label: Redfish Ethernet interface
+  when:
+    - redfish_interface_detail.json.MACAddress is defined
+    - redfish_interface_detail.json.MACAddress is string
+    - >-
+      redfish_interface_detail.json.MACAddress | replace('-', ':') |
+      regex_search('^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$') is not none
+    - >-
+      host_to_resolve.ipAddress in
+      (redfish_interface_detail.json.IPv4Addresses | default([], true) |
+      selectattr('Address', 'defined') | map(attribute='Address') | list)
+  no_log: true
+
+- name: Require a valid MAC for each IP-matched Redfish interface
+  ansible.builtin.assert:
+    that:
+      - redfish_ip_macs | length == redfish_ip_match_count
+    fail_msg: >-
+      Redfish reported the configured IP on an interface with a missing or
+      invalid MAC address. Set macAddress explicitly.
+  when: redfish_ip_match_count > 0
+
+- name: Select Redfish MAC candidates for the configured host
+  ansible.builtin.set_fact:
+    discovered_host_macs: >-
+      {{ (redfish_ip_macs if redfish_ip_match_count > 0 else redfish_host_macs)
+         | unique | list }}
+  no_log: true
+
+- name: Require one Redfish MAC address for the configured host
+  ansible.builtin.assert:
+    that:
+      - discovered_host_macs | length == 1
+    fail_msg: >-
+      Could not identify exactly one MAC address from Redfish for a configured
+      host. Set macAddress explicitly to select the intended interface.
+
+- name: Set the discovered Redfish MAC address for the configured host
+  ansible.builtin.set_fact:
+    resolved_mac_address: "{{ discovered_host_macs[0] }}"
+  no_log: true

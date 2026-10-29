@@ -257,7 +257,7 @@ defaultPrefix: 24
 
 #### `rendezvousIP`
 
-**Description**: IP address of the first control plane node. This node coordinates the installation process.
+**Description**: IP address of the control plane node that coordinates the installation process.
 
 **Type**: String (IP address)
 
@@ -267,7 +267,7 @@ rendezvousIP: 192.168.2.24
 ```
 
 **Notes**:
-- Must match the `ipAddress` of the first entry in `agent_hosts`
+- Must match an IP address assigned to the selected rendezvous host. The host can be any entry in `agent_hosts`; for advanced networking, use an address from that host's `networkConfig`.
 - This node must be accessible from other nodes during installation
 
 #### `lzBmcIP`
@@ -363,8 +363,7 @@ agent_hosts:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `mgmt-ctl01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
-| `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
+| `ipAddress` | Static IP address for the node (must be in `machineNetwork`). Required for simple IP-based hosts; omit when `networkConfig` provides the address. | `192.168.2.24` |
 | `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Override Username for Redfish API authentication on BMCs | `admin-override` |
@@ -374,9 +373,13 @@ agent_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
+| `macAddress` | Primary interface MAC. Optional for simple IP-based hosts with `ipAddress`; deployment discovers it from Redfish interface data. Required for advanced network configurations. Set it to select a specific address. | `0c:c4:7a:62:fe:ec` |
 | `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
+
+MAC discovery is noninteractive. To use a specific address, set `macAddress`
+explicitly in the host entry.
 
 #### Advanced Network Configuration
 
@@ -456,6 +459,7 @@ agent_hosts:
 
   # Host with advanced network configuration (bonding)
   - name: mgmt-ctl02
+    macAddress: "0c:c4:7a:39:f5:18"
     redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
@@ -500,6 +504,7 @@ agent_hosts:
 
   # Host with VLAN configuration
   - name: mgmt-ctl03
+    macAddress: "0c:c4:7a:39:ec:0c"
     redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
@@ -534,7 +539,8 @@ agent_hosts:
 ```
 
 **Notes on Advanced Network Configuration**:
-- When using `networkConfig`, the `macAddress` and `ipAddress` fields are not required (they're part of the networkConfig)
+- `ipAddress` is required for simple IP-based hosts; omit it when `networkConfig` provides the address
+- Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - The `mapInterfaces` field maps interface names to MAC addresses for the agent installer
 - The `networkConfig` follows the [nmstate](https://nmstate.io/) format
 - You can mix hosts with simple and advanced configurations in the same `agent_hosts` list
@@ -542,7 +548,7 @@ agent_hosts:
 
 **Notes**:
 - Number of entries must match `controlPlane_replicas`
-- First entry's `ipAddress` should match `rendezvousIP`
+- `rendezvousIP` must match an address assigned to the selected rendezvous host. This can be any entry in `agent_hosts`; with advanced networking, use an address in that host's `networkConfig`.
 - MAC addresses must be unique
 - IP addresses must be unique and in `machineNetwork` range
 - `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.
@@ -1298,8 +1304,7 @@ discovery_hosts:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
-| `ipAddress` | Static IP address for the node | `192.168.2.21` |
+| `ipAddress` | Static IP address for simple IP-based hosts. Omit it for advanced networking, where the address is provided by `networkConfig`. | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Username for Redfish API authentication | `admin` |
@@ -1309,10 +1314,14 @@ discovery_hosts:
 
 | Field | Description | Example |
 |-------|-------------|---------|
+| `macAddress` | Primary interface MAC. Optional for simple IP-based hosts with `ipAddress`; deployment discovers it from Redfish interface data. Required for advanced network configurations. | `0c:c4:7a:d3:bc:30` |
 | `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; auto-discovered when omitted | `System.Embedded.1` |
 | `interfaceName` | Network interface name. Defaults to `eno1` | `ens3f0` |
 
 **Notes**:
+- For simple IP-based hosts, the Landing Zone reads MAC addresses from Redfish and prefers the MAC associated with the configured IP. If Redfish returns no MAC candidates or multiple candidates without an IP match, set `macAddress` explicitly.
+- Set `macAddress` explicitly if you want to choose the address used for a host
+- For advanced networking, omit top-level `ipAddress` and provide `networkConfig`, `mapInterfaces`, and top-level `macAddress`. See [Advanced Network Configuration](#advanced-network-configuration) for an example.
 - MAC addresses must be unique
 - IP addresses must be unique and in the same network as the cluster
 - `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.

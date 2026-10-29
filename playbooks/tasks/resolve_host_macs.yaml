@@ -1,0 +1,16 @@
+- name: Initialize the resolved host list
+  ansible.builtin.set_fact:
+    resolved_host_macs: []
+  no_log: true
+
+- name: Resolve each host MAC address
+  ansible.builtin.include_tasks:
+    file: resolve_single_host_mac.yaml
+    apply:
+      tags: hardware
+  tags: hardware
+  loop: "{{ hosts_to_resolve }}"
+  loop_control:
+    loop_var: host_to_resolve
+    label: configured host
+  no_log: true

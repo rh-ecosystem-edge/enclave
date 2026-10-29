@@ -354,7 +354,7 @@ agent_hosts:
     redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
 
-# Rendezvous IP (first control plane node)
+# Rendezvous IP (selected control plane node)
 rendezvousIP: 192.168.2.24
 ```
 
@@ -366,6 +366,7 @@ For complex network setups like bonding, VLANs, or multiple interfaces, use `map
 agent_hosts:
   # Host with bonding configuration
   - name: mgmt-ctl01
+    macAddress: "0c:c4:7a:62:fe:ec"
     redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
@@ -417,10 +418,12 @@ agent_hosts:
 ```
 
 **Notes**:
-- When using `networkConfig`, the `macAddress` and `ipAddress` fields are not required
+- `ipAddress` is required for simple IP-based hosts; omit it when `networkConfig` provides the address
+- Set `macAddress` explicitly for advanced network configurations, which do not provide a single IP address for MAC discovery
 - `mapInterfaces` maps interface names to MAC addresses for the agent installer
 - `networkConfig` follows the [nmstate](https://nmstate.io/) format
 - You can mix hosts with simple and advanced configurations in the same list
+- `rendezvousIP` must match an address assigned to the selected host, which can be any `agent_hosts` entry; with advanced networking, use an address from that host's `networkConfig`
 
 ### Registry Configuration
 
@@ -564,7 +567,7 @@ control_binaries:
 | `defaultDNS` | DNS server IP | `192.168.2.10` |
 | `defaultGateway` | Default gateway IP | `192.168.2.10` |
 | `defaultPrefix` | Network prefix length | `24` |
-| `rendezvousIP` | IP of first control plane node | `192.168.2.24` |
+| `rendezvousIP` | IP of the selected rendezvous host, which can be any entry in `agent_hosts` | `192.168.2.24` |
 
 ### Hardware Configuration
 
@@ -577,10 +580,15 @@ control_binaries:
 
 Each `agent_hosts` entry requires:
 - `name`: Hostname for the node
-- `macAddress`: MAC address for network identification (not required if using `networkConfig`)
-- `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
+- `ipAddress`: Static IP address for simple IP-based hosts (omit when `networkConfig` provides the address)
 - `redfish`: BMC IP address for Redfish API
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
+
+For simple IP-based network configuration, `macAddress` is optional. The Landing Zone
+reads interface data from the host's Redfish BMC and matches the configured IP when
+Redfish reports it. If Redfish returns no MAC candidates or multiple candidates without
+an IP match, set `macAddress` explicitly.
+Advanced network configurations must set `macAddress` explicitly.
 
 Optional fields for advanced network configuration:
 - `mapInterfaces`: List of interface name to MAC address mappings
@@ -914,12 +922,18 @@ Each node in `discovery_hosts` requires:
 | Field | Description | Example |
 |-------|-------------|---------|
 | `name` | Hostname for the node | `node01` |
-| `macAddress` | MAC address of the primary network interface | `0c:c4:7a:d3:bc:30` |
-| `ipAddress` | Static IP address for the node | `192.168.2.21` |
+| `ipAddress` | Static IP address for simple IP-based hosts; omit it for advanced networking, where `networkConfig` provides the address. | `192.168.2.21` |
 | `redfish` | BMC IP address for Redfish API access | `100.64.1.21` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
 | `redfishUser` | Redfish username | `admin` |
 | `redfishPassword` | Redfish password | `Password` |
+
+For simple IP-based configuration, `macAddress` is optional. The Landing Zone reads
+the host's Redfish interface data and prefers the MAC associated with `ipAddress`.
+If Redfish returns no MAC candidates or multiple candidates without an IP match, set
+`macAddress` explicitly.
+Advanced discovery hosts omit top-level `ipAddress` and require `networkConfig`,
+`mapInterfaces`, and top-level `macAddress`; see [Advanced Network Configuration](#advanced-network-configuration-optional).
 
 ### Running Discovery (One-Time Setup Only)
 

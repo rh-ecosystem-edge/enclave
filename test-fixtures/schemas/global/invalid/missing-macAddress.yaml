@@ -1,6 +1,6 @@
 ---
-# Invalid fixture: missing macAddress in agent_hosts
-# Expected failure: macAddress of one host in agent_hosts is missing, and no networkConfig is provided
+# Invalid fixture: advanced host is missing its required macAddress
+# Expected failure: networkConfig and mapInterfaces require an explicit macAddress
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -20,11 +20,15 @@ pullSecret: {"auths":{}}
 sshPubPath: /home/enclave/.ssh/id_rsa.pub
 agent_hosts:
   - name: mgmt-ctl01
-    ipAddress: 192.168.2.24
     redfish: 192.168.1.101
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: admin
     redfishPassword: YOUR_REDFISH_PASSWORD
+    mapInterfaces:
+      - name: eno1
+        macAddress: 0c:c4:7a:62:fe:ec
+    networkConfig:
+      interfaces: []
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:62:fe:ed
     ipAddress: 192.168.2.25
