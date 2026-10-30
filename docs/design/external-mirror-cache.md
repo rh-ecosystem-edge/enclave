@@ -94,6 +94,14 @@ Examples:
   if it declares additional images), built with `cache.sh build --plugin openshift-ai`, whatever
   the rest of the config is.
 
+### Design principle
+
+Cache mode behaves like LZ mode, with the same objects, names and code paths, except where that
+would break the cache guarantee (see [Landing Zone pulls](#landing-zone-pulls)) or prevent
+several installations from sharing a cache. Every exception is listed in
+[Differences from LZ mode](#differences-from-lz-mode). Where cache mode does better, LZ mode is
+fixed separately to match it, rather than keeping two ways of working.
+
 ### Prerequisite
 
 Stable, y-stream agnostic CatalogSource names
@@ -680,8 +688,10 @@ Cache mode guarantees that every container image used by the cluster or the LZ c
 cache, over verified TLS, and that a gap in the cache is an error rather than a silent pull from
 upstream (see [Landing Zone pulls](#landing-zone-pulls)). The current disconnected flow does not:
 some images bypass the LZ mirror, TLS is not verified, and mirror misses fall back to upstream
-whenever it is reachable. The rows below are where cache mode differs to meet that guarantee. LZ
-mode stays unchanged in this design; porting each difference is a separate change.
+whenever it is reachable. Following the [Design principle](#design-principle), the rows below
+are the only places where cache mode differs, either to meet that guarantee or to let several
+installations share a cache. LZ mode stays unchanged in this design; porting each difference is a
+separate change.
 
 | Area | LZ mode today | Cache mode | Porting to LZ mode |
 |---|---|---|---|
@@ -691,6 +701,9 @@ mode stays unchanged in this design; porting each difference is a separate chang
 | Source policy | no `mirrorSourcePolicy` or `blocked`: a mirror miss silently falls back to upstream when it is reachable | fail closed: `NeverContactSource` on the cluster, `blocked = true` on the LZ (see [Fail-closed source policy](#fail-closed-source-policy)) | quick fix; a latent bug today, tracked in [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 | Agent ISO registries.conf | rendered by the agent installer from install-config `imageDigestSources`, without `blocked` | `mirror/registries.conf` supplied by `bootstrap.sh`, generated from the unit IDMS/ITMS with `blocked = true` (see [Fail-closed source policy](#fail-closed-source-policy)) | part of [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 | Images of enabled plugins (`additionalImages`, Helm-extracted) | not mirrored at bootstrap; only `make deploy-plugin` mirrors them | `images-<plugin>` built by `cache.sh build` and validated for every enabled plugin | a latent bug today, tracked in [OSAC-7046](https://redhat.atlassian.net/browse/OSAC-7046) |
+| Catalog destination tags | the source tag (`v4.20`); the filtered index overwrites the full copy | a tag derived from the unit key, so builds for different configs never overwrite each other (see [Metadata selection](#metadata-selection)) | not needed: an LZ mirror serves one installation |
+| IDMS/ITMS applied by `sync.sh` | only through the ABI manifests at install; later repositories are covered by the Quay Enterprise IDMS/ITMS | `sync.sh` applies the units' IDMS/ITMS, so the cache mirrors every repository (see [Applying cluster resources](#applying-cluster-resources)) | optional |
+| oc-mirror runs | one combined run in phase 02 | one run per unit, for per-unit keys and metadata; internal, the cluster gets the same objects (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | see [Non-objectives](#non-objectives) (phase 02 as a local cache) |
 
 Not a difference: the bootstrap host cannot fail closed in either mode (see
 [Fail-closed source policy](#fail-closed-source-policy)).
