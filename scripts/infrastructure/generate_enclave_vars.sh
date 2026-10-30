@@ -265,6 +265,48 @@ EOF
     info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
 fi
 
+# When vm_infra.py created an SNO spoke (ENCLAVE_SPOKE_COUNT >= 1), add it so
+# Phase 07 discovers it as an unbound Agent for later binding. Empty otherwise.
+# vm_infra.py emits only 0 or 1; validate the contract so a malformed value fails
+# loudly instead of silently producing an empty discovery_hosts.
+SPOKE_COUNT="${ENCLAVE_SPOKE_COUNT:-0}"
+case "$SPOKE_COUNT" in
+    0 | 1) ;;
+    *) error "ENCLAVE_SPOKE_COUNT must be 0 or 1, got: '${SPOKE_COUNT}'"; exit 1 ;;
+esac
+DISCOVERY_HOSTS_BLOCK="discovery_hosts: []"
+if [ "$SPOKE_COUNT" -gt 0 ]; then
+    DISCOVERY_HOSTS_BLOCK="discovery_hosts:"
+    for i in $(seq 0 $((SPOKE_COUNT - 1))); do
+        info "Processing spoke $i..."
+
+        # Spoke facts from cluster-env.sh (ENCLAVE_SPOKE_<i>_*), via indirect expansion.
+        name_var="ENCLAVE_SPOKE_${i}_NAME";        SPOKE_VM="${!name_var}"
+        mac_var="ENCLAVE_SPOKE_${i}_CLUSTER_MAC";  SPOKE_MAC="${!mac_var}"
+        ip_var="ENCLAVE_SPOKE_${i}_CLUSTER_IP";    SPOKE_IP="${!ip_var}"
+
+        # Redfish system id is the libvirt domain UUID, same as masters (agent_hosts).
+        SPOKE_UUID=$(sudo virsh domuuid "$SPOKE_VM" 2>/dev/null || echo "")
+        if [ -z "$SPOKE_UUID" ]; then
+            error "Could not get UUID for spoke VM: $SPOKE_VM"
+            exit 1
+        fi
+
+        # BMH name must be DNS-safe; rootDisk is the libvirt virtio primary disk.
+        SPOKE_SHORT_NAME="spoke-$(printf "%02d" "$i")"
+        DISCOVERY_HOSTS_BLOCK="${DISCOVERY_HOSTS_BLOCK}
+  - name: ${CLUSTER_NAME}-${SPOKE_SHORT_NAME}
+    macAddress: \"${SPOKE_MAC}\"
+    ipAddress: ${SPOKE_IP}
+    redfish: ${BMC_BASEURI}
+    bmcSystemId: ${SPOKE_UUID}
+    rootDisk: \"/dev/vda\"
+    redfishUser: admin
+    redfishPassword: password"
+    done
+    info "Added ${SPOKE_COUNT} spoke host(s) to discovery_hosts"
+fi
+
 # Generate config/cloud_infra.yaml file
 cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 ---
@@ -278,7 +320,7 @@ cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 # Discovery hosts for cloud infrastructure (CaaS)
 # These are worker nodes that will be discovered and added to the cluster
 # Set to an empty list if no discovery hosts are needed:
-discovery_hosts: []
+${DISCOVERY_HOSTS_BLOCK}
 EOF
 
 # Override storage plugin and quay backend when STORAGE_PLUGIN=odf
