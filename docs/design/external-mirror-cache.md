@@ -58,8 +58,8 @@ to deploy and operate disconnected clusters from a registry they own instead
   verification and a fail-closed source policy stay cache mode only (see
   [Differences from LZ mode](#differences-from-lz-mode)); each is a separate change.
 - **Phase 02 as "build a local cache, then consume it".** One model for both modes, where LZ mode
-  becomes a cache on the LZ. It changes phase 02 (per-unit runs, new object names) and needs a
-  migration for existing installations to avoid duplicate IDMS/ITMS and extra MCO rollouts.
+  becomes a cache on the LZ. It changes phase 02 to per-unit runs; since cache mode keeps the LZ
+  mode object names, existing installations would not need their IDMS/ITMS renamed.
 - **Changing the cache endpoint of an installation.** The endpoint is embedded in the units'
   IDMS/ITMS and CatalogSources, the installer-created `image-digest-mirror` IDMS (not managed by
   enclave), the cluster pull secret and CA trust, and on the LZ in the persistent registries.conf
@@ -234,7 +234,9 @@ Applying is decoupled from mirroring:
   - LZ mode: copied from the oc-mirror workspace (same content as today).
   - Cache mode: resolve the units the config requires (shared render step), pull each unit's
     metadata image selected for it (see [Metadata selection](#metadata-selection)), substitute the
-    host/prefix placeholder with the configured endpoint.
+    host/prefix placeholder with the configured endpoint, and write the IDMS/ITMS and
+    CatalogSources with the LZ mode file and object names (see
+    [Outputs stored in the cache](#outputs-stored-in-the-cache)).
 - Consumers read only that directory:
 
 | Entry point | Units | Action |
@@ -244,8 +246,8 @@ Applying is decoupled from mirroring:
 | `deploy-plugin` / `mirror-plugin` | the plugin's units | apply in the single MCO rollout, as today |
 | Quay Enterprise seeding, LZ redirection | IDMS/ITMS | generate the per-run registries.conf and the persistent drop-in |
 
-- The ABI copy matches `idms-*.yaml` / `itms-*.yaml` instead of fixed file names (one file per unit
-  in cache mode).
+- The ABI copy and the apply steps are unchanged: the directory holds the same file names in both
+  modes.
 - Units no longer required by the config are not removed from the cluster, consistent with the
   cache being additive and with LZ mode, where sync never removes CatalogSources or IDMS either.
   Removing a mirror entry still in use (installed operator, node on an older release) would break
@@ -275,8 +277,8 @@ ships (no new binary such as `oras` on the LZ), and any registry accepts it. It 
   [Resolving a unit's images](#resolving-a-units-images)); used by
   [Metadata selection](#metadata-selection), and keeps a later per-unit pruning possible
 - oc-mirror `cluster-resources/` (IDMS, ITMS, CatalogSources, signature ConfigMaps) that enclave
-  needs to configure the cluster, already named per unit (see
-  [Outputs stored in the cache](#outputs-stored-in-the-cache))
+  needs to configure the cluster, as oc-mirror generated them for the unit; the materialize step
+  gives them the LZ mode names (see [Outputs stored in the cache](#outputs-stored-in-the-cache))
 
 The registry is the only server; no extra service, no version file in the repo.
 
@@ -464,10 +466,13 @@ Content that must not move is referenced by digest or by a versioned tag in encl
 
 Object names:
 
-- **IDMS/ITMS** are named per unit at build time (e.g. `idms-<slice>-<unit>`). Consumers apply them
-  as they are; the `*-plugin-<name>` renaming that `mirror_plugin.yaml` does today after each run
-  is not needed in cache mode. Bootstrap and day-2 plugins get the same names, which is not the
-  case today (bootstrap plugins land in the core IDMS).
+- **IDMS/ITMS** are the same objects as in LZ mode. The units required by the config (OCP, core
+  catalog and images, enabled plugins) are merged into `idms-oc-mirror.yaml` /
+  `itms-oc-mirror.yaml`, with the object names oc-mirror uses for the combined phase 02 run
+  (`idms-release-0`, `idms-operator-0`, `itms-release-0`, `itms-generic-0`). The units of a plugin
+  deployed with `make deploy-plugin` go to `idms-oc-mirror-plugin-<name>.yaml` /
+  `itms-oc-mirror-plugin-<name>.yaml`, with the `-plugin-<name>` suffix `mirror_plugin.yaml` adds.
+  The per-unit oc-mirror runs stay internal to `cache.sh build`.
 - **CatalogSources** are the same objects as in LZ mode: the versioned
   `cs-<targetCatalog>-v<y>` (e.g. `cs-redhat-operator-index-v4-20`), followed by the stable alias
   `cs-<index>` / `cs-<index>-<plugin>` that `create_stable_catalog_source_aliases.yaml` creates
@@ -479,8 +484,7 @@ Object names:
   copies it. A y-stream change (e.g. catalog `v4.20` to `v4.21`) adds `cs-<index>-v4-21`, the
   alias switches to it at `sync.sh`, and `cs-<index>-v4-20` is left on the cluster, as in LZ mode.
 
-Object names differ between LZ mode and cache mode; this is fine because modes are never mixed
-(see [Consumption model](#consumption-model)).
+Object names are the same in both modes (see [Design principle](#design-principle)).
 
 ### Landing Zone pulls
 
@@ -650,8 +654,8 @@ Per-unit keys make day 2 cheap to validate: a plugin only needs `catalog-<plugin
    anything if they are missing. Helm image extraction runs as part of the shared render step, so
    the plugin units are resolved exactly as in `build`.
 1. The upstream → LZ oc-mirror step is skipped. The plugin's `cluster-resources` come from the
-   cache metadata, already named per unit, with the host placeholder substituted, and are applied
-   in the same single MCO rollout as today.
+   cache metadata, named `*-plugin-<name>` as `mirror_plugin.yaml` names them, with the host
+   placeholder substituted, and are applied in the same single MCO rollout as today.
 1. Quay Enterprise seeding reads from the cache (see
    [Day 2: Quay Enterprise seeding](#day-2-quay-enterprise-seeding)), with a per-run
    registries.conf.
@@ -849,8 +853,9 @@ sharing the cache rely on. Everything a build tags is keyed instead (see
 **Keying OCP per channel range.** Bootstrap and `sync.sh` mirror different ranges, so the same
 enclave and config would produce different keys depending on the entry point.
 
-**Switching modes on an existing installation.** Object names differ between modes, and moving
-between them would need a migration of IDMS/ITMS, CatalogSources and LZ redirection.
+**Switching modes on an existing installation.** The mirror entries, CatalogSource images and LZ
+redirection all point at a different registry in each mode, so moving between modes would need
+re-pointing all of them, as for a cache endpoint change.
 
 **Following cache endpoint changes on sync.** Re-applying only the required units' IDMS/ITMS
 leaves units no longer required, but kept on the cluster, pointing at the previous endpoint, and
