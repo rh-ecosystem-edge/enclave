@@ -78,8 +78,10 @@ to deploy and operate disconnected clusters from a registry they own instead
 A **mirroring unit** (or unit) is the smallest piece of cache content that enclave builds, keys
 and validates on its own. Each unit is one oc-mirror imageset with its own cache key, metadata
 image and cluster resources (IDMS/ITMS, CatalogSources). The content of a config is split into
-units so that a config change only affects the units whose content it changes. See
-[Mirroring units](#mirroring-units) for the full list.
+units so that a config change only affects the units whose content it changes. A unit is defined
+by a filter, and oc-mirror resolves it into images (see
+[Resolving a unit's images](#resolving-a-units-images)). See [Mirroring units](#mirroring-units)
+for the full list.
 
 Examples:
 
@@ -95,9 +97,12 @@ Examples:
 ### Prerequisite
 
 Stable, y-stream agnostic CatalogSource names
-([enclave PR #977](https://github.com/rh-ecosystem-edge/enclave/pull/977)). Open point: oc-mirror
-v2 appears to append the source tag to generated CatalogSource names (`cs-<targetCatalog>-<tag>`);
-it must be confirmed that fresh installations get `cs-<index>`, and not only migrated clusters.
+([enclave PR #977](https://github.com/rh-ecosystem-edge/enclave/pull/977), merged). oc-mirror v2
+names the CatalogSources it generates `cs-<targetCatalog>-<tag>` (e.g.
+`cs-redhat-operator-index-v4-20`); LZ mode applies them and creates a stable alias `cs-<index>`
+with the same spec, which Subscriptions use (`create_stable_catalog_source_aliases.yaml`). Cache
+mode uses the stable names directly (see
+[Outputs stored in the cache](#outputs-stored-in-the-cache)).
 
 ### Consumption model
 
@@ -258,8 +263,9 @@ ships (no new binary such as `oras` on the LZ), and any registry accepts it. It 
 - the canonical unit imageset and resolved catalog index digests (traceability)
 - for `ocp-<version>` units, the release image digest (see
   [Landing Zone pulls](#landing-zone-pulls))
-- the list of images the unit mirrored (used by [Metadata selection](#metadata-selection), and
-  keeps a later per-unit pruning possible)
+- the list of images the unit mirrored, read from oc-mirror's resolution (see
+  [Resolving a unit's images](#resolving-a-units-images)); used by
+  [Metadata selection](#metadata-selection), and keeps a later per-unit pruning possible
 - oc-mirror `cluster-resources/` (IDMS, ITMS, CatalogSources, signature ConfigMaps) that enclave
   needs to configure the cluster, already named per unit (see
   [Outputs stored in the cache](#outputs-stored-in-the-cache))
@@ -292,6 +298,8 @@ Catalogs are referenced by floating tags (`redhat-operator-index:v4.20`). Once t
 it defines what those tags point to for every installation using it:
 
 - The key hashes the tag as written. Computing it never resolves the tag upstream.
+- Packages listed without channels float the same way: they resolve to the head of their default
+  channel at build time.
 - The dry-run validates against the index stored in the cache (the catalog of the metadata being
   checked, see [Metadata selection](#metadata-selection)), not the current upstream index,
   otherwise any newer upstream publish would report missing images.
@@ -342,13 +350,13 @@ selecting it:
 
 #### Mirroring units
 
-| Unit | Content | Today produced by |
-|---|---|---|
-| `ocp-<version>` | one OpenShift release payload (+ graph data) | core imageset `platform` |
-| `catalog-core` | core operators from `redhat-operator-index` | core imageset `operators` |
-| `catalog-<plugin>` | operators of one plugin from its intermediate index `redhat-operator-index-<plugin>` / `mirror-certified-operators-<plugin>` | core imageset (enabled plugins) and `mirror_plugin.yaml` (addon) |
-| `images-core` | core `additionalImages` / `blockedImages` (ubi, argocd, vault) | core imageset template |
-| `images-<plugin>` | plugin `additionalImages` incl. Helm-extracted images | `mirror_plugin.yaml` |
+| Unit | Content | Defined by | Today produced by |
+|---|---|---|---|
+| `ocp-<version>` | one OpenShift release payload (+ graph data) | one `openshift_versions` entry (`defaults/platforms.yaml`, config) as a `platform.channels` entry with `minVersion` = `maxVersion` | core imageset `platform` |
+| `catalog-core` | core operators from `redhat-operator-index` | catalog `rh_operator_catalog:rh_operator_catalog_version` (`defaults/catalogs.yaml`); packages, channels and version ranges from `operators` (`defaults/operators.yaml`), incl. `csvNames` and `extraMirrorPackages` | core imageset `operators`, key `core` of `catalog_operators` (`02-mirror.yaml`) |
+| `catalog-<plugin>` | operators of one plugin from its intermediate index `redhat-operator-index-<plugin>` / `mirror-certified-operators-<plugin>` | `operators` and `catalog` of `plugins/<plugin>/plugin.yaml` | core imageset (enabled plugins, `collect_core_plugin_operators.yaml`) and `mirror_plugin.yaml` (`make deploy-plugin`) |
+| `images-core` | core `additionalImages` / `blockedImages` (ubi, argocd, vault) | hardcoded in `templates/imagesetconfiguration.yaml.j2` | core imageset template |
+| `images-<plugin>` | plugin `additionalImages` incl. Helm-extracted images | `additionalImages` / `blockedImages` of `plugins/<plugin>/plugin.yaml` plus `helm_extract_images.yaml` | `mirror_plugin.yaml` |
 
 The plugin catalog target name is the same in the core and addon paths, so a plugin unit means the
 same thing regardless of which path mirrors it.
@@ -361,6 +369,46 @@ keeps its single combined run.
 OCP releases are keyed per release, not per channel range: bootstrap (`fresh=true`) mirrors only
 the default version while `sync.sh` (`fresh=false`) mirrors the `openshift_versions` range, so the
 same enclave and config render different core imagesets depending on the entry point.
+
+#### Resolving a unit's images
+
+A unit is defined by a filter, known before any mirroring: the catalog and the package, channel
+and version ranges (or release versions, or image names) above. Its cache key hashes that
+definition. The images that belong to it are only known once oc-mirror resolves the filter
+against the source:
+
+- **Catalog units:** oc-mirror reads the index image at its tag, keeps the bundles of each package
+  inside the channel and version range, collects each bundle image and its `relatedImages`
+  (operator and operand images), and builds a **filtered index**: a catalog image whose
+  file-based catalog (`/configs`) only contains the selected packages, channels and bundles. It
+  pushes the filtered index to `targetCatalog`, which is what the CatalogSource serves. The
+  filtered index is the source index image plus two layers: a whiteout removing `/configs` and
+  the filtered `/configs`. The source layers stay in the image as shared blobs, so reading the
+  filtered catalog from the image must apply the whiteout (extracting `/configs` with
+  `oc image extract` returns the union of both).
+- **OCP units:** oc-mirror resolves the release through the update graph to the release image
+  and every component image of the payload, by digest, plus the graph image.
+- **Image units:** the listed images, as written.
+
+The unit's image list stored in its metadata is read from that resolution: for catalog units, the
+bundle images and `relatedImages` of the filtered catalog that oc-mirror leaves in its workspace
+(`working-dir/operator-catalogs/<catalog>/<source digest>/filtered-catalogs/<filter hash>/`),
+minus `blockedImages`. oc-mirror names that directory after the filter only, not the source
+digest, which matches keying units by their definition. As a reference, `catalog-core` for the
+current 4.20 content resolves to 34 bundles and 564 images in 300 repositories, and
+`ocp-4.20.32` to 191 release images.
+
+Packages listed without channels (e.g. `kubevirt-hyperconverged`, an `extraMirrorPackages` entry of
+`metallb-operator`) resolve to the head of their default channel, so they move with upstream on
+every build, like floating tags (see [Validity](#validity-fingerprint--dry-run)).
+
+In LZ mode the source and destination of each catalog are the same repository and tag in the LZ
+mirror: the skopeo step copies the full upstream index there, and oc-mirror then pushes the
+filtered index over it. Any oc-mirror run that does not repeat the skopeo copy first (e.g. an
+Ansible retry after a partial run) reads the already filtered index as its source, and stacks a
+second whiteout and filtered layer pair on top. In cache mode
+the source is the upstream index and the destination a keyed tag, so the source is never
+overwritten.
 
 #### Key contents
 
@@ -412,12 +460,14 @@ Object names:
   as they are; the `*-plugin-<name>` renaming that `mirror_plugin.yaml` does today after each run
   is not needed in cache mode. Bootstrap and day-2 plugins get the same names, which is not the
   case today (bootstrap plugins land in the core IDMS).
-- **CatalogSources** follow the stable convention from enclave PR #977: `cs-<index>` and
-  `cs-<index>-<plugin>`, derived only from the target catalog name. `cache.sh build` uses the same
-  templates, so it produces the same names and enclave keeps building them by convention. A
-  catalog version bump does not rename them. Their `image:` points at the catalog tagged with the
-  selected key (see [Metadata selection](#metadata-selection)); a new key updates the image in
-  place, not the name.
+- **CatalogSources** use the stable names from enclave PR #977: `cs-<index>` and
+  `cs-<index>-<plugin>`, derived only from the target catalog name. With keyed catalog tags,
+  oc-mirror would generate `cs-<targetCatalog>-<key>`, a name that changes with every key, so
+  `cache.sh build` stores the CatalogSource renamed to its stable name, and cache mode applies only
+  that object (no versioned CatalogSource plus alias, as LZ mode does). A catalog version bump
+  does not rename them. Their `image:` points at the catalog tagged with the selected key (see
+  [Metadata selection](#metadata-selection)); a new key updates the image in place, not the
+  name.
 
 Object names differ between LZ mode and cache mode; this is fine because modes are never mixed
 (see [Consumption model](#consumption-model)).
@@ -640,6 +690,7 @@ mode stays unchanged in this design; porting each difference is a separate chang
 | TLS verification | `tls-verify=false` for source and destination | verified against the cache CA and the system trust (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | needs TLS trust for the LZ mirror |
 | Source policy | no `mirrorSourcePolicy` or `blocked`: a mirror miss silently falls back to upstream when it is reachable | fail closed: `NeverContactSource` on the cluster, `blocked = true` on the LZ (see [Fail-closed source policy](#fail-closed-source-policy)) | quick fix; a latent bug today, tracked in [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 | Agent ISO registries.conf | rendered by the agent installer from install-config `imageDigestSources`, without `blocked` | `mirror/registries.conf` supplied by `bootstrap.sh`, generated from the unit IDMS/ITMS with `blocked = true` (see [Fail-closed source policy](#fail-closed-source-policy)) | part of [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
+| Images of enabled plugins (`additionalImages`, Helm-extracted) | not mirrored at bootstrap; only `make deploy-plugin` mirrors them | `images-<plugin>` built by `cache.sh build` and validated for every enabled plugin | a latent bug today, tracked in [OSAC-7046](https://redhat.atlassian.net/browse/OSAC-7046) |
 
 Not a difference: the bootstrap host cannot fail closed in either mode (see
 [Fail-closed source policy](#fail-closed-source-policy)).
