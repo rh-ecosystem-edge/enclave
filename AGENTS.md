@@ -117,7 +117,8 @@ artifact map and step-by-step recipes.
 - Declarative operator and registry requirements in the descriptor
 - Boot plugins (`plugins/boot/<name>/`) follow a separate contract (`schemas/boot-plugin.yaml`, hook
   files `tasks/{validate,setup,boot,post-install,cleanup}.yaml`, helper task files in `tasks/lib/`),
-  checked by `enclave plugins validate --type boot`; see `docs/design/boot-plugins.md`
+  checked by `enclave plugins validate --type boot`; see `docs/BOOT_PLUGIN_ARCHITECTURE.md` (and
+  `docs/design/boot-plugins.md` for the design rationale)
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
 

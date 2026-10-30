@@ -1403,7 +1403,7 @@ lvmsConfig:
 
 ## `config/plugins/boot/ironic.yaml`
 
-Configuration of the `ironic` boot plugin (`plugins/boot/ironic/`), which boots `agent_hosts` from the agent ISO through Redfish virtual media. Required when any `agent_hosts` entry is booted by `ironic` (the default [`bootPlugin`](#bootplugin)). The settings are validated against `plugins/boot/ironic/schemas/config.yaml`.
+Configuration of the `ironic` boot plugin (`plugins/boot/ironic/`), which boots `agent_hosts` from the agent ISO through Redfish virtual media. Required when any `agent_hosts` entry is booted by `ironic` (the default [`bootPlugin`](#bootplugin)). The settings are validated against `plugins/boot/ironic/schemas/config.yaml`. See [Boot Plugin Architecture](BOOT_PLUGIN_ARCHITECTURE.md) for how the plugin and its drivers work.
 
 Copy from the example template before editing:
 
