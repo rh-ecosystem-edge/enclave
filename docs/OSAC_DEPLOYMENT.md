@@ -129,7 +129,7 @@ The `make deploy-plugin PLUGIN=osac` command runs the full plugin lifecycle:
 
 1. **pre-validate** — checks Keycloak ready, AAP CRDs registered, license file exists
 2. **mirror** — mirrors images (disconnected environments only)
-3. **post-operators** — creates osac namespace, Keycloak realm/client, PostgreSQL, secrets, the OpenBao secret store in `osac-infra` (waits for bootstrap to complete), and the `osac-kafka` Kafka cluster (waits for it to be Ready)
+3. **post-operators** — creates osac namespace, the Keycloak realm (roles, client scopes, clients; `osac-controller` tokens carry the `osac-api` audience OpenBao requires), PostgreSQL, secrets, the OpenBao secret store in `osac-infra` (waits for bootstrap to complete), and the `osac-kafka` Kafka cluster (waits for it to be Ready)
 4. **helm deploy** — installs the OSAC Helm chart
 5. **deploy** — waits for AAP, creates access token, patches the OSAC operator
 6. **post-validate** — verifies all components are healthy
@@ -203,8 +203,10 @@ runs the following checks in order:
    being fully rolled out; on the AAP gateway being reachable as admin (per the
    osac-installer "Accessing AAP" flow: resolve the route, read the admin
    password, and make an authenticated request); on the AAP controller API
-   answering JSON at `/api/controller/v2/ping/`; and on every OSAC operator's
-   `OSAC_AAP_URL` matching that controller base (`<route>/api/controller`).
+   answering JSON at `/api/controller/v2/ping/`; on every OSAC operator's
+   `OSAC_AAP_URL` matching that controller base (`<route>/api/controller`); and
+   on an `osac-controller` token having the `osac` realm issuer and the
+   `osac-api` audience.
 3. **Setup & login** — resolves the fulfillment-api route, extracts the `osac` CLI
    from the deployed image, and logs in with the controller credentials
    (`fulfillment-controller-credentials`, OAuth credentials flow).

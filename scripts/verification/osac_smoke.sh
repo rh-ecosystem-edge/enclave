@@ -9,7 +9,8 @@
 # Sections (each printed under a "===== N. Title =====" banner in the log):
 #   1. Debug info — dump cluster and OSAC namespace state up front.
 #   2. Deployment health checks — gate on core deployments, the AAP gateway, the
-#      AAP controller API contract, and the operators' OSAC_AAP_URL.
+#      AAP controller API contract, the operators' OSAC_AAP_URL, and the
+#      osac-controller token issuer/audience contract OpenBao requires.
 #   3. Setup & login — resolve the route, extract the osac CLI from the deployed
 #      image, read the controller credentials, and log in.
 #   4. API read checks — confirm identity and perform read calls end-to-end.
@@ -283,6 +284,71 @@ dump_realm_user_count() {
     return 0
 }
 
+# Check osac-controller token has the osac realm iss and osac-api aud (OpenBao needs both).
+check_controller_token_contract() {
+    local kc_ns kc_route kc_ip realm issuer cid secret token \
+        payload iss iss_ok aud_ok xtrace=""
+    # Tracing stays off until the token, payload and issuer host are no longer used.
+    case $- in *x*) xtrace=1; set +x ;; esac
+    kc_ns="${KEYCLOAK_NAMESPACE:-keycloak}"
+    realm="${OSAC_KEYCLOAK_REALM:-osac}"
+    kc_route="$(oc -n "${kc_ns}" get route -o jsonpath='{.items[0].spec.host}' 2>/dev/null)"
+    kc_ip="$(awk '/[[:space:]].*\.apps\./ {print $1; exit}' /etc/hosts)"
+    if [ -z "${kc_route}" ] || [ -z "${kc_ip}" ]; then
+        [ -n "${xtrace}" ] && set -x
+        error "keycloak route/ingress IP not found; cannot validate controller token contract"
+        return 1
+    fi
+    issuer="https://${kc_route}/realms/${realm}"
+    cid="$(oc -n "${NS}" get secret fulfillment-controller-credentials \
+        -o jsonpath='{.data.client-id}' 2>/dev/null | base64 -d)"
+    secret="$(oc -n "${NS}" get secret fulfillment-controller-credentials \
+        -o jsonpath='{.data.client-secret}' 2>/dev/null | base64 -d)"
+    if [ -z "${cid}" ] || [ -z "${secret}" ]; then
+        [ -n "${xtrace}" ] && set -x
+        error "could not read fulfillment-controller-credentials in namespace ${NS}"
+        return 1
+    fi
+    token="$(curl -sk --connect-timeout 10 --max-time 30 \
+        --resolve "${kc_route}:443:${kc_ip}" \
+        "${issuer}/protocol/openid-connect/token" \
+        -d grant_type=client_credentials -d "client_id=${cid}" \
+        --data-urlencode "client_secret=${secret}" \
+        | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')"
+    if [ -z "${token}" ]; then
+        [ -n "${xtrace}" ] && set -x
+        error "could not obtain an osac-controller token"
+        return 1
+    fi
+    # Decode JWT payload: base64url -> padded base64.
+    payload="$(printf '%s' "${token}" | cut -d. -f2 | tr '_-' '/+')"
+    case $(( ${#payload} % 4 )) in 2) payload="${payload}==" ;; 3) payload="${payload}=" ;; esac
+    payload="$(printf '%s' "${payload}" | base64 -d 2>/dev/null)"
+    if [ -z "${payload}" ]; then
+        [ -n "${xtrace}" ] && set -x
+        error "could not decode the osac-controller token payload"
+        return 1
+    fi
+    iss="$(printf '%s' "${payload}" | sed -n 's/.*"iss":"\([^"]*\)".*/\1/p')"
+    iss_ok=0
+    [ "${iss}" = "${issuer}" ] && iss_ok=1
+    # aud may be a string or an array.
+    aud_ok=0
+    printf '%s' "${payload}" | grep -Eq '"aud":("osac-api"|\[[^]]*"osac-api")' && aud_ok=1
+    [ -n "${xtrace}" ] && set -x
+    if [ "${iss_ok}" != 1 ]; then
+        error "controller token issuer is not the '${realm}' realm issuer"
+        return 1
+    fi
+    info "controller token issuer matches realm '${realm}'"
+    if [ "${aud_ok}" != 1 ]; then
+        error "controller token audience does not include 'osac-api' (OpenBao bound_audiences check would fail)"
+        return 1
+    fi
+    info "controller token audience includes 'osac-api'"
+    return 0
+}
+
 # Exercise tenant provisioning through the operator: create a namespace and a
 # Tenant CR (with a StorageClass labeled for it), wait for the operator to mark
 # it Ready, then tear everything down. Creates and deletes cluster-scoped
@@ -393,6 +459,12 @@ fi
 info "Checking OSAC operator AAP controller URL"
 if ! check_operator_aap_url; then
     error "OSAC operator AAP URL check failed; aborting smoke test."
+    exit 1
+fi
+
+info "Checking osac-controller token issuer/audience contract"
+if ! check_controller_token_contract; then
+    error "osac-controller token contract check failed; aborting smoke test."
     exit 1
 fi
 

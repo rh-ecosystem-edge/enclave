@@ -1,0 +1,38 @@
+---
+# Reusable task: create a Keycloak realm role (idempotent).
+#
+# Required variables (set by caller via include_tasks vars):
+#   _kc_role — dict with keys: name, description
+#
+# Required variables (in scope from post-operators.yaml):
+#   _osac_keycloak_hostname, _osac_kc_token, osac_keycloak_realm,
+#   osac_keycloak_validate_certs, _osac_keycloak_ca_path
+
+- name: "{{ _kc_role.name }} | Check if realm role exists"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/roles/{{ _kc_role.name | urlencode }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [200, 404]
+  register: __r_kc_realm_role_check
+  no_log: true
+
+- name: "{{ _kc_role.name }} | Create realm role"
+  ansible.builtin.uri:
+    url: "https://{{ _osac_keycloak_hostname }}/admin/realms/{{ osac_keycloak_realm }}/roles"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ _osac_kc_token }}"
+      Content-Type: application/json
+    body_format: json
+    body:
+      name: "{{ _kc_role.name }}"
+      description: "{{ _kc_role.description }}"
+    validate_certs: "{{ osac_keycloak_validate_certs }}"
+    ca_path: "{{ _osac_keycloak_ca_path }}"
+    status_code: [201]
+  when: __r_kc_realm_role_check.status == 404
+  no_log: true

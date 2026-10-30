@@ -51,6 +51,18 @@ properties:
   osac_keycloak_validate_certs:
     type: boolean
     description: Whether to validate TLS certificates for Keycloak API calls.
+  osac_keycloak_realm_roles:
+    type: array
+    description: Keycloak realm roles to create in the osac realm.
+    items:
+      type: object
+      required: [name, description]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        description:
+          type: string
   osac_keycloak_client_scopes:
     type: array
     description: >-

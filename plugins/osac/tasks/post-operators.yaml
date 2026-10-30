@@ -195,6 +195,18 @@
   no_log: true
 
 # =====================================================================
+# 7a. Create OSAC realm roles (tenant/identity contract)
+# =====================================================================
+
+- name: Create OSAC realm roles
+  ansible.builtin.include_tasks: keycloak_realm_role.yaml
+  vars:
+    _kc_role: "{{ item }}"
+  loop: "{{ osac_keycloak_realm_roles }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# =====================================================================
 # 7b. Create OSAC-specific client scopes (groups, username, osac-api)
 # =====================================================================
 
@@ -413,6 +425,9 @@
   ansible.builtin.include_tasks: keycloak_client.yaml
   vars:
     _kc_setup_client_id: "{{ osac_keycloak_client_id }}"
+    # OpenBao's lifecycle role requires the osac-api audience.
+    _kc_setup_default_scopes:
+      - osac-api
 
 # =====================================================================
 # 8b. Create and configure osac-admin client (idempotent)
