@@ -109,7 +109,7 @@ Stable, y-stream agnostic CatalogSource names
 names the CatalogSources it generates `cs-<targetCatalog>-<tag>` (e.g.
 `cs-redhat-operator-index-v4-20`); LZ mode applies them and creates a stable alias `cs-<index>`
 with the same spec, which Subscriptions use (`create_stable_catalog_source_aliases.yaml`). Cache
-mode uses the stable names directly (see
+mode produces the same versioned CatalogSources and reuses the same alias step (see
 [Outputs stored in the cache](#outputs-stored-in-the-cache)).
 
 ### Consumption model
@@ -468,14 +468,16 @@ Object names:
   as they are; the `*-plugin-<name>` renaming that `mirror_plugin.yaml` does today after each run
   is not needed in cache mode. Bootstrap and day-2 plugins get the same names, which is not the
   case today (bootstrap plugins land in the core IDMS).
-- **CatalogSources** use the stable names from enclave PR #977: `cs-<index>` and
-  `cs-<index>-<plugin>`, derived only from the target catalog name. With keyed catalog tags,
-  oc-mirror would generate `cs-<targetCatalog>-<key>`, a name that changes with every key, so
-  `cache.sh build` stores the CatalogSource renamed to its stable name, and cache mode applies only
-  that object (no versioned CatalogSource plus alias, as LZ mode does). A catalog version bump
-  does not rename them. Their `image:` points at the catalog tagged with the selected key (see
-  [Metadata selection](#metadata-selection)); a new key updates the image in place, not the
-  name.
+- **CatalogSources** are the same objects as in LZ mode: the versioned
+  `cs-<targetCatalog>-v<y>` (e.g. `cs-redhat-operator-index-v4-20`), followed by the stable alias
+  `cs-<index>` / `cs-<index>-<plugin>` that `create_stable_catalog_source_aliases.yaml` creates
+  from it (enclave PR #977), and that Subscriptions use. oc-mirror names the CatalogSource after
+  the destination tag, which in cache mode is the key, so `cache.sh build` stores it renamed to
+  the name LZ mode gets, derived from the catalog source tag. Only its `image:` differs: it points
+  at the catalog tagged with the selected key (see [Metadata selection](#metadata-selection)).
+  A new key within a y-stream updates the versioned CatalogSource in place, and the alias step
+  copies it. A y-stream change (e.g. catalog `v4.20` to `v4.21`) adds `cs-<index>-v4-21`, the
+  alias switches to it at `sync.sh`, and `cs-<index>-v4-20` is left on the cluster, as in LZ mode.
 
 Object names differ between LZ mode and cache mode; this is fine because modes are never mixed
 (see [Consumption model](#consumption-model)).
