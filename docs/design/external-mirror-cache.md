@@ -60,6 +60,12 @@ to deploy and operate disconnected clusters from a registry they own instead
 - **Phase 02 as "build a local cache, then consume it".** One model for both modes, where LZ mode
   becomes a cache on the LZ. It changes phase 02 (per-unit runs, new object names) and needs a
   migration for existing installations to avoid duplicate IDMS/ITMS and extra MCO rollouts.
+- **Changing the cache endpoint of an installation.** The endpoint is embedded in the units'
+  IDMS/ITMS and CatalogSources, the installer-created `image-digest-mirror` IDMS (not managed by
+  enclave), the cluster pull secret and CA trust, and on the LZ in the persistent registries.conf
+  drop-in, the containers CA trust and the authfile. Supporting it would mean re-pointing all of
+  them, including the IDMS/ITMS of units no longer required but kept on the cluster, after
+  checking that the new endpoint holds their content.
 - **Long-lived CI cache host.** It avoids per-run restores, but a per-run build is still needed for
   key misses. To be revisited after measuring restore times.
 - **Strict CI misses.** Failing PRs that miss without touching mirror inputs (which signals a
@@ -104,26 +110,25 @@ When a cache is configured it is an **external, runtime dependency**:
 
 When no cache is configured, behaviour is unchanged.
 
-**No mode switching.** The mode is fixed at bootstrap: an installation using an external cache
-always uses it, and an installation using the LZ mirror never moves to a cache. `sync.sh`,
-`upgrade.sh` and `deploy-plugin` refuse to run if the configured mode differs from the one the
-installation was bootstrapped with.
+**No mode or endpoint switching.** The mode is fixed at bootstrap: an installation using an
+external cache always uses it, and an installation using the LZ mirror never moves to a cache. In
+cache mode the cache endpoint (host:port and prefix) is fixed too. `sync.sh`, `upgrade.sh` and
+`deploy-plugin` refuse to run if the configured mode or endpoint differs from the one the
+installation was bootstrapped with. Relocating the registry behind a cache is possible as long as
+it keeps the same endpoint (e.g. the same DNS name) and its content; changing the endpoint is a
+non-objective (see [Non-objectives](#non-objectives)).
 
-The mode is recorded on the LZ following the `migrationTasksFilePath` pattern: a state file whose
-path is a default in `defaults/deployment.yaml` (e.g.
-`mirrorModeFilePath: "{{ workingDir }}/state/mirror-mode"`, content `lz` or `cache`), overridable
-in config and covered by the schema.
+The mode and endpoint are recorded on the LZ following the `migrationTasksFilePath` pattern: a
+state file whose path is a default in `defaults/deployment.yaml` (e.g.
+`mirrorModeFilePath: "{{ workingDir }}/state/mirror-mode"`, content `lz`, or `cache` plus the
+endpoint), overridable in config and covered by the schema.
 
 - `bootstrap.sh` writes it in an early step (before any mirroring), not at the end like the
-  migration control file, so a failed bootstrap that is re-run with a different mode is caught
-  too. If the file exists with a different mode, bootstrap fails.
-- `sync.sh`, `upgrade.sh` and `deploy-plugin` compare it with the configured mode and exit before
-  changing anything on mismatch.
+  migration control file, so a failed bootstrap that is re-run with a different mode or endpoint
+  is caught too. If the file exists with a different mode or endpoint, bootstrap fails.
+- `sync.sh`, `upgrade.sh` and `deploy-plugin` compare it with the configured mode and endpoint and
+  exit before changing anything on mismatch.
 - A missing file means an installation that predates cache mode: treated as `lz`.
-- Only the mode is recorded, not the cache endpoint. Every flow validates the cache it is pointed
-  at, so moving a cache (new hostname, new registry) is allowed: the next `sync.sh` validates it
-  and re-applies the units' IDMS/ITMS, updated in place since object names do not depend on the
-  host.
 
 ### Configuration
 
@@ -528,7 +533,8 @@ pulls silently bypass the cache.
   registries.conf is rendered from it. `bootstrap.sh` relies instead on the fail-closed dry-run
   it runs for every required unit, including `ocp-<version>`, before generating the ISO. Known
   limitation: an image removed from the cache during bootstrap can be pulled from upstream by the
-  bootstrap host at a site with egress.
+  bootstrap host at a site with egress. Sites that require strictly cache-only pulls block the
+  bootstrap host's egress to upstream registries.
 - **Masters and installed cluster:** the installer also creates an `image-digest-mirror` IDMS from
   `imageDigestSources`, without a policy. MCO merges all IDMS per source and blocks a source if
   any of them sets `NeverContactSource`, and the bootstrap machine-config controller renders from
@@ -737,6 +743,8 @@ images (no OCP payload, no hardware, minutes per run), run on PRs touching the c
 - host alias / prefix → placeholder substituted correctly
 - wrong CA or credentials → clear error, not an oc-mirror failure
 - LZ release lookups in cache mode → no request to upstream registries
+- configured cache endpoint differs from the recorded one → `sync.sh`, `upgrade.sh` and
+  `deploy-plugin` fail before changing anything
 - image missing from the cache while upstream is reachable → dry-run fails
 
 ## Alternatives considered
@@ -777,6 +785,11 @@ enclave and config would produce different keys depending on the entry point.
 
 **Switching modes on an existing installation.** Object names differ between modes, and moving
 between them would need a migration of IDMS/ITMS, CatalogSources and LZ redirection.
+
+**Following cache endpoint changes on sync.** Re-applying only the required units' IDMS/ITMS
+leaves units no longer required, but kept on the cluster, pointing at the previous endpoint, and
+with `NeverContactSource` their pulls fail once it is retired. Doing it safely needs the work
+listed in [Non-objectives](#non-objectives), for an operation a stable registry DNS name avoids.
 
 **Running the CI cache inside the LZ VM.** It would avoid nothing (the LZ is a VM anyway), needs a
 disk passthrough into the guest, is less representative of a customer cache, and LZ
