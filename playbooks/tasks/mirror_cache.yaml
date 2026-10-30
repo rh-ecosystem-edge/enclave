@@ -46,6 +46,7 @@
   block:
     - name: Run oc-mirror to cache registry
       ansible.builtin.shell: |
+        echo "===== oc-mirror attempt started at $(date -Is) =====" >> {{ _oc_mirror_cache_log }}
         {{ workingDir }}/bin/oc-mirror --v2 \
           --log-level {{ ocMirrorLogLevel }} \
           --authfile {{ workingDir }}/config/pull-secret-cache.json \
@@ -57,7 +58,7 @@
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
           docker://{{ dc_cache_address }} \
-          > {{ _oc_mirror_cache_log }} 2>&1
+          >> {{ _oc_mirror_cache_log }} 2>&1
       retries: "{{ ocMirrorCacheAnsibleRetries }}"
       delay: "{{ ocMirrorAnsibleDelay }}"
       register: __r_oc_mirror_cache

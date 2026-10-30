@@ -108,6 +108,7 @@
   block:
     - name: Run oc-mirror to mirror registry
       ansible.builtin.shell: |
+        echo "===== oc-mirror attempt started at $(date -Is) =====" >> {{ _oc_mirror_log }}
         {{ workingDir }}/bin/oc-mirror --v2 \
           {{ '--dry-run' if (mirror_dry_run | default(false) | bool) else '' }} \
           --log-level {{ ocMirrorLogLevel }} \
@@ -122,7 +123,7 @@
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
           docker://{{ quayHostname }}:8443 \
-          > {{ _oc_mirror_log }} 2>&1
+          >> {{ _oc_mirror_log }} 2>&1
       retries: "{{ 1 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleRetries }}"
       delay: "{{ 0 if (mirror_dry_run | default(false) | bool) else ocMirrorAnsibleDelay }}"
       register: r_oc_mirror
