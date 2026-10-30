@@ -252,12 +252,13 @@ Applying is decoupled from mirroring:
   cache being additive and with LZ mode, where sync never removes CatalogSources or IDMS either.
   Removing a mirror entry still in use (installed operator, node on an older release) would break
   pulls; removal belongs with pruning (see [Non-objectives](#non-objectives)).
-- In cache mode sync also applies the units' IDMS/ITMS. Today, in LZ mode, the LZ IDMS/ITMS only
-  reach the cluster through the ABI manifests at install; repositories added later (e.g. a newly
-  enabled plugin) are covered only by the Quay Enterprise IDMS/ITMS that `quay-disconnected`
-  applies on every sync. That works, but in cache mode the cache must be a mirror for every
-  repository, not only the ones present at install. Applying an unchanged IDMS does not trigger an
-  MCO rollout.
+- In cache mode sync also applies `idms-oc-mirror` / `itms-oc-mirror`. Today, in LZ mode, sync
+  applies only CatalogSources and signatures, and the LZ IDMS/ITMS only reach the cluster through
+  the ABI manifests at install; repositories added later (e.g. a newly enabled plugin) are covered
+  by the IDMS/ITMS that `quay-disconnected` applies on every sync, mapping the same sources to
+  Quay Enterprise, which is seeded from the LZ mirror. In cache mode the cache must be a mirror
+  for every repository, not only the ones present at install. Applying an unchanged IDMS does not
+  trigger an MCO rollout.
 - In cache mode the materialized IDMS/ITMS set `mirrorSourcePolicy: NeverContactSource` on every
   source (see [Fail-closed source policy](#fail-closed-source-policy)). The cache is a runtime
   dependency, so not falling back when it is unavailable is consistent.
@@ -708,7 +709,7 @@ separate change.
 | Agent ISO registries.conf | rendered by the agent installer from install-config `imageDigestSources`, without `blocked` | `mirror/registries.conf` supplied by `bootstrap.sh`, generated from the unit IDMS/ITMS with `blocked = true` (see [Fail-closed source policy](#fail-closed-source-policy)) | part of [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 | Images of enabled plugins (`additionalImages`, Helm-extracted) | not mirrored at bootstrap; only `make deploy-plugin` mirrors them | `images-<plugin>` built by `cache.sh build` and validated for every enabled plugin | a latent bug today, tracked in [OSAC-7046](https://redhat.atlassian.net/browse/OSAC-7046) |
 | Catalog destination tags | the source tag (`v4.20`); the filtered index overwrites the full copy | a tag derived from the unit key, so builds for different configs never overwrite each other (see [Metadata selection](#metadata-selection)) | not needed: an LZ mirror serves one installation |
-| IDMS/ITMS applied by `sync.sh` | only through the ABI manifests at install; later repositories are covered by the Quay Enterprise IDMS/ITMS | `sync.sh` applies the units' IDMS/ITMS, so the cache mirrors every repository (see [Applying cluster resources](#applying-cluster-resources)) | optional |
+| IDMS/ITMS applied by `sync.sh` | `sync.sh` applies only CatalogSources and signatures from the oc-mirror workspace (`mirror_registry_cluster_resources.yaml`); the LZ mirror IDMS/ITMS reach the cluster only through the ABI manifests at install and `make deploy-plugin`. Repositories added later still work because `quay-disconnected`, also run by `sync.sh`, applies IDMS/ITMS mapping the same sources to Quay Enterprise, seeded from the LZ mirror | `sync.sh` also applies `idms-oc-mirror` / `itms-oc-mirror`, so the cache mirrors every repository (see [Applying cluster resources](#applying-cluster-resources)) | optional |
 | oc-mirror runs | one combined run in phase 02 | one run per unit, for per-unit keys and metadata; internal, the cluster gets the same objects (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | see [Non-objectives](#non-objectives) (phase 02 as a local cache) |
 
 Not a difference: the bootstrap host cannot fail closed in either mode (see
