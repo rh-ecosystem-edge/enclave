@@ -18,7 +18,8 @@
     <emulator>/usr/libexec/qemu-kvm</emulator>
     <controller type='sata' index='0'/>
     <disk type='file' device='disk'>
-      <driver name='qemu' type='qcow2' cache='none'/>
+      <!-- writeback: use host page cache; honors guest flushes but unflushed data is lost on host crash - fine for these ephemeral, non-migrated VMs -->
+      <driver name='qemu' type='qcow2' cache='writeback'/>
       <source file='{{ pool_path }}/{{ vol_name }}'/>
       <target dev='vda' bus='virtio'/>
     </disk>
@@ -32,7 +33,7 @@
     </disk>
 {% if extra_disk_path %}
     <disk type='file' device='disk'>
-      <driver name='qemu' type='raw' cache='none'/>
+      <driver name='qemu' type='raw' cache='writeback'/>
       <source file='{{ extra_disk_path }}'/>
       <target dev='vdb' bus='virtio'/>
     </disk>
