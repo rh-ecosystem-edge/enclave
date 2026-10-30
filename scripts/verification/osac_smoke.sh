@@ -8,7 +8,8 @@
 #
 # Sections (each printed under a "===== N. Title =====" banner in the log):
 #   1. Debug info — dump cluster and OSAC namespace state up front.
-#   2. Deployment health checks — gate on core deployments and the AAP gateway.
+#   2. Deployment health checks — gate on core deployments, the AAP gateway, the
+#      AAP controller API contract, and the operators' OSAC_AAP_URL.
 #   3. Setup & login — resolve the route, extract the osac CLI from the deployed
 #      image, read the controller credentials, and log in.
 #   4. API read checks — confirm identity and perform read calls end-to-end.
@@ -136,23 +137,26 @@ assert_deployments_available() {
 
 # Verify AAP is accessible per the osac-installer "Accessing AAP" docs: resolve
 # its route, read the admin password, and make an authenticated request as admin.
-# Tracing is disabled around the password so it never reaches an xtrace.
+# Tracing is disabled from route resolution on so neither the password nor the
+# route host reaches an xtrace, and messages stay generic for the same reason.
 check_aap_access() {
-    local aap_name aap_route ip pw code xtrace=""
+    local aap_name aap_route ip pw code ping ping_meta ping_code ping_ctype
+    local ping_ok="" xtrace=""
     aap_name="$(oc -n "${NS}" get ansibleautomationplatform \
         -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
     if [ -z "${aap_name}" ]; then
         error "no AnsibleAutomationPlatform resource found in namespace ${NS}"
         return 1
     fi
+    case $- in *x*) xtrace=1; set +x ;; esac
     aap_route="$(oc -n "${NS}" get route "${aap_name}" \
         -o jsonpath='{.spec.host}' 2>/dev/null)"
     ip="$(awk '/[[:space:]].*\.apps\./ {print $1; exit}' /etc/hosts)"
     if [ -z "${aap_route}" ] || [ -z "${ip}" ]; then
-        error "AAP route or ingress IP not found (route=${aap_route:-<none>})"
+        [ -n "${xtrace}" ] && set -x
+        error "AAP route or ingress IP not found in namespace ${NS}"
         return 1
     fi
-    case $- in *x*) xtrace=1; set +x ;; esac
     pw="$(oc -n "${NS}" get secret osac-aap-admin-password \
         -o jsonpath='{.data.password}' 2>/dev/null | base64 -d)"
     if [ -z "${pw}" ]; then
@@ -163,12 +167,84 @@ check_aap_access() {
     code="$(curl -sk -u "admin:${pw}" --resolve "${aap_route}:443:${ip}" \
         -o /dev/null -w '%{http_code}' \
         "https://${aap_route}/api/gateway/v1/me/" 2>/dev/null)"
+    # The controller API base must answer JSON at /api/controller/v2/ping/;
+    # the gateway root serves HTML there, which misreports templates as missing.
+    # The last line carries status and content-type; the rest is the body.
+    ping="$(curl -sk --resolve "${aap_route}:443:${ip}" \
+        -w '\n%{http_code} %{content_type}' \
+        "https://${aap_route}/api/controller/v2/ping/" 2>/dev/null)"
+    ping_meta="${ping##*$'\n'}"
+    read -r ping_code ping_ctype <<< "${ping_meta}"
+    # Media types are case-insensitive.
+    ping_ctype="$(printf '%s' "${ping_ctype}" | tr '[:upper:]' '[:lower:]')"
+    # Same contract as the deploy preflight: a JSON object with a non-empty
+    # string version.
+    if printf '%s' "${ping%$'\n'*}" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+v = d.get("version") if isinstance(d, dict) else None
+sys.exit(0 if isinstance(v, str) and v else 1)' 2>/dev/null; then
+        ping_ok=1
+    fi
     [ -n "${xtrace}" ] && set -x
     if [ "${code}" != "200" ]; then
-        error "AAP admin access failed: GET /api/gateway/v1/me/ returned HTTP ${code:-<none>} (${aap_route})"
+        error "AAP admin access failed: GET /api/gateway/v1/me/ returned HTTP ${code:-<none>}"
         return 1
     fi
-    info "AAP accessible as admin (${aap_route})"
+    info "AAP accessible as admin"
+    case "${ping_code}:${ping_ctype}:${ping_ok}" in
+        # application/json with optional parameters only (not application/jsonp).
+        200:application/json:1 | 200:application/json\;*:1)
+            info "AAP controller API reachable (/api/controller/v2/ping/)" ;;
+        *)
+            error "AAP controller API contract failed: /api/controller/v2/ping/ returned HTTP ${ping_code:-<none>} with content-type '${ping_ctype:-<none>}' (expected 200 application/json with a non-empty version)"
+            return 1 ;;
+    esac
+    return 0
+}
+
+# Every OSAC operator must receive the AAP controller API base (ending in
+# /api/controller) derived from the AAP route, not the gateway root or another
+# host: the operator client appends /v2, so a wrong value queries the AAP UI or a
+# different controller and misreports job templates as missing.
+check_operator_aap_url() {
+    local aap_name route expected rows name entry url count=0 bad=0 xtrace=""
+    aap_name="$(oc -n "${NS}" get ansibleautomationplatform \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)"
+    # Trace off so the route host and operator URLs stay out of xtrace.
+    case $- in *x*) xtrace=1; set +x ;; *) xtrace="" ;; esac
+    route="$(oc -n "${NS}" get route "${aap_name}" \
+        -o jsonpath='{.spec.host}' 2>/dev/null)"
+    if [ -z "${route}" ]; then
+        [ -n "${xtrace}" ] && set -x
+        error "could not resolve AAP route in namespace ${NS}"
+        return 1
+    fi
+    expected="https://${route}/api/controller"
+    # Emit "<deploy>\tOSAC_AAP_URL=<value>" when the manager container declares the
+    # var (keeping the key so a declared-but-empty value is distinguishable from an
+    # absent one), or "<deploy>\t" when it does not.
+    rows="$(oc -n "${NS}" get deploy -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.template.spec.containers[?(@.name=="manager")].env[?(@.name=="OSAC_AAP_URL")]}{.name}{"="}{.value}{end}{"\n"}{end}' 2>/dev/null)"
+    while IFS=$'\t' read -r name entry; do
+        [ -z "${entry}" ] && continue  # OSAC_AAP_URL absent in the manager container
+        url="${entry#OSAC_AAP_URL=}"   # declared value, possibly empty
+        count=$((count + 1))
+        if [ "${url%/}" = "${expected}" ]; then
+            info "operator ${name}: OSAC_AAP_URL ok"
+        else
+            error "operator ${name}: OSAC_AAP_URL does not match the expected AAP controller API base"
+            bad=$((bad + 1))
+        fi
+    done <<EOF
+${rows}
+EOF
+    [ -n "${xtrace}" ] && set -x
+    if [ "${count}" -eq 0 ]; then
+        error "no OSAC operator Deployment declares OSAC_AAP_URL in its manager container (namespace ${NS})"
+        return 1
+    fi
+    [ "${bad}" -eq 0 ] || return 1
+    info "all ${count} OSAC operator(s) point at the expected AAP controller API base"
     return 0
 }
 
@@ -310,6 +386,13 @@ fi
 info "Checking AAP access"
 if ! check_aap_access; then
     error "AAP is not accessible; aborting smoke test."
+    exit 1
+fi
+
+# Verify each OSAC operator points at the AAP controller API base.
+info "Checking OSAC operator AAP controller URL"
+if ! check_operator_aap_url; then
+    error "OSAC operator AAP URL check failed; aborting smoke test."
     exit 1
 fi
 

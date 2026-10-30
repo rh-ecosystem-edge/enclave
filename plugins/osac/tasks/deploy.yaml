@@ -7,8 +7,9 @@
 #   2. Wait for AAP gateway deployment to be available
 #   3. Add AAP route hostname to /etc/hosts (connected mode)
 #   4. Create AAP personal access token via awx-manage
-#   5. Patch OSAC operator deployment with OSAC_AAP_URL env var
-#   6. Wait for OSAC operator rollout
+#   5. Verify the controller API contract through the AAP gateway
+#   6. Patch every OSAC operator deployment with the controller API base URL
+#   7. Wait for OSAC operator deployments to roll out
 
 # =====================================================================
 # 1. Check Helm release status
@@ -68,10 +69,14 @@
       Expected exactly one AAP gateway route in osac namespace
       (managed-by=aap-operator), found {{ __r_aap_route.resources | length }}.
 
-- name: Set AAP URL fact
+- name: Set AAP gateway URL fact
   ansible.builtin.set_fact:
-    _osac_aap_url: "https://{{ __r_aap_route.resources[0].spec.host }}"
+    _osac_aap_gateway_url: "https://{{ __r_aap_route.resources[0].spec.host }}"
     _osac_aap_route_host: "{{ __r_aap_route.resources[0].spec.host }}"
+
+- name: Set AAP controller API base URL fact
+  ansible.builtin.set_fact:
+    _osac_aap_controller_url: "{{ _osac_aap_gateway_url }}/api/controller"
 
 # In connected/libvirt deployments, dnsmasq only resolves a fixed set
 # of app hostnames. Dynamically created routes won't resolve by default.
@@ -111,8 +116,46 @@
   no_log: true
 
 # =====================================================================
-# 5. Store AAP credentials and patch OSAC operator deployment
+# 5. Validate the controller endpoint, store credentials, and patch operators
 # =====================================================================
+
+- name: Preflight AAP controller API ping endpoint
+  ansible.builtin.uri:
+    url: "{{ _osac_aap_controller_url }}/v2/ping/"
+    method: GET
+    headers:
+      Accept: application/json
+      Authorization: "Bearer {{ _osac_aap_token }}"
+    validate_certs: "{{ osac_aap_validate_certs }}"
+    return_content: true
+    status_code: [200]
+  register: __r_aap_controller_ping
+  retries: 10
+  delay: 15
+  until: __r_aap_controller_ping.status | default(0) | int == 200
+  failed_when: false
+  no_log: true
+
+- name: Assert AAP controller API endpoint contract
+  ansible.builtin.assert:
+    that:
+      - __r_aap_controller_ping.status | default(0) | int == 200
+      - >-
+        (__r_aap_controller_ping.content_type | default('') | lower)
+        is regex('^application/json(?:;|$)')
+      - __r_aap_controller_ping.json is defined
+      - __r_aap_controller_ping.json is mapping
+      - >-
+        ((__r_aap_controller_ping.json | default({})).get('version', ''))
+        is string
+      - >-
+        ((__r_aap_controller_ping.json | default({})).get('version', '')
+        | length) > 0
+    fail_msg: >-
+      AAP controller API endpoint contract failed for /v2/ping/:
+      expected HTTP 200 with application/json containing a non-empty string
+      version; received HTTP {{ __r_aap_controller_ping.status | default('unknown') }}
+      with Content-Type {{ __r_aap_controller_ping.content_type | default('missing') }}.
 
 - name: Create osac-aap-secret with token
   kubernetes.core.k8s:
@@ -128,11 +171,18 @@
         token: "{{ _osac_aap_token }}"
   no_log: true
 
-- name: Patch OSAC operator deployment with AAP URL and AAP token
+- name: Get OSAC namespace deployments
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: osac
+  register: __r_osac_deployments
+
+- name: Patch OSAC operator deployments with controller API URL and token
   kubernetes.core.k8s:
     state: patched
     kind: Deployment
-    name: osac-operator
+    name: "{{ item.metadata.name }}"
     namespace: osac
     definition:
       spec:
@@ -142,32 +192,63 @@
               - name: manager
                 env:
                   - name: OSAC_AAP_URL
-                    value: "{{ _osac_aap_url }}"
+                    value: "{{ _osac_aap_controller_url }}"
                   - name: OSAC_AAP_TOKEN
                     valueFrom:
                       secretKeyRef:
                         name: osac-aap-secret
                         key: token
+  loop: "{{ __r_osac_deployments.resources }}"
+  loop_control:
+    label: "{{ item.metadata.name }}"
+  when: >-
+    item.spec.template.spec.containers | default([])
+    | selectattr('name', 'equalto', 'manager')
+    | selectattr('env', 'defined')
+    | map(attribute='env')
+    | flatten
+    | selectattr('name', 'equalto', 'OSAC_AAP_URL')
+    | list | length > 0
+  register: __r_osac_operator_patches
+
+- name: Assert at least one OSAC operator deployment was patched
+  ansible.builtin.assert:
+    that:
+      - >-
+        __r_osac_operator_patches.results
+        | rejectattr('skipped', 'defined')
+        | list | length > 0
+    fail_msg: >-
+      No OSAC operator Deployment declares OSAC_AAP_URL; cannot configure the
+      AAP controller API base URL.
 
 # =====================================================================
-# 6. Wait for OSAC operator rollout
+# 6. Wait for OSAC operator deployments to roll out
 # =====================================================================
 
-- name: Wait for OSAC operator rollout
+- name: Wait for OSAC operator deployments rollout
   kubernetes.core.k8s_info:
     api_version: apps/v1
     kind: Deployment
-    name: osac-operator
+    name: "{{ item.item.metadata.name }}"
     namespace: osac
   register: __r_operator_rollout
   retries: 30
   delay: 10
   until:
     - __r_operator_rollout.resources | length > 0
-    - __r_operator_rollout.resources[0].status.availableReplicas | default(0) | int > 0
+    - __r_operator_rollout.resources[0].status.observedGeneration | default(0) | int >=
+      __r_operator_rollout.resources[0].metadata.generation | default(0) | int
+    - __r_operator_rollout.resources[0].status.replicas | default(0) | int ==
+      __r_operator_rollout.resources[0].spec.replicas | default(1) | int
     - __r_operator_rollout.resources[0].status.updatedReplicas | default(0) | int ==
       __r_operator_rollout.resources[0].spec.replicas | default(1) | int
+    - __r_operator_rollout.resources[0].status.availableReplicas | default(0) | int ==
+      __r_operator_rollout.resources[0].spec.replicas | default(1) | int
+  loop: "{{ __r_osac_operator_patches.results | rejectattr('skipped', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.item.metadata.name }}"
 
 - name: Log OSAC deploy completion
   ansible.builtin.debug:
-    msg: "OSAC deploy complete. Operator patched and rolled out."
+    msg: "OSAC deploy complete. Operator deployments patched and rolled out."
