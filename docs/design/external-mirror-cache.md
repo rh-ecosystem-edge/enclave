@@ -67,6 +67,25 @@ to deploy and operate disconnected clusters from a registry they own instead
 
 ## Proposal
 
+### Terminology
+
+A **mirroring unit** (or unit) is the smallest piece of cache content that enclave builds, keys
+and validates on its own. Each unit is one oc-mirror imageset with its own cache key, metadata
+image and cluster resources (IDMS/ITMS, CatalogSources). The content of a config is split into
+units so that a config change only affects the units whose content it changes. See
+[Mirroring units](#mirroring-units) for the full list.
+
+Examples:
+
+- A config with `openshift_versions` 4.20.21 and 4.20.32 and `enabled_plugins: [lvms, cnv]`
+  requires `ocp-4.20.21`, `ocp-4.20.32`, `catalog-core`, `images-core`, `catalog-lvms` and
+  `catalog-cnv`, plus `images-<plugin>` for plugins that declare additional images.
+- Changing the channel of the `cnv` operator changes only the `catalog-cnv` key; the other units
+  keep their keys, so the metadata and catalogs already in the cache for them still match.
+- Deploying `openshift-ai` on day 2 only needs `catalog-openshift-ai` (and `images-openshift-ai`
+  if it declares additional images), built with `cache.sh build --plugin openshift-ai`, whatever
+  the rest of the config is.
+
 ### Prerequisite
 
 Stable, y-stream agnostic CatalogSource names
@@ -105,18 +124,6 @@ in config and covered by the schema.
   at, so moving a cache (new hostname, new registry) is allowed: the next `sync.sh` validates it
   and re-applies the units' IDMS/ITMS, updated in place since object names do not depend on the
   host.
-
-### Differences from LZ mode
-
-Cache mode deliberately does better than the current disconnected flow in a few places. LZ mode
-stays unchanged in this design; porting each improvement is a separate change.
-
-| Area | LZ mode today | Cache mode | Porting to LZ mode |
-|---|---|---|---|
-| LZ release-payload pulls (ISO, ironic, BMO) | pulled from upstream | redirected to the cache by digest (see [Landing Zone pulls](#landing-zone-pulls)) | needs ISO extraction moved after phase 02 |
-| registries.conf for Quay Enterprise seeding | user-level file from the hand-maintained `templates/registries.conf.j2` | per-run file generated from IDMS/ITMS, no user-level file (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)) | needs the LZ redirection above |
-| TLS verification | `tls-verify=false` for source and destination | verified against the cache CA and the system trust (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | needs TLS trust for the LZ mirror |
-| Source policy | no `mirrorSourcePolicy` or `blocked`: a mirror miss silently falls back to upstream when it is reachable | fail closed: `NeverContactSource` on the cluster, `blocked = true` on the LZ (see [Fail-closed source policy](#fail-closed-source-policy)) | quick fix; a latent bug today, tracked in [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 
 ### Configuration
 
@@ -214,7 +221,7 @@ Applying is decoupled from mirroring:
 
 | Entry point | Units | Action |
 |---|---|---|
-| `bootstrap.sh` | all required | copy IDMS/ITMS/CatalogSources/signatures into the ABI manifests; install-config `imageDigestSources` from the `ocp-<version>` unit IDMS, `additionalTrustBundle` from the configured cache CA |
+| `bootstrap.sh` | all required | copy IDMS/ITMS/CatalogSources/signatures into the ABI manifests; install-config `imageDigestSources` from the `ocp-<version>` unit IDMS, `additionalTrustBundle` from the configured cache CA; ABI `mirror/registries.conf` generated from the IDMS/ITMS with `blocked = true` |
 | `sync.sh` (and before `upgrade.sh`) | all required | apply CatalogSources and signatures (as today), plus IDMS/ITMS in cache mode (below); wait for CatalogSources ready |
 | `deploy-plugin` / `mirror-plugin` | the plugin's units | apply in the single MCO rollout, as today |
 | Quay Enterprise seeding, LZ redirection | IDMS/ITMS | generate the per-run registries.conf and the persistent drop-in |
@@ -499,6 +506,9 @@ File ownership:
 
 #### Fail-closed source policy
 
+Fail closed means that a pull of an image missing from the cache fails with an error, instead of
+falling back to the upstream registry (fail open, the default for IDMS/ITMS and registries.conf).
+
 A mirror miss must fail, never fall back to the source: otherwise a dry-run passes on an image
 missing from the cache whenever upstream is reachable (CI hosts, sites with some egress), and
 pulls silently bypass the cache.
@@ -508,9 +518,25 @@ pulls silently bypass the cache.
   mirror, which is how MCO renders `NeverContactSource` on nodes.
 - **Cluster:** IDMS/ITMS applied in cache mode set `mirrorSourcePolicy: NeverContactSource` on
   every source (see [Applying cluster resources](#applying-cluster-resources)).
-- To verify at implementation time: whether `oc adm release info` / `oc image extract` honor
-  `NeverContactSource` with `--idms-file`. If not, those calls must get no network path upstream
-  by other means.
+- **Agent ISO:** `bootstrap.sh` supplies `mirror/registries.conf` in the agent installer asset
+  directory, generated from the unit IDMS/ITMS with `blocked = true` like the LZ files. The
+  agent installer loads it instead of rendering one from install-config, so pulls on the hosts
+  during discovery (agent, assisted-service, release image) fail closed.
+- **Bootstrap host:** cannot fail closed. assisted-service writes the cluster install-config with
+  `imageDigestSources` carrying only source and mirrors (the install-config `sourcePolicy` field
+  only exists from 4.21, and assisted-service drops it anyway), and the bootstrap host's
+  registries.conf is rendered from it. `bootstrap.sh` relies instead on the fail-closed dry-run
+  it runs for every required unit, including `ocp-<version>`, before generating the ISO. Known
+  limitation: an image removed from the cache during bootstrap can be pulled from upstream by the
+  bootstrap host at a site with egress.
+- **Masters and installed cluster:** the installer also creates an `image-digest-mirror` IDMS from
+  `imageDigestSources`, without a policy. MCO merges all IDMS per source and blocks a source if
+  any of them sets `NeverContactSource`, and the bootstrap machine-config controller renders from
+  both the installer manifests and the ABI extra manifests, so masters are fail closed from their
+  first boot. This needs the install-config sources to match the unit IDMS sources exactly, which
+  holds because `imageDigestSources` is generated from the `ocp-<version>` unit IDMS.
+- `oc adm release info` and `oc image extract` honor `NeverContactSource` with `--idms-file`
+  (oc 4.20), so LZ release lookups fail closed too.
 
 ### Day 2: Quay Enterprise seeding
 
@@ -591,6 +617,26 @@ previous content.
   or metadata that other installations share.
 - User-provided CA bundle trusted by LZ and cluster.
 - Diagnostics bundle redacts cache credentials.
+
+### Differences from LZ mode
+
+Cache mode guarantees that every container image used by the cluster or the LZ comes from the
+cache, over verified TLS, and that a gap in the cache is an error rather than a silent pull from
+upstream (see [Landing Zone pulls](#landing-zone-pulls)). The current disconnected flow does not:
+some images bypass the LZ mirror, TLS is not verified, and mirror misses fall back to upstream
+whenever it is reachable. The rows below are where cache mode differs to meet that guarantee. LZ
+mode stays unchanged in this design; porting each difference is a separate change.
+
+| Area | LZ mode today | Cache mode | Porting to LZ mode |
+|---|---|---|---|
+| LZ release-payload pulls (ISO, ironic, BMO) | pulled from upstream | redirected to the cache by digest (see [Landing Zone pulls](#landing-zone-pulls)) | needs ISO extraction moved after phase 02 |
+| registries.conf for Quay Enterprise seeding | user-level file from the hand-maintained `templates/registries.conf.j2` | per-run file generated from IDMS/ITMS, no user-level file (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)) | needs the LZ redirection above |
+| TLS verification | `tls-verify=false` for source and destination | verified against the cache CA and the system trust (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | needs TLS trust for the LZ mirror |
+| Source policy | no `mirrorSourcePolicy` or `blocked`: a mirror miss silently falls back to upstream when it is reachable | fail closed: `NeverContactSource` on the cluster, `blocked = true` on the LZ (see [Fail-closed source policy](#fail-closed-source-policy)) | quick fix; a latent bug today, tracked in [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
+| Agent ISO registries.conf | rendered by the agent installer from install-config `imageDigestSources`, without `blocked` | `mirror/registries.conf` supplied by `bootstrap.sh`, generated from the unit IDMS/ITMS with `blocked = true` (see [Fail-closed source policy](#fail-closed-source-policy)) | part of [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
+
+Not a difference: the bootstrap host cannot fail closed in either mode (see
+[Fail-closed source policy](#fail-closed-source-policy)).
 
 ### CI
 
@@ -683,6 +729,8 @@ images (no OCP payload, no hardware, minutes per run), run on PRs touching the c
 - two configs build the same unit with different packages → neither catalog nor metadata is
   overwritten
 - missing unit → fails before changing anything
+- release image missing from the cache → `bootstrap.sh` fails at the dry-run, before generating
+  the ISO
 - day-2 plugin with units missing / present
 - oc-mirror version change → key mismatch, dry-run decides
 - key matches but an image was deleted after the build → fails
