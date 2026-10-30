@@ -130,8 +130,8 @@ hooks a plugin does not have.
 | Step | What | Run by | Implemented in |
 |------|------|--------|----------------|
 | `validate` | Configuration schemas, unique MACs across `agent_hosts` | Core | `playbooks/validation/tasks/config_schema_validation.yaml` |
-| `validate` | Boot plugin contract and configuration (see [Validation](#validation)) | Core, for each boot plugin in use | `playbooks/tasks/boot/validate.yaml` |
-| `validate` | **`tasks/validate.yaml`** | Each boot plugin in use | `playbooks/tasks/boot/validate.yaml` |
+| `validate` | Boot plugin contract and configuration (see [Validation](#validation)) | Core, for each boot plugin in use | `playbooks/validation/validate-boot-plugins.yaml` |
+| `validate` | **`tasks/validate.yaml`** | Each boot plugin in use | `playbooks/validation/validate-boot-plugins.yaml` |
 | `build-cache` | ISO generation, with the installation gate | Core | `playbooks/tasks/configure_ocp_abi.yaml` |
 | `acquire-hardware` | Filter out hosts already Ready in the cluster | Core | `playbooks/tasks/configure_hardware_filter_hosts.yaml` |
 | `acquire-hardware` | Group hosts by effective `bootPlugin`, order plugins by `discoveryTimeout`, largest first | Core, for each boot plugin in use | `playbooks/tasks/boot/load_plugins.yaml` |
@@ -180,9 +180,10 @@ The contract check verifies that:
 - `defaults.yaml` exists if and only if `schemas/defaults.yaml` does, and validates against it
 - there are no other files
 
-Install-time validation runs in the bootstrap `validate` step under its own tag,
-`validate-boot-plugins`. `sync.sh` does not run it, so it keeps working on an installation whose
-configuration has not been migrated by `upgrade.sh` yet.
+Install-time validation runs in the bootstrap `validate` step, in its own playbook,
+`playbooks/validation/validate-boot-plugins.yaml`, after schema validation. `sync.sh` does not run
+it, so it keeps working on an installation whose configuration has not been migrated by
+`upgrade.sh` yet.
 
 Configuration fixtures go under `test-fixtures/plugins/boot/<name>/config/valid/` (must pass) and
 `.../config/invalid/` (must fail).

@@ -136,7 +136,6 @@ validate_tags() {
         "playbooks/05-operators.yaml:operators:Mirrored catalogsource configuration ACM policy"
         "playbooks/validation/validate-schema.yaml:test-fixtures:Include defaults schema validation tasks"
         "playbooks/validation/validate-schema.yaml:validate-config:Include config schema validation tasks"
-        "playbooks/validation/validate-schema.yaml:validate-boot-plugins:Include boot plugin validation tasks"
         "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
     )
 
