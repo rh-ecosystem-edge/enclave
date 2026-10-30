@@ -39,32 +39,40 @@ definitions:
     properties:
       driver:
         const: redfish
-      address:
-        type: string
-        pattern: "^(https?://)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:(([1-9][0-9]{0,3})|([1-5][0-9]{4})|(6[0-4][0-9]{3})|(65[0-4][0-9]{2})|(655[0-2][0-9])|(6553[0-5])))?$"
-        description: >-
-          BMC address: host name or IPv4 address, with an optional port and an optional http://
-          or https:// scheme (default https), e.g. bmc0.example.com, 192.168.1.1:8000 or
-          http://192.168.1.1.
-      username:
-        type: string
-        minLength: 1
-        description: BMC user name.
-      password:
-        type: string
-        minLength: 1
-        description: BMC password.
-      redfish:
+      driver_info:
         type: object
-        description: Redfish-specific settings.
+        description: >-
+          Ironic driver_info of the redfish hardware type, with Ironic's key names. Keys the
+          plugin sets itself (e.g. force_persistent_boot_device) are not accepted.
         additionalProperties: false
         properties:
-          systemId:
+          redfish_address:
+            type: string
+            pattern: "^(https?://)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:(([1-9][0-9]{0,3})|([1-5][0-9]{4})|(6[0-4][0-9]{3})|(65[0-4][0-9]{2})|(655[0-2][0-9])|(6553[0-5])))?$"
+            description: >-
+              BMC address: host name or IPv4 address, with an optional port and an optional
+              http:// or https:// scheme (Ironic assumes https), e.g. bmc0.example.com,
+              192.168.1.1:8000 or http://192.168.1.1.
+          redfish_username:
             type: string
             minLength: 1
+            description: BMC user name.
+          redfish_password:
+            type: string
+            minLength: 1
+            description: BMC password.
+          redfish_system_id:
+            type: string
+            pattern: "^/redfish/v1/Systems/.+"
             description: >-
-              Redfish System ID. Only needed for multi-system BMCs; auto-discovered when omitted.
+              Canonical path of the system to boot, e.g. /redfish/v1/Systems/System.Embedded.1.
+              Only needed for multi-system BMCs; auto-discovered when omitted.
+          redfish_verify_ca:
+            type: boolean
+            description: "Whether to verify the BMC TLS certificate. Default: false."
+        required:
+          - redfish_address
+          - redfish_username
+          - redfish_password
     required:
-      - address
-      - username
-      - password
+      - driver_info

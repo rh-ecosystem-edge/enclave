@@ -1,8 +1,9 @@
 ---
-# Valid fixture: one Redfish host with the required BMC settings.
+# Valid fixture: one Redfish host with the required driver_info.
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: 192.168.1.101
-    username: admin
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: 192.168.1.101
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD

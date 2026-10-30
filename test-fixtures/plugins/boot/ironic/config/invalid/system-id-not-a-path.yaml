@@ -1,0 +1,10 @@
+---
+# Invalid fixture: redfish_system_id that is not a /redfish/v1/Systems/ path.
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driver_info:
+      redfish_address: 192.168.1.101
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD
+      redfish_system_id: System.Embedded.1

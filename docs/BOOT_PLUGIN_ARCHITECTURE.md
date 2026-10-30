@@ -220,13 +220,13 @@ coreos-installer streams the disk image from the mounted ISO.
 ```yaml
 # config/plugins/boot/ironic.yaml
 hosts:
-  master-0:                         # agent_hosts[].name
-    driver: redfish                 # how this host's BMC is driven
-    address: bmc0.example.com       # [http(s)://]host[:port]
-    username: admin
-    password: secret
-    redfish:                        # settings of the driver, only valid for driver redfish
-      systemId: System.Embedded.1
+  master-0:                               # agent_hosts[].name
+    driver: redfish                       # Ironic hardware type of the BMC
+    driver_info:                          # Ironic driver_info, Ironic key names
+      redfish_address: bmc0.example.com
+      redfish_username: admin
+      redfish_password: secret
+      redfish_system_id: /redfish/v1/Systems/System.Embedded.1
 ```
 
 The `hosts` keys must match the `agent_hosts` booted by `ironic`. See
@@ -234,17 +234,20 @@ The `hosts` keys must match the `agent_hosts` booted by `ironic`. See
 
 ### Drivers
 
-Each host selects the Ironic hardware type of its BMC with `driver`, so a cluster can mix BMC
-vendors. Only `redfish` is supported today; adding a driver changes no existing configuration.
+The configuration follows Ironic's own conventions: each host gives the Ironic hardware type of its
+BMC (`driver`) and the matching Ironic `driver_info`, with the key names of
+[Ironic's driver documentation](https://docs.openstack.org/ironic/latest/admin/drivers/redfish.html).
+Hosts can use different drivers. Only `redfish` is supported today.
 
-- **Configuration.** `plugins/boot/ironic/schemas/config.yaml` has one complete host definition per
-  driver: the common fields (`address`, `username`, `password`) plus a section named after the
-  driver for its own settings (e.g. `redfish.systemId`). `driver` selects the definition, so a host
-  only accepts its own driver's section.
+- **Configuration.** `plugins/boot/ironic/schemas/config.yaml` has one host definition per driver,
+  selected by `driver`, listing the `driver_info` keys that driver accepts. Unknown or misspelled
+  keys are rejected, and so are keys the plugin sets itself (`force_persistent_boot_device`, which
+  makes the ISO boot only once).
 - **Code.** Each driver provides two task files in `tasks/lib/`:
-  - `<driver>-settings.yaml` turns a host's configuration into Ironic settings: the hardware type,
-    the virtual media boot interface, the `driver_info` (without the BMC password), the
-    `driver_info` field holding the password, and whether Ironic can detach its virtual media.
+  - `<driver>-settings.yaml` gives what the plugin decides for the driver: the hardware type, the
+    virtual media boot interface, the `driver_info` keys it adds to the user's (defaults and
+    plugin-owned keys), the key holding the BMC password (sent to Ironic apart from the rest, so
+    it never appears in task output), and whether Ironic can detach its virtual media.
   - `<driver>-validate.yaml` runs the driver's preflight checks, e.g. querying the BMC.
 
   The hooks call them for the hosts of each driver in use, through `tasks/lib/settings.yaml`.
@@ -252,15 +255,15 @@ vendors. Only `redfish` is supported today; adding a driver changes no existing 
 The plugin boots from virtual media, so only drivers with a virtual media boot interface fit (e.g.
 not `ipmi`, which would need PXE).
 
-`redfish` is the reference driver: it uses `redfish-virtual-media`, builds `redfish_address`
-from `address` (`https://` by default), sets `redfish_system_id` when `redfish.systemId` is given,
-and its preflight checks that each BMC answers on `/redfish/v1/Systems` and exposes the expected
-system. BMC certificates are not verified yet (OSAC-6973).
+`redfish` is the reference driver: it uses `redfish-virtual-media`, defaults `redfish_verify_ca` to
+`false`, and its preflight checks that each BMC answers on `/redfish/v1/Systems` and exposes
+`redfish_system_id` when set, or a single system when not. `redfish_verify_ca` only accepts a
+boolean for now: a CA bundle would have to be mounted into the Ironic container (OSAC-6973).
 
 ### Adding a Driver
 
 1. Add the driver to the `driver` enum in `plugins/boot/ironic/schemas/config.yaml`, with its host
-   definition (common fields plus its own section) selected by an `if`/`then` entry.
+   definition (its `driver_info` keys, with Ironic's names) selected by an `if`/`then` entry.
 1. Add `tasks/lib/<driver>-settings.yaml` and `tasks/lib/<driver>-validate.yaml`, using the
    `redfish` files as a template.
 1. Make sure the Ironic image enables the hardware type and its virtual media boot interface.
@@ -281,7 +284,7 @@ fields. See [UPGRADE.md](UPGRADE.md) for the details.
 
 - `scripts/infrastructure/generate_enclave_vars.sh` writes `bootPlugin` (from `BOOT_PLUGIN`, default
   `ironic`) to `config/global.yaml`, and for `ironic` writes `config/plugins/boot/ironic.yaml`: one
-  `redfish` host per master, pointing at sushy-tools, with the VM UUID as `redfish.systemId`.
+  `redfish` host per master, pointing at sushy-tools, with the VM UUID in `redfish_system_id`.
   `scripts/deployment/install_enclave.sh` copies it to the Landing Zone.
 - `scripts/diagnostics/gather_lz.sh` collects `config/plugins/boot/*.yaml` with every password
   redacted, and skips a file it cannot parse rather than risk leaking it.

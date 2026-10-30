@@ -3,6 +3,7 @@
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: ftp://100.64.1.1
-    username: admin
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: ftp://100.64.1.1
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD

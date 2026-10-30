@@ -1,9 +1,0 @@
----
-# Invalid fixture: systemId outside the redfish section.
-hosts:
-  mgmt-ctl01:
-    driver: redfish
-    address: 192.168.1.101
-    username: admin
-    password: YOUR_BMC_PASSWORD
-    systemId: System.Embedded.1

@@ -1,6 +1,7 @@
 ---
 # Add the Ironic settings of the Redfish hosts in _driver_hosts to
-# _ironic_settings (see settings.yaml).
+# _ironic_settings (see settings.yaml): the user's driver_info, without the
+# password, plus the driver_info the plugin requires.
 
 - name: Set Ironic settings of Redfish hosts
   ansible.builtin.set_fact:
@@ -10,18 +11,12 @@
            'boot_interface': 'redfish-virtual-media',
            'password_field': 'redfish_password',
            'vmedia_detach': true,
-           'driver_info': {
-             'redfish_address': _address if _address is search('^https?://') else 'https://' ~ _address,
-             'redfish_username': _bmc.username,
-             'redfish_verify_ca': false,
-             'force_persistent_boot_device': 'Never',
-           } | combine({'redfish_system_id': '/redfish/v1/Systems/' ~ _system_id}
-                       if _system_id is not none else {}),
+           'driver_info': {'redfish_verify_ca': false}
+             | combine(_driver_info | dict2items | rejectattr('key', 'equalto', 'redfish_password') | items2dict)
+             | combine({'force_persistent_boot_device': 'Never'}),
          }}) }}
   vars:
-    _bmc: "{{ bootPluginConfig.hosts[item.name] }}"
-    _address: "{{ _bmc.address }}"
-    _system_id: "{{ (_bmc.redfish | default({})).systemId | default(none) }}"
+    _driver_info: "{{ bootPluginConfig.hosts[item.name].driver_info }}"
   loop: "{{ _driver_hosts }}"
   loop_control:
     label: "{{ item.name }}"

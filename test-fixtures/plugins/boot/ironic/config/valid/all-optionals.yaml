@@ -1,15 +1,17 @@
 ---
-# Valid fixture: host name, scheme and port in the address, and a Redfish System ID.
+# Valid fixture: host name, scheme and port in the address, system ID and CA verification.
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: http://192.168.1.101:8000
-    username: admin
-    password: YOUR_BMC_PASSWORD
-    redfish:
-      systemId: System.Embedded.1
+    driver_info:
+      redfish_address: http://192.168.1.101:8000
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD
+      redfish_system_id: /redfish/v1/Systems/System.Embedded.1
+      redfish_verify_ca: true
   mgmt-ctl02:
     driver: redfish
-    address: bmc02.example.com:8443
-    username: admin
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: bmc02.example.com:8443
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD

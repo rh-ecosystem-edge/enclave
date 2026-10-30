@@ -1417,21 +1417,23 @@ install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironi
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: 100.64.1.24
-    username: admin
-    password: YourSecurePassword
+    driver_info:
+      redfish_address: 100.64.1.24
+      redfish_username: admin
+      redfish_password: YourSecurePassword
   mgmt-ctl02:
     driver: redfish
-    address: 100.64.1.25
-    username: admin
-    password: YourSecurePassword
+    driver_info:
+      redfish_address: 100.64.1.25
+      redfish_username: admin
+      redfish_password: YourSecurePassword
   mgmt-ctl03:
     driver: redfish
-    address: https://bmc03.example.com:8443
-    username: admin
-    password: YourSecurePassword
-    redfish:
-      systemId: System.Embedded.1
+    driver_info:
+      redfish_address: https://bmc03.example.com:8443
+      redfish_username: admin
+      redfish_password: YourSecurePassword
+      redfish_system_id: /redfish/v1/Systems/System.Embedded.1
 ```
 
 **Top-level fields**:
@@ -1442,21 +1444,26 @@ hosts:
 
 **Fields for each `hosts` entry**:
 
-`driver` selects the Ironic hardware type of the host and the other fields it accepts. Only
-`redfish` is supported.
+`driver` is the Ironic hardware type of the host's BMC, and `driver_info` its Ironic `driver_info`,
+with [Ironic's key names](https://docs.openstack.org/ironic/latest/admin/drivers/redfish.html).
+Only `redfish` is supported, with these `driver_info` keys:
 
 | Field | Required | Description | Example |
 |-------|----------|-------------|---------|
 | `driver` | Yes | Ironic hardware type used to drive the BMC of the host | `redfish` |
-| `address` | Yes | BMC address: host name or IPv4 address, with an optional port and an optional `http://` or `https://` scheme (default `https`) | `100.64.1.24`, `bmc01.example.com:8443` or `http://100.64.1.1:8000` |
-| `username` | Yes | BMC user name | `admin` |
-| `password` | Yes | BMC password | `YourSecurePassword` |
-| `redfish.systemId` | No | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
+| `driver_info.redfish_address` | Yes | BMC address: host name or IPv4 address, with an optional port and an optional `http://` or `https://` scheme (Ironic assumes `https`) | `100.64.1.24`, `bmc01.example.com:8443` or `http://100.64.1.1:8000` |
+| `driver_info.redfish_username` | Yes | BMC user name | `admin` |
+| `driver_info.redfish_password` | Yes | BMC password | `YourSecurePassword` |
+| `driver_info.redfish_system_id` | No | Canonical path of the system to boot. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `/redfish/v1/Systems/System.Embedded.1` |
+| `driver_info.redfish_verify_ca` | No | Whether to verify the BMC TLS certificate. Default: `false` | `true` |
+
+Other `driver_info` keys are rejected, including the ones the plugin sets itself
+(`force_persistent_boot_device`).
 
 **Notes**:
 - The `hosts` keys must match exactly the names of the `agent_hosts` entries booted by `ironic`: every such host needs an entry, and hosts booted by another boot plugin must not have one
 - The plugin's validation runs in the bootstrap `validate` step and checks Redfish connectivity and the system ID of each host, and that [`lzBmcIP`](#lzbmcip) is set
-- These fields were previously set on each `agent_hosts` entry as `redfish`, `redfishUser`, `redfishPassword` and `bmcSystemId`. `./upgrade.sh` moves them here, with `driver: redfish` (see [UPGRADE.md](UPGRADE.md))
+- These settings were previously set on each `agent_hosts` entry as `redfish`, `redfishUser`, `redfishPassword` and `bmcSystemId`. `./upgrade.sh` moves them here, with `driver: redfish` (see [UPGRADE.md](UPGRADE.md))
 - `discovery_hosts` in `config/cloud_infra.yaml` keeps its own BMC fields and does not use this file
 
 ## System Defaults (read-only)
@@ -1704,19 +1711,22 @@ BMC settings of the `agent_hosts` above. Copy from `config/plugins/boot/ironic.e
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: 100.64.1.24
-    username: admin
-    password: YourSecurePassword
+    driver_info:
+      redfish_address: 100.64.1.24
+      redfish_username: admin
+      redfish_password: YourSecurePassword
   mgmt-ctl02:
     driver: redfish
-    address: 100.64.1.25
-    username: admin
-    password: YourSecurePassword
+    driver_info:
+      redfish_address: 100.64.1.25
+      redfish_username: admin
+      redfish_password: YourSecurePassword
   mgmt-ctl03:
     driver: redfish
-    address: 100.64.1.26
-    username: admin
-    password: YourSecurePassword
+    driver_info:
+      redfish_address: 100.64.1.26
+      redfish_username: admin
+      redfish_password: YourSecurePassword
 ```
 
 ### `config/plugins/lvms.yaml` (optional)
@@ -1757,7 +1767,7 @@ Before running the deployment, validate your configuration:
    ```bash
    ping $apiVIP
    ping $ingressVIP
-   # the host part of each hosts.<name>.address in config/plugins/boot/ironic.yaml
+   # the host part of each hosts.<name>.driver_info.redfish_address in config/plugins/boot/ironic.yaml
    ping $bmc_address
    ```
 
@@ -1767,11 +1777,12 @@ Before running the deployment, validate your configuration:
    nslookup $quayHostname
    ```
 
-3. **Redfish API access** (with the `address`, `username` and `password` of each host in
-   `config/plugins/boot/ironic.yaml`; prefix `address` with `https://` when it has no scheme):
+3. **Redfish API access** (with the `redfish_address`, `redfish_username` and `redfish_password`
+   of each host in `config/plugins/boot/ironic.yaml`; prefix the address with `https://` when it
+   has no scheme):
    ```bash
-   curl -k -u $username:$password \
-     $address/redfish/v1/Systems
+   curl -k -u $redfish_username:$redfish_password \
+     $redfish_address/redfish/v1/Systems
    ```
 
 4. **File paths**:

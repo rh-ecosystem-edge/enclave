@@ -112,10 +112,10 @@ Their BMC settings no longer live in `agent_hosts`: the migration
 
 | `agent_hosts[]` field | `config/plugins/boot/ironic.yaml` `hosts.<name>` field |
 |---|---|
-| `redfish` | `address` |
-| `redfishUser` | `username` |
-| `redfishPassword` | `password` |
-| `bmcSystemId` | `redfish.systemId` |
+| `redfish` | `driver_info.redfish_address` |
+| `redfishUser` | `driver_info.redfish_username` |
+| `redfishPassword` | `driver_info.redfish_password` |
+| `bmcSystemId` | `driver_info.redfish_system_id`, as `/redfish/v1/Systems/<bmcSystemId>` |
 
 - `discovery_hosts` in `config/cloud_infra.yaml` is not changed.
 - The migration is safe to run again. A host entry already in `ironic.yaml` with identical values

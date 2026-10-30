@@ -2,8 +2,9 @@
 
 The redfish, redfishUser, redfishPassword and bmcSystemId fields of each
 agent_hosts entry in config/global.yaml move to hosts.<name> of
-config/plugins/boot/ironic.yaml as address, username, password and
-redfish.systemId, with driver redfish.
+config/plugins/boot/ironic.yaml, with driver redfish, as the Ironic driver_info
+keys redfish_address, redfish_username, redfish_password and redfish_system_id
+(the canonical /redfish/v1/Systems/<id> path).
 
 Edits keep comments and formatting, trying in order:
 1. deleting the lines of the fields from global.yaml, located with ruamel.yaml,
@@ -42,13 +43,14 @@ from ruamel.yaml.util import load_yaml_guess_indent
 
 logger = logging.getLogger(__name__)
 
-# agent_hosts field -> path in an ironic.yaml host entry
+# agent_hosts field -> Ironic driver_info key in an ironic.yaml host entry
 BMC_FIELDS = {
-    "redfish": ("address",),
-    "redfishUser": ("username",),
-    "redfishPassword": ("password",),
-    "bmcSystemId": ("redfish", "systemId"),
+    "redfish": "redfish_address",
+    "redfishUser": "redfish_username",
+    "redfishPassword": "redfish_password",
+    "bmcSystemId": "redfish_system_id",
 }
+SYSTEMS_PATH = "/redfish/v1/Systems/"
 DRIVER = "redfish"
 
 IRONIC_HEADER = (
@@ -110,15 +112,16 @@ def _bmc_entries(global_path: Path, global_data: dict[str, Any]) -> dict[str, An
             raise MigrationError(
                 f"{global_path}: an agent_hosts entry with Redfish settings has no name"
             )
-        entry: dict[str, Any] = {"driver": DRIVER}
-        for bmc_field, path in BMC_FIELDS.items():
-            if bmc_field in host:
-                *parents, key = path
-                target = entry
-                for parent in parents:
-                    target = target.setdefault(parent, {})
-                target[key] = host[bmc_field]
-        entries[name] = entry
+        driver_info = {
+            key: host[bmc_field]
+            for bmc_field, key in BMC_FIELDS.items()
+            if bmc_field in host
+        }
+        if "redfish_system_id" in driver_info:
+            driver_info["redfish_system_id"] = (
+                f"{SYSTEMS_PATH}{driver_info['redfish_system_id']}"
+            )
+        entries[name] = {"driver": DRIVER, "driver_info": driver_info}
     return entries
 
 

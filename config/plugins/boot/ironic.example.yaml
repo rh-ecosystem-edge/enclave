@@ -5,23 +5,26 @@
 
 # BMC settings of each host booted by ironic, keyed by agent_hosts[].name.
 # The keys must match exactly the names of the agent_hosts booted by ironic.
-# driver selects the Ironic hardware type and the settings the host accepts;
-# only redfish is supported.
+# driver is the Ironic hardware type of the host's BMC (only redfish is
+# supported) and driver_info its Ironic driver_info, with Ironic's key names.
 hosts:
   YOUR_HOST_NAME_1:
     driver: redfish
-    address: YOUR_BMC_ADDRESS           # host name or IP, optional :port and http(s):// (default https)
-    username: YOUR_BMC_USER
-    password: YOUR_BMC_PASSWORD
-    # redfish:
-    #   systemId: System.Embedded.1     # Optional. Only needed for multi-system BMCs
+    driver_info:
+      redfish_address: YOUR_BMC_ADDRESS   # host name or IP, optional :port and http(s):// (default https)
+      redfish_username: YOUR_BMC_USER
+      redfish_password: YOUR_BMC_PASSWORD
+      # redfish_system_id: /redfish/v1/Systems/System.Embedded.1   # Optional. Only for multi-system BMCs
+      # redfish_verify_ca: true            # Optional. Verify the BMC TLS certificate (default false)
   YOUR_HOST_NAME_2:
     driver: redfish
-    address: YOUR_BMC_ADDRESS
-    username: YOUR_BMC_USER
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: YOUR_BMC_ADDRESS
+      redfish_username: YOUR_BMC_USER
+      redfish_password: YOUR_BMC_PASSWORD
   YOUR_HOST_NAME_3:
     driver: redfish
-    address: YOUR_BMC_ADDRESS
-    username: YOUR_BMC_USER
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: YOUR_BMC_ADDRESS
+      redfish_username: YOUR_BMC_USER
+      redfish_password: YOUR_BMC_PASSWORD

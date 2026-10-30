@@ -3,6 +3,7 @@
 hosts:
   mgmt-ctl01:
     driver: redfish
-    address: 100.64.1.1:99999
-    username: admin
-    password: YOUR_BMC_PASSWORD
+    driver_info:
+      redfish_address: 100.64.1.1:99999
+      redfish_username: admin
+      redfish_password: YOUR_BMC_PASSWORD
