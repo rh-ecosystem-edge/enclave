@@ -123,7 +123,7 @@
     ansible.builtin.shell: |
       {{ workingDir }}/bin/oc patch deployment registry-quay-app -n quay-enterprise --type=json -p='{{ quay_lvms_patch | to_json }}'
     vars:
-      quay_lvms_patch:
+      quay_lvms_base_patch:
         - op: add
           path: /spec/template/spec/volumes/-
           value:
@@ -135,6 +135,14 @@
           value:
             name: registry-storage
             mountPath: /datastorage/registry
+      # Replace the whole strategy object so the operator's rollingUpdate sub-field is
+      # dropped (a Recreate strategy may not carry it). Only emitted for Recreate, so the
+      # RollingUpdate default leaves the strategy untouched.
+      quay_lvms_strategy_patch: >-
+        {{ [{'op': 'replace', 'path': '/spec/strategy', 'value': {'type': 'Recreate'}}]
+           if (lvmsQuayAppUpdateStrategy | default('RollingUpdate')) == 'Recreate'
+           else [] }}
+      quay_lvms_patch: "{{ quay_lvms_base_patch + quay_lvms_strategy_patch }}"
     when:
       - quay_app_deployment.resources | default([]) | length > 0
       - quay_container_index is defined
