@@ -39,40 +39,41 @@ definitions:
     properties:
       driver:
         const: redfish
-      driver_info:
+      driverInfo:
         type: object
         description: >-
-          Ironic driver_info of the redfish hardware type, with Ironic's key names. Keys the
-          plugin sets itself (e.g. force_persistent_boot_device) are not accepted.
+          Ironic driver_info of the redfish hardware type: each key is the camelCase form of an
+          Ironic driver_info key (e.g. redfishAddress for redfish_address). Keys the plugin sets
+          itself (e.g. forcePersistentBootDevice) are not accepted.
         additionalProperties: false
         properties:
-          redfish_address:
+          redfishAddress:
             type: string
             pattern: "^(https?://)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:(([1-9][0-9]{0,3})|([1-5][0-9]{4})|(6[0-4][0-9]{3})|(65[0-4][0-9]{2})|(655[0-2][0-9])|(6553[0-5])))?$"
             description: >-
               BMC address: host name or IPv4 address, with an optional port and an optional
               http:// or https:// scheme (Ironic assumes https), e.g. bmc0.example.com,
               192.168.1.1:8000 or http://192.168.1.1.
-          redfish_username:
+          redfishUsername:
             type: string
             minLength: 1
             description: BMC user name.
-          redfish_password:
+          redfishPassword:
             type: string
             minLength: 1
             description: BMC password.
-          redfish_system_id:
+          redfishSystemId:
             type: string
             pattern: "^/redfish/v1/Systems/.+"
             description: >-
               Canonical path of the system to boot, e.g. /redfish/v1/Systems/System.Embedded.1.
               Only needed for multi-system BMCs; auto-discovered when omitted.
-          redfish_verify_ca:
+          redfishVerifyCA:
             type: boolean
             description: "Whether to verify the BMC TLS certificate. Default: false."
         required:
-          - redfish_address
-          - redfish_username
-          - redfish_password
+          - redfishAddress
+          - redfishUsername
+          - redfishPassword
     required:
-      - driver_info
+      - driverInfo

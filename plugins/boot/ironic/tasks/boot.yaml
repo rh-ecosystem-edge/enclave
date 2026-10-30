@@ -86,7 +86,7 @@
         path: /driver_info
         value: >-
           {{ _settings.driver_info
-             | combine({_settings.password_field: bootPluginConfig.hosts[item.name].driver_info[_settings.password_field]}) }}
+             | combine({_settings.password_field: bootPluginConfig.hosts[item.name].driverInfo[_settings.password_key]}) }}
     headers:
       Content-Type: "application/json"
       X-OpenStack-Ironic-API-Version: "{{ ironic_api_version }}"

@@ -3,15 +3,15 @@
 hosts:
   mgmt-ctl01:
     driver: redfish
-    driver_info:
-      redfish_address: http://192.168.1.101:8000
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
-      redfish_system_id: /redfish/v1/Systems/System.Embedded.1
-      redfish_verify_ca: true
+    driverInfo:
+      redfishAddress: http://192.168.1.101:8000
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
+      redfishSystemId: /redfish/v1/Systems/System.Embedded.1
+      redfishVerifyCA: true
   mgmt-ctl02:
     driver: redfish
-    driver_info:
-      redfish_address: bmc02.example.com:8443
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
+    driverInfo:
+      redfishAddress: bmc02.example.com:8443
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD

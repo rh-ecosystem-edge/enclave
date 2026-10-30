@@ -1,10 +1,10 @@
 ---
-# Invalid fixture: driver settings outside driver_info.
+# Invalid fixture: driver settings outside driverInfo.
 hosts:
   mgmt-ctl01:
     driver: redfish
-    driver_info:
-      redfish_address: 192.168.1.101
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
-    redfish_address: 192.168.1.101
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
+    redfishAddress: 192.168.1.101

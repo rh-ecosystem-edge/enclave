@@ -1,10 +1,10 @@
 ---
-# Invalid fixture: driver_info key the plugin sets itself.
+# Invalid fixture: driverInfo key the plugin sets itself.
 hosts:
   mgmt-ctl01:
     driver: redfish
-    driver_info:
-      redfish_address: 192.168.1.101
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
-      force_persistent_boot_device: Always
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
+      forcePersistentBootDevice: Always

@@ -1,5 +1,5 @@
 ---
-# Invalid fixture: host without driver_info.
+# Invalid fixture: host without driverInfo.
 hosts:
   mgmt-ctl01:
     driver: redfish

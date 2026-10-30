@@ -2,9 +2,9 @@
 
 The redfish, redfishUser, redfishPassword and bmcSystemId fields of each
 agent_hosts entry in config/global.yaml move to hosts.<name> of
-config/plugins/boot/ironic.yaml, with driver redfish, as the Ironic driver_info
-keys redfish_address, redfish_username, redfish_password and redfish_system_id
-(the canonical /redfish/v1/Systems/<id> path).
+config/plugins/boot/ironic.yaml, with driver redfish, as the driverInfo keys
+redfishAddress, redfishUsername, redfishPassword and redfishSystemId (the
+canonical /redfish/v1/Systems/<id> path).
 
 Edits keep comments and formatting, trying in order:
 1. deleting the lines of the fields from global.yaml, located with ruamel.yaml,
@@ -43,12 +43,12 @@ from ruamel.yaml.util import load_yaml_guess_indent
 
 logger = logging.getLogger(__name__)
 
-# agent_hosts field -> Ironic driver_info key in an ironic.yaml host entry
+# agent_hosts field -> driverInfo key in an ironic.yaml host entry
 BMC_FIELDS = {
-    "redfish": "redfish_address",
-    "redfishUser": "redfish_username",
-    "redfishPassword": "redfish_password",
-    "bmcSystemId": "redfish_system_id",
+    "redfish": "redfishAddress",
+    "redfishUser": "redfishUsername",
+    "redfishPassword": "redfishPassword",
+    "bmcSystemId": "redfishSystemId",
 }
 SYSTEMS_PATH = "/redfish/v1/Systems/"
 DRIVER = "redfish"
@@ -117,11 +117,11 @@ def _bmc_entries(global_path: Path, global_data: dict[str, Any]) -> dict[str, An
             for bmc_field, key in BMC_FIELDS.items()
             if bmc_field in host
         }
-        if "redfish_system_id" in driver_info:
-            driver_info["redfish_system_id"] = (
-                f"{SYSTEMS_PATH}{driver_info['redfish_system_id']}"
+        if "redfishSystemId" in driver_info:
+            driver_info["redfishSystemId"] = (
+                f"{SYSTEMS_PATH}{driver_info['redfishSystemId']}"
             )
-        entries[name] = {"driver": DRIVER, "driver_info": driver_info}
+        entries[name] = {"driver": DRIVER, "driverInfo": driver_info}
     return entries
 
 

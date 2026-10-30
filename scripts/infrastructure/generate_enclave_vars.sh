@@ -204,11 +204,11 @@ EOF
         cat >> "$IRONIC_BOOT_VARS_OUTPUT" <<EOF
   ${CLUSTER_NAME}-${MASTER_SHORT_NAME}:
     driver: redfish
-    driver_info:
-      redfish_address: ${BMC_BASEURI}
-      redfish_username: admin
-      redfish_password: password
-      redfish_system_id: /redfish/v1/Systems/${MASTER_UUID}
+    driverInfo:
+      redfishAddress: ${BMC_BASEURI}
+      redfishUsername: admin
+      redfishPassword: password
+      redfishSystemId: /redfish/v1/Systems/${MASTER_UUID}
 EOF
     fi
 done

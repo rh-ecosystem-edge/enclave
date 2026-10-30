@@ -2,7 +2,7 @@
 # Invalid fixture: host without driver.
 hosts:
   mgmt-ctl01:
-    driver_info:
-      redfish_address: 192.168.1.101
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD

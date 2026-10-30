@@ -1,10 +1,10 @@
 ---
-# Invalid fixture: misspelled driver_info key.
+# Invalid fixture: misspelled driverInfo key.
 hosts:
   mgmt-ctl01:
     driver: redfish
-    driver_info:
-      redfish_address: 192.168.1.101
-      redfish_username: admin
-      redfish_password: YOUR_BMC_PASSWORD
-      redfish_sytem_id: /redfish/v1/Systems/1
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
+      redfishSytemId: /redfish/v1/Systems/1

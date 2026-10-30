@@ -169,7 +169,7 @@ Both services must be accessible from the appropriate networks (see port table b
 | Ironic API | 6385 | TCP | Inbound to LZ from cluster nodes / BMO controller | BareMetalHost provisioning and inspection |
 | Ironic HTTP (ISO/vmedia) | 6180 | TCP | Inbound to LZ from BMCs | Serves the boot ISO for virtual media |
 | Ironic vmedia (TLS) | 6183 | TCP | Inbound to LZ from BMCs | Only when `ironicHTTPSCertificate`/`ironicHTTPSKey` are configured |
-| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from `driver_info.redfish_address` (`host` or `host:port`) per host in `config/plugins/boot/ironic.yaml`, and from the `redfish` field per host in `config/cloud_infra.yaml` |
+| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from `driverInfo.redfishAddress` (`host` or `host:port`) per host in `config/plugins/boot/ironic.yaml`, and from the `redfish` field per host in `config/cloud_infra.yaml` |
 | Mirror registry (Quay) | 8443 | TCP | Inbound to LZ from cluster nodes | Image pulls/pushes against `quayHostname:8443` |
 | OCP API | 6443 | TCP | Outbound from LZ to the cluster `apiVIP` | Used by the Ansible controller (`oc`/`KUBECONFIG`) and by the BMO/Ironic controllers reconciling `BareMetalHost` objects after install |
 | NTP | 123 | UDP | Inbound to LZ from cluster nodes | Only if `defaultNtpServers` points at the Landing Zone |
@@ -371,22 +371,22 @@ host name. The keys must match exactly the names of the `agent_hosts` booted by 
 hosts:
   mgmt-ctl01:
     driver: redfish
-    driver_info:
-      redfish_address: 100.64.1.24  # BMC host name or IP, optional :port and http(s):// (default https)
-      redfish_username: admin
-      redfish_password: YourSecurePassword
+    driverInfo:
+      redfishAddress: 100.64.1.24  # BMC host name or IP, optional :port and http(s):// (default https)
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
   mgmt-ctl02:
     driver: redfish
-    driver_info:
-      redfish_address: 100.64.1.25
-      redfish_username: admin
-      redfish_password: YourSecurePassword
+    driverInfo:
+      redfishAddress: 100.64.1.25
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
   mgmt-ctl03:
     driver: redfish
-    driver_info:
-      redfish_address: 100.64.1.26
-      redfish_username: admin
-      redfish_password: YourSecurePassword
+    driverInfo:
+      redfishAddress: 100.64.1.26
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
 ```
 
 ### Advanced Network Configuration (Optional)
@@ -624,11 +624,11 @@ BMC settings of each host booted by `ironic` are set in `config/plugins/boot/iro
 | Field | Description | Example |
 |-------|-------------|---------|
 | `hosts.<name>.driver` | Ironic hardware type of the host's BMC (only `redfish` is supported) | `redfish` |
-| `hosts.<name>.driver_info.redfish_address` | BMC host name or IP, with optional port and `http://`/`https://` scheme (default `https`) | `100.64.1.24` |
-| `hosts.<name>.driver_info.redfish_username` | Redfish API username | `admin` |
-| `hosts.<name>.driver_info.redfish_password` | Redfish API password | `YourPassword` |
-| `hosts.<name>.driver_info.redfish_system_id` | Canonical system path (optional, only for multi-system BMCs) | `/redfish/v1/Systems/System.Embedded.1` |
-| `hosts.<name>.driver_info.redfish_verify_ca` | Verify the BMC TLS certificate (optional, default `false`) | `true` |
+| `hosts.<name>.driverInfo.redfishAddress` | BMC host name or IP, with optional port and `http://`/`https://` scheme (default `https`) | `100.64.1.24` |
+| `hosts.<name>.driverInfo.redfishUsername` | Redfish API username | `admin` |
+| `hosts.<name>.driverInfo.redfishPassword` | Redfish API password | `YourPassword` |
+| `hosts.<name>.driverInfo.redfishSystemId` | Canonical system path (optional, only for multi-system BMCs) | `/redfish/v1/Systems/System.Embedded.1` |
+| `hosts.<name>.driverInfo.redfishVerifyCA` | Verify the BMC TLS certificate (optional, default `false`) | `true` |
 
 ### Registry Configuration
 
@@ -794,9 +794,9 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
 ### Common Issues
 
 1. **Redfish API Connection Failures**:
-   - Verify BMC addresses are correct (`driver_info.redfish_address` in `config/plugins/boot/ironic.yaml`)
+   - Verify BMC addresses are correct (`driverInfo.redfishAddress` in `config/plugins/boot/ironic.yaml`)
    - Check network connectivity to BMCs
-   - Verify Redfish credentials (`driver_info.redfish_username`/`redfish_password` in `config/plugins/boot/ironic.yaml`)
+   - Verify Redfish credentials (`driverInfo.redfishUsername`/`redfishPassword` in `config/plugins/boot/ironic.yaml`)
    - Ensure BMC firmware meets minimum requirements (see [Hardware Compatibility](#hardware-compatibility))
    - Try setting `redfish_legacy: true` for older BMCs
 

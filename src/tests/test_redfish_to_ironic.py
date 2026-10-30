@@ -111,27 +111,27 @@ quayUser: admin
 EXPECTED_HOSTS = {
     "mgmt-ctl01": {
         "driver": "redfish",
-        "driver_info": {
-            "redfish_address": "192.168.1.101",
-            "redfish_username": "admin",
-            "redfish_password": "fake-bmc-password-a",
+        "driverInfo": {
+            "redfishAddress": "192.168.1.101",
+            "redfishUsername": "admin",
+            "redfishPassword": "fake-bmc-password-a",
         },
     },
     "mgmt-ctl02": {
         "driver": "redfish",
-        "driver_info": {
-            "redfish_address": "192.168.1.102:8000",
-            "redfish_username": "admin",
-            "redfish_password": "fake-bmc-password-b\n",
-            "redfish_system_id": "/redfish/v1/Systems/abc-123",
+        "driverInfo": {
+            "redfishAddress": "192.168.1.102:8000",
+            "redfishUsername": "admin",
+            "redfishPassword": "fake-bmc-password-b\n",
+            "redfishSystemId": "/redfish/v1/Systems/abc-123",
         },
     },
     "mgmt-ctl03": {
         "driver": "redfish",
-        "driver_info": {
-            "redfish_address": "192.168.1.103",
-            "redfish_username": "admin",
-            "redfish_password": "Multi fake-bmc-password-c",
+        "driverInfo": {
+            "redfishAddress": "192.168.1.103",
+            "redfishUsername": "admin",
+            "redfishPassword": "Multi fake-bmc-password-c",
         },
     },
 }
@@ -211,16 +211,16 @@ def test_migrate_merges_into_existing_ironic_config(
         "hosts:\n"
         "  mgmt-ctl01:   # same values\n"
         "    driver: redfish   # only redfish\n"
-        "    driver_info:\n"
-        "      redfish_address: 192.168.1.101\n"
-        "      redfish_username: admin\n"
-        "      redfish_password: fake-bmc-password-a\n"
+        "    driverInfo:\n"
+        "      redfishAddress: 192.168.1.101\n"
+        "      redfishUsername: admin\n"
+        "      redfishPassword: fake-bmc-password-a\n"
         "  other:\n"
         "    driver: redfish\n"
-        "    driver_info:\n"
-        "      redfish_address: 10.0.0.9\n"
-        "      redfish_username: root\n"
-        "      redfish_password: x\n"
+        "    driverInfo:\n"
+        "      redfishAddress: 10.0.0.9\n"
+        "      redfishUsername: root\n"
+        "      redfishPassword: x\n"
     )
     ironic_path.write_text(existing, encoding="utf-8")
     ironic_path.chmod(0o600)
@@ -234,10 +234,10 @@ def test_migrate_merges_into_existing_ironic_config(
             "mgmt-ctl01": EXPECTED_HOSTS["mgmt-ctl01"],
             "other": {
                 "driver": "redfish",
-                "driver_info": {
-                    "redfish_address": "10.0.0.9",
-                    "redfish_username": "root",
-                    "redfish_password": "x",
+                "driverInfo": {
+                    "redfishAddress": "10.0.0.9",
+                    "redfishUsername": "root",
+                    "redfishPassword": "x",
                 },
             },
             "mgmt-ctl02": EXPECTED_HOSTS["mgmt-ctl02"],
@@ -267,9 +267,9 @@ def test_migrate_conflict_changes_nothing(paths: tuple[Path, Path]) -> None:
     global_path, ironic_path = paths
     ironic_path.parent.mkdir(parents=True)
     existing = (
-        "hosts:\n  mgmt-ctl02:\n    driver: redfish\n    driver_info:\n"
-        "      redfish_address: 1.1.1.1\n      redfish_username: a\n"
-        "      redfish_password: b\n"
+        "hosts:\n  mgmt-ctl02:\n    driver: redfish\n    driverInfo:\n"
+        "      redfishAddress: 1.1.1.1\n      redfishUsername: a\n"
+        "      redfishPassword: b\n"
     )
     ironic_path.write_text(existing, encoding="utf-8")
 
@@ -290,7 +290,7 @@ def test_migrate_invalid_result_changes_nothing(paths: tuple[Path, Path]) -> Non
     )
 
     with pytest.raises(
-        MigrationError, match=r"hosts/m0/driver_info: 'redfish_password' is a required"
+        MigrationError, match=r"hosts/m0/driverInfo: 'redfishPassword' is a required"
     ):
         migrate(global_path, ironic_path, SCHEMA)
 

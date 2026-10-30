@@ -4,7 +4,8 @@
 #   driver          Ironic hardware type
 #   boot_interface  Ironic boot interface that boots the ISO from virtual media
 #   driver_info     Ironic driver_info, without the BMC password
-#   password_field  driver_info field of the BMC password
+#   password_key    driverInfo key of the BMC password in the plugin configuration
+#   password_field  Ironic driver_info field of the BMC password
 #   vmedia_detach   whether Ironic can detach the virtual media (vmedia API)
 
 - name: Initialize Ironic settings of the hosts
