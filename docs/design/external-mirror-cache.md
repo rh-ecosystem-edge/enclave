@@ -54,8 +54,9 @@ to deploy and operate disconnected clusters from a registry they own instead
   mirrored, enough to drive a later `oc-mirror delete` or tag removal per unit. This includes
   removing cluster objects (IDMS/ITMS, CatalogSources) of units a config no longer requires. CI
   does not need it: snapshots are rebuilt from scratch weekly.
-- **LZ redirection without a cache.** Applying the "LZ pulls go through the registry" rule to the
-  LZ mirror-registry path requires moving ISO extraction after phase 02. Cache mode only.
+- **Porting cache-mode improvements to LZ mode.** LZ redirection, generated registries.conf, TLS
+  verification and a fail-closed source policy stay cache mode only (see
+  [Differences from LZ mode](#differences-from-lz-mode)); each is a separate change.
 - **Phase 02 as "build a local cache, then consume it".** One model for both modes, where LZ mode
   becomes a cache on the LZ. It changes phase 02 (per-unit runs, new object names) and needs a
   migration for existing installations to avoid duplicate IDMS/ITMS and extra MCO rollouts.
@@ -63,8 +64,6 @@ to deploy and operate disconnected clusters from a registry they own instead
   key misses. To be revisited after measuring restore times.
 - **Strict CI misses.** Failing PRs that miss without touching mirror inputs (which signals a
   broken publishing pipeline) instead of building on the host.
-- **TLS verification in LZ mode.** The LZ mirror path keeps its current `tls-verify=false` flags;
-  enabling verification there is a separate change.
 
 ## Proposal
 
@@ -106,6 +105,18 @@ in config and covered by the schema.
   at, so moving a cache (new hostname, new registry) is allowed: the next `sync.sh` validates it
   and re-applies the units' IDMS/ITMS, updated in place since object names do not depend on the
   host.
+
+### Differences from LZ mode
+
+Cache mode deliberately does better than the current disconnected flow in a few places. LZ mode
+stays unchanged in this design; porting each improvement is a separate change.
+
+| Area | LZ mode today | Cache mode | Porting to LZ mode |
+|---|---|---|---|
+| LZ release-payload pulls (ISO, ironic, BMO) | pulled from upstream | redirected to the cache by digest (see [Landing Zone pulls](#landing-zone-pulls)) | needs ISO extraction moved after phase 02 |
+| registries.conf for Quay Enterprise seeding | user-level file from the hand-maintained `templates/registries.conf.j2` | per-run file generated from IDMS/ITMS, no user-level file (see [Registry redirection on the LZ](#registry-redirection-on-the-lz)) | needs the LZ redirection above |
+| TLS verification | `tls-verify=false` for source and destination | verified against the cache CA and the system trust (see [Reusing the mirroring code](#reusing-the-mirroring-code)) | needs TLS trust for the LZ mirror |
+| Source policy | no `mirrorSourcePolicy` or `blocked`: a mirror miss silently falls back to upstream when it is reachable | fail closed: `NeverContactSource` on the cluster, `blocked = true` on the LZ (see [Fail-closed source policy](#fail-closed-source-policy)) | quick fix; a latent bug today, tracked in [OSAC-7042](https://redhat.atlassian.net/browse/OSAC-7042) |
 
 ### Configuration
 
@@ -169,7 +180,8 @@ TLS verification is an input of "mirror one imageset", not hardcoded. Today `mir
 runs oc-mirror with `--src-tls-verify=false` and `--dest-tls-verify=false`, and the intermediate
 index `skopeo copy` with `--dest-tls-verify=false`:
 
-- Phase 02 in LZ mode passes the current values, so its behaviour does not change.
+- Phase 02 in LZ mode passes the current values, so its behaviour does not change (see
+  [Differences from LZ mode](#differences-from-lz-mode)).
 - In cache mode every access to the cache verifies TLS against the configured CA bundle:
   `cache.sh build` pushes, dry-runs and Quay Enterprise seeding reads. The CA is installed in the
   containers trust for the cache host (`/etc/containers/certs.d/<host:port>/`), never bypassed.
@@ -219,6 +231,9 @@ Applying is decoupled from mirroring:
   applies on every sync. That works, but in cache mode the cache must be a mirror for every
   repository, not only the ones present at install. Applying an unchanged IDMS does not trigger an
   MCO rollout.
+- In cache mode the materialized IDMS/ITMS set `mirrorSourcePolicy: NeverContactSource` on every
+  source (see [Fail-closed source policy](#fail-closed-source-policy)). The cache is a runtime
+  dependency, so not falling back when it is unavailable is consistent.
 
 ### Cache metadata
 
@@ -373,6 +388,12 @@ destination host and prefix. Different installations may reach the same cache un
 names, so stored outputs use a placeholder for host/prefix that consumers substitute with their
 configured endpoint.
 
+Tag references in `additionalImages` (e.g. `registry.redhat.io/ubi8/ubi:latest`) are mirrored
+under their source tag, not keyed. A later build may move the tag to the current upstream digest,
+as `sync.sh` does today in LZ mode. Unlike filtered catalogs, configs never disagree on what such a
+tag selects, only on when it was resolved, so no build removes content another config chose.
+Content that must not move is referenced by digest or by a versioned tag in enclave.
+
 Object names:
 
 - **IDMS/ITMS** are named per unit at build time (e.g. `idms-<slice>-<unit>`). Consumers apply them
@@ -410,9 +431,8 @@ cache mode consumers reference the release by the digest recorded in the `ocp-<v
 metadata (`ocp-release@sha256:...`) instead of the tag, so the release lookup and the component
 pulls all go through the IDMS mapping. The tag is never resolved, as for catalogs.
 
-Ordering: with a cache the content exists before phase 01. Applying the same rule to the LZ
-mirror-registry path (no cache) would require moving ISO extraction after phase 02; out of scope,
-cache mode only.
+Ordering: with a cache the content exists before phase 01. LZ mode keeps pulling from upstream
+(see [Differences from LZ mode](#differences-from-lz-mode)).
 
 **Decision:** non-image upstream fetches stay as they are and do not go through the cache. The LZ
 keeps upstream access for:
@@ -447,8 +467,7 @@ The existing mechanism cannot be reused as is:
 What is new is permanent LZ redirection; per-run redirection for oc-mirror exists today and changes
 source.
 
-**Scope: cache mode only.** In LZ mode the LZ keeps pulling release-payload images from upstream
-and Quay seeding keeps using `templates/registries.conf.j2` and the user-level file, unchanged.
+**Scope: cache mode only** (see [Differences from LZ mode](#differences-from-lz-mode)).
 
 **Design.** The upstream→mirror mapping exists only once: the IDMS/ITMS stored per unit. Every LZ
 consumer derives its format from it at consume time:
@@ -477,6 +496,21 @@ File ownership:
   `~/.config/containers/registries.conf`; required by the previous point. Verified with oc-mirror
   v2 (4.20): a source on a non-resolvable host mirrored successfully only when the variable pointed
   to a per-run file with a mirror for it.
+
+#### Fail-closed source policy
+
+A mirror miss must fail, never fall back to the source: otherwise a dry-run passes on an image
+missing from the cache whenever upstream is reachable (CI hosts, sites with some egress), and
+pulls silently bypass the cache.
+
+- **LZ:** every source `[[registry]]` in generated registries.conf files (persistent drop-in and
+  per-run files for dry-runs and Quay Enterprise seeding) has `blocked = true` next to its cache
+  mirror, which is how MCO renders `NeverContactSource` on nodes.
+- **Cluster:** IDMS/ITMS applied in cache mode set `mirrorSourcePolicy: NeverContactSource` on
+  every source (see [Applying cluster resources](#applying-cluster-resources)).
+- To verify at implementation time: whether `oc adm release info` / `oc image extract` honor
+  `NeverContactSource` with `--idms-file`. If not, those calls must get no network path upstream
+  by other means.
 
 ### Day 2: Quay Enterprise seeding
 
@@ -655,6 +689,7 @@ images (no OCP payload, no hardware, minutes per run), run on PRs touching the c
 - host alias / prefix → placeholder substituted correctly
 - wrong CA or credentials → clear error, not an oc-mirror failure
 - LZ release lookups in cache mode → no request to upstream registries
+- image missing from the cache while upstream is reachable → dry-run fails
 
 ## Alternatives considered
 
