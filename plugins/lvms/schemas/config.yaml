@@ -18,6 +18,15 @@ properties:
             minItems: 1
             items:
               type: string
+  lvmsQuayAppUpdateStrategy:
+    type: string
+    description: >-
+      Override the update strategy for the managed Quay app Deployment. Use
+      Recreate on a node-local RWO PV to avoid the rolling-update surge-pod
+      deadlock.
+    enum:
+      - RollingUpdate
+      - Recreate
   lvmsQuayAppResources:
     type: object
     description: >-

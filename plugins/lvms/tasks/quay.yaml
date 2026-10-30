@@ -140,3 +140,25 @@
       - quay_container_index is defined
       - not (quay_registry_storage_already_patched | default(false))
     register: quay_patch_result
+
+  # Applied independently of the registry-storage guard above so the selected strategy
+  # still reaches an existing deployment on reruns. Replace the whole strategy object so
+  # the operator's rollingUpdate sub-field (invalid under Recreate) is dropped. The guard
+  # on the current type keeps this idempotent; the RollingUpdate default leaves the
+  # operator-managed strategy untouched.
+  - name: Set Quay app deployment update strategy to Recreate (LVMS)
+    environment:
+      KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+    ansible.builtin.shell: |
+      {{ workingDir }}/bin/oc patch deployment registry-quay-app -n quay-enterprise --type=json -p='{{ quay_lvms_strategy_patch | to_json }}'
+    vars:
+      quay_lvms_strategy_patch:
+        - op: replace
+          path: /spec/strategy
+          value:
+            type: Recreate
+    when:
+      - quay_app_deployment.resources | default([]) | length > 0
+      - (lvmsQuayAppUpdateStrategy | default('RollingUpdate')) == 'Recreate'
+      - (quay_app_deployment.resources[0].spec.strategy.type | default('')) != 'Recreate'
+    register: quay_strategy_patch_result
