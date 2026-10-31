@@ -32,6 +32,7 @@
   block:
     - name: Run oc-mirror for plugin {{ plugin_name }}
       ansible.builtin.shell: |
+        echo "===== oc-mirror attempt started at $(date -Is) =====" >> {{ _oc_mirror_plugin_log }}
         {{ workingDir }}/bin/oc-mirror --v2 \
           --log-level {{ ocMirrorLogLevel }} \
           --authfile "{{ pullSecretPath }}" \
@@ -43,7 +44,7 @@
           --parallel-layers {{ ocMirrorParallelLayers }} \
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
-          > {{ _oc_mirror_plugin_log }} 2>&1
+          >> {{ _oc_mirror_plugin_log }} 2>&1
       retries: "{{ ocMirrorAnsibleRetries }}"
       delay: "{{ ocMirrorAnsibleDelay }}"
       register: r_plugin_mirror
@@ -194,6 +195,7 @@
   block:
     - name: Run oc-mirror for plugin {{ plugin_name }} (Quay Enterprise)
       ansible.builtin.shell: |
+        echo "===== oc-mirror attempt started at $(date -Is) =====" >> {{ _oc_mirror_plugin_quay_log }}
         {{ workingDir }}/bin/oc-mirror --v2 \
           --log-level {{ ocMirrorLogLevel }} \
           --authfile {{ workingDir }}/config/pull-secret.quay.json \
@@ -207,7 +209,7 @@
           --retry-times {{ ocMirrorRetryTimes }} \
           --retry-delay {{ ocMirrorRetryDelay }} \
           --image-timeout {{ ocMirrorImageTimeout }} \
-          > {{ _oc_mirror_plugin_quay_log }} 2>&1
+          >> {{ _oc_mirror_plugin_quay_log }} 2>&1
       retries: "{{ ocMirrorAnsibleRetries }}"
       delay: "{{ ocMirrorAnsibleDelay }}"
       register: r_plugin_mirror_quay

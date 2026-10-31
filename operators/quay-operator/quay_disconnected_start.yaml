@@ -51,7 +51,9 @@
     _retry=1
     _max_retries="{{ ocMirrorAnsibleRetries }}"
     _delay="{{ ocMirrorAnsibleDelay }}"
-    until {{ workingDir }}/bin/oc-mirror --v2 \
+    until \
+      echo "===== oc-mirror attempt ${_retry} started at $(date -Is) =====" >> {{ _oc_mirror_quay_log }} && \
+      {{ workingDir }}/bin/oc-mirror --v2 \
       --log-level {{ ocMirrorLogLevel }} \
       --authfile {{ workingDir }}/config/pull-secret.quay.json \
       -c {{ workingDir }}/config/imagesetconfiguration.internal.yaml \
@@ -64,7 +66,7 @@
       --retry-times {{ ocMirrorRetryTimes }} \
       --retry-delay {{ ocMirrorRetryDelay }} \
       --image-timeout {{ ocMirrorImageTimeout }} \
-      > {{ _oc_mirror_quay_log }} 2>&1
+      >> {{ _oc_mirror_quay_log }} 2>&1
     do
       if [ $_retry -ge $_max_retries ]; then
         echo "Max retries reached"
