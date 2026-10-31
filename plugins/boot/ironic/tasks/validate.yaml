@@ -1,0 +1,65 @@
+---
+# Preflight checks of the ironic boot plugin: settings it needs from outside
+# config/plugins/boot/ironic.yaml, the BMC entries of its hosts, and the
+# driver-specific checks of each driver in use (tasks/lib/<driver>-validate.yaml).
+
+- name: Check that lzBmcIP is set
+  ansible.builtin.assert:
+    that:
+      - lzBmcIP is defined
+      - lzBmcIP | string | length > 0
+    fail_msg: >-
+      lzBmcIP must be set in config/global.yaml: the BMCs of the hosts booted by the ironic
+      boot plugin fetch the agent ISO from it.
+    quiet: true
+
+- name: Check that the Ironic HTTPS settings are complete
+  ansible.builtin.assert:
+    that:
+      - ironicHTTPSCertificate | default('') | length > 0
+      - ironicHTTPSKey | default('') | length > 0
+    fail_msg: >-
+      Set both ironicHTTPSCertificate and ironicHTTPSKey in config/certificates.yaml to enable
+      Ironic HTTPS, or neither to disable it.
+    quiet: true
+  when: >-
+    ironicHTTPSCertificate | default('') | length > 0
+    or ironicHTTPSKey | default('') | length > 0
+
+- name: Set host names to compare with the BMC entries
+  ansible.builtin.set_fact:
+    _ironic_host_names: "{{ bootHosts | map(attribute='name') | list }}"
+    _ironic_bmc_names: "{{ (bootPluginConfig.hosts | default({})).keys() | list }}"
+
+- name: Check that the BMC entries match the hosts booted by ironic
+  ansible.builtin.assert:
+    that:
+      - _ironic_host_names | difference(_ironic_bmc_names) | length == 0
+      - _ironic_bmc_names | difference(_ironic_host_names) | length == 0
+    fail_msg: >-
+      The hosts in config/plugins/boot/ironic.yaml must match exactly the agent_hosts booted by
+      the ironic boot plugin.
+      Missing BMC entries: {{ _ironic_host_names | difference(_ironic_bmc_names) | join(', ') or 'none' }}.
+      BMC entries for hosts not booted by ironic: {{ _ironic_bmc_names | difference(_ironic_host_names) | join(', ') or 'none' }}.
+    quiet: true
+
+- name: Check that the hosts booted by ironic have a MAC address
+  ansible.builtin.assert:
+    that:
+      - item.macAddress is defined
+    fail_msg: "agent_hosts entry {{ item.name }} has no macAddress, needed to create its Ironic port."
+    quiet: true
+  loop: "{{ bootHosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Run the checks of each driver in use
+  ansible.builtin.include_tasks: "lib/{{ _driver }}-validate.yaml"
+  vars:
+    _driver_hosts: >-
+      {{ bootHosts | selectattr('name', 'in', bootPluginConfig.hosts | dict2items
+                                | selectattr('value.driver', 'equalto', _driver)
+                                | map(attribute='key') | list) | list }}
+  loop: "{{ bootPluginConfig.hosts.values() | map(attribute='driver') | unique | list }}"
+  loop_control:
+    loop_var: _driver

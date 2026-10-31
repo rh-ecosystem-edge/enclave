@@ -1,0 +1,79 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+
+additionalProperties: false
+properties:
+  hosts:
+    type: object
+    description: BMC settings of each host booted by this plugin, keyed by agent_hosts[].name.
+    minProperties: 1
+    additionalProperties:
+      "$ref": "#/definitions/host"
+required:
+  - hosts
+
+definitions:
+  host:
+    type: object
+    description: BMC settings of one host. driver selects the settings it accepts.
+    properties:
+      driver:
+        type: string
+        enum: [redfish]
+        description: Ironic hardware type used to drive the BMC of the host.
+    required:
+      - driver
+    allOf:
+      - if:
+          properties:
+            driver:
+              const: redfish
+        then:
+          "$ref": "#/definitions/redfishHost"
+  redfishHost:
+    type: object
+    description: BMC settings of a host driven through Redfish.
+    additionalProperties: false
+    properties:
+      driver:
+        const: redfish
+      driverInfo:
+        type: object
+        description: >-
+          Ironic driver_info of the redfish hardware type: each key is the camelCase form of an
+          Ironic driver_info key (e.g. redfishAddress for redfish_address). Keys the plugin sets
+          itself (e.g. forcePersistentBootDevice) are not accepted.
+        additionalProperties: false
+        properties:
+          redfishAddress:
+            type: string
+            pattern: "^(https?://)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*(:(([1-9][0-9]{0,3})|([1-5][0-9]{4})|(6[0-4][0-9]{3})|(65[0-4][0-9]{2})|(655[0-2][0-9])|(6553[0-5])))?$"
+            description: >-
+              BMC address: host name or IPv4 address, with an optional port and an optional
+              http:// or https:// scheme (Ironic assumes https), e.g. bmc0.example.com,
+              192.168.1.1:8000 or http://192.168.1.1.
+          redfishUsername:
+            type: string
+            minLength: 1
+            description: BMC user name.
+          redfishPassword:
+            type: string
+            minLength: 1
+            description: BMC password.
+          redfishSystemId:
+            type: string
+            pattern: "^/redfish/v1/Systems/.+"
+            description: >-
+              Canonical path of the system to boot, e.g. /redfish/v1/Systems/System.Embedded.1.
+              Only needed for multi-system BMCs; auto-discovered when omitted.
+          redfishVerifyCA:
+            type: boolean
+            description: "Whether to verify the BMC TLS certificate. Default: false."
+        required:
+          - redfishAddress
+          - redfishUsername
+          - redfishPassword
+    required:
+      - driverInfo

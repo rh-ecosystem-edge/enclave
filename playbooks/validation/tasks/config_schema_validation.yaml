@@ -13,6 +13,32 @@
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
 
+- name: Initialize MAC addresses of agent_hosts
+  ansible.builtin.set_fact:
+    _agent_host_macs: []
+
+# A host may list its macAddress in mapInterfaces too, so each host's MACs are
+# deduplicated before comparing hosts.
+- name: Collect MAC addresses of agent_hosts
+  ansible.builtin.set_fact:
+    _agent_host_macs: >-
+      {{ _agent_host_macs
+         + ([item.macAddress] + item.mapInterfaces | default([]) | map(attribute='macAddress') | list)
+           | map('lower') | unique | list }}
+  loop: "{{ agent_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Check that MAC addresses are unique across agent_hosts
+  ansible.builtin.assert:
+    that:
+      - _agent_host_macs | length == _agent_host_macs | unique | length
+    fail_msg: >-
+      MAC addresses must be unique across agent_hosts entries (macAddress and mapInterfaces).
+      Used by more than one entry: {{ _agent_host_macs | community.general.counter | dict2items
+                                      | rejectattr('value', 'eq', 1) | map(attribute='key') | join(', ') }}
+    quiet: true
+
 - name: Validate certificates.yaml against certificates schema
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', certs_vars_file | default('../../config/certificates.yaml', true)) | from_yaml | to_json }}"

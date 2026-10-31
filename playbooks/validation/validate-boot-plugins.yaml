@@ -1,0 +1,23 @@
+---
+# Boot Plugin Validation Playbook
+# Validates the boot plugins in use (playbooks/tasks/boot/validate.yaml):
+# - plugin contract (enclave plugins validate --type boot)
+# - plugin configuration (config/plugins/boot/<name>.yaml) against the plugin schema
+# - each plugin's preflight checks (tasks/validate.yaml), e.g. BMC reachability
+#
+# Usage:
+#   ansible-playbook playbooks/validation/validate-boot-plugins.yaml
+
+- name: Validate Boot Plugins
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: ../common/load-vars.yaml
+
+    - name: Include boot plugin validation tasks
+      ansible.builtin.include_tasks:
+        file: ../tasks/boot/validate.yaml
+      vars:
+        enclave_dir: "{{ playbook_dir }}/../.."

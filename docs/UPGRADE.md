@@ -102,6 +102,37 @@ If the control file is absent (a pre-migration-system installation), all migrati
 the next `upgrade.sh` execution. They are designed to be safe to run on an up-to-date enclave
 installation.
 
+### Redfish settings move to the ironic boot plugin
+
+The management cluster hosts (`agent_hosts`) are booted by a boot plugin, `ironic` by default.
+Their BMC settings no longer live in `agent_hosts`: the migration
+`20261028144317_move_redfish_settings_to_ironic_boot_plugin.yaml` moves them from each
+`agent_hosts` entry of `config/global.yaml` into `hosts.<name>` of
+`config/plugins/boot/ironic.yaml`, with `driver: redfish`, renaming them:
+
+| `agent_hosts[]` field | `config/plugins/boot/ironic.yaml` `hosts.<name>` field |
+|---|---|
+| `redfish` | `driverInfo.redfishAddress` |
+| `redfishUser` | `driverInfo.redfishUsername` |
+| `redfishPassword` | `driverInfo.redfishPassword` |
+| `bmcSystemId` | `driverInfo.redfishSystemId`, as `/redfish/v1/Systems/<bmcSystemId>` |
+
+- `discovery_hosts` in `config/cloud_infra.yaml` is not changed.
+- The migration is safe to run again. A host entry already in `ironic.yaml` with identical values
+  is left as is; if it has different values, the migration fails naming the host and changes
+  nothing. Resolve the conflict by removing one of the two entries and run `./upgrade.sh` again.
+- Both files keep their comments and formatting. Usually only the lines of the moved fields are
+  removed from `config/global.yaml`; the migration output lists, per host, the fields removed,
+  never their values.
+- If `config/global.yaml` cannot be edited that way, the migration edits it keeping comments but
+  possibly changing some formatting, or, as a last resort, rewrites it from its content (comments
+  and formatting are then kept only in the backup). Either way it says so in its output; compare
+  the file with its backup to review the changes.
+- Both files are backed up before being changed, next to the original, as
+  `<file>.<pid>.<date>@<time>~` (e.g. `config/global.yaml.12345.2026-10-28@14:43:17~`). The
+  migration output lists the backups.
+- `./sync.sh` does not validate boot plugins, so it works before this migration has run.
+
 ### Adding a migration
 
 Create a new file under `playbooks/tasks/migrations/` with a UTC timestamp prefix:

@@ -1,0 +1,26 @@
+---
+# Set _ironic_settings: the Ironic settings of each host in _settings_hosts,
+# keyed by host name, from tasks/lib/<driver>-settings.yaml of its driver:
+#   driver          Ironic hardware type
+#   boot_interface  Ironic boot interface that boots the ISO from virtual media
+#   driver_info     Ironic driver_info, without the BMC password
+#   password_key    driverInfo key of the BMC password in the plugin configuration
+#   password_field  Ironic driver_info field of the BMC password
+#   vmedia_detach   whether Ironic can detach the virtual media (vmedia API)
+
+- name: Initialize Ironic settings of the hosts
+  ansible.builtin.set_fact:
+    _ironic_settings: {}
+
+- name: Set Ironic settings of the hosts of each driver
+  ansible.builtin.include_tasks: "{{ _driver }}-settings.yaml"
+  vars:
+    _driver_hosts: >-
+      {{ _settings_hosts | selectattr('name', 'in', bootPluginConfig.hosts | dict2items
+                                       | selectattr('value.driver', 'equalto', _driver)
+                                       | map(attribute='key') | list) | list }}
+  loop: >-
+    {{ _settings_hosts | map(attribute='name') | map('extract', bootPluginConfig.hosts)
+       | map(attribute='driver') | unique | list }}
+  loop_control:
+    loop_var: _driver

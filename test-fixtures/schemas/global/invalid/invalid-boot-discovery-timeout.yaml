@@ -1,6 +1,6 @@
 ---
-# Fixture: redfish BMC address with out-of-range port (99999 > 65535)
-# Validates that ipv4AddressWithOptionalPort rejects ports outside 1-65535.
+# Fixture: bootDiscoveryTimeout below the minimum
+# Expected failure: bootDiscoveryTimeout must be >= 60
 workingDir: /home/enclave
 baseDomain: enclave-test.nodns.in
 clusterName: mgmt
@@ -12,6 +12,7 @@ defaultGateway: 192.168.2.10
 defaultPrefix: 24
 rendezvousIP: 192.168.2.24
 lzBmcIP: 100.64.1.10
+bootDiscoveryTimeout: 30
 quayUser: admin
 quayPassword: YOUR_QUAY_PASSWORD
 quayBackend: LocalStorage
@@ -22,7 +23,12 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.1:99999
     rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
-    redfishUser: admin
-    redfishPassword: YOUR_REDFISH_PASSWORD
+  - name: mgmt-ctl02
+    macAddress: 0c:c4:7a:62:fe:ed
+    ipAddress: 192.168.2.25
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
+  - name: mgmt-ctl03
+    macAddress: 0c:c4:7a:62:fe:ee
+    ipAddress: 192.168.2.26
+    rootDisk: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0

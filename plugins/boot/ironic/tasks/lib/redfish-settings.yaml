@@ -1,0 +1,33 @@
+---
+# Add the Ironic settings of the Redfish hosts in _driver_hosts to
+# _ironic_settings (see settings.yaml): the user's driverInfo translated to
+# Ironic driver_info keys, without the password, plus the driver_info the
+# plugin requires.
+
+- name: Set Ironic settings of Redfish hosts
+  ansible.builtin.set_fact:
+    _ironic_settings: >-
+      {{ _ironic_settings | combine({item.name: {
+           'driver': 'redfish',
+           'boot_interface': 'redfish-virtual-media',
+           'password_key': 'redfishPassword',
+           'password_field': 'redfish_password',
+           'vmedia_detach': true,
+           'driver_info': {'redfish_verify_ca': false}
+             | combine(dict(_items | map(attribute='key') | map('extract', _ironic_keys)
+                            | zip(_items | map(attribute='value'))))
+             | combine({'force_persistent_boot_device': 'Never'}),
+         }}) }}
+  vars:
+    _items: >-
+      {{ bootPluginConfig.hosts[item.name].driverInfo | dict2items
+         | rejectattr('key', 'equalto', 'redfishPassword') | list }}
+    # driverInfo key -> Ironic driver_info key
+    _ironic_keys:
+      redfishAddress: redfish_address
+      redfishUsername: redfish_username
+      redfishSystemId: redfish_system_id
+      redfishVerifyCA: redfish_verify_ca
+  loop: "{{ _driver_hosts }}"
+  loop_control:
+    label: "{{ item.name }}"

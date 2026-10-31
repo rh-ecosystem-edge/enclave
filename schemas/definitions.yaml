@@ -79,9 +79,81 @@ definitions:
     type: string
     pattern: "^/"
     description: Path for backend storage
-  hostEntry:
+  bootPluginName:
+    type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    description: >-
+      Name of a boot plugin under plugins/boot/. On an agent_hosts entry, it overrides the
+      top-level bootPlugin for that host.
+  agentHostEntry:
     type: object
-    description: Host entry for cluster or discovery nodes
+    description: Management cluster host entry (agent_hosts)
+    additionalProperties: false
+    properties:
+      bmcSystemId:
+        description: >-
+          Deprecated. Moved to hosts.<name>.systemId of config/plugins/boot/ironic.yaml.
+      bootPlugin:
+        "$ref": "#/definitions/bootPluginName"
+      interfaceName:
+        type: string
+        pattern: "^[a-zA-Z0-9_.-]+$"
+        description: Network interface name (e.g., eno1, eno1np0). Defaults to 'eno1' if not specified.
+      ipAddress:
+        "$ref": "#/definitions/ipv4Address"
+      macAddress:
+        "$ref": "#/definitions/macAddress"
+      mapInterfaces:
+        description: Interface mapping configuration
+        type: array
+        items:
+          type: object
+          required:
+            - name
+            - macAddress
+          properties:
+            name:
+              type: string
+            macAddress:
+              "$ref": "#/definitions/macAddress"
+      name:
+        "$ref": "#/definitions/nonEmptyString"
+      networkConfig:
+        type: object
+        description: Network configuration
+      redfish:
+        description: >-
+          Deprecated. Moved to hosts.<name>.address of config/plugins/boot/ironic.yaml.
+      redfishPassword:
+        description: >-
+          Deprecated. Moved to hosts.<name>.password of config/plugins/boot/ironic.yaml.
+      redfishUser:
+        description: >-
+          Deprecated. Moved to hosts.<name>.username of config/plugins/boot/ironic.yaml.
+      rootDisk:
+        "$ref": "#/definitions/nonEmptyString"
+    required:
+      - name
+      - rootDisk
+      - macAddress
+    oneOf:
+      - required:
+          - ipAddress
+        not:
+          anyOf:
+            - required:
+              - networkConfig
+            - required:
+              - mapInterfaces
+      - required:
+          - networkConfig
+          - mapInterfaces
+        not:
+          required:
+            - ipAddress
+  discoveryHostEntry:
+    type: object
+    description: Discovery host entry (discovery_hosts)
     properties:
       bmcSystemId:
         type: string

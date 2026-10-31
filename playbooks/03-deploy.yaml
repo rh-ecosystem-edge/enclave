@@ -10,10 +10,9 @@
 # - Generate Agent-Based Installer ISO
 # - Copy ISO to web server
 # - Skip hosts already Ready in the cluster (idempotent reruns)
-# - Setup Ironic and boot agent hosts via virtual media
+# - Boot agent hosts with their boot plugins (setup and boot hooks)
 # - Wait for deployment to complete
-# - Detach virtual media from hosts
-# - Clean up Ironic
+# - Run the boot plugins' post-install and cleanup hooks
 #
 # Usage:
 #   ansible-playbook playbooks/03-deploy.yaml [-e disconnected=false]
@@ -52,33 +51,13 @@
               tags: hardware
           tags: hardware
 
-        - name: Setup Ironic for hardware configuration
+        - name: Boot hosts via boot plugins
           ansible.builtin.include_tasks:
-            file: tasks/configure_hardware_ironic_setup.yaml
+            file: tasks/boot/boot_hosts.yaml
             apply:
               tags: hardware
           tags: hardware
           when: agent_hosts_to_provision | length > 0
-
-        - name: Configure and boot hosts via Ironic
-          loop: "{{ agent_hosts_to_provision }}"
-          loop_control:
-            loop_var: agent_host
-          ansible.builtin.include_tasks:
-            file: tasks/configure_hardware_ironic_boot.yaml
-            apply:
-              tags: hardware
-          tags: hardware
-
-        - name: Wait for all hosts to reach active state
-          loop: "{{ agent_hosts_to_provision }}"
-          loop_control:
-            loop_var: agent_host
-          ansible.builtin.include_tasks:
-            file: tasks/configure_hardware_ironic_wait.yaml
-            apply:
-              tags: hardware
-          tags: hardware
 
         - name: Pre-install validate plugins
           ansible.builtin.include_tasks:

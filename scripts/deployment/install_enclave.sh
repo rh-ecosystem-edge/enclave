@@ -106,6 +106,10 @@ ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config"
 scp $SSH_OPTS "${WORKING_DIR}/config/global.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/global.yaml"
 scp $SSH_OPTS "${WORKING_DIR}/config/certificates.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/certificates.yaml"
 scp $SSH_OPTS "${WORKING_DIR}/config/cloud_infra.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/cloud_infra.yaml"
+if [ -f "${WORKING_DIR}/config/plugins/boot/ironic.yaml" ]; then
+    ssh $SSH_OPTS "$LZ_SSH" "mkdir -p ${LZ_ENCLAVE_DIR}/config/plugins/boot"
+    scp $SSH_OPTS "${WORKING_DIR}/config/plugins/boot/ironic.yaml" "${LZ_SSH}:${LZ_ENCLAVE_DIR}/config/plugins/boot/ironic.yaml"
+fi
 
 success "Configuration generated and copied to Landing Zone"
 

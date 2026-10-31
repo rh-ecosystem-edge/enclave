@@ -1,0 +1,5 @@
+---
+# Tear down the ephemeral Ironic deployed by setup.yaml. Idempotent.
+
+- name: Tear down ephemeral Ironic
+  ansible.builtin.include_tasks: "../../../../playbooks/tasks/ironic/teardown_ephemeral.yaml"

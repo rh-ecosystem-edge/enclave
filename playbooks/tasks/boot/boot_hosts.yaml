@@ -1,0 +1,19 @@
+---
+# Run the setup and boot hooks of every boot plugin with hosts to provision,
+# one plugin after the other, in boot_plugins order.
+#
+# Inputs:
+#   agent_hosts_to_provision  agent_hosts not yet in the cluster
+
+- name: Load boot plugins
+  ansible.builtin.include_tasks: load_plugins.yaml
+
+- name: Run setup and boot hooks of each boot plugin
+  ansible.builtin.include_tasks: provision_plugin.yaml
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    loop_var: boot_plugin
+    label: "{{ boot_plugin.name }}"
+  when: >-
+    boot_plugin.hosts | map(attribute='name')
+    | intersect(agent_hosts_to_provision | map(attribute='name')) | length > 0

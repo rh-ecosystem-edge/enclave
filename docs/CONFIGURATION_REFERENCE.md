@@ -21,12 +21,15 @@ Configuration is split across multiple files for better organization and maintai
 | `defaults/quay_operator.yaml` | Quay feature flags and backend storage defaults |
 | `plugins/<name>/plugin.yaml` | Plugin descriptor (operators, registries, requires). Not a user config file. |
 | `config/plugins/<name>.yaml` | Plugin-specific user configuration. One file per plugin, named after the plugin. Auto-loaded during deployment. See each plugin's `plugins/<name>/schemas/config.yaml` for available settings. |
+| `config/plugins/boot/<name>.yaml` | Boot plugin user configuration, named after the boot plugin under `plugins/boot/<name>/`. See each boot plugin's `plugins/boot/<name>/schemas/config.yaml` for available settings. |
 
 Copy the example files to get started:
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
 cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+# BMC settings of the hosts booted by the ironic boot plugin (the default):
+install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
 # For plugin-specific config (e.g. restrict which disks LVMS manages):
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
@@ -54,10 +57,11 @@ All configuration files in the `defaults/` directory are automatically loaded by
 4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
    - [LVMS Configuration](#lvms-configuration)
    - [ODF Configuration](#odf-configuration)
-5. [System Defaults (read-only)](#system-defaults-read-only)
-6. [Complete Example](#complete-example)
-7. [Security Best Practices](#security-best-practices)
-8. [Validation](#validation)
+5. [`config/plugins/boot/ironic.yaml`](#configpluginsbootironicyaml)
+6. [System Defaults (read-only)](#system-defaults-read-only)
+7. [Complete Example](#complete-example)
+8. [Security Best Practices](#security-best-practices)
+9. [Validation](#validation)
 
 ## `config/global.yaml`
 
@@ -325,6 +329,39 @@ defaultNtpServers:
 
 ### Hardware Configuration
 
+#### `bootPlugin`
+
+**Description**: Boot plugin that boots the `agent_hosts` entries, by name of a directory under `plugins/boot/`. Each `agent_hosts` entry can override it with its own `bootPlugin`.
+
+**Type**: String (optional)
+
+**Default**: `ironic` (set in `defaults/deployment.yaml`)
+
+**Example**:
+```yaml
+bootPlugin: ironic
+```
+
+**Notes**:
+- `ironic` is the only boot plugin available. It boots the hosts from the agent ISO through Redfish virtual media, driven by an ephemeral Ironic on the Landing Zone
+- The `ironic` boot plugin reads the BMC settings of its hosts from [`config/plugins/boot/ironic.yaml`](#configpluginsbootironicyaml)
+
+#### `bootDiscoveryTimeout`
+
+**Description**: Seconds to wait for the rendezvous host to become reachable and for all `agent_hosts` to register in Assisted Service and become `known`.
+
+**Type**: Integer (optional, minimum `60`)
+
+**Default**: The largest `discoveryTimeout` of the boot plugins in use (`600` for `ironic`)
+
+**Example**:
+```yaml
+bootDiscoveryTimeout: 1200
+```
+
+**Notes**:
+- Increase it for hardware that takes long to boot the agent ISO (e.g. slow POST or large memory checks)
+
 #### `agent_hosts`
 
 **Description**: List of control plane nodes with their network and hardware configuration.
@@ -337,25 +374,17 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:39:f5:18
     ipAddress: 192.168.2.25
-    redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:39:ec:0c
     ipAddress: 192.168.2.26
-    redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     # optional fields
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
+    bootPlugin: ironic
 ```
 
 **Required fields for each host**:
@@ -365,18 +394,19 @@ agent_hosts:
 | `name` | Hostname for the node | `mgmt-ctl01` |
 | `macAddress` | MAC address of the primary network interface | `0c:c4:7a:62:fe:ec` |
 | `ipAddress` | Static IP address for the node (must be in `machineNetwork`) | `192.168.2.24` |
-| `redfish` | BMC IP address (or `ip:port`) for Redfish API access | `100.64.1.24` or `100.64.1.1:8008` |
 | `rootDisk` | Physical disk path for root filesystem (use `/dev/disk/by-path/` paths) | `/dev/disk/by-path/pci-0000:0011.4-ata-1.0` |
-| `redfishUser` | Override Username for Redfish API authentication on BMCs | `admin-override` |
-| `redfishPassword` | Override Password for Redfish API authentication on BMCs | `YourSecurePassword-override` |
 
 **Optional fields for each host**:
 
 | Field | Description | Example |
 |-------|-------------|---------|
-| `bmcSystemId` | Redfish System ID. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `System.Embedded.1` |
+| `bootPlugin` | Boot plugin that boots this host. Overrides the top-level [`bootPlugin`](#bootplugin) | `ironic` |
 | `mapInterfaces` | List of interface-to-MAC mappings for advanced network configuration | See example below |
 | `networkConfig` | Full nmstate network configuration in YAML format | See example below |
+
+The BMC settings of the hosts booted by the `ironic` boot plugin (BMC address, credentials and
+Redfish System ID) are not part of `agent_hosts`: they are set in
+[`config/plugins/boot/ironic.yaml`](#configpluginsbootironicyaml), keyed by host name.
 
 #### Advanced Network Configuration
 
@@ -451,12 +481,10 @@ agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
 
   # Host with advanced network configuration (bonding)
   - name: mgmt-ctl02
-    redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
       - name: eno1
@@ -500,7 +528,6 @@ agent_hosts:
 
   # Host with VLAN configuration
   - name: mgmt-ctl03
-    redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
       - name: eno1
@@ -543,7 +570,8 @@ agent_hosts:
 **Notes**:
 - Number of entries must match `controlPlane_replicas`
 - First entry's `ipAddress` should match `rendezvousIP`
-- MAC addresses must be unique
+- MAC addresses must be unique across all entries, including the MACs in `mapInterfaces` (a host may repeat its own `macAddress` in its `mapInterfaces`)
+- Hosts registered in Assisted Service are matched to `agent_hosts` entries by MAC address, one-to-one. The deployment fails immediately, naming the host, if a booted machine matches no entry or several entries
 - IP addresses must be unique and in `machineNetwork` range
 - `rootDisk` must use a physical disk path from `/dev/disk/by-path/` (not `/dev/sda` or similar). Device names can change between reboots, but physical paths remain stable.
 - `rootDisk` should be the primary disk (not a partition)
@@ -1373,6 +1401,72 @@ lvmsConfig:
 - Use paths from `/dev/disk/by-path/` for stable device identification across reboots
 - `forceWipeDevicesAndDestroyAllData` defaults to `true` (set in `plugins/lvms/defaults.yaml`)
 
+## `config/plugins/boot/ironic.yaml`
+
+Configuration of the `ironic` boot plugin (`plugins/boot/ironic/`), which boots `agent_hosts` from the agent ISO through Redfish virtual media. Required when any `agent_hosts` entry is booted by `ironic` (the default [`bootPlugin`](#bootplugin)). The settings are validated against `plugins/boot/ironic/schemas/config.yaml`. See [Boot Plugin Architecture](BOOT_PLUGIN_ARCHITECTURE.md) for how the plugin and its drivers work.
+
+Copy from the example template before editing:
+
+```bash
+install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
+```
+
+**Example**:
+```yaml
+# config/plugins/boot/ironic.yaml
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.24
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl02:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.25
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl03:
+    driver: redfish
+    driverInfo:
+      redfishAddress: https://bmc03.example.com:8443
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+      redfishSystemId: /redfish/v1/Systems/System.Embedded.1
+```
+
+**Top-level fields**:
+
+| Field | Required | Description | Example |
+|-------|----------|-------------|---------|
+| `hosts` | Yes | BMC settings of each host booted by `ironic`, keyed by `agent_hosts[].name` | See example above |
+
+**Fields for each `hosts` entry**:
+
+`driver` is the Ironic hardware type of the host's BMC, and `driverInfo` its Ironic `driver_info`:
+each key is the camelCase form of an
+[Ironic `driver_info` key](https://docs.openstack.org/ironic/latest/admin/drivers/redfish.html)
+(`redfishAddress` for `redfish_address`). Only `redfish` is supported, with these keys:
+
+| Field | Required | Description | Example |
+|-------|----------|-------------|---------|
+| `driver` | Yes | Ironic hardware type used to drive the BMC of the host | `redfish` |
+| `driverInfo.redfishAddress` | Yes | BMC address: host name or IPv4 address, with an optional port and an optional `http://` or `https://` scheme (Ironic assumes `https`) | `100.64.1.24`, `bmc01.example.com:8443` or `http://100.64.1.1:8000` |
+| `driverInfo.redfishUsername` | Yes | BMC user name | `admin` |
+| `driverInfo.redfishPassword` | Yes | BMC password | `YourSecurePassword` |
+| `driverInfo.redfishSystemId` | No | Canonical path of the system to boot. Only needed for multi-system BMCs; Ironic auto-discovers when omitted | `/redfish/v1/Systems/System.Embedded.1` |
+| `driverInfo.redfishVerifyCA` | No | Whether to verify the BMC TLS certificate. Default: `false` | `true` |
+
+Other `driverInfo` keys are rejected, including the ones the plugin sets itself (such as
+`forcePersistentBootDevice`, for Ironic's `force_persistent_boot_device`).
+
+**Notes**:
+- The `hosts` keys must match exactly the names of the `agent_hosts` entries booted by `ironic`: every such host needs an entry, and hosts booted by another boot plugin must not have one
+- The plugin's validation runs in the bootstrap `validate` step and checks Redfish connectivity and the system ID of each host, and that [`lzBmcIP`](#lzbmcip) is set
+- These settings were previously set on each `agent_hosts` entry as `redfish`, `redfishUser`, `redfishPassword` and `bmcSystemId`. `./upgrade.sh` moves them here, with `driver: redfish` (see [UPGRADE.md](UPGRADE.md))
+- `discovery_hosts` in `config/cloud_infra.yaml` keeps its own BMC fields and does not use this file
+
 ## System Defaults (read-only)
 
 These files are part of the repository and provide system-level defaults. They do not require user modification — override individual variables in `config/global.yaml` only when you need a non-default value.
@@ -1532,28 +1626,21 @@ storage_plugin: lvms
 # Example: to restrict which disks LVMS manages, create config/plugins/lvms.yaml.
 
 # Agent Hosts (control plane nodes)
+# Booted by the ironic boot plugin (default); BMC settings go in config/plugins/boot/ironic.yaml.
+# bootPlugin: ironic  # Default
 agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:39:f5:18
     ipAddress: 192.168.2.25
-    redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:39:ec:0c
     ipAddress: 192.168.2.26
-    redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
 
 # Registry Configuration
 quayUser: quayadmin
@@ -1617,6 +1704,32 @@ discovery_hosts:
     redfishPassword: YourSecurePassword
 ```
 
+### `config/plugins/boot/ironic.yaml`
+
+BMC settings of the `agent_hosts` above. Copy from `config/plugins/boot/ironic.example.yaml`.
+
+```yaml
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.24
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl02:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.25
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl03:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.26
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+```
+
 ### `config/plugins/lvms.yaml` (optional)
 
 Only needed when you want to restrict which disks LVMS manages. Copy from `config/plugins/lvms.example.yaml`.
@@ -1634,7 +1747,8 @@ If this file is absent, LVMS auto-detects and uses all available disks.
 
 1. **Restrict file permissions**:
    ```bash
-   chmod 600 config/global.yaml config/certificates.yaml config/cloud_infra.yaml
+   chmod 600 config/global.yaml config/certificates.yaml config/cloud_infra.yaml \
+     config/plugins/boot/ironic.yaml
    ```
 
 2. **Use strong passwords** for:
@@ -1654,7 +1768,8 @@ Before running the deployment, validate your configuration:
    ```bash
    ping $apiVIP
    ping $ingressVIP
-   for host in ${agent_hosts[@]}; do ping $host.redfish; done
+   # the host part of each hosts.<name>.driverInfo.redfishAddress in config/plugins/boot/ironic.yaml
+   ping $bmc_address
    ```
 
 2. **DNS resolution**:
@@ -1663,10 +1778,12 @@ Before running the deployment, validate your configuration:
    nslookup $quayHostname
    ```
 
-3. **Redfish API access**:
+3. **Redfish API access** (with the `redfishAddress`, `redfishUsername` and `redfishPassword`
+   of each host in `config/plugins/boot/ironic.yaml`; prefix the address with `https://` when it
+   has no scheme):
    ```bash
-   curl -k -u $redfishUser:$redfishPassword \
-     https://$redfish_ip/redfish/v1/Systems/1
+   curl -k -u $redfishUsername:$redfishPassword \
+     $redfishAddress/redfish/v1/Systems
    ```
 
 4. **File paths**:

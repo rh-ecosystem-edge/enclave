@@ -1,0 +1,78 @@
+---
+# Group agent_hosts by effective boot plugin and load the descriptors of the
+# boot plugins in use.
+#
+# Inputs:
+#   enclave_dir  optional, repository root (default: {{ playbook_dir }}/..)
+#
+# Outputs (facts):
+#   boot_plugins            boot plugins in use, ordered by discoveryTimeout
+#                           (largest first): name, path, discoveryTimeout, hosts
+#   boot_discovery_timeout  seconds to wait for the hosts to register
+
+- name: Set boot plugin paths
+  ansible.builtin.set_fact:
+    _boot_plugins_dir: "{{ enclave_dir | default(playbook_dir ~ '/..') }}/plugins/boot"
+
+- name: Group agent_hosts by boot plugin
+  ansible.builtin.set_fact:
+    _boot_hosts_by_plugin: {}
+
+- name: Assign each agent host to its boot plugin
+  ansible.builtin.set_fact:
+    _boot_hosts_by_plugin: >-
+      {{ _boot_hosts_by_plugin | combine({_plugin: _boot_hosts_by_plugin.get(_plugin, []) + [item]}) }}
+  vars:
+    _plugin: "{{ item.bootPlugin | default(bootPlugin) }}"
+  loop: "{{ agent_hosts }}"
+  loop_control:
+    label: "{{ item.name }} -> {{ _plugin }}"
+
+- name: Check that the boot plugins in use exist
+  ansible.builtin.stat:
+    path: "{{ _boot_plugins_dir }}/{{ item }}/plugin.yaml"
+  loop: "{{ _boot_hosts_by_plugin.keys() | list }}"
+  register: r_boot_plugin_descriptors
+
+- name: Fail if a boot plugin in use does not exist
+  ansible.builtin.fail:
+    msg: >-
+      Boot plugin {{ item.item }} (used by {{ _boot_hosts_by_plugin[item.item] | map(attribute='name') | join(', ') }})
+      not found: {{ _boot_plugins_dir }}/{{ item.item }}/plugin.yaml does not exist.
+  loop: "{{ r_boot_plugin_descriptors.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: not item.stat.exists
+
+- name: Initialize boot plugins in use
+  ansible.builtin.set_fact:
+    _boot_plugins: []
+
+- name: Load boot plugin descriptors
+  ansible.builtin.set_fact:
+    _boot_plugins: >-
+      {{ _boot_plugins + [{
+           'name': item.key,
+           'path': _boot_plugins_dir ~ '/' ~ item.key,
+           'discoveryTimeout': _descriptor.discoveryTimeout | default(600) | int,
+           'hosts': item.value}] }}
+  vars:
+    _descriptor: "{{ lookup('ansible.builtin.file', _boot_plugins_dir ~ '/' ~ item.key ~ '/plugin.yaml') | from_yaml }}"
+  loop: "{{ _boot_hosts_by_plugin | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Order boot plugins and set the discovery timeout
+  ansible.builtin.set_fact:
+    boot_plugins: "{{ _boot_plugins | sort(attribute='discoveryTimeout', reverse=true) }}"
+    boot_discovery_timeout: >-
+      {{ (bootDiscoveryTimeout | default(_boot_plugins | map(attribute='discoveryTimeout') | max)) | int }}
+
+- name: Display boot plugins in use
+  ansible.builtin.debug:
+    msg: >-
+      Boot plugin {{ item.name }}: {{ item.hosts | map(attribute='name') | join(', ') }}
+      (discoveryTimeout {{ item.discoveryTimeout }}s)
+  loop: "{{ boot_plugins }}"
+  loop_control:
+    label: "{{ item.name }}"

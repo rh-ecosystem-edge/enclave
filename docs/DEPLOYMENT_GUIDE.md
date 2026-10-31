@@ -169,7 +169,7 @@ Both services must be accessible from the appropriate networks (see port table b
 | Ironic API | 6385 | TCP | Inbound to LZ from cluster nodes / BMO controller | BareMetalHost provisioning and inspection |
 | Ironic HTTP (ISO/vmedia) | 6180 | TCP | Inbound to LZ from BMCs | Serves the boot ISO for virtual media |
 | Ironic vmedia (TLS) | 6183 | TCP | Inbound to LZ from BMCs | Only when `ironicHTTPSCertificate`/`ironicHTTPSKey` are configured |
-| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from the `redfish` field (`ip` or `ip:port`) per host in `config/cloud_infra.yaml` |
+| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from `driverInfo.redfishAddress` (`host` or `host:port`) per host in `config/plugins/boot/ironic.yaml`, and from the `redfish` field per host in `config/cloud_infra.yaml` |
 | Mirror registry (Quay) | 8443 | TCP | Inbound to LZ from cluster nodes | Image pulls/pushes against `quayHostname:8443` |
 | OCP API | 6443 | TCP | Outbound from LZ to the cluster `apiVIP` | Used by the Ansible controller (`oc`/`KUBECONFIG`) and by the BMO/Ironic controllers reconciling `BareMetalHost` objects after install |
 | NTP | 123 | UDP | Inbound to LZ from cluster nodes | Only if `defaultNtpServers` points at the Landing Zone |
@@ -236,11 +236,15 @@ Configuration is split across multiple files for better organization:
 1. **Base Configuration**: Working directory, cluster name, domain
 2. **Network Configuration**: VIPs, network ranges, DNS, gateway
 3. **Registry Configuration**: Quay settings, backend storage
-4. **Hardware Configuration**: Redfish credentials, host definitions
+4. **Hardware Configuration**: Host definitions (`agent_hosts`), boot plugin selection (`bootPlugin`)
 
 **`config/certificates.yaml`** — SSL certificate configuration:
 - API server certificate and private key
 - Ingress (wildcard) certificate and private key
+
+**`config/plugins/boot/ironic.yaml`** — BMC settings (Redfish address, credentials, System ID) of
+the `agent_hosts` booted by the `ironic` boot plugin, keyed by host name. See
+[`config/plugins/boot/ironic.yaml`](CONFIGURATION_REFERENCE.md#configpluginsbootironicyaml).
 
 **Default configuration files** (in `defaults/` directory):
 - `defaults/operators.yaml` - General cluster operators
@@ -268,7 +272,7 @@ Phase 2: Mirror (02-mirror.yaml)          ← disconnected only
   Deploy mirror registry, mirror images
          ↓
 Phase 3: Deploy (03-deploy.yaml)
-  Generate ISO, boot servers via Redfish, wait for cluster install
+  Generate ISO, boot servers with the boot plugin (Ironic + Redfish), wait for cluster install
          ↓
 Phase 4: Post-Install (04-post-install.yaml)
   Apply SSL certificates, configure registry, cluster settings
@@ -286,7 +290,7 @@ Phase 7: Discovery (07-configure-discovery.yaml)
 ### Bootstrap
 
 Before running the deployment phases, run `bootstrap.sh` to:
-- Validate configuration
+- Validate configuration, including the boot plugin checks (for `ironic`: Redfish connectivity and System ID of each host)
 - Install system packages and Ansible dependencies
 - Set up the environment
 
@@ -336,26 +340,53 @@ defaultPrefix: 24
 # Web server for ISO serving
 lzBmcIP: 100.64.1.10  # IP address of deployment host on provisioning network
 
+# Boot plugin for agent_hosts (optional, ironic is the default)
+# bootPlugin: ironic
+
 # Agent hosts (control plane nodes)
 agent_hosts:
   - name: mgmt-ctl01
     macAddress: 0c:c4:7a:62:fe:ec
     ipAddress: 192.168.2.24
-    redfish: 100.64.1.24  # BMC IP address
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:39:f5:18
     ipAddress: 192.168.2.25
-    redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
   - name: mgmt-ctl03
     macAddress: 0c:c4:7a:39:ec:0c
     ipAddress: 192.168.2.26
-    redfish: 100.64.1.26
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
 
 # Rendezvous IP (first control plane node)
 rendezvousIP: 192.168.2.24
+```
+
+The BMC settings of the hosts booted by the `ironic` boot plugin go in
+`config/plugins/boot/ironic.yaml` (copy from `config/plugins/boot/ironic.example.yaml`), keyed by
+host name. The keys must match exactly the names of the `agent_hosts` booted by `ironic`:
+
+```yaml
+# config/plugins/boot/ironic.yaml
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.24  # BMC host name or IP, optional :port and http(s):// (default https)
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl02:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.25
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
+  mgmt-ctl03:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 100.64.1.26
+      redfishUsername: admin
+      redfishPassword: YourSecurePassword
 ```
 
 ### Advanced Network Configuration (Optional)
@@ -366,7 +397,6 @@ For complex network setups like bonding, VLANs, or multiple interfaces, use `map
 agent_hosts:
   # Host with bonding configuration
   - name: mgmt-ctl01
-    redfish: 100.64.1.24
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
     mapInterfaces:
       - name: eno1
@@ -412,7 +442,6 @@ agent_hosts:
   - name: mgmt-ctl02
     macAddress: 0c:c4:7a:39:f5:18
     ipAddress: 192.168.2.25
-    redfish: 100.64.1.25
     rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
 ```
 
@@ -570,21 +599,36 @@ control_binaries:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `redfishUser` | Redfish API username | `admin` |
-| `redfishPassword` | Redfish API password | `YourPassword` |
 | `lzBmcIP` | IP address serving ISO files | `100.64.1.10` |
+| `bootPlugin` | Boot plugin for `agent_hosts` (optional). Default: `ironic` | `ironic` |
+| `bootDiscoveryTimeout` | Seconds to wait for all `agent_hosts` to register in Assisted Service (optional, minimum 60). Default: largest `discoveryTimeout` of the boot plugins in use (600 for `ironic`) | `1200` |
 | `agent_hosts` | List of control plane nodes | See example above |
 
 Each `agent_hosts` entry requires:
 - `name`: Hostname for the node
 - `macAddress`: MAC address for network identification (not required if using `networkConfig`)
 - `ipAddress`: Static IP address for the node (not required if using `networkConfig`)
-- `redfish`: BMC IP address for Redfish API
 - `rootDisk`: Physical disk path for root filesystem (e.g., `/dev/disk/by-path/pci-0000:0011.4-ata-1.0`). **Important**: Use physical connection paths from `/dev/disk/by-path/` instead of `/dev/sda` as device names can change between reboots. **Disk Preparation**: The installer automatically repartitions and rewrites the target disk—no manual disk cleaning or preparation is required.
 
-Optional fields for advanced network configuration:
+Optional fields:
+- `bootPlugin`: Boot plugin for this host, overriding the top-level `bootPlugin`
 - `mapInterfaces`: List of interface name to MAC address mappings
 - `networkConfig`: Full nmstate network configuration (bonding, VLANs, etc.)
+
+MAC addresses must be unique across all `agent_hosts` entries (`macAddress` and `mapInterfaces`).
+Hosts registered in Assisted Service are matched to `agent_hosts` by MAC address; the deployment
+fails immediately, naming the host, if a booted machine matches no entry or several entries.
+
+BMC settings of each host booted by `ironic` are set in `config/plugins/boot/ironic.yaml`:
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `hosts.<name>.driver` | Ironic hardware type of the host's BMC (only `redfish` is supported) | `redfish` |
+| `hosts.<name>.driverInfo.redfishAddress` | BMC host name or IP, with optional port and `http://`/`https://` scheme (default `https`) | `100.64.1.24` |
+| `hosts.<name>.driverInfo.redfishUsername` | Redfish API username | `admin` |
+| `hosts.<name>.driverInfo.redfishPassword` | Redfish API password | `YourPassword` |
+| `hosts.<name>.driverInfo.redfishSystemId` | Canonical system path (optional, only for multi-system BMCs) | `/redfish/v1/Systems/System.Embedded.1` |
+| `hosts.<name>.driverInfo.redfishVerifyCA` | Verify the BMC TLS certificate (optional, default `false`) | `true` |
 
 ### Registry Configuration
 
@@ -642,9 +686,11 @@ Certificates are stored in `config/certificates.yaml` and must be provided in PE
    cp config/global.example.yaml config/global.yaml
    cp config/certificates.example.yaml config/certificates.yaml
    cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+   install -m 600 config/plugins/boot/ironic.example.yaml config/plugins/boot/ironic.yaml
    vim config/global.yaml       # Edit cluster, network, hardware and registry settings
    vim config/certificates.yaml # Add SSL certificates
    vim config/cloud_infra.yaml  # Add discovery hosts (leave discovery_hosts: [] if none)
+   vim config/plugins/boot/ironic.yaml # Add BMC settings of the agent_hosts
    ```
 
 3. **Run bootstrap**:
@@ -748,9 +794,9 @@ For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnost
 ### Common Issues
 
 1. **Redfish API Connection Failures**:
-   - Verify BMC IP addresses are correct
+   - Verify BMC addresses are correct (`driverInfo.redfishAddress` in `config/plugins/boot/ironic.yaml`)
    - Check network connectivity to BMCs
-   - Verify Redfish credentials
+   - Verify Redfish credentials (`driverInfo.redfishUsername`/`redfishPassword` in `config/plugins/boot/ironic.yaml`)
    - Ensure BMC firmware meets minimum requirements (see [Hardware Compatibility](#hardware-compatibility))
    - Try setting `redfish_legacy: true` for older BMCs
 
