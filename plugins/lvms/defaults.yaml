@@ -20,3 +20,8 @@ lvmsQuayAppResources:
   limits:
     cpu: "4"
     memory: "12Gi"
+# Update strategy for the managed Quay app Deployment (LocalStorage backend). With a
+# node-local RWO PV the Quay app is pinned to one node; RollingUpdate must briefly run a
+# surge pod there, which can deadlock on constrained nodes. Set to Recreate to tear the
+# old pod down first (releasing the node and the RWO volume) before the new one starts.
+lvmsQuayAppUpdateStrategy: RollingUpdate

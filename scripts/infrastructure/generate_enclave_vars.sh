@@ -288,18 +288,17 @@ if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
     info "Storage plugin overridden to ODF with RadosGWStorage backend"
 fi
 
-# Tune Quay app resources for the LVMS backend in CI only (OSAC-4957). The
-# node-local RWO PV pins the Quay app to a single node, so a rolling update must
-# briefly run a second pod there; on constrained CI masters the default 6Gi
-# request leaves the surge pod unschedulable. Lower the memory request so the
-# rollout can complete.
+# Use the Recreate update strategy for the Quay app Deployment on the LVMS backend in CI
+# only (OSAC-7039). The node-local RWO PV pins the Quay app to a single node, so the
+# default RollingUpdate must briefly run a surge pod there; on constrained CI masters that
+# pod is unschedulable and the rollout deadlocks. Recreate tears the old pod down first.
 if [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
     LVMS_PLUGIN_CONFIG="$(dirname "$GLOBAL_VARS_OUTPUT")/plugins/lvms.yaml"
     mkdir -p "$(dirname "$LVMS_PLUGIN_CONFIG")"
     # Tolerate unquoted, double-quoted and single-quoted keys (matching
     # delimiters) plus whitespace before the colon (all valid YAML forms).
-    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*("lvmsQuayAppResources"|'\''lvmsQuayAppResources'\''|lvmsQuayAppResources)[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
-        info "LVMS plugin config already defines lvmsQuayAppResources; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
+    if [ -f "$LVMS_PLUGIN_CONFIG" ] && grep -qE '^[[:space:]]*("lvmsQuayAppUpdateStrategy"|'\''lvmsQuayAppUpdateStrategy'\''|lvmsQuayAppUpdateStrategy)[[:space:]]*:' "$LVMS_PLUGIN_CONFIG"; then
+        info "LVMS plugin config already defines lvmsQuayAppUpdateStrategy; leaving it unchanged: $LVMS_PLUGIN_CONFIG"
     else
         # Append as a new top-level key so any existing lvmsConfig (e.g.
         # deviceSelector.optionalPaths) is preserved rather than overwritten.
@@ -310,17 +309,11 @@ if [ "${STORAGE_PLUGIN:-lvms}" = "lvms" ]; then
             printf '\n' >> "$LVMS_PLUGIN_CONFIG"
         fi
         cat >> "$LVMS_PLUGIN_CONFIG" <<EOF
-# Auto-generated CI override (OSAC-4957): lower the Quay app memory request so the
-# rolling-update surge pod fits on the node-pinned LVMS RWO PV.
-lvmsQuayAppResources:
-  requests:
-    cpu: "2"
-    memory: "2Gi"
-  limits:
-    cpu: "4"
-    memory: "12Gi"
+# Auto-generated CI override (OSAC-7039): use Recreate so the Quay app rollout does not
+# deadlock on a surge pod that cannot schedule on the node-pinned LVMS RWO PV.
+lvmsQuayAppUpdateStrategy: Recreate
 EOF
-        info "Added tuned Quay app resources to LVMS plugin config: $LVMS_PLUGIN_CONFIG"
+        info "Added Quay app update strategy to LVMS plugin config: $LVMS_PLUGIN_CONFIG"
     fi
 fi
 

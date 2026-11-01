@@ -47,6 +47,12 @@ properties:
           - name
           - sizePercent
           - overprovisionRatio
+  lvmsQuayAppUpdateStrategy:
+    type: string
+    description: Update strategy for the managed Quay app Deployment.
+    enum:
+      - RollingUpdate
+      - Recreate
   lvmsQuayAppResources:
     type: object
     description: Resource requests/limits for the managed Quay app container.

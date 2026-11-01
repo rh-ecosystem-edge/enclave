@@ -1,0 +1,4 @@
+---
+# Fixture: invalid Quay app update strategy
+# Expected failure: lvmsQuayAppUpdateStrategy must be one of the enum values
+lvmsQuayAppUpdateStrategy: Rolling

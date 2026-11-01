@@ -10,6 +10,7 @@ lvmsDefaults:
     name: vg1-pool-1
     sizePercent: 90
     overprovisionRatio: 10
+lvmsQuayAppUpdateStrategy: RollingUpdate
 lvmsQuayAppResources:
   requests:
     cpu: "2"
