@@ -6,6 +6,7 @@
 # Section order mirrors the upstream chart values.yaml to keep diffs reviewable.
 
 global:
+  osacDeploymentId: {{ osacDeploymentId | to_json }}
   services:
     caas:
       enabled: {{ ('caas' in osacProfilesList) | lower }}
