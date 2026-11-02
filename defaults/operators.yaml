@@ -105,9 +105,9 @@ operators:
     namespace: openshift-compliance
 
   - name: metallb-operator
-    version: 4.20.0-202602261925
+    version: 44.21.0-202610241344
     channel: stable
-    init_version: 4.20.0-202602261925
+    init_version: 4.21.0-202610241344
     namespace: metallb-system
     global: true
     csvNames:
