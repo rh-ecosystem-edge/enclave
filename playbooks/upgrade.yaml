@@ -59,3 +59,10 @@
       ansible.builtin.debug:
         var: r_operator_versions_upgrade.stderr_lines
       when: upgrade_operators | default(true) | bool
+
+    - name: Reconcile fleet operator policies after operator upgrades
+      ansible.builtin.include_tasks:
+        file: tasks/reconcile_fleet_operator_policies.yaml
+      when: upgrade_operators | default(true) | bool
+      environment:
+        PATH: "{{ workingDir }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"

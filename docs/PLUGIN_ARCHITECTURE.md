@@ -70,16 +70,19 @@ registries:
 | `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deploys after core operators and Quay mirroring. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
-| `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. When combined with `clusterSelector` and `installOperators: false`, operators are deployed to spoke clusters via ACM OperatorPolicy for version control. |
-| `installOperators` | Set to `false` to deploy operators to fleet via ACM policies instead of installing on hub. Requires `clusterSelector`. Defaults to `true`. |
+| `operators` | List of OLM operators to install. Each entry provides its package name, target `version`, and channel; fleet-managed entries also provide a namespace. When deployed to the fleet, an ACM `OperatorPolicy` pins the subscription to the target CSV. `csvNames` overrides the CSV name prefix when it differs from the package name. `csvVersionSeparator` overrides the default `.v` separator. |
+| `init_version` | Minimum operator bundle version included when mirroring. It does not set the fleet install target; fleet policies use `version`. |
+| `installOperators` | Set to `false` to skip installing operators on the management cluster. Fleet installation is still controlled by `clusterSelector` and `installOperatorsFleet`. Defaults to `true`. |
 | `installOperatorsFleet` | Controls operator policy creation for fleet. Set to `false` to deploy only the catalog source to fleet when `clusterSelector` is set (no operator subscriptions). Defaults to `true`. Requires `clusterSelector`. |
-| `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). When defined with `installOperators: false`, creates ACM policies using OperatorPolicy for version-controlled fleet deployment. |
+| `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). With `installOperatorsFleet` enabled, fleet operators are managed by ACM `OperatorPolicy`. |
 | `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). DO NOT USE, this property has been deprecated.|
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
 | `blockedImages` | Images to exclude from mirroring (by tag, digest, or pattern). |
 | `requires` | Declarative requirements validated at load time, before any deployment work begins. See [Load-Time Validation](#load-time-validation). |
 | `helm` | List of Helm charts to install after operators, before `tasks/deploy.yaml`. Supports local charts, OCI charts (`oci://`), and remote repos. Each entry specifies `release`, `namespace`, and optional `chart`, `repo`, `version`, `timeout`, `retries`, `wait`, values template, and `extractImages`. When `extractImages: true` is set on a chart (local or OCI), `helm template` is run before mirroring to discover container image references and merge them into `additionalImages` automatically. `timeout` defaults to `15m`, `retries` defaults to `2`, and `wait` defaults to `true`. Set `retries: 0` for charts with long timeouts where failures are structural rather than transient. |
+
+For fleet installations, the generated `OperatorPolicy` sets both `startingCSV` and its single allowed `versions` entry from the descriptor's target `version`. Updating that field and running `upgrade.yaml` refreshes the policy on enabled plugins; ACM then approves only the pinned version.
 
 The plugin descriptor is validated by JSON Schema (`schemas/plugin.yaml`) during `make validate`. The validator (`make validate-plugins`) also checks directory structure.
 

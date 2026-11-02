@@ -30,6 +30,9 @@ definitions:
         items:
           type: string
           description: ClusterServiceVersion name for the operator.
+      csvVersionSeparator:
+        type: string
+        description: Separator between the CSV name and version; defaults to ".v".
       csvMirror:
         type: boolean
         description: Mirror operator packages listed under csvNames.

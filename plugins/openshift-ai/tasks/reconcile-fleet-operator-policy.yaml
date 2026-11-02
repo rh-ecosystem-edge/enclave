@@ -1,0 +1,11 @@
+- name: Apply ACM Policy for OpenShift AI operators
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_model_prerequisites
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_prerequisites is success
