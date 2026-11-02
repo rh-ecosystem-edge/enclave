@@ -11,6 +11,7 @@ done
 global_vars=config/global.yaml
 certs_vars=config/certificates.yaml
 cloud_infra_vars=config/cloud_infra.yaml
+node_management_vars=config/plugins/node-management.yaml
 
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $vars_rendered \
@@ -100,7 +101,18 @@ validation_section "syntax"
 # Render a vars.yaml file. This allows variable interpolation in vars.yaml
 vars_rendered=$(mktemp)
 trap 'rm -f "$vars_rendered"' exit
-if ! vars_rendering=$(ansible localhost -e "@$global_vars" -e "@$certs_vars" -e "@$cloud_infra_vars" -m copy -a "content={{ hostvars['localhost'] | to_yaml }} dest=${vars_rendered}" 2>&1); then
+validation_vars=("$global_vars" "$certs_vars")
+if [[ -f "$cloud_infra_vars" ]]; then
+    validation_vars+=("$cloud_infra_vars")
+fi
+if [[ -f "$node_management_vars" ]]; then
+    validation_vars+=("$node_management_vars")
+fi
+validation_extra_vars=()
+for vars_file in "${validation_vars[@]}"; do
+    validation_extra_vars+=(-e "@${vars_file}")
+done
+if ! vars_rendering=$(ansible localhost "${validation_extra_vars[@]}" -m copy -a "content={{ hostvars['localhost'] | to_yaml }} dest=${vars_rendered}" 2>&1); then
     validation fail vars_yaml "Configuration files could not be parsed" "$vars_rendering"
 fi
 validation pass vars_yaml "Configuration syntax OK"

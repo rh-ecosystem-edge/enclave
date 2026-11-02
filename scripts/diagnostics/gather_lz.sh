@@ -177,6 +177,38 @@ PYTHON_SCRIPT
     log_info "  OK Collected configuration (sanitized)"
 fi
 
+NODE_MANAGEMENT_FILE="${ENCLAVE_DIR}/config/plugins/node-management.yaml"
+if [ -f "${NODE_MANAGEMENT_FILE}" ]; then
+    mkdir -p "${COLLECTION_DIR}/config/plugins"
+    python3 - "${NODE_MANAGEMENT_FILE}" <<'PYTHON_SCRIPT' > "${COLLECTION_DIR}/config/plugins/node-management.yaml" 2>/dev/null || true
+import sys
+import yaml
+
+with open(sys.argv[1], 'r') as f:
+    data = yaml.safe_load(f) or {}
+
+settings = data.get('nodeManagementConfig') or {}
+hosts = settings.get('discovery_hosts', []) if isinstance(settings, dict) else []
+if isinstance(hosts, list):
+    for host in hosts:
+        if isinstance(host, dict):
+            if 'redfishPassword' in host:
+                host['redfishPassword'] = 'REDACTED'
+            if 'password' in host:
+                host['password'] = 'REDACTED'
+
+yaml.dump(data, sys.stdout, default_flow_style=False, sort_keys=False)
+PYTHON_SCRIPT
+
+    if [ ! -s "${COLLECTION_DIR}/config/plugins/node-management.yaml" ]; then
+        log_warning "Python sanitization failed for node-management plugin config, using sed fallback"
+        sed -e 's/\(redfishPassword:\).*/\1 REDACTED/' \
+            "${NODE_MANAGEMENT_FILE}" > "${COLLECTION_DIR}/config/plugins/node-management.yaml" 2>/dev/null || true
+    fi
+
+    log_info "  OK Collected node-management plugin configuration (sanitized)"
+fi
+
 CLOUD_INFRA_FILE="${ENCLAVE_DIR}/config/cloud_infra.yaml"
 if [ -f "${CLOUD_INFRA_FILE}" ]; then
     python3 <<PYTHON_SCRIPT > "${COLLECTION_DIR}/config/cloud_infra.yaml" 2>/dev/null || true

@@ -54,14 +54,10 @@ The Redfish path is also hardwired across the codebase, which makes adding an al
 
 ## Non-objectives
 
-- **Day 2 host discovery.** `playbooks/07-configure-discovery.yaml` keeps creating Redfish-backed
-  BareMetalHosts for `discovery_hosts`, unchanged. The Ironic stack used for booting is ephemeral
-  and torn down once the management cluster is installed, so the two paths are already
-  independent. Day 2 is also a much harder problem with a different shape: the hosts are driven
-  by the Bare Metal Operator, Metal3 and the ACM/MCE operators, which expect power control and
-  virtual media for provisioning, reprovisioning and deprovisioning hosts over their lifetime. A
-  pluggable equivalent there would mean integrating with those operators' interfaces, not
-  swapping the step that boots an ISO once.
+- **Day 2 host discovery.** Post-install discovery is handled separately by the `node-management`
+  addon plugin. It deploys the persistent Metal3/Ironic components and seeds discovery resources
+  from plugin config. Ongoing host lifecycle operations remain in ACM. This flow does not use the
+  boot-plugin lifecycle because it runs after the management cluster is installed.
 - **Migrating the existing plugins.** Moving `foundation` plugins to `plugins/storage/` and `addon`
   plugins to `plugins/addons/` is a follow-up. Until then they stay in the flat `plugins/` layout,
   and `validate_plugins.sh` keeps validating them.
@@ -120,15 +116,16 @@ Boot plugin settings therefore cannot collide with global variables, and the pro
 that `validate_plugins.sh` enforces for existing plugins is not needed.
 
 `hostEntry` in `schemas/definitions.yaml` is shared today by `agent_hosts` (referenced from
-`schemas/global.yaml`) and `discovery_hosts` (referenced from `schemas/cloud_infra.yaml`). It is
-split into two definitions:
+`schemas/global.yaml`) and `nodeManagementConfig.discovery_hosts` (referenced from
+`plugins/node-management/schemas/config.yaml`). It is split into two definitions:
 
 - `agentHostEntry`, referenced from `schemas/global.yaml`: drops the four BMC fields and gains the
   optional `bootPlugin`.
-- `discoveryHostEntry`, referenced from `schemas/cloud_infra.yaml`: keeps the BMC fields required.
+- `discoveryHostEntry`, referenced from `plugins/node-management/schemas/config.yaml`: keeps the BMC fields required.
 
-The fixtures under `test-fixtures/schemas/global/` and `test-fixtures/schemas/cloud_infra/` are
-updated accordingly, including a valid `agent_hosts` entry without Redfish fields.
+The fixtures under `test-fixtures/schemas/global/` and
+`plugins/node-management/test-fixtures/schemas/config/` are updated accordingly, including a
+valid `agent_hosts` entry without Redfish fields.
 
 MAC addresses must be unique across all `agent_hosts` entries (`macAddress` and the MACs in
 `mapInterfaces`). JSON Schema cannot express uniqueness of a field across array items, so config
@@ -278,8 +275,8 @@ plugin also reads `macAddress` from `bootHosts` to create the Ironic ports).
 
 ### Shared Ironic tasks library
 
-Some Ironic tasks are used both by the boot path and by Day 2 (`07-configure-discovery.yaml` and
-`playbooks/tasks/upgrade/metal3-components.yaml`). They move to `playbooks/tasks/ironic/`, and
+Some Ironic tasks are used both by the boot path, the `node-management` addon, and
+`playbooks/tasks/upgrade/metal3-components.yaml`. They move to `playbooks/tasks/ironic/`, and
 both the `ironic` boot plugin and the Day 2 playbooks include them from there:
 
 - `deploy_metal3_common.yaml`

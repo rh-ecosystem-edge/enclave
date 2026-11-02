@@ -5,7 +5,6 @@
     user_config_files:
       - "{{ vars_file | default('../../config/global.yaml', true) }}"
       - "{{ certs_vars_file | default('../../config/certificates.yaml', true) }}"
-      - "{{ cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true) }}"
 
 - name: Include deployment defaults
   ansible.builtin.include_vars: ../../defaults/deployment.yaml

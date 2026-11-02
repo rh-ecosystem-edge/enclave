@@ -37,5 +37,5 @@ migrationTasksFilePath: "{{ workingDir }}/migrations/tasks.txt"
 quayRegistryCAConfigmapName: quay-registry-ca
 
 # Default network interface name for NMState configuration.
-# Override per host via discovery_hosts[].interfaceName.
+# Override per host via nodeManagementConfig.discovery_hosts[].interfaceName.
 defaultInterfaceName: eno1

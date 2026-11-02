@@ -46,7 +46,7 @@ properties:
     pattern: "^[a-zA-Z0-9_.-]+$"
     description: >-
       Default network interface name for NMState configuration. Override per host via
-      discovery_hosts[].interfaceName.
+      nodeManagementConfig.discovery_hosts[].interfaceName.
 required:
   - disconnected
   - fresh

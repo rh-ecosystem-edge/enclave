@@ -10,7 +10,6 @@
 #   Phase 4: Post-Install - Cluster-level configuration
 #   Phase 5: Operators - Install and configure operators
 #   Phase 6: Day2 - Optional advanced features
-#   Phase 7: Configure Discovery - Hardware discovery (optional)
 #
 # CONNECTED MODE:
 #   Phase 1: Prepare - Download binaries and content
@@ -19,7 +18,6 @@
 #   Phase 4: Post-Install - Cluster-level configuration
 #   Phase 5: Operators - Install and configure operators
 #   Phase 6: Day2 - Optional advanced features
-#   Phase 7: Configure Discovery - Hardware discovery (optional)
 #
 # Usage:
 #   # Full deployment (disconnected mode)
@@ -50,6 +48,3 @@
 
 - name: Phase 6 - Day-2 operations
   ansible.builtin.import_playbook: 06-day2.yaml
-
-- name: Phase 7 - Configure hardware discovery
-  ansible.builtin.import_playbook: 07-configure-discovery.yaml

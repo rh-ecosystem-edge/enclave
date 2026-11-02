@@ -1,6 +1,8 @@
 ##############################################################################
-# CLOUD INFRASTRUCTURE CONFIGURATION TEMPLATE
-# Instructions: Copy this file to 'cloud_infra.yaml' and fill in your values
+# LEGACY CLOUD INFRASTRUCTURE CONFIGURATION TEMPLATE
+# New configurations belong in config/plugins/node-management.yaml.
+# The node-management plugin reads this file when its plugin config does not
+# define nodeManagementConfig.discovery_hosts.
 ##############################################################################
 
 # ============================================================================

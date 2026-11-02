@@ -169,7 +169,7 @@ Both services must be accessible from the appropriate networks (see port table b
 | Ironic API | 6385 | TCP | Inbound to LZ from cluster nodes / BMO controller | BareMetalHost provisioning and inspection |
 | Ironic HTTP (ISO/vmedia) | 6180 | TCP | Inbound to LZ from BMCs | Serves the boot ISO for virtual media |
 | Ironic vmedia (TLS) | 6183 | TCP | Inbound to LZ from BMCs | Only when `ironicHTTPSCertificate`/`ironicHTTPSKey` are configured |
-| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from the `redfish` field (`ip` or `ip:port`) per host in `config/cloud_infra.yaml` |
+| Redfish | 443 (or as configured) | TCP | Outbound from LZ to each BMC | Port comes from the `redfish` field (`ip` or `ip:port`) per host in `config/plugins/node-management.yaml` |
 | Mirror registry (Quay) | 8443 | TCP | Inbound to LZ from cluster nodes | Image pulls/pushes against `quayHostname:8443` |
 | OCP API | 6443 | TCP | Outbound from LZ to the cluster `apiVIP` | Used by the Ansible controller (`oc`/`KUBECONFIG`) and by the BMO/Ironic controllers reconciling `BareMetalHost` objects after install |
 | NTP | 123 | UDP | Inbound to LZ from cluster nodes | Only if `defaultNtpServers` points at the Landing Zone |
@@ -258,7 +258,7 @@ All configuration files in the `defaults/` directory are automatically loaded by
 
 ## Deployment Workflow
 
-The deployment is split into seven phase playbooks (orchestrated by `playbooks/main.yaml`):
+The deployment is split into six phase playbooks (orchestrated by `playbooks/main.yaml`):
 
 ```text
 Phase 1: Prepare (01-prepare.yaml)
@@ -278,9 +278,6 @@ Phase 5: Operators (05-operators.yaml)
          ↓
 Phase 6: Day-2 (06-day2.yaml)
   Clair, ACM policies, model config, plugin deployment
-         ↓
-Phase 7: Discovery (07-configure-discovery.yaml)
-  Configure hardware discovery for additional nodes
 ```
 
 ### Bootstrap
@@ -641,10 +638,10 @@ Certificates are stored in `config/certificates.yaml` and must be provided in PE
    ```bash
    cp config/global.example.yaml config/global.yaml
    cp config/certificates.example.yaml config/certificates.yaml
-   cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+   cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
    vim config/global.yaml       # Edit cluster, network, hardware and registry settings
    vim config/certificates.yaml # Add SSL certificates
-   vim config/cloud_infra.yaml  # Add discovery hosts (leave discovery_hosts: [] if none)
+   vim config/plugins/node-management.yaml # Add discovery hosts if needed
    ```
 
 3. **Run bootstrap**:
@@ -696,10 +693,12 @@ make deploy-cluster-install       # Phase 3: Deploy OpenShift cluster
 make deploy-cluster-post-install  # Phase 4: Post-install configuration
 make deploy-cluster-operators     # Phase 5: Install operators
 make deploy-cluster-day2          # Phase 6: Day-2 operations
-make deploy-cluster-discovery     # Phase 7: Hardware discovery
 
 # Deploy a single plugin
 make deploy-plugin PLUGIN=openshift-ai
+
+# Seed node discovery after the cluster is installed
+make deploy-plugin PLUGIN=node-management
 
 # Full deployment
 make deploy-cluster
@@ -734,8 +733,8 @@ ansible-playbook playbooks/05-operators.yaml -e workingDir=/home/cloud-user
 # Phase 6: Day-2 operations (Clair, ACM policies, model config)
 ansible-playbook playbooks/06-day2.yaml -e workingDir=/home/cloud-user
 
-# Phase 7: Configure hardware discovery (optional)
-ansible-playbook playbooks/07-configure-discovery.yaml -e workingDir=/home/cloud-user
+# Optional node discovery after installation
+ansible-playbook playbooks/deploy-plugin.yaml -e workingDir=/home/cloud-user -e plugin_name=node-management
 
 # Full disconnected deployment (all phases)
 ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
@@ -856,20 +855,20 @@ After the initial cluster deployment, you can discover and add new bare metal no
 For detailed information on managing bare metal hosts with ACM, refer to the official documentation:
 - [Managing bare metal hosts using Red Hat ACM](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.15/html/clusters/cluster_mce_overview#cim-intro)
 
-### Alternative: Enclave Configuration (One-Time Convenience)
+### Node Management Addon Plugin (Initial Seed)
 
-As a convenience for initial setup, you can configure hosts in the Enclave configuration (`config/cloud_infra.yaml`) and use the discovery playbook to boot them. **However, this is intended as a one-time operation.**
+After the cluster is fully installed, the optional `node-management` addon can seed the initial discovery resources. It reads hosts from `config/plugins/node-management.yaml` and keeps the Redfish, Metal3, and Assisted Installer setup in one plugin.
 
-**Important:** If you need to perform any of the following operations, you must use Red Hat ACM instead of the Enclave configuration:
+**Important:** Use ACM for ongoing operations such as:
 - Add more nodes after initial deployment
 - Remove nodes from the cluster
 - Change node configurations
 - Scale up or down the cluster
 - Perform day-2 operations on bare metal hosts
 
-The Enclave configuration method is provided only for initial convenience and is not suitable for ongoing infrastructure management.
+Use ACM for ongoing node lifecycle operations after the initial seed.
 
-### Prerequisites for Enclave Configuration Method
+### Prerequisites
 
 - The management cluster must be fully deployed and operational
 - You must have access to the cluster's kubeconfig file
@@ -878,33 +877,32 @@ The Enclave configuration method is provided only for initial convenience and is
 
 ### Configuration
 
-If you have not created `config/cloud_infra.yaml` yet, copy the example file first:
+If you have not created the plugin config yet, copy its example file:
 
 ```bash
-cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
 ```
 
-Then add or edit the `discovery_hosts` section with the details of the nodes you want to discover:
+Then add or edit `nodeManagementConfig.discovery_hosts` with the details of the nodes you want to discover:
 
 ```yaml
-# Discovery hosts for cloud infrastructure (CaaS)
-# These are worker nodes that will be discovered and added to the cluster
-discovery_hosts:
-  - name: node01
-    macAddress: 0c:c4:7a:d3:bc:30
-    ipAddress: 192.168.2.21
-    redfish: 100.64.1.21  # BMC IP address
-    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
-  - name: node02
-    macAddress: 0c:c4:7a:65:d0:84
-    ipAddress: 192.168.2.22
-    redfish: 100.64.1.22
-    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
-  # Add more nodes as needed
+nodeManagementConfig:
+  discovery_hosts:
+    - name: node01
+      macAddress: 0c:c4:7a:d3:bc:30
+      ipAddress: 192.168.2.21
+      redfish: 100.64.1.21  # BMC IP address
+      rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+      redfishUser: admin
+      redfishPassword: YourSecurePassword
+    - name: node02
+      macAddress: 0c:c4:7a:65:d0:84
+      ipAddress: 192.168.2.22
+      redfish: 100.64.1.22
+      rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+      redfishUser: admin
+      redfishPassword: YourSecurePassword
+    # Add more nodes as needed
 ```
 
 ### Configuration Fields
@@ -921,30 +919,24 @@ Each node in `discovery_hosts` requires:
 | `redfishUser` | Redfish username | `admin` |
 | `redfishPassword` | Redfish password | `Password` |
 
-### Running Discovery (One-Time Setup Only)
+### Deploying the Plugin
 
-> **⚠️ Warning:** This method is intended for initial setup only. For any subsequent host management operations, use Red Hat ACM instead.
+> **ACM manages ongoing host lifecycle operations after this initial setup.**
 
-1. **Edit the configuration** in `config/cloud_infra.yaml`:
+1. **Edit the configuration** in `config/plugins/node-management.yaml`:
    ```bash
-   vim config/cloud_infra.yaml
-   # Add or update the discovery_hosts section
+   vim config/plugins/node-management.yaml
+   # Add or update nodeManagementConfig.discovery_hosts
    ```
 
-2. **Run the discovery playbook**:
+2. **Deploy the addon plugin**:
    ```bash
-   ansible-playbook playbooks/07-configure-discovery.yaml
-   ```
-
-   Or if you're on the Landing Zone and Enclave is installed:
-   ```bash
-   cd /home/cloud-user/enclave
-   ansible-playbook playbooks/07-configure-discovery.yaml
+   make deploy-plugin PLUGIN=node-management
    ```
 
 ### What the Discovery Process Does
 
-The discovery process performs the following steps:
+The plugin performs the following steps:
 
 1. **Checks existing agents**: Queries the cluster for already discovered agents to avoid duplicates
 2. **Creates NMStateConfig**: Creates network configuration for each new node

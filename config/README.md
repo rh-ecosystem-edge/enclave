@@ -9,13 +9,13 @@ This directory contains the configuration files needed for your enclave deployme
    cd config/
    cp global.example.yaml global.yaml
    cp certificates.example.yaml certificates.yaml
-   cp cloud_infra.example.yaml cloud_infra.yaml
+   cp plugins/node-management.example.yaml plugins/node-management.yaml
    ```
 
 2. **Fill in `global.yaml` with your environment details**
 3. **Fill in `certificates.yaml` with your SSL certificates**
-4. **Fill in `cloud_infra.yaml` with your discovery hosts (or leave `discovery_hosts: []` if not needed)**
-5. **Optionally configure plugin-specific settings** (e.g. restrict which disks LVMS manages):
+4. **Optionally fill in `plugins/node-management.yaml` with discovery hosts**
+5. **Optionally configure other plugin-specific settings** (e.g. restrict which disks LVMS manages):
    ```bash
    cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
    # Edit config/plugins/lvms.yaml as needed
@@ -29,8 +29,13 @@ Contains all cluster and infrastructure configuration.
 ### `certificates.yaml` (required)
 Contains SSL certificates for the cluster.
 
-### `cloud_infra.yaml` (required)
-Contains cloud infrastructure configuration, including the list of worker nodes to be discovered and added to the cluster. Set `discovery_hosts: []` if no discovery hosts are needed.
+### `plugins/node-management.yaml` (optional)
+Contains node discovery settings for the `node-management` addon plugin. Deploy it after cluster installation with `make deploy-plugin PLUGIN=node-management`. Do not list it in `enabled_plugins`; that runs addon plugins during Phase 5.
+
+Existing `config/cloud_infra.yaml` files remain supported as a fallback when `nodeManagementConfig.discovery_hosts` is not set in the plugin config. New configurations should use the plugin file.
+
+### `cloud_infra.yaml` (legacy)
+Legacy cloud infrastructure configuration. The node-management plugin reads its `discovery_hosts` as a backward-compatible fallback.
 
 ### `plugins/` subdirectory (optional)
 Contains per-plugin configuration files, named after the plugin (e.g. `config/plugins/lvms.yaml`).
@@ -39,7 +44,7 @@ Plugin configuration is auto-loaded at deployment time — only create the file 
 See each plugin's `plugins/<name>/schemas/config.yaml` for the available settings.
 
 ## Security
-- **Never commit `global.yaml`, `certificates.yaml` or `cloud_infra.yaml` to version control**
+- **Never commit `global.yaml`, `certificates.yaml`, or plugin config files to version control**
 - These files contain sensitive credentials and private keys
 - The `.gitignore` is configured to exclude them
 

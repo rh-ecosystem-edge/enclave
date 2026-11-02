@@ -1,9 +1,9 @@
 #!/bin/bash
 # Generate Enclave Lab config/global.yaml, config/certificates.yaml and
-# config/cloud_infra.yaml from infrastructure metadata
+# the node-management plugin config from infrastructure metadata
 #
 # This script reads cluster-env.sh (written by vm_infra.py) and generates
-# config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml
+# config/global.yaml, config/certificates.yaml and the node-management plugin
 # configuration files for Enclave Lab deployment.
 
 set -euo pipefail
@@ -28,7 +28,10 @@ BASE_DOMAIN="${ENCLAVE_BASE_DOMAIN}"
 
 GLOBAL_VARS_OUTPUT="${WORKING_DIR}/config/global.yaml"
 CERTS_VARS_OUTPUT="${WORKING_DIR}/config/certificates.yaml"
-CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
+LEGACY_CLOUD_INFRA_VARS_OUTPUT="${WORKING_DIR}/config/cloud_infra.yaml"
+NODE_MANAGEMENT_VARS_OUTPUT="${WORKING_DIR}/config/plugins/node-management.yaml"
+REPO_LEGACY_CLOUD_INFRA_VARS="${ENCLAVE_DIR}/config/cloud_infra.yaml"
+REPO_NODE_MANAGEMENT_VARS="${ENCLAVE_DIR}/config/plugins/node-management.yaml"
 
 info "Generating Enclave Lab configuration from cluster-env.sh..."
 
@@ -265,21 +268,41 @@ EOF
     info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
 fi
 
-# Generate config/cloud_infra.yaml file
-cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
+# Generate node-management plugin config unless an existing config should be preserved.
+# Legacy cloud_infra.yaml remains supported by the plugin as a fallback, so avoid
+# creating an empty plugin config that would shadow a legacy host list.
+mkdir -p "$(dirname "$NODE_MANAGEMENT_VARS_OUTPUT")"
+if [ ! -f "$NODE_MANAGEMENT_VARS_OUTPUT" ] \
+    && [ -f "$REPO_NODE_MANAGEMENT_VARS" ] \
+    && [ "$REPO_NODE_MANAGEMENT_VARS" != "$NODE_MANAGEMENT_VARS_OUTPUT" ]; then
+    cp -p "$REPO_NODE_MANAGEMENT_VARS" "$NODE_MANAGEMENT_VARS_OUTPUT"
+fi
+if [ ! -f "$LEGACY_CLOUD_INFRA_VARS_OUTPUT" ] \
+    && [ -f "$REPO_LEGACY_CLOUD_INFRA_VARS" ] \
+    && [ "$REPO_LEGACY_CLOUD_INFRA_VARS" != "$LEGACY_CLOUD_INFRA_VARS_OUTPUT" ]; then
+    cp -p "$REPO_LEGACY_CLOUD_INFRA_VARS" "$LEGACY_CLOUD_INFRA_VARS_OUTPUT"
+fi
+if [ ! -f "$NODE_MANAGEMENT_VARS_OUTPUT" ] \
+    && [ ! -f "$REPO_NODE_MANAGEMENT_VARS" ] \
+    && [ ! -f "$LEGACY_CLOUD_INFRA_VARS_OUTPUT" ] \
+    && [ ! -f "$REPO_LEGACY_CLOUD_INFRA_VARS" ]; then
+    cat > "$NODE_MANAGEMENT_VARS_OUTPUT" <<EOF
 ---
-# Cloud Infrastructure Configuration
 # Auto-generated from infrastructure metadata
 # Generated: $(date -Iseconds)
-
-# ============================================================================
-# Discovery Hosts Configuration
-# ============================================================================
-# Discovery hosts for cloud infrastructure (CaaS)
-# These are worker nodes that will be discovered and added to the cluster
-# Set to an empty list if no discovery hosts are needed:
-discovery_hosts: []
+nodeManagementConfig:
+  discovery_hosts: []
 EOF
+    info "Generated node-management plugin config: $NODE_MANAGEMENT_VARS_OUTPUT"
+elif [ -f "$NODE_MANAGEMENT_VARS_OUTPUT" ]; then
+    info "Preserving node-management plugin config: $NODE_MANAGEMENT_VARS_OUTPUT"
+elif [ -f "$REPO_NODE_MANAGEMENT_VARS" ]; then
+    info "Preserving node-management plugin config: $REPO_NODE_MANAGEMENT_VARS"
+elif [ -f "$REPO_LEGACY_CLOUD_INFRA_VARS" ]; then
+    info "Preserving legacy cloud infrastructure config: $REPO_LEGACY_CLOUD_INFRA_VARS"
+else
+    info "Preserving legacy cloud infrastructure config: $LEGACY_CLOUD_INFRA_VARS_OUTPUT"
+fi
 
 # Override storage plugin and quay backend when STORAGE_PLUGIN=odf
 if [ "${STORAGE_PLUGIN:-lvms}" = "odf" ]; then
@@ -317,12 +340,20 @@ EOF
     fi
 fi
 
-info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT, $CERTS_VARS_OUTPUT and $CLOUD_INFRA_VARS_OUTPUT"
+info "✓ Configuration files generated: $GLOBAL_VARS_OUTPUT and $CERTS_VARS_OUTPUT"
 echo ""
 info "Configuration summary:"
 info "  Global vars file: $GLOBAL_VARS_OUTPUT"
 info "  Certificates vars file: $CERTS_VARS_OUTPUT"
-info "  Cloud infra vars file: $CLOUD_INFRA_VARS_OUTPUT"
+if [ -f "$NODE_MANAGEMENT_VARS_OUTPUT" ]; then
+    info "  Node-management plugin config: $NODE_MANAGEMENT_VARS_OUTPUT"
+elif [ -f "$REPO_NODE_MANAGEMENT_VARS" ]; then
+    info "  Node-management plugin config: $REPO_NODE_MANAGEMENT_VARS"
+elif [ -f "$LEGACY_CLOUD_INFRA_VARS_OUTPUT" ]; then
+    info "  Legacy cloud infra config: $LEGACY_CLOUD_INFRA_VARS_OUTPUT"
+elif [ -f "$REPO_LEGACY_CLOUD_INFRA_VARS" ]; then
+    info "  Legacy cloud infra config: $REPO_LEGACY_CLOUD_INFRA_VARS"
+fi
 info "  Cluster: $CLUSTER_NAME.$BASE_DOMAIN"
 info "  Network: $CLUSTER_CIDR"
 info "  Masters: $MASTER_COUNT nodes"
@@ -349,6 +380,6 @@ else
     info "  - SSL certificates: Self-signed (generated for CI/testing)"
 fi
 echo ""
-info "Review config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml"
+info "Review config/global.yaml, config/certificates.yaml and any plugin config files"
 info "and adjust if needed before running Enclave Lab"
 echo ""
