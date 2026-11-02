@@ -1,0 +1,27 @@
+- name: Set plugin directory for fleet operator policy reconciliation
+  ansible.builtin.set_fact:
+    plugin_dir: "{{ playbook_dir }}/../plugins/{{ plugin.name }}"
+
+- name: Select the plugin operator catalog
+  ansible.builtin.set_fact:
+    catalog_mirror: >-
+      {{ (mirror_certified_rh_operator_catalog if plugin.catalog | default('redhat') == 'certified'
+          else mirror_rh_operator_catalog) ~ '-' ~ plugin.name }}
+
+- name: Check for a plugin-specific fleet operator policy task
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
+  register: r_plugin_fleet_operator_policy_task
+
+- name: Reconcile plugin-specific fleet operator policy
+  ansible.builtin.include_tasks:
+    file: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
+  when: r_plugin_fleet_operator_policy_task.stat.exists
+
+- name: Reconcile shared fleet operator policy
+  ansible.builtin.include_tasks: configure_operator_policies_fleet.yaml
+  when:
+    - not r_plugin_fleet_operator_policy_task.stat.exists
+    - plugin.clusterSelector is defined
+    - plugin.clusterSelector | length > 0
+    - plugin.installOperatorsFleet | default(true) | bool

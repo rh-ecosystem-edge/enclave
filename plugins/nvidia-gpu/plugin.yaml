@@ -9,6 +9,7 @@ operators:
     version: 25.10.1
     channel: v25.10
     init_version: 25.10.1
+    namespace: nvidia-gpu-operator
 
 installOperators: false
 

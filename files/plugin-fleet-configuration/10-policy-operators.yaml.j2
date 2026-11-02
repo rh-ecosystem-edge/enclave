@@ -34,7 +34,8 @@ spec:
             apiVersion: v1
             kind: Namespace
             metadata:
-                name: {{ operator.namespace }}
+              name: {{ operator.namespace }}
+{% if operator.namespace != 'openshift-operators' %}
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
@@ -44,20 +45,34 @@ spec:
               name: {{ operator.name }}
               namespace: {{ operator.namespace }}
             spec:
+{% if operator.global | default(false) | bool %}
+              {}
+{% else %}
               targetNamespaces:
-              - {{ operator.namespace }}
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: {{ operator.name }}
-              namespace: {{ operator.namespace }}
-            spec:
-              channel: {{ operator.channel }}
-              installPlanApproval: Automatic
-              name: {{ operator.name }}
-              source: {{ operator.source | default(catalog_mirror) }}
-              sourceNamespace: openshift-marketplace
+                - {{ operator.namespace }}
+{% endif %}
+{% endif %}
+{% endfor %}
+{% for operator in plugin.operators | default([]) %}
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: {{ operator.name }}
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: {{ operator.name }}
+          namespace: {{ operator.namespace }}
+          channel: {{ operator.channel }}
+          source: {{ operator.source | default(catalog_mirror) }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "{{ operator.csvNames | default([operator.name]) | first }}{{ operator.csvVersionSeparator | default('.v') }}{{ operator.version | replace('+', '-') }}"
+        versions:
+          - "{{ operator.csvNames | default([operator.name]) | first }}{{ operator.csvVersionSeparator | default('.v') }}{{ operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
 {% endfor %}

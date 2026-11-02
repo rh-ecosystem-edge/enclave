@@ -1,3 +1,5 @@
+{% set gpu_operator = (plugin.operators | selectattr('name', 'equalto', 'gpu-operator-certified') | first) %}
+{% set gpu_csv_version_separator = gpu_operator.csvVersionSeparator | default('.v') %}
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
@@ -46,20 +48,6 @@ spec:
             spec:
               targetNamespaces:
               - nvidia-gpu-operator
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: gpu-operator-certified
-              namespace: nvidia-gpu-operator
-            spec:
-              channel: v25.10
-              installPlanApproval: Automatic
-              name: gpu-operator-certified
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
         # Create ClusterPolicy Instance
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -152,3 +140,24 @@ spec:
                 enabled: false
               gdrcopy:
                 enabled: false
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: nvidia-gpu-gpu-operator-certified
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: {{ gpu_operator.name }}
+          namespace: {{ gpu_operator.namespace }}
+          channel: {{ gpu_operator.channel }}
+          source: {{ catalog_mirror }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "{{ gpu_operator.csvNames | default([gpu_operator.name]) | first }}{{ gpu_csv_version_separator }}{{ gpu_operator.version | replace('+', '-') }}"
+        versions:
+          - "{{ gpu_operator.csvNames | default([gpu_operator.name]) | first }}{{ gpu_csv_version_separator }}{{ gpu_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant

@@ -1,3 +1,5 @@
+{% set cert_manager_operator = (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first) %}
+{% set fleet_operator_names = ['nfd', 'servicemeshoperator3', 'rhcl-operator', 'leader-worker-set', 'rhods-operator'] %}
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
@@ -46,20 +48,6 @@ spec:
             spec:
               targetNamespaces:
               - openshift-nfd
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: nfd
-              namespace: openshift-nfd
-            spec:
-              channel: stable
-              installPlanApproval: Automatic
-              name: nfd
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
         # Create NodeFeatureDiscovery Instance
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -200,51 +188,6 @@ spec:
             spec:
               targetNamespaces:
               - cert-manager-operator
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: openshift-cert-manager-operator
-              namespace: cert-manager-operator
-            spec:
-              channel: stable-v1
-              installPlanApproval: Automatic
-              name: openshift-cert-manager-operator
-              source: {{ fleet_rh_operator_catalog }}
-              sourceNamespace: openshift-marketplace
-        # Install Service Mesh Operator
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: servicemeshoperator3
-              namespace: openshift-operators
-            spec:
-              channel: stable
-              installPlanApproval: Automatic
-              name: servicemeshoperator3
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
-
-        # Install Red Hat Connectivity Link (RHCL)
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: rhcl-operator
-              namespace: openshift-operators
-            spec:
-              channel: stable
-              installPlanApproval: Automatic
-              name: rhcl-operator
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
         # Install Leader Worker Set Operator
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
@@ -264,20 +207,6 @@ spec:
             spec:
               targetNamespaces:
               - openshift-lws-operator
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: leader-worker-set
-              namespace: openshift-lws-operator
-            spec:
-              channel: stable-v1.0
-              installPlanApproval: Automatic
-              name: leader-worker-set
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
         - complianceType: mustonlyhave
           metadataComplianceType: musthave
           objectDefinition:
@@ -306,17 +235,49 @@ spec:
               name: rhods-operator-group
               namespace: redhat-ods-operator
             spec: {}
-        - complianceType: mustonlyhave
-          metadataComplianceType: musthave
-          objectDefinition:
-            apiVersion: operators.coreos.com/v1alpha1
-            kind: Subscription
-            metadata:
-              name: rhods-operator
-              namespace: redhat-ods-operator
-            spec:
-              channel: fast-3.x
-              name: rhods-operator
-              source: {{ catalog_mirror }}
-              sourceNamespace: openshift-marketplace
-              installPlanApproval: Automatic
+{% for operator in plugin.operators | selectattr('name', 'in', fleet_operator_names) %}
+{% set csv_version_separator = operator.csvVersionSeparator | default('.v') %}
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-{{ operator.name }}
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: {{ operator.name }}
+          namespace: {{ operator.namespace }}
+          channel: {{ operator.channel }}
+          source: {{ operator.source | default(catalog_mirror) }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "{{ operator.csvNames | default([operator.name]) | first }}{{ csv_version_separator }}{{ operator.version | replace('+', '-') }}"
+        versions:
+          - "{{ operator.csvNames | default([operator.name]) | first }}{{ csv_version_separator }}{{ operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+{% endfor %}
+{% set cert_manager_csv_version_separator = cert_manager_operator.csvVersionSeparator | default('.v') %}
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-openshift-cert-manager-operator
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: {{ cert_manager_operator.name }}
+          namespace: {{ cert_manager_operator.namespace }}
+          channel: {{ cert_manager_operator.channel }}
+          source: {{ fleet_rh_operator_catalog }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_csv_version_separator }}{{ cert_manager_operator.version | replace('+', '-') }}"
+        versions:
+          - "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_csv_version_separator }}{{ cert_manager_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant

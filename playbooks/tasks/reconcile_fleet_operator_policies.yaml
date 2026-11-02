@@ -1,0 +1,36 @@
+- name: Find plugin descriptors for fleet operator policy reconciliation
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_fleet_operator_policy_plugins
+
+- name: Read plugin descriptors for fleet operator policy reconciliation
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_fleet_operator_policy_plugins.files | map(attribute='path') | list }}"
+  register: r_fleet_operator_policy_descriptors
+  loop_control:
+    loop_var: plugin_path
+
+- name: Select enabled plugins with operator policies
+  ansible.builtin.set_fact:
+    _fleet_operator_policy_plugins: >-
+      {{ r_fleet_operator_policy_descriptors.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('name', 'in', enabled_plugins | default([]))
+         | selectattr('operators', 'defined')
+         | list }}
+
+- name: Reconcile enabled plugin fleet operator policies
+  ansible.builtin.include_tasks: reconcile_plugin_fleet_operator_policy.yaml
+  loop: "{{ _fleet_operator_policy_plugins }}"
+  loop_control:
+    loop_var: fleet_operator_plugin
+    label: "{{ fleet_operator_plugin.name }}"
+  vars:
+    plugin: "{{ fleet_operator_plugin }}"
+  when: fleet_operator_plugin.operators | length > 0

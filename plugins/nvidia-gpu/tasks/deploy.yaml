@@ -21,17 +21,9 @@
   delay: "{{ k8s_delay }}"
   until: r_acm_policy_model_catalogsources is success
 
-- name: Create ACM Policy for Model configuration
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  kubernetes.core.k8s:
-    state: present
-    namespace: openshift-acm-policies
-    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy.yaml.j2') | from_yaml }}"
-  register: r_acm_policy_model_config
-  retries: "{{ k8s_retries }}"
-  delay: "{{ k8s_delay }}"
-  until: r_acm_policy_model_config is success
+- name: Reconcile NVIDIA GPU fleet operator policy
+  ansible.builtin.include_tasks:
+    file: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
 
 - name: Create ACM PlacementRule for Model configuration
   environment:

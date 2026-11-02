@@ -1,0 +1,11 @@
+- name: Apply ACM Policy for Plugin Operators
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../files/plugin-fleet-configuration/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_operators
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_operators is success

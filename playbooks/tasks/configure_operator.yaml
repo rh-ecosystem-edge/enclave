@@ -122,7 +122,7 @@
         name: "{{ operator.name }}"
         source: "{{ operator.source | default(default_operator_source) if (disconnected | default(true) | bool) else 'redhat-operators' }}"
         sourceNamespace: openshift-marketplace
-        startingCSV: "{{ operator.csvNames | default([]) | first | default(operator.name) }}.v{{ operator.version | replace('+', '-') }}"
+        startingCSV: "{{ operator.csvNames | default([]) | first | default(operator.name) }}{{ operator.csvVersionSeparator | default('.v') }}{{ operator.version | replace('+', '-') }}"
   register: r_sub_exists
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
