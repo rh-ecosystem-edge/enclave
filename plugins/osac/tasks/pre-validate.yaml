@@ -94,3 +94,43 @@
   when:
     - osacBYODatabase | bool
     - osacDatabaseUrl is not defined or osacDatabaseUrl | length == 0
+
+# 6. Block in-place chart changes: OSAC supports fresh installs only
+- name: Read OSAC Helm release history
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/helm"
+      - history
+      - osac
+      - --namespace
+      - osac
+      - --output
+      - json
+  register: __r_osac_history
+  changed_when: false
+  failed_when: >-
+    __r_osac_history.rc != 0
+    and 'release: not found' not in __r_osac_history.stderr
+  check_mode: false
+
+# Deployed revision plus the latest one (a failed upgrade leaves the old chart
+# deployed); an uninstalled latest revision counts as no release.
+- name: Assert OSAC chart version is unchanged
+  vars:
+    __osac_history: "{{ (__r_osac_history.stdout | from_json | sort(attribute='revision')) if __r_osac_history.rc == 0 else [] }}"
+    __osac_latest: "{{ __osac_history | last | default({}) }}"
+    __osac_revisions: >-
+      {{ (__osac_history | selectattr('status', 'equalto', 'deployed') | list)
+         + ([__osac_latest] if __osac_latest and __osac_latest.status != 'uninstalled' else []) }}
+    __osac_mismatched: >-
+      {{ __osac_revisions | map(attribute='chart') | map('regex_replace', '^osac-', '')
+         | reject('equalto', osacChartVersion | string) | unique | list }}
+  ansible.builtin.assert:
+    that: __osac_mismatched | length == 0 or osacAllowChartVersionChange | bool
+    fail_msg: >-
+      OSAC chart {{ __osac_mismatched | join(', ') }} is installed and this deploy
+      would upgrade it in place to {{ osacChartVersion }}, which OSAC does not
+      support (networking objects and migrations change between releases).
+      Uninstall OSAC for a fresh install, or keep the Enclave revision that
+      matches the installed chart. Set osacAllowChartVersionChange: true to
+      proceed anyway.

@@ -4,7 +4,10 @@
 # which is loaded into Ansible scope as-is. The defaults below use the same
 # camelCase convention to match. Ansible variables from defaults.yaml and
 # config/plugins/osac.yaml are merged into the same scope.
-osacChartVersion: "0.0.52"
+osacChartVersion: "0.0.64"
+
+# Allow upgrading an installed OSAC release to a different chart version (unsupported)
+osacAllowChartVersionChange: false
 
 # Helm global.osacDeploymentId: stable deployment identity, never change after install
 osacDeploymentId: "osac/osac"
@@ -22,10 +25,11 @@ osacProfilesList:
 # Test users (opt-in for dev/test environments)
 osacTestUsers: false
 
-# Networking facade → Helm global.networking (installer $defs/globalNetworking)
+# Networking → Helm global.networking. No fabric: provisioning off and
+# fabricManager only names a manager; k8sManager is derived from VMaaS.
 osacNetworking:
-  fabricManager: ""
-  k8sManager: "k8s_only"
+  provisioningEnabled: false
+  fabricManager: "netris"
 
 # BCM inventory backend
 osacBcmEnabled: false

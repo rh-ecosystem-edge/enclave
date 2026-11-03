@@ -1,0 +1,34 @@
+---
+# Netris provider networking with NetworkClass overrides (network manager contract)
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacProfilesList:
+  - caas
+  - vmaas
+osacNetworking:
+  fabricManager: netris
+  k8sManager: cudn_evpn
+  netris:
+    controllerUrl: "https://netris.example.com"
+    credentials:
+      username: netris
+      password: placeholder
+    siteId: "1"
+    tenantId: "1"
+    tenantName: Admin
+  networkClass:
+    defaults:
+      virtualNetworkIPv4CIDR: "172.16.0.0/16"
+      subnetIPv4CIDR: "172.16.0.0/24"
+      egressRules:
+        - protocol: PROTOCOL_ALL
+          ipv4Cidr: "0.0.0.0/0"
+        - protocol: PROTOCOL_TCP
+          ipv4Cidr: "10.0.0.0/8"
+          portFrom: 443
+          portTo: 443
+    eastWestCapabilities:
+      supportsEastWestEthernet: true
+    addressPlan:
+      overlay: 0.5
+      fabric: 0.25
+      lbVip: 0.25

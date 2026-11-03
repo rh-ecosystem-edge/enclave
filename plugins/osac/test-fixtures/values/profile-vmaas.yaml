@@ -1,0 +1,10 @@
+---
+# Profile: caas + vmaas
+#
+# Exercises the k8sManager derivation: the chart requires a Kubernetes Manager
+# with VMaaS, so the template defaults it to cudn_evpn. Config toggles only;
+# see profile-default.yaml.
+osac_profile_name: vmaas
+osacProfilesList:
+  - caas
+  - vmaas

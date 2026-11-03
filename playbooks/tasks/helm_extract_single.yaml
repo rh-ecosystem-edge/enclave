@@ -116,6 +116,8 @@
       ansible.builtin.template:
         src: "{{ plugin_dir }}/{{ _extract_chart.valuesTemplate }}"
         dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ _extract_chart.release }}.yaml"
+        mode: "0600"  # may hold credentials
+      diff: false
   rescue:
     - name: "HelmExtract | Values template rendering failed: {{ _extract_chart.release }}"
       ansible.builtin.fail:
@@ -131,6 +133,8 @@
   ansible.builtin.copy:
     src: "{{ plugin_dir }}/{{ _extract_chart.valuesFile }}"
     dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ _extract_chart.release }}.yaml"
+    mode: "0600"
+  diff: false
   when:
     - _extract_chart.valuesFile is defined
     - _extract_chart.valuesTemplate is not defined

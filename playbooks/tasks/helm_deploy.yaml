@@ -87,12 +87,16 @@
   ansible.builtin.template:
     src: "{{ plugin_dir }}/{{ helm_chart.valuesTemplate }}"
     dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ helm_chart.release }}.yaml"
+    mode: "0600"  # may hold credentials
+  diff: false
   when: helm_chart.valuesTemplate is defined
 
 - name: "Helm | Copy static values file"
   ansible.builtin.copy:
     src: "{{ plugin_dir }}/{{ helm_chart.valuesFile }}"
     dest: "{{ workingDir }}/helm-values-{{ plugin_name }}-{{ helm_chart.release }}.yaml"
+    mode: "0600"
+  diff: false
   when:
     - helm_chart.valuesFile is defined
     - helm_chart.valuesTemplate is not defined

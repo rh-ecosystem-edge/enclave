@@ -1,0 +1,5 @@
+---
+# Invalid: fabricManager must be a non-empty registration name
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacNetworking:
+  fabricManager: ""

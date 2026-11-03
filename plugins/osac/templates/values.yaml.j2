@@ -17,37 +17,16 @@ global:
     maas:
       enabled: false
 {% set _osac_net = osacNetworking | default({}) %}
-{% set _osac_fabric = _osac_net.fabricManager | default('') %}
-{# When fabricManager=netris, omit/default k8sManager to "" — not k8s_only
-   (Ansible include_vars replaces the whole osacNetworking mapping). #}
-{% set _osac_k8s = _osac_net.k8sManager | default('' if _osac_fabric == 'netris' else 'k8s_only') %}
+{# Defaults repeated here: include_vars replaces the whole osacNetworking mapping. #}
+{% set _osac_netris = _osac_net.netris | default(none) %}
+{% set _osac_provisioning = _osac_net.provisioningEnabled | default(_osac_netris is not none) | bool %}
+{% set _osac_fabric = _osac_net.fabricManager | default('netris') %}
+{# The chart requires a Kubernetes Manager with VMaaS. #}
+{% set _osac_k8s = _osac_net.k8sManager | default('cudn_evpn' if 'vmaas' in osacProfilesList else '') %}
   networking:
+    provisioningEnabled: {{ _osac_provisioning | lower }}
     fabricManager: {{ _osac_fabric | to_json }}
     k8sManager: {{ _osac_k8s | to_json }}
-{% if _osac_fabric == 'netris' and _osac_net.netris is defined %}
-{% set _osac_netris = _osac_net.netris %}
-    netris:
-      controllerUrl: {{ _osac_netris.controllerUrl | to_json }}
-      credentials:
-        username: {{ _osac_netris.credentials.username | to_json }}
-{% if _osac_netris.credentials.externalSecret is defined and (_osac_netris.credentials.externalSecret | bool) %}
-        externalSecret: true
-{% else %}
-        password: {{ _osac_netris.credentials.password | to_json }}
-{% endif %}
-      siteId: {{ _osac_netris.siteId | to_json }}
-      tenantId: {{ _osac_netris.tenantId | to_json }}
-      tenantName: {{ _osac_netris.tenantName | to_json }}
-{% if _osac_netris.mgmtVpcId is defined %}
-      mgmtVpcId: {{ _osac_netris.mgmtVpcId | to_json }}
-{% endif %}
-{% if _osac_netris.mgmtVpcName is defined %}
-      mgmtVpcName: {{ _osac_netris.mgmtVpcName | to_json }}
-{% endif %}
-{% if _osac_netris.resourceClassMap is defined %}
-      resourceClassMap: {{ _osac_netris.resourceClassMap | to_json }}
-{% endif %}
-{% endif %}
 {% if _osac_net.networkClass is defined %}
     networkClass:
 {{ _osac_net.networkClass | to_nice_yaml(indent=2) | indent(6, first=true) }}
@@ -197,21 +176,45 @@ aap:
     projectGitUri: "{{ osac_aap_project_git_uri }}"
     projectGitBranch: "{{ osac_aap_project_git_branch }}"
   instanceGroups:
-{% if _osac_fabric == 'netris' %}
-    # Facade (global.networking) derives NETRIS_* / NetworkClass; enable IGs only.
+{% if _osac_netris is not none %}
+    # Connection settings go on networkFulfillment; the chart copies URL/TLS to clusterFulfillment.
     clusterFulfillment:
       enabled: true
-{% if osacDnsClass is defined or osacDnsZone is defined %}
       config:
+        NETWORK_CLASS: "netris"
+        NETWORK_STEPS_COLLECTION: "netris.steps"
+        NETRIS_USERNAME: {{ _osac_netris.credentials.username | to_json }}
+        NETRIS_SITE_ID: {{ _osac_netris.siteId | string | to_json }}
+        NETRIS_TENANT_ID: {{ _osac_netris.tenantId | string | to_json }}
+        NETRIS_TENANT_NAME: {{ _osac_netris.tenantName | to_json }}
+{% if _osac_netris.mgmtVpcId is defined %}
+        NETRIS_MGMT_VPC_ID: {{ _osac_netris.mgmtVpcId | string | to_json }}
+{% endif %}
+{% if _osac_netris.mgmtVpcName is defined %}
+        NETRIS_MGMT_VPC_NAME: {{ _osac_netris.mgmtVpcName | to_json }}
+{% endif %}
+{% if _osac_netris.resourceClassMap is defined %}
+        NETRIS_RESOURCE_CLASS_MAP: {{ _osac_netris.resourceClassMap | to_json }}
+{% endif %}
 {% if osacDnsClass is defined %}
         DNS_CLASS: "{{ osacDnsClass }}"
 {% endif %}
 {% if osacDnsZone is defined %}
         DNS_ZONE: "{{ osacDnsZone }}"
 {% endif %}
-{% endif %}
+      secret:
+        NETRIS_PASSWORD: {{ _osac_netris.credentials.password | to_json }}
     networkFulfillment:
       enabled: true
+      config:
+        NETRIS_CONTROLLER_URL: {{ _osac_netris.controllerUrl | to_json }}
+        NETRIS_VALIDATE_CERTS: "true"
+        NETRIS_USERNAME: {{ _osac_netris.credentials.username | to_json }}
+        NETRIS_SITE_ID: {{ _osac_netris.siteId | string | to_json }}
+        NETRIS_TENANT_ID: {{ _osac_netris.tenantId | string | to_json }}
+        NETRIS_TENANT_NAME: {{ _osac_netris.tenantName | to_json }}
+      secret:
+        NETRIS_PASSWORD: {{ _osac_netris.credentials.password | to_json }}
 {% endif %}
     publishTemplates:
       enabled: true

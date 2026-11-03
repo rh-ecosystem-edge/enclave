@@ -21,8 +21,8 @@ osac_keycloak_validate_certs: true
 
 osacTestUsers: false
 osacNetworking:
-  fabricManager: ""
-  k8sManager: "k8s_only"
+  provisioningEnabled: false
+  fabricManager: "netris"
 osacBcmEnabled: false
 osacMetal3Enabled: false
 
