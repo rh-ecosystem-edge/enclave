@@ -105,7 +105,7 @@ operators:
     namespace: openshift-compliance
 
   - name: metallb-operator
-    version: 44.21.0-202610241344
+    version: 4.21.0-202610241344
     channel: stable
     init_version: 4.21.0-202610241344
     namespace: metallb-system
