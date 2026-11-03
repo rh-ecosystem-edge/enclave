@@ -5,8 +5,8 @@ name: E2E ODF (Scheduled)
 
 on:
   schedule:
-    # Run daily at 05:00 UTC
-    - cron: '0 5 * * *'
+    # Run once a week
+    - cron: '0 1 * * 3'
 
 permissions:
   actions: write
