@@ -5,4 +5,4 @@ nodeManagementConfig:
       ipAddress: 192.168.2.21
       redfish: 100.64.1.21
       redfishUser: admin
-      redfishPassword: secret
+      redfishPassword: YOUR_REDFISH_PASSWORD

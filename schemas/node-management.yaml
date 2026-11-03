@@ -1,0 +1,15 @@
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+type: object
+additionalProperties: false
+properties:
+  nodeManagementConfig:
+    type: object
+    description: Node discovery settings for the node-management plugin.
+    additionalProperties: false
+    properties:
+      discovery_hosts:
+        type: array
+        description: Bare-metal hosts to discover and add to the management cluster.
+        items:
+          "$ref": "#/definitions/hostEntry"

@@ -31,6 +31,12 @@ vim config/plugins/node-management.yaml # Add discovery hosts if needed
 bash bootstrap.sh
 ```
 
+3. If you configured discovery hosts, deploy the node-management addon after the full installation:
+
+```bash
+make deploy-plugin PLUGIN=node-management
+```
+
 ## Advanced Usage
 
 ### Using Custom Variables Files

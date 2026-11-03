@@ -180,7 +180,8 @@ fi
 NODE_MANAGEMENT_FILE="${ENCLAVE_DIR}/config/plugins/node-management.yaml"
 if [ -f "${NODE_MANAGEMENT_FILE}" ]; then
     mkdir -p "${COLLECTION_DIR}/config/plugins"
-    python3 - "${NODE_MANAGEMENT_FILE}" <<'PYTHON_SCRIPT' > "${COLLECTION_DIR}/config/plugins/node-management.yaml" 2>/dev/null || true
+    SANITIZED_NODE_MANAGEMENT_FILE="${COLLECTION_DIR}/config/plugins/node-management.yaml"
+    if python3 - "${NODE_MANAGEMENT_FILE}" > "${SANITIZED_NODE_MANAGEMENT_FILE}" 2>/dev/null <<'PYTHON_SCRIPT'
 import sys
 import yaml
 
@@ -199,14 +200,12 @@ if isinstance(hosts, list):
 
 yaml.dump(data, sys.stdout, default_flow_style=False, sort_keys=False)
 PYTHON_SCRIPT
-
-    if [ ! -s "${COLLECTION_DIR}/config/plugins/node-management.yaml" ]; then
-        log_warning "Python sanitization failed for node-management plugin config, using sed fallback"
-        sed -e 's/\(redfishPassword:\).*/\1 REDACTED/' \
-            "${NODE_MANAGEMENT_FILE}" > "${COLLECTION_DIR}/config/plugins/node-management.yaml" 2>/dev/null || true
+    then
+        log_info "  OK Collected node-management plugin configuration (sanitized)"
+    else
+        rm -f "${SANITIZED_NODE_MANAGEMENT_FILE}"
+        log_warning "Skipped node-management plugin config because credential sanitization failed"
     fi
-
-    log_info "  OK Collected node-management plugin configuration (sanitized)"
 fi
 
 CLOUD_INFRA_FILE="${ENCLAVE_DIR}/config/cloud_infra.yaml"

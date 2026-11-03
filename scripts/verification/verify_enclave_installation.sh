@@ -159,8 +159,7 @@ elif ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
         warning "  legacy cloud infra config may have syntax errors"
     fi
 else
-    fail "Node-management plugin config and legacy cloud infra config are both missing"
-    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
+    info "No node-management or legacy cloud infra config found; no discovery hosts are configured"
 fi
 
 # Test 4: Required tools installed

@@ -6,4 +6,4 @@ nodeManagementConfig:
       redfish: 100.64.1.21
       rootDisk: /dev/disk/by-path/pci-0000:0011.4-ata-1.0
       redfishUser: admin
-      redfishPassword: secret
+      redfishPassword: YOUR_REDFISH_PASSWORD

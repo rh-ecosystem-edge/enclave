@@ -1372,10 +1372,9 @@ nodeManagementConfig:
       redfish: 100.64.1.21
       rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
       redfishUser: admin
-      redfishPassword: YourSecurePassword
 ```
 
-When `nodeManagementConfig.discovery_hosts` is absent, the plugin reads `discovery_hosts` from legacy `config/cloud_infra.yaml`. An explicit empty list in the plugin config takes precedence.
+Set the required `redfishPassword` from a secure credential source. When `nodeManagementConfig.discovery_hosts` is absent, the plugin reads `discovery_hosts` from legacy `config/cloud_infra.yaml`. An explicit empty list in the plugin config takes precedence and disables the legacy fallback. Leave the property unset to continue using existing legacy hosts, or migrate them into the plugin config.
 
 ### LVMS Configuration
 
@@ -1657,7 +1656,11 @@ If this file is absent, LVMS auto-detects and uses all available disks.
 
 1. **Restrict file permissions**:
    ```bash
-   chmod 600 config/global.yaml config/certificates.yaml config/plugins/node-management.yaml
+   for config_file in config/global.yaml config/certificates.yaml config/cloud_infra.yaml config/plugins/node-management.yaml; do
+     if [ -f "$config_file" ]; then
+       chmod 600 "$config_file"
+     fi
+   done
    ```
 
 2. **Use strong passwords** for:

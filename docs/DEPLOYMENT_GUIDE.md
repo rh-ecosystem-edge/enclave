@@ -883,6 +883,8 @@ If you have not created the plugin config yet, copy its example file:
 cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
 ```
 
+The example leaves `nodeManagementConfig.discovery_hosts` unset, so an existing `config/cloud_infra.yaml` continues to provide its discovery hosts. If you set `discovery_hosts: []`, that explicit empty list disables the legacy fallback. To migrate, copy the hosts into the plugin config before deploying it.
+
 Then add or edit `nodeManagementConfig.discovery_hosts` with the details of the nodes you want to discover:
 
 ```yaml
@@ -894,16 +896,16 @@ nodeManagementConfig:
       redfish: 100.64.1.21  # BMC IP address
       rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
       redfishUser: admin
-      redfishPassword: YourSecurePassword
     - name: node02
       macAddress: 0c:c4:7a:65:d0:84
       ipAddress: 192.168.2.22
       redfish: 100.64.1.22
       rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
       redfishUser: admin
-      redfishPassword: YourSecurePassword
     # Add more nodes as needed
 ```
+
+Set the required `redfishPassword` for each host from a secure credential source.
 
 ### Configuration Fields
 
