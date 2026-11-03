@@ -1,0 +1,1146 @@
+#!/bin/bash
+# CI Artifact Collection Script
+#
+# Collects diagnostics for CI debugging based on collection level
+#
+# Usage:
+#   ./collect_ci_artifacts.sh <level> <output_dir>
+#
+# Levels:
+#   basic        - Essential info only - for all jobs
+#   infra        - Infrastructure diagnostics - for infra jobs
+#   deployment   - Full deployment diagnostics - for E2E jobs
+#   full         - Everything including cluster diagnostics - on failure
+#
+# Example:
+#   ./collect_ci_artifacts.sh infra ./artifacts
+
+set -euo pipefail
+
+# Check arguments
+if [ $# -lt 2 ]; then
+    echo "Usage: $0 <level> <output_dir>"
+    echo "Levels: basic, infra, deployment, full"
+    exit 1
+fi
+
+LEVEL="$1"
+OUTPUT_DIR="$2"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/ci/lib/output.sh"
+source "${ENCLAVE_DIR}/ci/lib/config.sh"
+source "${ENCLAVE_DIR}/ci/lib/network.sh"
+
+# Load cluster-env.sh (non-fatal) so ENCLAVE_* facts are available for diagnostics.
+try_load_cluster_env || true
+
+# Track collection warnings/errors
+COLLECTION_WARNINGS=0
+COLLECTION_ERRORS=0
+
+# Custom wrapper functions with [INFO]/[WARN]/[ERROR] prefixes for this script
+info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+    COLLECTION_WARNINGS=$((COLLECTION_WARNINGS + 1))
+    # Emit GitHub annotation if in CI
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then
+        echo "::warning file=collect_ci_artifacts.sh,title=Collection Warning::$1"
+    fi
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+    COLLECTION_ERRORS=$((COLLECTION_ERRORS + 1))
+}
+
+# Create base output directories (landing-zone and cluster created on-demand)
+mkdir -p "${OUTPUT_DIR}"/{system,libvirt,network,bmc}
+
+info "Starting artifact collection (level: $LEVEL)"
+info "Output directory: $OUTPUT_DIR"
+
+#####################################
+# SYSTEM COLLECTION FUNCTIONS
+#####################################
+
+collect_system_info() {
+    info "Collecting system information..."
+    {
+        echo "=== System Info ==="
+        uname -a
+        cat /etc/os-release 2>/dev/null || true
+        echo ""
+        echo "=== Uptime ==="
+        uptime
+        echo ""
+        echo "=== Memory ==="
+        free -h
+        echo ""
+        echo "=== Disk Usage ==="
+        df -h
+        echo ""
+        echo "=== CPU Info ==="
+        lscpu | head -20
+    } > "${OUTPUT_DIR}/system/system-info.txt" 2>&1
+}
+
+collect_system_processes() {
+    info "Collecting process information..."
+    ps auxf > "${OUTPUT_DIR}/system/processes.txt" 2>&1 || true
+    top -b -n 1 > "${OUTPUT_DIR}/system/top-snapshot.txt" 2>&1 || true
+}
+
+collect_system_performance() {
+    info "Collecting performance metrics..."
+    iostat -x 1 3 > "${OUTPUT_DIR}/system/iostat.txt" 2>&1 || true
+    vmstat 1 3 > "${OUTPUT_DIR}/system/vmstat.txt" 2>&1 || true
+}
+
+collect_system_logs() {
+    info "Collecting system logs..."
+    {
+        echo "=== Recent Journal Errors ==="
+        # Filter out harmless virtqemud "End of file" errors during VM shutdowns
+        sudo journalctl -p err -n 100 --no-pager | grep -v "virtqemud.*End of file while reading data" || true
+        echo ""
+        echo "=== libvirt Logs ==="
+        sudo journalctl -u libvirtd -u virtqemud -n 200 --no-pager | grep -v "End of file while reading data" || true
+    } > "${OUTPUT_DIR}/system/system-logs.txt" 2>&1
+}
+
+#####################################
+# LIBVIRT COLLECTION FUNCTIONS
+#####################################
+
+collect_libvirt_vms() {
+    info "Collecting VM information..."
+    {
+        echo "=== VM List ==="
+        sudo virsh list --all
+        echo ""
+        echo "=== VM Details ==="
+        for vm in $(sudo virsh list --all --name); do
+            if [ -n "$vm" ]; then
+                echo "--- VM: $vm ---"
+                sudo virsh dominfo "$vm" 2>&1 || true
+                echo ""
+                echo "VM State:"
+                sudo virsh domstate "$vm" 2>&1 || true
+                echo ""
+                echo "VM IP Addresses:"
+                sudo virsh domifaddr "$vm" 2>&1 || true
+                echo ""
+            fi
+        done
+    } > "${OUTPUT_DIR}/libvirt/vms.txt" 2>&1
+}
+
+collect_libvirt_vm_xml() {
+    info "Collecting VM XML definitions..."
+    # Only collect enclave/eci VMs to avoid clutter
+    for vm in $(sudo virsh list --all --name | grep -E 'enclave|eci'); do
+        if [ -n "$vm" ]; then
+            sudo virsh dumpxml "$vm" 2>&1 | sudo tee "${OUTPUT_DIR}/libvirt/vm-${vm}.xml" >/dev/null || true
+        fi
+    done
+}
+
+collect_libvirt_networks() {
+    info "Collecting network information..."
+    {
+        echo "=== Network List ==="
+        sudo virsh net-list --all
+        echo ""
+        echo "=== Network Details ==="
+        for net in $(sudo virsh net-list --all --name); do
+            if [ -n "$net" ]; then
+                echo "--- Network: $net ---"
+                sudo virsh net-info "$net" 2>&1 || true
+                echo ""
+                echo "DHCP Leases:"
+                sudo virsh net-dhcp-leases "$net" 2>&1 || true
+                echo ""
+            fi
+        done
+    } > "${OUTPUT_DIR}/libvirt/networks.txt" 2>&1
+}
+
+collect_libvirt_network_xml() {
+    info "Collecting network XML definitions..."
+    # Only collect enclave/eci networks
+    for net in $(sudo virsh net-list --all --name | grep -E 'enclave|eci'); do
+        if [ -n "$net" ]; then
+            sudo virsh net-dumpxml "$net" 2>&1 | sudo tee "${OUTPUT_DIR}/libvirt/network-${net}.xml" >/dev/null || true
+        fi
+    done
+}
+
+collect_libvirt_storage() {
+    info "Collecting storage pool information..."
+    {
+        echo "=== Storage Pools ==="
+        sudo virsh pool-list --all
+        echo ""
+        for pool in $(sudo virsh pool-list --all --name); do
+            if [ -n "$pool" ]; then
+                echo "--- Pool: $pool ---"
+                sudo virsh pool-info "$pool" 2>&1 || true
+                echo ""
+            fi
+        done
+    } > "${OUTPUT_DIR}/libvirt/storage.txt" 2>&1
+}
+
+#####################################
+# NETWORK COLLECTION FUNCTIONS
+#####################################
+
+collect_network_interfaces() {
+    info "Collecting network interface configuration..."
+    {
+        echo "=== Network Interfaces ==="
+        ip addr show
+        echo ""
+        echo "=== Link Status ==="
+        ip link show
+        echo ""
+        echo "=== Routes ==="
+        ip route show
+        echo ""
+        echo "=== Routing Tables ==="
+        ip route show table all
+    } > "${OUTPUT_DIR}/network/interfaces.txt" 2>&1
+}
+
+collect_network_bridges() {
+    info "Collecting bridge information..."
+    {
+        echo "=== Bridges ==="
+        ip link show type bridge
+        echo ""
+        echo "=== Bridge Details ==="
+        for br in $(ip link show type bridge | grep -o '^[0-9]*: [^:]*' | cut -d: -f2 | tr -d ' '); do
+            echo "--- Bridge: $br ---"
+            ip addr show "$br" 2>&1 || true
+            echo ""
+            echo "Bridge Links:"
+            bridge link show dev "$br" 2>&1 || true
+            echo ""
+            echo "Bridge FDB:"
+            bridge fdb show dev "$br" 2>&1 || true
+            echo ""
+        done
+    } > "${OUTPUT_DIR}/network/bridges.txt" 2>&1
+}
+
+collect_network_firewall() {
+    info "Collecting firewall configuration..."
+    {
+        echo "=== Firewall Status ==="
+        sudo systemctl status firewalld --no-pager || echo "firewalld not running"
+        echo ""
+        echo "=== Firewall Zones ==="
+        sudo firewall-cmd --list-all-zones 2>&1 || true
+        echo ""
+        echo "=== iptables Filter Rules ==="
+        sudo iptables -L -n -v 2>&1 || true
+        echo ""
+        echo "=== iptables NAT Rules ==="
+        sudo iptables -t nat -L -n -v 2>&1 || true
+    } > "${OUTPUT_DIR}/network/firewall.txt" 2>&1
+}
+
+collect_network_dns() {
+    info "Collecting DNS configuration..."
+    {
+        echo "=== /etc/resolv.conf ==="
+        cat /etc/resolv.conf
+        echo ""
+        echo "=== DNS Test (google.com) ==="
+        nslookup google.com || dig google.com || echo "DNS tools not available"
+        echo ""
+        echo "=== dnsmasq Status ==="
+        sudo systemctl status dnsmasq --no-pager 2>&1 || echo "dnsmasq not running"
+        echo ""
+        if sudo systemctl is-active dnsmasq >/dev/null 2>&1; then
+            echo "=== dnsmasq Configuration ==="
+            sudo cat /etc/dnsmasq.conf 2>/dev/null || true
+            echo ""
+            echo "=== dnsmasq Logs ==="
+            sudo journalctl -u dnsmasq -n 100 --no-pager 2>&1 || true
+        else
+            echo "NOTE: dnsmasq not running is normal - DNS resolution typically handled by:"
+            echo "  - systemd-resolved (127.0.0.1:53)"
+            echo "  - NetworkManager dnsmasq plugin"
+            echo "  - libvirt dnsmasq (for VM networks)"
+        fi
+    } > "${OUTPUT_DIR}/network/dns.txt" 2>&1
+}
+
+collect_bmc_status() {
+    info "Collecting BMC emulation status..."
+
+    # BMC endpoint comes from cluster-env.sh (ENCLAVE_BMC_ENDPOINT), emitted by vm_infra.py.
+    local bmc_endpoint="${ENCLAVE_BMC_ENDPOINT:-}"
+    if [ -n "$bmc_endpoint" ]; then
+        info "BMC endpoint from cluster-env.sh: $bmc_endpoint"
+    else
+        bmc_endpoint="https://100.64.1.1:8001"
+        warn "ENCLAVE_BMC_ENDPOINT not set, using default: $bmc_endpoint"
+    fi
+
+    {
+        echo "=== Sushy-tools Service Status ==="
+        sudo systemctl status sushy-emulator --no-pager 2>&1 || echo "sushy-emulator service not found"
+        echo ""
+        echo "=== Sushy-tools Containers ==="
+        sudo podman ps -a --filter "name=sushy-tools" --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}" 2>&1 || echo "No sushy-tools containers found"
+        echo ""
+        echo "=== Sushy-tools Processes ==="
+        ps aux | grep -i sushy | grep -v grep || echo "No sushy processes found"
+        echo ""
+        echo "=== BMC Endpoint Test ($bmc_endpoint) ==="
+        # Try HTTPS first, fallback to HTTP
+        if ! curl -k -m 5 "${bmc_endpoint/http:/https:}/redfish/v1/Systems" 2>&1; then
+            echo "HTTPS failed, trying HTTP..."
+            curl -k -m 5 "${bmc_endpoint}/redfish/v1/Systems" 2>&1 || echo "BMC endpoint not accessible"
+        fi
+        echo ""
+        echo "=== Sushy Service Logs ==="
+        sudo journalctl -u sushy-emulator -n 100 --no-pager 2>&1 || echo "No sushy service logs"
+        echo ""
+        echo "=== Sushy Container Logs ==="
+        # Collect logs from all sushy-tools containers (cluster-specific naming)
+        for container in $(sudo podman ps -a --filter "name=sushy-tools" --format "{{.Names}}" 2>/dev/null); do
+            echo "--- Container: $container ---"
+            sudo podman logs "$container" 2>&1 || echo "Could not get logs for $container"
+            echo ""
+        done
+        if ! sudo podman ps -a --filter "name=sushy-tools" --format "{{.Names}}" 2>/dev/null | grep -q .; then
+            echo "No sushy-tools containers found"
+        fi
+    } > "${OUTPUT_DIR}/bmc/bmc-status.txt" 2>&1
+}
+
+#####################################
+# LANDING ZONE SSH HELPERS
+#####################################
+
+# Shared SSH options for every Landing Zone connection. ConnectTimeout only
+# bounds connection setup, so the wrappers below add a runner-side execution
+# deadline via `timeout` to ensure a stalled remote command or transfer can
+# never block collection indefinitely.
+LZ_SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -q)
+
+# ssh_lz <lz_ip> <remote-command...>
+# Override the default per-call deadline with LZ_CMD_TIMEOUT (seconds), e.g.
+#   LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "..."
+# ssh -n keeps calls from consuming the caller's stdin (e.g. a loop reading a
+# file list), which would otherwise stop the loop after the first iteration.
+ssh_lz() {
+    local lz_ip="$1"
+    shift
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-120}" ssh -n "${LZ_SSH_OPTS[@]}" cloud-user@"$lz_ip" "$@"
+}
+
+# scp_lz <scp-args...> -- callers pass cloud-user@<ip>:<remote> and a local dest.
+scp_lz() {
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-300}" scp "${LZ_SSH_OPTS[@]}" "$@"
+}
+
+#####################################
+# LANDING ZONE COLLECTION FUNCTIONS
+#####################################
+
+get_landing_zone_vm_name() {
+    # From cluster-env.sh, else the naming convention.
+    echo "${ENCLAVE_LZ_VM_NAME:-${ENCLAVE_CLUSTER_NAME:-enclave-test}_landingzone_0}"
+}
+
+get_landing_zone_ip() {
+    # Authoritative static-lease IP from cluster-env.sh, with a live virsh fallback.
+    if [ -n "${ENCLAVE_LZ_CLUSTER_IP:-}" ]; then
+        echo "${ENCLAVE_LZ_CLUSTER_IP}"
+        return
+    fi
+    local lz_vm_name cluster_network
+    lz_vm_name=$(get_landing_zone_vm_name)
+    cluster_network="${ENCLAVE_CLUSTER_NETWORK:-192.168.2.0/24}"
+    get_vm_ip_on_network "$lz_vm_name" "$cluster_network"
+}
+
+test_lz_ssh() {
+    local lz_ip="$1"
+
+    ssh_lz "$lz_ip" "echo connected" >/dev/null 2>&1
+}
+
+collect_lz_system_info() {
+    local lz_ip="$1"
+
+    mkdir -p "${OUTPUT_DIR}/landing-zone"
+    info "Collecting Landing Zone system information..."
+    ssh_lz "$lz_ip" "
+        echo '=== OS Info ==='
+        cat /etc/os-release
+        echo ''
+        echo '=== Kernel ==='
+        uname -a
+        echo ''
+        echo '=== Hostname ==='
+        hostname
+        echo ''
+        echo '=== Memory ==='
+        free -h
+        echo ''
+        echo '=== Disk ==='
+        df -h
+        echo ''
+        echo '=== Network Interfaces ==='
+        ip addr show
+        echo ''
+        echo '=== Routes ==='
+        ip route show
+    " > "${OUTPUT_DIR}/landing-zone/system-info.txt" 2>&1 || warn "Could not collect LZ system info"
+}
+
+collect_lz_dns_config() {
+    local lz_ip="$1"
+
+    info "Collecting Landing Zone DNS configuration..."
+    ssh_lz "$lz_ip" "
+        echo '=== /etc/resolv.conf ==='
+        cat /etc/resolv.conf
+        echo ''
+        echo '=== DNS Test (google.com) ==='
+        nslookup google.com 2>&1 || dig google.com 2>&1 || echo 'DNS tools not available'
+        echo ''
+        echo '=== DNS Test (quay.io) ==='
+        nslookup quay.io 2>&1 || dig quay.io 2>&1 || echo 'DNS tools not available'
+    " > "${OUTPUT_DIR}/landing-zone/dns.txt" 2>&1 || warn "Could not collect LZ DNS config"
+}
+
+collect_lz_deployment_logs() {
+    local lz_ip="$1"
+
+    mkdir -p "${OUTPUT_DIR}/landing-zone"
+    info "Collecting deployment logs from Landing Zone..."
+
+    # Tar all deployment logs on remote
+    ssh_lz "$lz_ip" "cd /home/cloud-user/enclave && tar czf /tmp/deployment-logs-${TIMESTAMP}.tar.gz deployment_*.log 2>/dev/null" || warn "No deployment logs found"
+
+    # Copy and extract
+    if scp_lz cloud-user@"$lz_ip":/tmp/deployment-logs-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/landing-zone/" 2>/dev/null; then
+        (cd "${OUTPUT_DIR}/landing-zone" && tar xzf deployment-logs-${TIMESTAMP}.tar.gz && rm deployment-logs-${TIMESTAMP}.tar.gz) || true
+    fi
+}
+
+collect_lz_pipeline_logs() {
+    local lz_ip="$1"
+
+    mkdir -p "${OUTPUT_DIR}/landing-zone/pipeline-logs"
+    info "Collecting pipeline logs from Landing Zone..."
+
+    local remote_tar="/tmp/pipeline-logs-${TIMESTAMP}.tar.gz"
+
+    if ! ssh_lz "$lz_ip" "
+        cd ~ || exit 2
+        shopt -s nullglob
+        files=(
+            sessions/1/logs/oc-mirror*.progress.*.log
+            sessions/1/logs/helm-*.*.log
+            sessions/1/config/oc-mirror-workspace/working-dir/logs/mirroring_errors_*.txt
+        )
+        if [ \${#files[@]} -eq 0 ]; then
+            exit 2
+        fi
+        tar czf ${remote_tar} \${files[@]}
+    "; then
+        warn "No pipeline logs found or SSH failed"
+        return
+    fi
+
+    if scp_lz cloud-user@"$lz_ip":"${remote_tar}" "${OUTPUT_DIR}/landing-zone/pipeline-logs/"; then
+        (
+            cd "${OUTPUT_DIR}/landing-zone/pipeline-logs" && \
+            tar xzf "pipeline-logs-${TIMESTAMP}.tar.gz" && \
+            rm "pipeline-logs-${TIMESTAMP}.tar.gz"
+        ) || warn "Failed to extract logs"
+    else
+        warn "Failed to download pipeline logs"
+    fi
+
+    ssh_lz "$lz_ip" "rm -f ${remote_tar}" >/dev/null 2>&1 || true
+}
+
+collect_lz_config_files() {
+    local lz_ip="$1"
+
+    info "Collecting configuration files from Landing Zone..."
+
+    # NOTE: vars.yaml is NOT collected here due to credential exposure risk
+    # It contains pull secrets and Quay admin password in plain text
+    # For debugging, check cluster logs or use must-gather script which sanitizes it
+
+    # OpenShift install log
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/.openshift_install.log "${OUTPUT_DIR}/landing-zone/" 2>/dev/null || warn "Could not collect .openshift_install.log"
+
+    # agent-based installer log
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/.openshift_install.log "${OUTPUT_DIR}/landing-zone/openshift_install_agent.log" 2>/dev/null || true
+}
+
+# Redact sensitive data before collecting, at all nesting levels:
+#   - any key matching /password|secret|key|cert|token|credential|auth/i
+#   - credentials embedded in URL userinfo (scheme://user:pass@host), which
+#     catches connection strings whose key does not match, e.g. osacDatabaseUrl
+# String values that are valid JSON are parsed and redacted recursively
+# (e.g. odfExternalConfig). Shared by enclave-config and rendered Helm-values
+# collection.
+REDACT_PY='
+import yaml, sys, re, json
+PATTERN = re.compile(r"password|secret|key|cert|token|credential|auth", re.IGNORECASE)
+URL_CRED = re.compile(r"://[^/@\s]+@")
+def redact(obj):
+    if isinstance(obj, dict):
+        return {k: "REDACTED" if PATTERN.search(k) else redact(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact(i) for i in obj]
+    if isinstance(obj, str):
+        try:
+            return json.dumps(redact(json.loads(obj)))
+        except (json.JSONDecodeError, ValueError):
+            pass
+        return URL_CRED.sub("://REDACTED@", obj)
+    return obj
+data = yaml.safe_load(open(sys.argv[1]))
+print(yaml.dump(redact(data), default_flow_style=False))
+'
+
+collect_lz_enclave_config() {
+    local lz_ip="$1"
+    local config_dir="${OUTPUT_DIR}/landing-zone/config"
+    local remote_config_dir="/home/cloud-user/enclave/config"
+
+    mkdir -p "$config_dir"
+    info "Collecting enclave configuration files from Landing Zone..."
+
+    # Discover every real YAML config on the LZ, recursing into config/plugins/
+    # so any enabled plugin's config (osac, lvms, odf, ...) is picked up without
+    # enumerating them here. Example templates ship with the repo and hold no
+    # deployment state, so they are skipped.
+    local remote_files
+    if ! remote_files=$(ssh_lz "$lz_ip" \
+        "find ${remote_config_dir} -type f \( -name '*.yaml' -o -name '*.yml' \) ! -name '*.example.*' 2>/dev/null"); then
+        warn "Could not list enclave config files on Landing Zone"
+        return
+    fi
+
+    if [ -z "$remote_files" ]; then
+        info "No enclave config files found on Landing Zone"
+        return
+    fi
+
+    local remote_path remote_path_q cfg out
+    while IFS= read -r remote_path; do
+        [ -n "$remote_path" ] || continue
+        # Path relative to config/ so config/plugins/osac.yaml keeps its subdir.
+        cfg="${remote_path#"$remote_config_dir"/}"
+        # Shell-quote the discovered path so a filename with metacharacters
+        # cannot inject commands into the remote shell.
+        remote_path_q=$(printf '%q' "$remote_path")
+        out=$(ssh_lz "$lz_ip" "python3 -c '${REDACT_PY}' ${remote_path_q}" 2>/dev/null) \
+            && [ -n "$out" ] \
+            && mkdir -p "$(dirname "${config_dir}/${cfg}")" \
+            && echo "$out" > "${config_dir}/${cfg}" \
+            || warn "Could not collect ${cfg}"
+    done <<< "$remote_files"
+}
+
+collect_lz_helm_values() {
+    local lz_ip="$1"
+    local values_dir="${OUTPUT_DIR}/landing-zone/helm-values"
+    # Rendered plugin values are written to workingDir as helm-values-<plugin>-<release>.yaml
+    # (e.g. helm-values-osac-osac.yaml). In CI workingDir is sessions/1.
+    local remote_working_dir="/home/cloud-user/sessions/1"
+
+    info "Collecting rendered Helm values from Landing Zone..."
+
+    # Discover every rendered plugin values file so any enabled plugin (osac,
+    # lvms, odf, ...) is captured without enumerating releases here.
+    local remote_files
+    if ! remote_files=$(ssh_lz "$lz_ip" \
+        "find ${remote_working_dir} -maxdepth 1 -type f -name 'helm-values-*.yaml' 2>/dev/null"); then
+        warn "Could not list rendered Helm values on Landing Zone"
+        return
+    fi
+
+    if [ -z "$remote_files" ]; then
+        info "No rendered Helm values found on Landing Zone"
+        return
+    fi
+
+    mkdir -p "$values_dir"
+    local remote_path remote_path_q name out
+    while IFS= read -r remote_path; do
+        [ -n "$remote_path" ] || continue
+        name=$(basename "$remote_path")
+        # Shell-quote the discovered path so a filename with metacharacters
+        # cannot inject commands into the remote shell.
+        remote_path_q=$(printf '%q' "$remote_path")
+        out=$(ssh_lz "$lz_ip" "python3 -c '${REDACT_PY}' ${remote_path_q}" 2>/dev/null) \
+            && [ -n "$out" ] \
+            && echo "$out" > "${values_dir}/${name}" \
+            || warn "Could not collect ${name}"
+    done <<< "$remote_files"
+}
+
+collect_lz_services() {
+    local lz_ip="$1"
+
+    info "Collecting service status from Landing Zone..."
+    ssh_lz "$lz_ip" "
+        echo '=== Failed Services ==='
+        systemctl list-units --type=service --state=failed
+        echo ''
+        echo '=== httpd Status ==='
+        systemctl status httpd --no-pager 2>&1 || echo 'httpd not running'
+        echo ''
+        echo '=== dnsmasq Status ==='
+        systemctl status dnsmasq --no-pager 2>&1 || echo 'dnsmasq not running'
+        echo ''
+        echo '=== Podman Containers ==='
+        podman ps -a
+        echo ''
+        echo '=== Podman Images ==='
+        podman images | head -20
+    " > "${OUTPUT_DIR}/landing-zone/services.txt" 2>&1 || warn "Could not collect LZ services"
+}
+
+collect_lz_registry() {
+    local lz_ip="$1"
+
+    info "Collecting registry information from Landing Zone..."
+    ssh_lz "$lz_ip" "
+        echo '=== Quay Registry Container ==='
+        podman ps -a | grep -i quay || echo 'No Quay containers found'
+        echo ''
+        echo '=== Registry Logs (last 100 lines) ==='
+        podman logs quay-registry 2>&1 | tail -100 || echo 'Registry not running'
+        echo ''
+        echo '=== Registry Storage ==='
+        du -sh /var/lib/containers/storage 2>&1 || true
+    " > "${OUTPUT_DIR}/landing-zone/registry.txt" 2>&1 || warn "Could not collect registry info"
+}
+
+collect_lz_cloud_init() {
+    local lz_ip="$1"
+
+    info "Collecting cloud-init logs from Landing Zone..."
+    ssh_lz "$lz_ip" "
+        echo '=== cloud-init Status ==='
+        cloud-init status --long 2>&1 || echo 'cloud-init not available'
+        echo ''
+        echo '=== cloud-init Journal Logs ==='
+        sudo journalctl -u cloud-init -u cloud-init-local -u cloud-config -u cloud-final --no-pager 2>&1 || echo 'No cloud-init logs'
+        echo ''
+        echo '=== cloud-init Result ==='
+        cat /run/cloud-init/result.json 2>&1 || echo 'No result file'
+    " > "${OUTPUT_DIR}/landing-zone/cloud-init.txt" 2>&1 || warn "Could not collect LZ cloud-init logs"
+}
+
+#####################################
+# CLUSTER COLLECTION FUNCTIONS
+#####################################
+
+check_kubeconfig_exists() {
+    local lz_ip="$1"
+
+    ssh_lz "$lz_ip" "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig" 2>/dev/null
+}
+
+collect_cluster_kubeconfig() {
+    local lz_ip="$1"
+
+    mkdir -p "${OUTPUT_DIR}/cluster"
+    info "Collecting kubeconfig..."
+    scp_lz cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
+}
+
+collect_cluster_status() {
+    local lz_ip="$1"
+
+    info "Collecting cluster status..."
+    ssh_lz "$lz_ip" "
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
+
+        echo '=== Cluster Version ==='
+        oc get clusterversion -o yaml
+        echo ''
+        echo '=== Nodes ==='
+        oc get nodes -o wide
+        echo ''
+        echo '=== Node Conditions ==='
+        oc get nodes -o json | jq -r '.items[] | \"\\(.metadata.name): \\(.status.conditions[] | select(.status==\\\"True\\\") | .type)\"'
+        echo ''
+        echo '=== Cluster Operators ==='
+        oc get co
+        echo ''
+        echo '=== Degraded Operators ==='
+        oc get co -o json | jq -r '.items[] | select(.status.conditions[] | select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'
+        echo ''
+        echo '=== Machine Config Pools ==='
+        oc get mcp
+    " > "${OUTPUT_DIR}/cluster/cluster-status.txt" 2>&1 || warn "Could not collect cluster status"
+}
+
+collect_cluster_events() {
+    local lz_ip="$1"
+
+    info "Collecting cluster events..."
+    ssh_lz "$lz_ip" "
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
+
+        echo '=== Recent Events (last 100) ==='
+        oc get events --all-namespaces --sort-by='.lastTimestamp' | tail -100
+        echo ''
+        echo '=== Warning Events ==='
+        oc get events --all-namespaces --field-selector type=Warning --sort-by='.lastTimestamp' | tail -50
+    " > "${OUTPUT_DIR}/cluster/events.txt" 2>&1 || warn "Could not collect cluster events"
+}
+
+collect_cluster_pods() {
+    local lz_ip="$1"
+
+    info "Collecting pod information..."
+    ssh_lz "$lz_ip" "
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
+
+        echo '=== All Pods ==='
+        oc get pods --all-namespaces -o wide
+        echo ''
+        echo '=== Pods Not Running/Succeeded ==='
+        oc get pods --all-namespaces --field-selector status.phase!=Running,status.phase!=Succeeded
+        echo ''
+        echo '=== Pending Pods ==='
+        oc get pods --all-namespaces --field-selector status.phase=Pending
+        echo ''
+        echo '=== Failed Pods ==='
+        oc get pods --all-namespaces --field-selector status.phase=Failed
+    " > "${OUTPUT_DIR}/cluster/pods.txt" 2>&1 || warn "Could not collect pod info"
+}
+
+collect_cluster_problem_pod_logs() {
+    local lz_ip="$1"
+
+    info "Collecting logs from problem pods..."
+    LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "
+        export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+        export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+        oc() { command oc --request-timeout=30s \"\$@\"; }
+        mkdir -p /tmp/problem-pods-${TIMESTAMP}
+
+        # Get pods that are not Running/Succeeded
+        oc get pods --all-namespaces --field-selector status.phase!=Running,status.phase!=Succeeded -o json | \
+        jq -r '.items[] | \"\\(.metadata.namespace)/\\(.metadata.name)\"' | \
+        head -20 | \
+        while read pod; do
+            ns=\${pod%/*}
+            name=\${pod#*/}
+            echo \"Collecting logs for \$ns/\$name\"
+            oc logs -n \$ns \$name --all-containers --prefix --tail=500 > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}.log 2>&1 || true
+            oc describe pod -n \$ns \$name > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_describe.txt 2>&1 || true
+        done
+
+        # Get CrashLoopBackOff/restarting pods (Running phase but containers failing)
+        oc get pods --all-namespaces -o json | \
+        jq -r '.items[] | select(.status.phase == \"Running\") | select((.status.containerStatuses // [])[] | (.state.waiting != null) or (.restartCount >= 3)) | \"\\(.metadata.namespace)/\\(.metadata.name)\"' | \
+        sort -u | head -20 | \
+        while read pod; do
+            ns=\${pod%/*}
+            name=\${pod#*/}
+            # Skip if already collected above
+            [ -f /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}.log ] && continue
+            echo \"Collecting logs for CrashLoopBackOff pod \$ns/\$name\"
+            oc logs -n \$ns \$name --all-containers --prefix --tail=500 > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}.log 2>&1 || true
+            oc logs -n \$ns \$name --all-containers --prefix --tail=500 --previous > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_previous.log 2>&1 || true
+            oc describe pod -n \$ns \$name > /tmp/problem-pods-${TIMESTAMP}/\${ns}_\${name}_describe.txt 2>&1 || true
+        done
+
+        # Tar it up
+        cd /tmp && tar czf problem-pods-${TIMESTAMP}.tar.gz problem-pods-${TIMESTAMP}/ 2>/dev/null
+    " 2>&1 || warn "Could not collect problem pod logs"
+
+    # Copy and extract
+    if scp_lz cloud-user@"$lz_ip":/tmp/problem-pods-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
+        (cd "${OUTPUT_DIR}/cluster" && tar xzf problem-pods-${TIMESTAMP}.tar.gz && rm problem-pods-${TIMESTAMP}.tar.gz) || true
+    fi
+}
+
+collect_cluster_quay_diagnostics() {
+    local lz_ip="$1"
+
+    # The generic problem-pod capture only grabs non-Running pods at tail=500,
+    # so it misses Quay's Postgres/Redis (Running), the QuayRegistry CR status,
+    # the config-bundle secret rotation, and the /health/instance body that
+    # names the failing subsystem (database vs storage vs redis). This captures
+    # the full quay-enterprise picture in one shot. Runs for both lvms and odf.
+    # The oc() wrapper adds --request-timeout=30s so a stalled apiserver fails
+    # fast instead of consuming the whole SSH budget.
+    local kube_env="export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig; export PATH=/home/cloud-user/sessions/1/bin:\$PATH; oc() { command oc --request-timeout=30s \"\$@\"; }"
+
+    # Only a confirmed NotFound means "nothing to collect" -- skip cleanly then.
+    # SSH/API/auth/RBAC failures must NOT masquerade as an absent namespace (that
+    # would drop Quay diagnostics exactly when they are most needed), so warn and
+    # attempt collection anyway; the per-command `|| true` below captures the errors.
+    local ns_check
+    if ns_check=$(ssh_lz "$lz_ip" "$kube_env; oc get namespace quay-enterprise" 2>&1); then
+        : # namespace exists, proceed with collection
+    elif printf '%s' "$ns_check" | grep -q 'NotFound'; then
+        info "quay-enterprise namespace not present; skipping Quay diagnostics"
+        return
+    else
+        warn "Quay namespace check failed (not a clean NotFound), collecting anyway"
+    fi
+
+    info "Collecting Quay diagnostics..."
+    LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "
+        $kube_env
+        ns=quay-enterprise
+        out=/tmp/quay-diagnostics-${TIMESTAMP}
+        mkdir -p \$out
+
+        # QuayRegistry CR - .status.conditions is the operator's own view of why
+        # the registry is not healthy. Spec holds only secret references, not values.
+        oc get quayregistry -n \$ns -o yaml > \$out/quayregistry.yaml 2>&1 || true
+
+        {
+            echo '=== Pods ==='
+            oc get pods -n \$ns -o wide
+            echo ''
+            echo '=== Deployments ==='
+            oc get deployments -n \$ns -o wide
+            echo ''
+            echo '=== HPA (replica count / scaling) ==='
+            oc get hpa -n \$ns -o wide
+            echo ''
+            echo '=== Events (by time) ==='
+            oc get events -n \$ns --sort-by=.lastTimestamp
+            echo ''
+            echo '=== PVCs (registry/db backend binding) ==='
+            oc get pvc -n \$ns
+            echo ''
+            # Names/types only - never dump secret VALUES. The config-bundle
+            # rotation churn (registry-quay-config-secret-*) is visible here.
+            echo '=== Secrets (names only) ==='
+            oc get secrets -n \$ns
+        } > \$out/overview.txt 2>&1 || true
+
+        # Per-pod: describe + current and previous logs, all containers. Larger
+        # tail than the generic capture - Quay /health failures and DB errors
+        # scroll fast and got truncated to startup noise last time.
+        for pod in \$(oc get pods -n \$ns --no-headers -o custom-columns=:.metadata.name 2>/dev/null); do
+            oc describe pod -n \$ns \$pod > \$out/\${pod}_describe.txt 2>&1 || true
+            oc logs -n \$ns \$pod --all-containers --prefix --tail=2000 > \$out/\${pod}.log 2>&1 || true
+            oc logs -n \$ns \$pod --all-containers --prefix --tail=2000 --previous > \$out/\${pod}_previous.log 2>&1 || true
+        done
+
+        # /health/instance body names the failing subsystem. Best-effort: works
+        # only while a quay-app pod is briefly up between crashloop restarts.
+        {
+            echo '=== /health/instance ==='
+            oc exec -n \$ns deploy/registry-quay-app -c quay-app -- \
+                curl -sS -m 10 http://localhost:8080/health/instance 2>&1 \
+                || echo '(quay-app not execable - likely crashlooping)'
+        } > \$out/health-instance.txt 2>&1 || true
+
+        cd /tmp && tar czf quay-diagnostics-${TIMESTAMP}.tar.gz quay-diagnostics-${TIMESTAMP}/ 2>/dev/null
+    " 2>&1 || warn "Could not collect Quay diagnostics"
+
+    if scp_lz cloud-user@"$lz_ip":/tmp/quay-diagnostics-${TIMESTAMP}.tar.gz "${OUTPUT_DIR}/cluster/" 2>/dev/null; then
+        # Only remove the remote copies once the transfer succeeded. Cleanup
+        # normally destroys the LZ, but skip-cleanup (or a failed cleanup) leaves
+        # it running, where repeated full collections would otherwise accumulate
+        # the timestamped dir and archive under /tmp.
+        ssh_lz "$lz_ip" \
+            "rm -rf /tmp/quay-diagnostics-${TIMESTAMP} /tmp/quay-diagnostics-${TIMESTAMP}.tar.gz" 2>/dev/null || true
+        (cd "${OUTPUT_DIR}/cluster" && tar xzf quay-diagnostics-${TIMESTAMP}.tar.gz && rm quay-diagnostics-${TIMESTAMP}.tar.gz) \
+            || warn "Could not extract Quay diagnostics archive"
+    else
+        warn "Could not transfer Quay diagnostics archive from LZ"
+    fi
+}
+
+collect_cluster_plugin_diagnostics() {
+    local lz_ip="$1"
+
+    if [ -z "${ENABLED_PLUGINS:-}" ]; then
+        return
+    fi
+
+    info "Collecting plugin namespace diagnostics..."
+    mkdir -p "${OUTPUT_DIR}/cluster/plugin-diagnostics"
+
+    # Map plugins to their namespaces (deduplicated)
+    local namespaces=()
+    IFS=',' read -ra plugins <<< "$ENABLED_PLUGINS"
+    for plugin in "${plugins[@]}"; do
+        plugin="${plugin// /}"
+        case "$plugin" in
+            osac) namespaces+=("osac" "osac-kafka") ;;
+            aap) namespaces+=("osac") ;;
+            rhbk) namespaces+=("keycloak") ;;
+            trust-manager) namespaces+=("cert-manager") ;;
+            cnv) namespaces+=("openshift-cnv") ;;
+        esac
+    done
+
+    # Deduplicate
+    if [ ${#namespaces[@]} -eq 0 ]; then
+        return
+    fi
+    local unique_ns
+    unique_ns=$(printf '%s\n' "${namespaces[@]}" | sort -u)
+
+    for ns in $unique_ns; do
+        info "Collecting diagnostics for namespace: $ns"
+        ssh_lz "$lz_ip" "
+            export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
+            export PATH=/home/cloud-user/sessions/1/bin:\$PATH
+            oc() { command oc --request-timeout=30s \"\$@\"; }
+
+            echo '=== Deployments ==='
+            oc get deployments -n $ns -o wide 2>&1
+            echo ''
+            echo '=== Pods ==='
+            oc get pods -n $ns -o wide 2>&1
+            echo ''
+            echo '=== Events ==='
+            oc get events -n $ns --sort-by='.lastTimestamp' 2>&1
+        " > "${OUTPUT_DIR}/cluster/plugin-diagnostics/${ns}.txt" 2>&1 || warn "Could not collect diagnostics for namespace $ns"
+    done
+}
+
+#####################################
+# COLLECTION LEVEL ORCHESTRATION
+#####################################
+
+collect_basic() {
+    info "=== BASIC COLLECTION ==="
+    collect_system_info
+    collect_system_processes
+    info "✓ Basic collection complete"
+}
+
+collect_infra() {
+    info "=== INFRASTRUCTURE COLLECTION ==="
+    collect_system_performance
+    collect_system_logs
+    collect_libvirt_vms
+    collect_libvirt_vm_xml
+    collect_libvirt_networks
+    collect_libvirt_network_xml
+    collect_libvirt_storage
+    collect_network_interfaces
+    collect_network_bridges
+    collect_network_firewall
+    collect_network_dns
+    collect_bmc_status
+    info "✓ Infrastructure collection complete"
+}
+
+collect_lz_fallback_logs() {
+    mkdir -p "${OUTPUT_DIR}/landing-zone"
+    info "Collecting Landing Zone logs without SSH (fallback)..."
+
+    local lz_vm_name
+    lz_vm_name=$(get_landing_zone_vm_name)
+    info "Using VM name: $lz_vm_name"
+
+    # Collect serial console log (contains boot messages, cloud-init output)
+    local console_log="/var/log/libvirt/qemu/${lz_vm_name}-console.log"
+    if sudo test -f "$console_log"; then
+        info "Collecting serial console log: $console_log"
+        # shellcheck disable=SC2024  # Redirect as user intentional - output file must be user-owned for artifact upload
+        sudo cat "$console_log" > "${OUTPUT_DIR}/landing-zone/serial-console.log" 2>&1 || warn "Could not collect serial console log"
+    else
+        warn "Serial console log not found: $console_log"
+    fi
+
+    # Collect qemu domain log (contains qemu command line, not console output)
+    local domain_log="/var/log/libvirt/qemu/${lz_vm_name}.log"
+    if sudo test -f "$domain_log"; then
+        # shellcheck disable=SC2024  # Redirect as user intentional - output file must be user-owned for artifact upload
+        sudo cat "$domain_log" > "${OUTPUT_DIR}/landing-zone/qemu-domain.log" 2>&1 || true
+    fi
+
+    # Collect VM state for debugging
+    {
+        echo "=== VM State ==="
+        sudo virsh domstate "$lz_vm_name" 2>&1 || echo "Could not get VM state"
+        echo ""
+        echo "=== VM Info ==="
+        sudo virsh dominfo "$lz_vm_name" 2>&1 || echo "Could not get VM info"
+    } > "${OUTPUT_DIR}/landing-zone/vm-state.txt" 2>&1 || true
+}
+
+collect_deployment() {
+    info "=== DEPLOYMENT COLLECTION ==="
+
+    local lz_ip
+    lz_ip=$(get_landing_zone_ip)
+
+    if [ -z "$lz_ip" ]; then
+        warn "Landing Zone IP not found, attempting fallback collection"
+        collect_lz_fallback_logs
+        return
+    fi
+
+    info "Landing Zone IP: $lz_ip"
+
+    if ! test_lz_ssh "$lz_ip"; then
+        warn "Cannot SSH to Landing Zone, attempting fallback collection"
+        collect_lz_fallback_logs
+        return
+    fi
+
+    collect_lz_system_info "$lz_ip"
+    collect_lz_dns_config "$lz_ip"
+    collect_lz_cloud_init "$lz_ip"
+    collect_lz_deployment_logs "$lz_ip"
+    collect_lz_pipeline_logs "$lz_ip"
+    collect_lz_config_files "$lz_ip"
+    collect_lz_enclave_config "$lz_ip"
+    collect_lz_helm_values "$lz_ip"
+    collect_lz_services "$lz_ip"
+    collect_lz_registry "$lz_ip"
+
+    info "✓ Deployment collection complete"
+}
+
+collect_full() {
+    info "=== FULL COLLECTION (includes cluster) ==="
+
+    local lz_ip
+    lz_ip=$(get_landing_zone_ip)
+
+    if [ -z "$lz_ip" ]; then
+        warn "Landing Zone IP not found, skipping cluster collection"
+        return
+    fi
+
+    if ! test_lz_ssh "$lz_ip"; then
+        warn "Cannot SSH to Landing Zone, skipping cluster collection"
+        return
+    fi
+
+    if ! check_kubeconfig_exists "$lz_ip"; then
+        warn "Kubeconfig not found, skipping cluster collection"
+        return
+    fi
+
+    collect_cluster_kubeconfig "$lz_ip"
+    collect_cluster_status "$lz_ip"
+    collect_cluster_events "$lz_ip"
+    collect_cluster_pods "$lz_ip"
+    collect_cluster_problem_pod_logs "$lz_ip"
+    collect_cluster_quay_diagnostics "$lz_ip"
+    collect_cluster_plugin_diagnostics "$lz_ip"
+
+    info "✓ Full collection complete"
+}
+
+#####################################
+# MAIN EXECUTION
+#####################################
+
+case "$LEVEL" in
+    basic)
+        collect_basic
+        ;;
+    infra)
+        collect_basic
+        collect_infra
+        ;;
+    deployment)
+        collect_basic
+        collect_infra
+        collect_deployment
+        ;;
+    full)
+        collect_basic
+        collect_infra
+        collect_deployment
+        collect_full
+        ;;
+    *)
+        error "Invalid level: $LEVEL"
+        echo "Valid levels: basic, infra, deployment, full"
+        exit 1
+        ;;
+esac
+
+# Create summary
+{
+    echo "=== Artifact Collection Summary ==="
+    echo "Timestamp: $TIMESTAMP"
+    echo "Level: $LEVEL"
+    echo "Output Directory: $OUTPUT_DIR"
+    echo ""
+    echo "=== Collection Status ==="
+    if [ "$COLLECTION_ERRORS" -eq 0 ] && [ "$COLLECTION_WARNINGS" -eq 0 ]; then
+        echo "✓ All collections successful"
+    else
+        [ "$COLLECTION_WARNINGS" -gt 0 ] && echo "⚠️  Warnings: $COLLECTION_WARNINGS"
+        [ "$COLLECTION_ERRORS" -gt 0 ] && echo "❌ Errors: $COLLECTION_ERRORS"
+    fi
+    echo ""
+    echo "=== Collected Files ==="
+    find "$OUTPUT_DIR" -type f -exec ls -lh {} \; | awk '{print $9, $5}' | sort
+    echo ""
+    echo "=== Total Size ==="
+    du -sh "$OUTPUT_DIR"
+    echo ""
+    echo "=== Directory Structure ==="
+    tree -L 2 "$OUTPUT_DIR" 2>/dev/null || find "$OUTPUT_DIR" -type d | sort
+} > "${OUTPUT_DIR}/collection-summary.txt"
+
+info "✓ Artifact collection complete"
+if [ "$COLLECTION_WARNINGS" -gt 0 ]; then
+    # Use info instead of warn to avoid incrementing counter again
+    echo -e "${YELLOW}[INFO]${NC} Collection completed with $COLLECTION_WARNINGS warning(s)"
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "## ⚠️ Collection Warnings ($COLLECTION_WARNINGS)" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "Artifact collection completed with warnings (non-fatal):" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "> Check annotations above for details." >> "$GITHUB_STEP_SUMMARY"
+    fi
+fi
+if [ "$COLLECTION_ERRORS" -gt 0 ]; then
+    error "Collection completed with $COLLECTION_ERRORS error(s)"
+fi
+info "Summary: ${OUTPUT_DIR}/collection-summary.txt"
+
+# Print summary to stdout
+cat "${OUTPUT_DIR}/collection-summary.txt"
+
+# Note: Exit 0 even with warnings/errors - artifact collection is best-effort
+# The actual CI job should fail based on test results, not artifact collection
+exit 0

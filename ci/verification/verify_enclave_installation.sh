@@ -1,0 +1,346 @@
+#!/bin/bash
+# Verify Enclave Lab installation on Landing Zone VM
+#
+# This script verifies that:
+# - Enclave Lab repository is copied to Landing Zone
+# - Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist and are valid
+# - Required dependencies are installed
+# - Directory structure is correct
+
+set -euo pipefail
+
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/ci/lib/output.sh"
+source "${ENCLAVE_DIR}/ci/lib/validation.sh"
+source "${ENCLAVE_DIR}/ci/lib/config.sh"
+source "${ENCLAVE_DIR}/ci/lib/network.sh"
+source "${ENCLAVE_DIR}/ci/lib/ssh.sh"
+
+# Custom fail function for this script
+fail() {
+    echo -e "${RED}✗${NC} $1"
+    VERIFICATION_FAILED=1
+}
+
+# Track overall verification status
+VERIFICATION_FAILED=0
+
+# Validate required environment variables
+
+# Determine cluster name for dynamic config file
+ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+
+# Source cluster configuration
+load_cluster_env
+
+# Configuration
+CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
+
+if [ -z "$CLUSTER_IP" ]; then
+    error "Could not determine Landing Zone IP address"
+    exit 1
+fi
+
+# Setup SSH configuration
+setup_ssh_config "$CLUSTER_IP"
+
+info "========================================="
+info "Enclave Lab Installation Verification"
+info "========================================="
+info ""
+info "Landing Zone: $CLUSTER_IP"
+info "Enclave Directory: $LZ_ENCLAVE_DIR"
+info ""
+
+# Test 1: SSH connectivity
+info "Test 1: Checking SSH connectivity to Landing Zone..."
+if ssh_test_connection; then
+    success "SSH connection successful"
+else
+    fail "Cannot connect to Landing Zone at $CLUSTER_IP"
+    exit 1
+fi
+
+# Test 2: Enclave Lab directory exists
+info "Test 2: Checking Enclave Lab directory..."
+if ssh_exec "test -d $LZ_ENCLAVE_DIR"; then
+    success "Enclave Lab directory exists: $LZ_ENCLAVE_DIR"
+
+    # Check if playbooks/main.yaml exists
+    if ssh_file_exists "$LZ_ENCLAVE_DIR/playbooks/main.yaml"; then
+        success "  playbooks/main.yaml playbook found"
+    else
+        fail "  playbooks/main.yaml playbook not found"
+    fi
+else
+    fail "Enclave Lab directory not found: $LZ_ENCLAVE_DIR"
+    info "Run 'make -f Makefile.ci install-enclave' to install Enclave Lab"
+    exit 1
+fi
+
+# Test 3: Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist
+info "Test 3: Checking vars configuration..."
+GLOBAL_YAML="$LZ_ENCLAVE_DIR/config/global.yaml"
+CERTS_YAML="$LZ_ENCLAVE_DIR/config/certificates.yaml"
+CLOUD_INFRA_YAML="$LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
+
+if ssh_file_exists "$GLOBAL_YAML"; then
+    success "config/global.yaml configuration file exists"
+
+    # Validate YAML syntax
+    if ssh_exec "python3 -c 'import yaml; yaml.safe_load(open(\"$GLOBAL_YAML\"))'" &>/dev/null; then
+        success "  config/global.yaml has valid YAML syntax"
+    else
+        warning "  config/global.yaml may have syntax errors"
+    fi
+
+    # Check key parameters
+    CLUSTER_NAME_VAR=$(ssh_exec "grep '^clusterName:' $GLOBAL_YAML | awk '{print \$2}'" 2>/dev/null || echo "")
+    if [ -n "$CLUSTER_NAME_VAR" ]; then
+        success "  Cluster name configured: $CLUSTER_NAME_VAR"
+    else
+        warning "  Cluster name not found in config/global.yaml"
+    fi
+
+    BASE_DOMAIN=$(ssh_exec "grep '^baseDomain:' $GLOBAL_YAML | awk '{print \$2}'" 2>/dev/null || echo "")
+    if [ -n "$BASE_DOMAIN" ]; then
+        success "  Base domain configured: $BASE_DOMAIN"
+    else
+        warning "  Base domain not found in config/global.yaml"
+    fi
+
+    WORKER_COUNT=$(ssh_exec "grep -c '^  - name:' $GLOBAL_YAML 2>/dev/null || true")
+    if [ "$WORKER_COUNT" -gt 0 ]; then
+        success "  Agent hosts configured: $WORKER_COUNT nodes"
+    else
+        warning "  No agent hosts found in config/global.yaml"
+    fi
+else
+    fail "config/global.yaml not found"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
+fi
+
+if ssh_file_exists "$CERTS_YAML"; then
+    success "config/certificates.yaml configuration file exists"
+
+    # Validate YAML syntax
+    if ssh_exec "python3 -c 'import yaml; yaml.safe_load(open(\"$CERTS_YAML\"))'" &>/dev/null; then
+        success "  config/certificates.yaml has valid YAML syntax"
+    else
+        warning "  config/certificates.yaml may have syntax errors"
+    fi
+else
+    fail "config/certificates.yaml not found"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
+    success "config/cloud_infra.yaml configuration file exists"
+
+    # Validate YAML syntax
+    if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import yaml; yaml.safe_load(open(\"$CLOUD_INFRA_YAML\"))'" 2>/dev/null; then
+        success "  config/cloud_infra.yaml has valid YAML syntax"
+    else
+        warning "  config/cloud_infra.yaml may have syntax errors"
+    fi
+else
+    fail "config/cloud_infra.yaml not found"
+    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
+fi
+
+# Test 4: Required tools installed
+info "Test 4: Checking required tools on Landing Zone..."
+REQUIRED_TOOLS=("git" "ansible-playbook" "python3" "curl" "jq" "podman" "httpd" "nmstatectl")
+for tool in "${REQUIRED_TOOLS[@]}"; do
+    if ssh $SSH_OPTS "$LZ_SSH" "command -v $tool &>/dev/null"; then
+        success "$tool is installed"
+    else
+        fail "$tool is NOT installed"
+    fi
+done
+
+# Check Python libraries
+if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import jsonschema' 2>/dev/null"; then
+    success "python3-jsonschema is installed"
+else
+    fail "python3-jsonschema is NOT installed"
+fi
+
+# Test 5: Web server setup
+info "Test 5: Checking web server setup..."
+if ssh $SSH_OPTS "$LZ_SSH" "sudo systemctl is-active httpd &>/dev/null"; then
+    success "httpd service is running"
+else
+    fail "httpd service is NOT running"
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "test -d /var/www/html"; then
+    success "/var/www/html directory exists"
+    # Check permissions
+    PERMS=$(ssh $SSH_OPTS "$LZ_SSH" "stat -c '%U:%G %a' /var/www/html" 2>/dev/null || echo "")
+    if [ -n "$PERMS" ]; then
+        info "  Permissions: $PERMS"
+    fi
+else
+    fail "/var/www/html directory does NOT exist"
+fi
+
+# Test 6: Ansible collections
+info "Test 6: Checking Ansible collections..."
+COLLECTIONS_MISSING=0
+if ssh $SSH_OPTS "$LZ_SSH" "ansible-galaxy collection list 2>/dev/null | grep -q containers.podman"; then
+    success "containers.podman collection installed"
+else
+    fail "containers.podman collection NOT installed"
+    COLLECTIONS_MISSING=1
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "ansible-galaxy collection list 2>/dev/null | grep -q kubernetes.core"; then
+    success "kubernetes.core collection installed"
+else
+    fail "kubernetes.core collection NOT installed"
+    COLLECTIONS_MISSING=1
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "ansible-galaxy collection list 2>/dev/null | grep -q community.crypto"; then
+    success "community.crypto collection installed"
+else
+    fail "community.crypto collection NOT installed"
+    COLLECTIONS_MISSING=1
+fi
+
+if ssh $SSH_OPTS "$LZ_SSH" "ansible-galaxy collection list 2>/dev/null | grep -q ansible.utils"; then
+    success "ansible.utils collection installed"
+else
+    fail "ansible.utils collection NOT installed"
+    COLLECTIONS_MISSING=1
+fi
+
+if [ $COLLECTIONS_MISSING -eq 1 ]; then
+    info "  Run 'make -f Makefile.ci install-enclave' to install missing collections"
+fi
+
+# Test 7: SSH key
+info "Test 7: Checking SSH key on Landing Zone..."
+if SSH_KEY_PATH=$(find_lz_ssh_public_key); then
+    success "SSH public key exists"
+    # shellcheck disable=SC2086
+    SSH_KEY=$(ssh $SSH_OPTS "$LZ_SSH" "cat '$SSH_KEY_PATH'" 2>/dev/null | head -c 50)
+    info "  Key: ${SSH_KEY}... (${SSH_KEY_PATH})"
+else
+    warning "SSH key not found (will be generated during Enclave Lab run)"
+fi
+
+# Test 8: Pull secret embedded in config/global.yaml
+info "Test 8: Checking pull secret..."
+if ssh $SSH_OPTS "$LZ_SSH" "python3 -c \"import yaml; d=yaml.safe_load(open('$LZ_ENCLAVE_DIR/config/global.yaml')); assert 'auths' in d.get('pullSecret', {})\"" 2>/dev/null; then
+    success "Pull secret is embedded in config/global.yaml"
+else
+    fail "Pull secret not found in config/global.yaml"
+    info "  Re-run 'make -f Makefile.ci install-enclave' to embed the pull secret"
+fi
+
+# Test 9: Directory structure
+info "Test 9: Checking directory structure..."
+EXPECTED_DIRS=("defaults" "templates" "operators" "files")
+for dir in "${EXPECTED_DIRS[@]}"; do
+    if ssh $SSH_OPTS "$LZ_SSH" "test -d $LZ_ENCLAVE_DIR/$dir"; then
+        success "  $dir/ directory exists"
+    else
+        fail "  $dir/ directory not found"
+    fi
+done
+
+# Test 10: DNS resolution for cluster endpoints and mirror registry
+info "Test 10: Checking DNS resolution for cluster endpoints and mirror registry..."
+BASE_DOMAIN=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^baseDomain:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null || echo "")
+CLUSTER_NAME=$(ssh $SSH_OPTS "$LZ_SSH" "grep '^clusterName:' $LZ_ENCLAVE_DIR/config/global.yaml | awk '{print \$2}'" 2>/dev/null || echo "")
+if [ -n "$BASE_DOMAIN" ]; then
+    DNS_HOSTNAMES="mirror.${BASE_DOMAIN}"
+    if [ -n "$CLUSTER_NAME" ]; then
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} api.${CLUSTER_NAME}.${BASE_DOMAIN}"
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} console-openshift-console.apps.${CLUSTER_NAME}.${BASE_DOMAIN}"
+        DNS_HOSTNAMES="${DNS_HOSTNAMES} registry-quay-quay-enterprise.apps.${CLUSTER_NAME}.${BASE_DOMAIN}"
+    fi
+    for HOSTNAME in $DNS_HOSTNAMES; do
+        if ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${HOSTNAME} >/dev/null 2>&1"; then
+            RESOLVED_IP=$(ssh $SSH_OPTS "$LZ_SSH" "getent hosts ${HOSTNAME} | awk '{print \$1}'" 2>/dev/null || echo "")
+            success "${HOSTNAME} resolves to ${RESOLVED_IP}"
+        else
+            fail "${HOSTNAME} does NOT resolve"
+            info "  Run 'make -f Makefile.ci install-enclave' to configure DNS resolution"
+        fi
+    done
+else
+    warning "Cannot determine baseDomain from config/global.yaml"
+fi
+
+# Test 11: Check network connectivity from Landing Zone to BMC
+info "Test 11: Testing network connectivity from Landing Zone..."
+BMC_NETWORK="${ENCLAVE_BMC_NETWORK}"
+BMC_GATEWAY=$(get_network_gateway "$BMC_NETWORK")
+SUSHY_ENDPOINT="http://${BMC_GATEWAY}:8000/redfish/v1/Systems"
+
+if ssh_exec "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 $SUSHY_ENDPOINT" 2>/dev/null | grep -q "200"; then
+    success "Can reach BMC emulation (sushy-tools) at $BMC_GATEWAY:8000"
+else
+    warning "Cannot reach BMC emulation from Landing Zone"
+    info "  This may prevent Enclave Lab from managing cluster VMs"
+fi
+
+# Test 12: Disk space
+info "Test 12: Checking available disk space..."
+DISK_AVAIL=$(ssh $SSH_OPTS "$LZ_SSH" "df -h / | tail -1 | awk '{print \$4}'" 2>/dev/null)
+DISK_AVAIL_GB=$(ssh $SSH_OPTS "$LZ_SSH" "df -BG / | tail -1 | awk '{print \$4}' | sed 's/G//'" 2>/dev/null)
+
+if [ "$DISK_AVAIL_GB" -ge 400 ]; then
+    success "Available disk space: $DISK_AVAIL (sufficient for image mirroring)"
+elif [ "$DISK_AVAIL_GB" -ge 200 ]; then
+    warning "Available disk space: $DISK_AVAIL (should be sufficient but may be tight)"
+    info "  Recommended: 400GB+ free space for mirroring OpenShift images and operators"
+else
+    fail "Available disk space: $DISK_AVAIL (insufficient for full deployment)"
+    info "  Required: 400GB+ free space (Quay storage ~130GB + catalogs ~7GB + ISOs ~3GB + buffer)"
+fi
+
+echo ""
+info "========================================="
+info "Verification Summary"
+info "========================================="
+echo ""
+success "Enclave Lab is installed on Landing Zone!"
+echo ""
+info "Installation Details:"
+info "  Location: $LZ_SSH:$LZ_ENCLAVE_DIR"
+info "  Configuration vars: $LZ_ENCLAVE_DIR/config/global.yaml"
+info "  Certificates vars: $LZ_ENCLAVE_DIR/config/certificates.yaml"
+info "  Cloud infra vars:  $LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
+info "  SSH Access: ssh $LZ_SSH"
+echo ""
+info "Before running Enclave Lab:"
+info "  1. Review configuration vars: ssh $LZ_SSH 'cat $LZ_ENCLAVE_DIR/config/global.yaml'"
+info "  2. Verify pull secret is embedded in config/global.yaml"
+info "  3. Adjust any other settings in config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml as needed"
+echo ""
+info "To run Enclave Lab:"
+info "  ssh $LZ_SSH"
+info "  cd $LZ_ENCLAVE_DIR"
+info "  ./bootstrap.sh"
+echo ""
+
+# Exit with failure if any tests failed
+if [ $VERIFICATION_FAILED -eq 1 ]; then
+    echo ""
+    error "========================================="
+    error "Verification FAILED - Issues Detected"
+    error "========================================="
+    error "Please review the failures above and run 'make -f Makefile.ci install-enclave' to fix missing dependencies"
+    exit 1
+fi

@@ -15,7 +15,7 @@
 #                                           (playbooks/tasks/helm_extract_single.yaml)
 #
 # Run once per profile (fresh scope) by
-# scripts/verification/validate_osac_values.sh.
+# ci/verification/validate_osac_values.sh.
 #
 # Required extra-vars:
 #   osac_values_out : absolute path to write the rendered values file

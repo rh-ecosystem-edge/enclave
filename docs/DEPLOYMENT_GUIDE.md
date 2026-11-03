@@ -743,7 +743,7 @@ ansible-playbook playbooks/main.yaml -e workingDir=/home/cloud-user
 
 ## Troubleshooting
 
-For diagnostic log collection, see the [Log Collection Tool](../scripts/diagnostics/README.md).
+For diagnostic log collection, see the [Log Collection Tool](../ci/diagnostics/README.md).
 
 ### Common Issues
 

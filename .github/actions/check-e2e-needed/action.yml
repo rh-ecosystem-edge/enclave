@@ -30,11 +30,11 @@ runs:
   steps:
     # Positive filters, evaluated with the default "some" quantifier: the
     # filter matches when any changed file matches any of its patterns.
-    # NOTE: scripts/** is intentionally NOT listed here. A negated pattern
-    # (e.g. !scripts/docs/**) cannot be mixed into a "some"-quantified OR
+    # NOTE: ci/** is intentionally NOT listed here. A negated pattern
+    # (e.g. !ci/docs/**) cannot be mixed into a "some"-quantified OR
     # list: under "some" a negated glob matches every path outside its
     # target, so a single unrelated file (even docs/*) would flip the whole
-    # filter to true. The scripts exclusion is handled by the dedicated
+    # filter to true. The ci exclusion is handled by the dedicated
     # "every"-quantified step below.
     #
     # Skipped entirely when force-run is set (schedule/dispatch/merge_group and
@@ -72,26 +72,24 @@ runs:
             - 'setup_*.sh'
           odf:
             - 'plugins/odf/**'
-            - 'scripts/infrastructure/setup_ceph*'
-            - 'scripts/infrastructure/verify_ceph*'
-            - 'scripts/lib/odf.sh'
+            - 'ci/infrastructure/setup_ceph*'
 
-    # scripts/** changes, excluding CI documentation under scripts/docs/**.
-    # Uses the "every" quantifier so a file matches only when it satisfies
-    # ALL patterns (under scripts/ AND not under scripts/docs/). The filter
-    # is true when at least one such file changed, so a PR touching only
-    # scripts/docs/** (or no scripts at all) correctly leaves it false, while
-    # a PR mixing scripts code and scripts docs still triggers E2E.
-    - name: Check if E2E-relevant scripts changed
+    # ci/** changes, each excluding its own documentation
+    # (ci/docs/**). Uses the "every" quantifier so a file
+    # matches only when it satisfies ALL patterns of a filter (under the tree
+    # AND not under that tree's docs/). Each filter is true when at least one
+    # such file changed, so a PR touching only docs (or no code at all) leaves
+    # it false, while a PR mixing code and docs still triggers E2E.
+    - name: Check if E2E-relevant ci scripts changed
       if: inputs.force-run != 'true'
       uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-      id: filter_scripts
+      id: filter_ci
       with:
         predicate-quantifier: every
         filters: |
-          scripts:
-            - 'scripts/**'
-            - '!scripts/docs/**'
+          ci:
+            - 'ci/**'
+            - '!ci/docs/**'
 
     - name: Make decision
       id: decision
@@ -101,16 +99,16 @@ runs:
         INPUT_PLUGIN: ${{ inputs.storage-plugin }}
         FORCE_RUN: ${{ inputs.force-run }}
         FILTER_E2E: ${{ steps.filter.outputs.e2e }}
-        FILTER_SCRIPTS: ${{ steps.filter_scripts.outputs.scripts }}
+        FILTER_CI: ${{ steps.filter_ci.outputs.ci }}
         FILTER_ODF: ${{ steps.filter.outputs.odf }}
       run: |
         # should_run: force-run always runs; otherwise run when E2E-relevant
-        # files or scripts changed. storage_plugins is a single-element JSON
+        # files or ci scripts changed. storage_plugins is a single-element JSON
         # array consumed by the job matrix.
         if [ "$FORCE_RUN" = "true" ]; then
           SHOULD_RUN=true
           REASON="forced run (schedule/dispatch/merge queue/reusable caller)"
-        elif [ "$FILTER_E2E" = "true" ] || [ "$FILTER_SCRIPTS" = "true" ]; then
+        elif [ "$FILTER_E2E" = "true" ] || [ "$FILTER_CI" = "true" ]; then
           SHOULD_RUN=true
           REASON="E2E-relevant files changed"
         else
