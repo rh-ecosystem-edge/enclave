@@ -43,7 +43,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: {{ gpu_operator.name }}
+              name: nvidia-gpu-operator-group
               namespace: nvidia-gpu-operator
             spec:
               targetNamespaces:
@@ -152,7 +152,7 @@ spec:
         upgradeApproval: Automatic
         subscription:
           name: {{ gpu_operator.name }}
-          namespace: {{ gpu_operator.namespace }}
+          namespace: nvidia-gpu-operator
           channel: {{ gpu_operator.channel }}
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
@@ -162,7 +162,7 @@ spec:
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
-          name: {{ gpu_operator.name }}
-          namespace: {{ gpu_operator.namespace }}
+          name: nvidia-gpu-operator-group
+          namespace: nvidia-gpu-operator
           targetNamespaces:
-            - {{ gpu_operator.namespace }}
+            - nvidia-gpu-operator
