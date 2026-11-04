@@ -82,7 +82,7 @@ Scripts for creating VMs, networks, and infrastructure components.
 | `provision_landing_zone.sh` | Populate and boot the Landing Zone VM defined by vm_infra.py |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
-| `generate_enclave_vars.sh` | Generate Enclave Lab configuration files (global.yaml, certificates.yaml, cloud_infra.yaml) |
+| `generate_enclave_vars.sh` | Generate Enclave Lab configuration files (global.yaml, certificates.yaml, and node-management plugin config); preserves legacy cloud_infra.yaml when present |
 
 **Key Concepts:**
 - **Landing Zone**: VM that runs Enclave Lab ansible playbooks

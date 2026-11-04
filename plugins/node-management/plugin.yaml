@@ -1,0 +1,11 @@
+---
+# Deploy explicitly after the core cluster install with:
+# make deploy-plugin PLUGIN=node-management
+name: node-management
+type: addon
+order: 999
+
+requires:
+  files:
+    - path: "tasks/deploy.yaml"
+      description: "Node discovery and Metal3 deployment tasks"

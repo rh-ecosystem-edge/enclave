@@ -151,7 +151,7 @@ make -f Makefile.ci deploy-cluster-install          # Deploy cluster
 make -f Makefile.ci deploy-cluster-post-install     # Post-install config
 make -f Makefile.ci deploy-cluster-operators        # Install operators
 make -f Makefile.ci deploy-cluster-day2             # Day-2 operations
-make -f Makefile.ci deploy-cluster-discovery        # Hardware discovery
+make -f Makefile.ci deploy-plugin PLUGIN=node-management # Node discovery addon (after installation)
 ```
 
 ### 6. Verify Cluster

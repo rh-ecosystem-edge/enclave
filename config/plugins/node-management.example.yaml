@@ -1,0 +1,21 @@
+---
+##############################################################################
+# NODE MANAGEMENT PLUGIN CONFIGURATION
+# Copy to config/plugins/node-management.yaml and set discovery_hosts if needed.
+# If config/cloud_infra.yaml contains hosts, leave discovery_hosts unset to use
+# the legacy fallback, or migrate those hosts into this plugin configuration.
+# An explicit empty list disables that fallback.
+##############################################################################
+
+nodeManagementConfig: {}
+
+# Example:
+# nodeManagementConfig:
+#   discovery_hosts:
+#     - name: node01
+#       macAddress: 0c:c4:7a:d3:bc:30
+#       ipAddress: 192.168.2.21
+#       redfish: 100.64.1.21
+#       rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+#       redfishUser: admin
+#       # redfishPassword is required; supply it from a secure credential source.

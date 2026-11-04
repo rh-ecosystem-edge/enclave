@@ -25,7 +25,6 @@ usage() {
     echo "  post-install           Post-install configuration (Phase 4)"
     echo "  operators              Deploy management apps (Phase 5)"
     echo "  day2                   Day-2 operations (Phase 6)"
-    echo "  discovery              Discover nodes (Phase 7)"
     echo "  partner-overlay        Deploy partner overlay (optional)"
     echo "  write-migration-tasks  Write migration tasks to disk"
     exit "${1:-0}"
@@ -35,7 +34,6 @@ usage() {
 # These are only used for shell-level checks and getValue before Ansible runs.
 global_vars=config/global.yaml
 certs_vars=config/certificates.yaml
-cloud_infra_vars=config/cloud_infra.yaml
 
 run_step=""
 non_interactive=false
@@ -61,7 +59,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate --step value if provided
-valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 discovery partner-overlay write-migration-tasks"
+valid_steps="setup validate download-content build-cache acquire-hardware deploy post-install operators day2 partner-overlay write-migration-tasks"
 if [ -n "$run_step" ]; then
     step_valid=false
     for s in $valid_steps; do
@@ -112,12 +110,6 @@ if [ ! -f "$certs_vars" ]; then
     exit 1
 fi
 
-if [ ! -f "$cloud_infra_vars" ]; then
-    echo "Error: $cloud_infra_vars not found."
-    echo "Copy config/cloud_infra.example.yaml to $cloud_infra_vars and fill in your values."
-    exit 1
-fi
-
 workingDir=$(getValue .workingDir)
 lck=~/.lck-rh-lz
 DSTAMP=$(date +%Y%m%d_%H%M%S)
@@ -161,7 +153,7 @@ date > "$log"
 
 echo "Check Config .. " | tee -a ${log}
 FList="ansible.cfg  bootstrap.sh  playbooks/main.yaml  playbooks/  \
-        setup_ansible.sh  setup_env.sh $global_vars $certs_vars $cloud_infra_vars"
+        setup_ansible.sh  setup_env.sh $global_vars $certs_vars"
 for x in $FList; do
     if [ -e $x ]; then
         echo "file check passed ..." $x   | tee -a ${log}
@@ -248,22 +240,6 @@ step_day2() {
     step_done
 }
 
-step_discovery() {
-    # Showing login information
-    printf '%b\n' "$(tail -3 ${workingDir}/ocp-cluster/.openshift_install.log \
-      | cut -d= -f4- \
-      | sed -e 's/^"//' -e 's/"$//' -e 's/\\n/\
-/g' -e 's/\\"/"/g')"
-
-    echo "Start discovering nodes.. " | tee -a ${log}
-    if [ -f $cloud_infra_vars ]; then
-        if ! ANSIBLE_LOG_PATH=${log} ansible-playbook $EXTRA_VARS playbooks/07-configure-discovery.yaml; then
-            echo -e "\\033[31m WARNING! \033[0m  Discovery hosts has failed, please check config and rerun: ANSIBLE_LOG_PATH=${log} ansible-playbook $EXTRA_VARS playbooks/07-configure-discovery.yaml"
-        fi
-    fi
-    step_done
-}
-
 step_partner_overlay() {
     echo "Deploying Partner OverLay .. " | tee -a ${log}
     if [ -f ./partner-install/start.sh ]; then
@@ -297,7 +273,6 @@ else
     step_post_install
     step_operators
     step_day2
-    step_discovery
     step_partner_overlay
     step_write_migration_tasks
 fi

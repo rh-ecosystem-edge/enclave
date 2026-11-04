@@ -3,7 +3,7 @@
 #
 # This script verifies that:
 # - Enclave Lab repository is copied to Landing Zone
-# - Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist and are valid
+# - Configuration files config/global.yaml and config/certificates.yaml exist; node-management or legacy config is valid
 # - Required dependencies are installed
 # - Directory structure is correct
 
@@ -85,10 +85,11 @@ else
     exit 1
 fi
 
-# Test 3: Configuration files config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml exist
+# Test 3: Core config and node-management (or legacy cloud infra) config exist
 info "Test 3: Checking vars configuration..."
 GLOBAL_YAML="$LZ_ENCLAVE_DIR/config/global.yaml"
 CERTS_YAML="$LZ_ENCLAVE_DIR/config/certificates.yaml"
+NODE_MANAGEMENT_YAML="$LZ_ENCLAVE_DIR/config/plugins/node-management.yaml"
 CLOUD_INFRA_YAML="$LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
 
 if ssh_file_exists "$GLOBAL_YAML"; then
@@ -141,18 +142,24 @@ else
     info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
 fi
 
-if ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
-    success "config/cloud_infra.yaml configuration file exists"
+if ssh $SSH_OPTS "$LZ_SSH" "test -f $NODE_MANAGEMENT_YAML"; then
+    success "config/plugins/node-management.yaml configuration file exists"
 
-    # Validate YAML syntax
-    if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import yaml; yaml.safe_load(open(\"$CLOUD_INFRA_YAML\"))'" 2>/dev/null; then
-        success "  config/cloud_infra.yaml has valid YAML syntax"
+    if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import yaml; yaml.safe_load(open(\"$NODE_MANAGEMENT_YAML\"))'" 2>/dev/null; then
+        success "  node-management plugin config has valid YAML syntax"
     else
-        warning "  config/cloud_infra.yaml may have syntax errors"
+        warning "  node-management plugin config may have syntax errors"
+    fi
+elif ssh $SSH_OPTS "$LZ_SSH" "test -f $CLOUD_INFRA_YAML"; then
+    success "Legacy config/cloud_infra.yaml configuration file exists"
+
+    if ssh $SSH_OPTS "$LZ_SSH" "python3 -c 'import yaml; yaml.safe_load(open(\"$CLOUD_INFRA_YAML\"))'" 2>/dev/null; then
+        success "  legacy cloud infra config has valid YAML syntax"
+    else
+        warning "  legacy cloud infra config may have syntax errors"
     fi
 else
-    fail "config/cloud_infra.yaml not found"
-    info "Run 'make -f Makefile.ci install-enclave' to generate configuration"
+    info "No node-management or legacy cloud infra config found; no discovery hosts are configured"
 fi
 
 # Test 4: Required tools installed
@@ -321,13 +328,13 @@ info "Installation Details:"
 info "  Location: $LZ_SSH:$LZ_ENCLAVE_DIR"
 info "  Configuration vars: $LZ_ENCLAVE_DIR/config/global.yaml"
 info "  Certificates vars: $LZ_ENCLAVE_DIR/config/certificates.yaml"
-info "  Cloud infra vars:  $LZ_ENCLAVE_DIR/config/cloud_infra.yaml"
+info "  Node management:   $LZ_ENCLAVE_DIR/config/plugins/node-management.yaml"
 info "  SSH Access: ssh $LZ_SSH"
 echo ""
 info "Before running Enclave Lab:"
 info "  1. Review configuration vars: ssh $LZ_SSH 'cat $LZ_ENCLAVE_DIR/config/global.yaml'"
 info "  2. Verify pull secret is embedded in config/global.yaml"
-info "  3. Adjust any other settings in config/global.yaml, config/certificates.yaml and config/cloud_infra.yaml as needed"
+info "  3. Adjust settings in config/global.yaml, config/certificates.yaml and config/plugins/ as needed"
 echo ""
 info "To run Enclave Lab:"
 info "  ssh $LZ_SSH"

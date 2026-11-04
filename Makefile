@@ -5,7 +5,7 @@
         deploy-cluster deploy-cluster-prepare deploy-cluster-mirror \
         deploy-cluster-pre-install-validate \
         deploy-cluster-install deploy-cluster-post-install deploy-cluster-operators \
-        deploy-cluster-day2 deploy-cluster-discovery deploy-cluster-connected \
+        deploy-cluster-day2 deploy-cluster-connected \
         deploy-plugin mirror-plugin bootstrap sync
 
 # Configuration
@@ -39,7 +39,6 @@ help:
 	@echo "  make deploy-cluster-post-install      - Phase 4: Cluster configuration"
 	@echo "  make deploy-cluster-operators         - Phase 5: Install operators"
 	@echo "  make deploy-cluster-day2              - Phase 6: Day-2 operations"
-	@echo "  make deploy-cluster-discovery         - Phase 7: Configure hardware discovery"
 	@echo "  make deploy-cluster-connected         - Deploy in connected mode (DISCONNECTED=false)"
 	@echo ""
 	@echo "Plugin deployment:"
@@ -112,9 +111,6 @@ deploy-cluster-operators:
 
 deploy-cluster-day2:
 	@$(AP) playbooks/06-day2.yaml $(AP_FLAGS)
-
-deploy-cluster-discovery:
-	@$(AP) playbooks/07-configure-discovery.yaml $(AP_FLAGS)
 
 deploy-cluster-connected:
 	@$(MAKE) deploy-cluster DISCONNECTED=false

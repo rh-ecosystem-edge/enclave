@@ -19,16 +19,22 @@ Check [Topo.png](docs/Topo.png) for expected hardware setup and [ArchMap.png](do
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
-cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
 vim config/global.yaml        # Fill in your cluster, network, and hardware settings
 vim config/certificates.yaml  # Fill in your SSL certificates
-vim config/cloud_infra.yaml   # Fill in your discovery hosts (or leave discovery_hosts: [])
+vim config/plugins/node-management.yaml # Add discovery hosts if needed
 ```
 
 2. Run the bootstrap script:
 
 ```bash
 bash bootstrap.sh
+```
+
+3. If you configured discovery hosts, deploy the node-management addon after the full installation:
+
+```bash
+make deploy-plugin PLUGIN=node-management
 ```
 
 ## Advanced Usage
@@ -93,7 +99,6 @@ DISCONNECTED=false make deploy-cluster
 - Phase 4: Post-installation configuration
 - Phase 5: Install and configure operators
 - Phase 6: Day-2 operations (Clair, ACM policies, model config)
-- Phase 7: Configure hardware discovery
 
 #### Disconnected Mode (Default)
 
@@ -118,7 +123,6 @@ make deploy-cluster
 - Phase 4: Post-installation configuration
 - Phase 5: Install and configure operators
 - Phase 6: Day-2 operations (Clair, ACM policies, model config)
-- Phase 7: Configure hardware discovery
 
 ## Documentation
 
@@ -127,7 +131,7 @@ Comprehensive documentation is available in the `docs/` folder:
 - **[Deployment Guide](docs/DEPLOYMENT_GUIDE.md)**: Complete guide on what gets deployed, prerequisites, and deployment workflow
 - **[Configuration Reference](docs/CONFIGURATION_REFERENCE.md)**: Detailed explanation of all configuration variables with examples
 
-> **Note on Host Discovery Management:** While Phase 7 allows you to configure hardware discovery through the Enclave configuration as a one-time convenience, **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations** in production. For adding, removing, or modifying nodes after initial deployment, use ACM. See the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#discovering-new-nodes) for details.
+> **Node management:** The optional `node-management` addon plugin seeds initial discovery resources after cluster installation. Use ACM for ongoing node lifecycle operations. See the [Deployment Guide](docs/DEPLOYMENT_GUIDE.md#discovering-new-nodes) for details.
 
 ## Local Development & Testing
 
@@ -154,8 +158,8 @@ make deploy-cluster-install          # Phase 3: Deploy cluster
 make deploy-cluster-post-install     # Phase 4: Cluster configuration
 make deploy-cluster-operators        # Phase 5: Install operators
 make deploy-cluster-day2             # Phase 6: Day-2 operations
-make deploy-cluster-discovery        # Phase 7: Configure hardware discovery
 make deploy-plugin PLUGIN=<name>     # Deploy a single plugin
+make deploy-plugin PLUGIN=node-management # Seed node discovery after installation
 
 # Setup & utilities
 make bootstrap                       # Bootstrap the Landing Zone

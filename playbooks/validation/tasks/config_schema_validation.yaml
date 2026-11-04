@@ -20,11 +20,12 @@
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
 
-- name: Validate cloud_infra.yaml against cloud_infra schema
+- name: Validate legacy cloud_infra.yaml against cloud_infra schema when present
   ansible.utils.validate:
     data: "{{ lookup('ansible.builtin.file', cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true)) | from_yaml | to_json }}"
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/cloud_infra.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
+  when: lookup('ansible.builtin.fileglob', cloud_infra_vars_file | default('../../config/cloud_infra.yaml', true)) | length > 0
   no_log: "{{ schemaValidationNoLog | default(false) }}"
 
 - name: Validate plugin config against schemas/config.yaml (if present and config file exists)

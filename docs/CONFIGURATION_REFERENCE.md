@@ -10,7 +10,8 @@ Configuration is split across multiple files for better organization and maintai
 |------|-------------|
 | `config/global.yaml` | Main configuration file with cluster, network, hardware, registry, and pull secret settings |
 | `config/certificates.yaml` | SSL certificates for the API server and Ingress |
-| `config/cloud_infra.yaml` | Cloud infrastructure configuration, including discovery hosts for bare metal node discovery |
+| `config/plugins/node-management.yaml` | Node discovery settings for the optional node-management plugin |
+| `config/cloud_infra.yaml` | Legacy discovery configuration, used as a fallback by node-management |
 | `defaults/operators.yaml` | General cluster operators configuration |
 | `defaults/platforms.yaml` | Platform defaults: Available OpenShift versions and upgrade behavior |
 | `defaults/deployment.yaml` | Deployment defaults (storage plugin, disconnected mode, etc.) |
@@ -26,7 +27,7 @@ Copy the example files to get started:
 ```bash
 cp config/global.example.yaml config/global.yaml
 cp config/certificates.example.yaml config/certificates.yaml
-cp config/cloud_infra.example.yaml config/cloud_infra.yaml
+cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
 # For plugin-specific config (e.g. restrict which disks LVMS manages):
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
@@ -49,9 +50,10 @@ All configuration files in the `defaults/` directory are automatically loaded by
    - [Ingress Certificate](#ingress-certificate)
    - [Root CA Certificate](#root-ca-certificate)
    - [Ironic HTTPS Certificate](#ironic-https-certificate-optional)
-3. [`config/cloud_infra.yaml`](#configcloud_infrayaml)
+3. [`config/cloud_infra.yaml` (legacy)](#legacy-configcloud_infrayaml)
    - [Discovery Hosts Configuration](#discovery-hosts-configuration)
 4. [`config/plugins/<name>.yaml`](#configpluginsnameyaml)
+   - [Node Management Configuration](#node-management-configuration)
    - [LVMS Configuration](#lvms-configuration)
    - [ODF Configuration](#odf-configuration)
 5. [System Defaults (read-only)](#system-defaults-read-only)
@@ -1253,19 +1255,19 @@ ironicHTTPSKey: |
   <PEM-encoded private key>
 ```
 
-## `config/cloud_infra.yaml`
+## Legacy `config/cloud_infra.yaml`
 
-Cloud infrastructure configuration. Contains the list of bare metal nodes to discover and add to the cluster after the initial installation.
+Legacy cloud infrastructure configuration. Existing files remain supported as a fallback when `nodeManagementConfig.discovery_hosts` is not set in `config/plugins/node-management.yaml`. New configurations should use the node-management plugin config.
 
 ### Discovery Hosts Configuration
 
 > **⚠️ Important: Use Red Hat ACM for Production Host Management**
 >
-> **Red Hat Advanced Cluster Management (ACM) is the recommended approach for managing bare metal host discovery and lifecycle operations.** The discovery hosts configuration in this file is provided as a convenience for initial one-time setup only.
+> **Red Hat Advanced Cluster Management (ACM) is the recommended approach for ongoing bare metal host lifecycle operations.** The node-management plugin seeds discovery resources as a post-install setup step.
 >
 > For ongoing operations such as adding nodes, removing nodes, changing configurations, or scaling the cluster, use Red Hat ACM instead. See the [Managing bare metal hosts documentation](https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.12/html/clusters/cluster_mce_overview#managing-bare-metal-hosts-console) for details.
 
-The discovery hosts configuration is defined in `config/cloud_infra.yaml` for discovering new nodes after the initial cluster deployment. This configuration uses the same network settings (defaultDNS, defaultGateway, defaultPrefix, lzBmcIP) as the main cluster deployment.
+The legacy `discovery_hosts` fields below also apply to `nodeManagementConfig.discovery_hosts` in the plugin config. Node network settings use `defaultDNS`, `defaultGateway`, and `defaultPrefix` from `config/global.yaml`.
 
 #### `discovery_hosts`
 
@@ -1347,6 +1349,32 @@ Copy from the plugin's `.example.yaml` template before editing:
 ```bash
 cp config/plugins/lvms.example.yaml config/plugins/lvms.yaml
 ```
+
+### Node Management Configuration
+
+Configure discovery hosts in `config/plugins/node-management.yaml` and deploy the addon after the cluster is installed:
+
+```bash
+cp config/plugins/node-management.example.yaml config/plugins/node-management.yaml
+make deploy-plugin PLUGIN=node-management
+```
+
+Deploy it explicitly after the core installation. Listing it in `enabled_plugins` runs addon plugins during Phase 5.
+
+The plugin stores discovery settings under `nodeManagementConfig`:
+
+```yaml
+nodeManagementConfig:
+  discovery_hosts:
+    - name: node01
+      macAddress: 0c:c4:7a:d3:bc:30
+      ipAddress: 192.168.2.21
+      redfish: 100.64.1.21
+      rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
+      redfishUser: admin
+```
+
+Set the required `redfishPassword` from a secure credential source. When `nodeManagementConfig.discovery_hosts` is absent, the plugin reads `discovery_hosts` from legacy `config/cloud_infra.yaml`. An explicit empty list in the plugin config takes precedence and disables the legacy fallback. Leave the property unset to continue using existing legacy hosts, or migrate them into the plugin config.
 
 ### LVMS Configuration
 
@@ -1604,17 +1632,11 @@ sslCACertificate: |
   -----END CERTIFICATE-----
 ```
 
-### `config/cloud_infra.yaml`
+### `config/plugins/node-management.yaml` (optional)
 
 ```yaml
-discovery_hosts:
-  - name: node01
-    macAddress: 0c:c4:7a:d3:bc:30
-    ipAddress: 192.168.2.21
-    redfish: 100.64.1.21
-    rootDisk: "/dev/disk/by-path/pci-0000:0011.4-ata-1.0"
-    redfishUser: admin
-    redfishPassword: YourSecurePassword
+nodeManagementConfig:
+  discovery_hosts: []
 ```
 
 ### `config/plugins/lvms.yaml` (optional)
@@ -1634,7 +1656,11 @@ If this file is absent, LVMS auto-detects and uses all available disks.
 
 1. **Restrict file permissions**:
    ```bash
-   chmod 600 config/global.yaml config/certificates.yaml config/cloud_infra.yaml
+   for config_file in config/global.yaml config/certificates.yaml config/cloud_infra.yaml config/plugins/node-management.yaml; do
+     if [ -f "$config_file" ]; then
+       chmod 600 "$config_file"
+     fi
+   done
    ```
 
 2. **Use strong passwords** for:
