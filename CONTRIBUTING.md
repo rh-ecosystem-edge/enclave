@@ -42,7 +42,7 @@ CodeRabbit enforces security best practices across injection prevention, cryptog
 ### Shell (`scripts/`)
 
 - `set -euo pipefail` at the top of every script
-- Source shared utilities from `scripts/lib/`
+- Source shared utilities from `ci/lib/`
 
 ### Infrastructure validation
 

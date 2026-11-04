@@ -9,7 +9,7 @@ ingress into air-gapped environments.
 
 - **Ansible** — deployment automation (playbooks/, 66+ playbooks in 7 phases)
 - **Python 3.12** — reconciliation engine and tools (`src/`)
-- **Bash** — provisioning and setup scripts (`scripts/`, 53+ scripts)
+- **Bash** — CI/E2E automation (`ci/`) and host-local helpers (`scripts/`)
 - **Jinja2** — cluster config templates (`templates/`)
 - **YAML/JSON** — configuration and schema validation (`config/`, `schemas/`)
 
@@ -25,13 +25,14 @@ src/             Python source root (src layout)
   cli.py         Unified CLI entry point (reconcile + tools subcommands)
   utils.py       Shared utilities for all Python packages under src/
   tests/         All Python tests (pytest, shared fixtures)
-scripts/         Shell scripts organized by function (setup, infrastructure, deployment, …)
+ci/              CI/E2E automation invoked by .github, by function (lib, infrastructure, deployment, verification, diagnostics)
+scripts/         Host-local helper scripts not invoked by CI
 templates/       Jinja2 templates for cluster and registry configs
 schemas/         JSON schemas for config and plugin descriptor validation
 config/          User-provided cluster configuration (gitignored, examples provided)
 defaults/        Default variable values (catalogs, operators, platforms)
 docs/            Deployment, configuration, and architecture guides
-scripts/docs/    CI-related documentation (runner setup, workflow guides, troubleshooting)
+ci/docs/         CI-related documentation (runner setup, workflow guides, troubleshooting)
 ```
 
 ## Building and testing
@@ -69,7 +70,7 @@ gh pr checks <pr> --watch --interval 60
 ```
 
 Every e2e run uploads a diagnostics bundle produced by
-`scripts/verification/collect_ci_artifacts.sh` (artifact name
+`ci/verification/collect_ci_artifacts.sh` (artifact name
 `e2e-{connected,disconnected}-<cluster>-<run_id>`, 7-day retention). Pull it before
 reasoning about a deploy failure — the step log alone is usually not enough:
 
@@ -84,7 +85,7 @@ pods), per-pod describe and logs (including `--previous`), and
 overview, health probes). It also captures the redacted enclave config and rendered
 plugin Helm values under `landing-zone/config/` and `landing-zone/helm-values/` — check
 these when a plugin deploys with unexpected values. See
-[scripts/docs/CI_TROUBLESHOOTING.md](scripts/docs/CI_TROUBLESHOOTING.md) for the full
+[ci/docs/CI_TROUBLESHOOTING.md](ci/docs/CI_TROUBLESHOOTING.md) for the full
 artifact map and step-by-step recipes.
 
 ## Code conventions
@@ -103,9 +104,9 @@ artifact map and step-by-step recipes.
 - Use descriptive `name:` fields on all tasks
 - Explicit `become: yes` for privilege escalation
 
-### Shell (`scripts/`)
+### Shell (`ci/`, `scripts/`)
 - `set -euo pipefail` at the top of every script
-- Source shared utilities from `scripts/lib/` (logging, env checks, etc.)
+- Source shared utilities from `ci/lib/` (logging, env checks, etc.)
 
 ### Plugins
 - Each plugin has a single `plugin.yaml` descriptor validated against `schemas/plugin.yaml`
@@ -119,9 +120,13 @@ artifact map and step-by-step recipes.
   e.g. `defaults/catalogs.yaml` → `schemas/catalogs.yaml`) in the same PR
 - Run `make -f Makefile.ci validate-json-schema` before opening a PR to catch missing schema entries
 
+### Makefiles
+
+- Avoid code blobs inside a Makefile target, write them as separate shell scripts.
+
 ## CI test environment — `vm_infra.py` is the single source of truth
 
-`scripts/infrastructure/vm_infra.py` owns the entire CI test environment: the cluster
+`ci/infrastructure/vm_infra.py` owns the entire CI test environment: the cluster
 identity (generates the name, derives `WORKING_DIR`), libvirt networks and bridges, DNS
 records, the storage pool, volumes, disks, and all VM domains (including the Landing
 Zone). It writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh`
@@ -142,7 +147,7 @@ When changing the environment, follow this philosophy so the design holds:
   `reap`/cleanup, per-cluster resource namespacing) stays and must be preserved — the host
   may be shared/persistent again (baremetal/hybrid), not only ephemeral AWS.
 
-See [scripts/docs/vm-infra.md](scripts/docs/vm-infra.md) for the full design.
+See [ci/docs/vm-infra.md](ci/docs/vm-infra.md) for the full design.
 
 ## Git workflow
 

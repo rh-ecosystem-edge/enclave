@@ -21,13 +21,11 @@ include Makefile
         validate-tags validate-templates validate-mirror validate-makefile validate-plugins \
         validate-migrations validate-python validate-osac-values \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
-        deploy-cluster-pre-install-validate \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
-        deploy-cluster-write-migration-tasks \
+        deploy-cluster-write-migration-tasks deploy-cluster-plugins deploy-spoke \
         environment provision-landing-zone verify-landing-zone \
-        install-enclave verify-enclave-installation setup-ceph verify-ceph \
-        verify clean verify-cluster osac-smoke verify-cleanup \
-        collect-step-logs \
+        install-enclave verify-enclave-installation setup-ceph \
+        verify clean verify-cluster verify-spoke osac-smoke \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
 	generate-ironic-cert clean-infra reap-stale-vms start-stopped-runners \
@@ -72,7 +70,6 @@ help:
 	@echo "  make -f Makefile.ci install-enclave                  - Install Enclave Lab on Landing Zone VM"
 	@echo "  make -f Makefile.ci verify-enclave-installation      - Verify Enclave Lab installation"
 	@echo "  make -f Makefile.ci setup-ceph                       - Setup Ceph on Landing Zone (ODF only)"
-	@echo "  make -f Makefile.ci verify-ceph                      - Verify Ceph health on Landing Zone (ODF only)"
 	@echo "  make -f Makefile.ci deploy-cluster                   - Deploy OpenShift cluster (all phases, via SSH)"
 	@echo "  make -f Makefile.ci verify                           - Verify infrastructure setup"
 	@echo "  make -f Makefile.ci clean                            - Clean up infrastructure"
@@ -81,13 +78,11 @@ help:
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
 	@echo "  make -f Makefile.ci verify-spoke                     - Verify the SNO spoke cluster deployment"
 	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
-	@echo "  make -f Makefile.ci verify-cleanup                   - Verify infrastructure cleanup"
 	@echo ""
 	@echo "CI Helper targets:"
 	@echo "  make -f Makefile.ci clean-infra                      - Tear down infrastructure"
 	@echo "  make -f Makefile.ci reap-stale-vms                   - Reap leaked CI VMs older than REAP_AGE_HOURS (default 12h)"
 	@echo "  make -f Makefile.ci start-stopped-runners            - Start stopped runner services on this host"
-	@echo "  make -f Makefile.ci collect-step-logs                - Collect logs from cluster"
 	@echo "  make -f Makefile.ci preflight-checks                 - Run pre-flight environment checks"
 	@echo "  make -f Makefile.ci collect-artifacts-basic          - Collect basic artifacts"
 	@echo "  make -f Makefile.ci collect-artifacts-deployment     - Collect deployment artifacts"
@@ -150,131 +145,146 @@ deploy-cluster:
 	@echo "Deploying OpenShift Cluster with Enclave Lab"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_cluster.sh
+	@./ci/deployment/deploy_enabled_plugins.sh --check
+	@$(MAKE) -f Makefile.ci deploy-cluster-validate
+	@$(MAKE) -f Makefile.ci deploy-cluster-prepare
+	@$(MAKE) -f Makefile.ci deploy-cluster-mirror
+	@$(MAKE) -f Makefile.ci deploy-cluster-acquire-hardware
+	@$(MAKE) -f Makefile.ci deploy-cluster-install
+	@$(MAKE) -f Makefile.ci deploy-cluster-post-install
+	@$(MAKE) -f Makefile.ci deploy-cluster-operators
+	@$(MAKE) -f Makefile.ci deploy-cluster-day2
+	@$(MAKE) -f Makefile.ci deploy-cluster-discovery
+	@$(MAKE) -f Makefile.ci deploy-cluster-write-migration-tasks
+	@$(MAKE) -f Makefile.ci deploy-cluster-plugins
+
+# Deploy the app plugins listed in ENABLED_PLUGINS after the cluster phases.
+deploy-cluster-plugins:
+	@./ci/deployment/deploy_enabled_plugins.sh
 
 deploy-cluster-setup:
 	@echo "=========================================="
 	@echo "Setup environment on Landing Zone"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh setup
+	@./ci/deployment/deploy_bootstrap_step.sh setup
 
 deploy-cluster-validate:
 	@echo "=========================================="
 	@echo "Validate configuration"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh validate
+	@./ci/deployment/deploy_bootstrap_step.sh validate
 
 deploy-cluster-prepare:
 	@echo "=========================================="
 	@echo "Phase 1: Prepare - Download dependency content"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh download-content
+	@./ci/deployment/deploy_bootstrap_step.sh download-content
 
 deploy-cluster-mirror:
 	@echo "=========================================="
 	@echo "Phase 2: Mirror - Build local cache"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh build-cache
+	@./ci/deployment/deploy_bootstrap_step.sh build-cache
 
 deploy-cluster-acquire-hardware:
 	@echo "=========================================="
 	@echo "Phase 3a: Acquire and validate hardware"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh acquire-hardware
+	@./ci/deployment/deploy_bootstrap_step.sh acquire-hardware
 
 deploy-cluster-install:
 	@echo "=========================================="
 	@echo "Phase 3b: Deploy OpenShift cluster"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh deploy
+	@./ci/deployment/deploy_bootstrap_step.sh deploy
 
 deploy-cluster-post-install:
 	@echo "=========================================="
 	@echo "Phase 4: Post-Install - Cluster configuration"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh post-install
+	@./ci/deployment/deploy_bootstrap_step.sh post-install
 
 deploy-cluster-operators:
 	@echo "=========================================="
 	@echo "Phase 5: Operators - Install and configure operators"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh operators
+	@./ci/deployment/deploy_bootstrap_step.sh operators
 
 deploy-cluster-day2:
 	@echo "=========================================="
 	@echo "Phase 6: Day-2 - Advanced features and policies"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh day2
+	@./ci/deployment/deploy_bootstrap_step.sh day2
 
 deploy-cluster-discovery:
 	@echo "=========================================="
 	@echo "Phase 7: Configure Discovery - Hardware discovery"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_bootstrap_step.sh discovery
+	@./ci/deployment/deploy_bootstrap_step.sh discovery
 
 deploy-cluster-write-migration-tasks:
-	@./scripts/deployment/deploy_bootstrap_step.sh write-migration-tasks
+	@./ci/deployment/deploy_bootstrap_step.sh write-migration-tasks
 
 deploy-spoke:
-	@./scripts/deployment/provision_spoke.sh
+	@./ci/deployment/provision_spoke.sh
 
 deploy-plugin:
-	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
+	@./ci/deployment/deploy_plugin.sh $(PLUGIN)
 
 # --- Validation targets (CI only) ---
 
 validate:
-	@./scripts/verification/validate.sh all
+	@./ci/verification/validate.sh all
 
 validate-shell:
-	@./scripts/verification/validate.sh shell
+	@./ci/verification/validate.sh shell
 
 validate-yaml:
-	@./scripts/verification/validate.sh yaml
+	@./ci/verification/validate.sh yaml
 
 validate-json-schema:
-	@./scripts/verification/validate.sh json-schema
+	@./ci/verification/validate.sh json-schema
 
 validate-ansible:
-	@./scripts/verification/validate.sh ansible
+	@./ci/verification/validate.sh ansible
 
 validate-tags:
-	@./scripts/verification/validate.sh tags
+	@./ci/verification/validate.sh tags
 
 validate-templates:
-	@./scripts/verification/validate.sh templates
+	@./ci/verification/validate.sh templates
 
 validate-mirror:
 	@echo "=========================================="
 	@echo "Phase 2.5: Validate mirror artifacts"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/deploy_phase.sh validation/validate-mirror.yaml
+	@./ci/deployment/deploy_phase.sh validation/validate-mirror.yaml
 
 validate-makefile:
-	@./scripts/verification/validate.sh makefile
+	@./ci/verification/validate.sh makefile
 
 validate-plugins:
-	@./scripts/verification/validate.sh plugins
+	@./ci/verification/validate.sh plugins
 
 validate-migrations:
-	@./scripts/verification/validate.sh migrations
+	@./ci/verification/validate.sh migrations
 
 validate-python:
-	@./scripts/verification/validate.sh python
+	@./ci/verification/validate.sh python
 
 validate-osac-values:
-	@./scripts/verification/validate.sh osac-values
+	@./ci/verification/validate.sh osac-values
 
 # --- CI Image targets ---
 
@@ -346,15 +356,15 @@ build-push-ci-image: build-ci-image push-ci-image
 
 # Tear down test infrastructure (VMs, networks, BMC)
 clean-infra:
-	@./scripts/cleanup/cleanup.sh
+	@./ci/cleanup/cleanup.sh
 
 # Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs
 reap-stale-vms:
-	@sudo -E python3 ./scripts/infrastructure/vm_infra.py reap
+	@sudo -E python3 ./ci/infrastructure/vm_infra.py reap
 
 # Start any self-hosted runner services on this host that are stopped
 start-stopped-runners:
-	@./scripts/runners/start-stopped-runners.sh
+	@./ci/runners/start-stopped-runners.sh
 
 # --- CI Infrastructure targets ---
 
@@ -362,7 +372,7 @@ start-stopped-runners:
 # cluster name when ENCLAVE_CLUSTER_NAME is unset and derives WORKING_DIR from
 # BASE_WORKING_DIR); create_environment.sh captures that and appends it to $GITHUB_ENV.
 environment:
-	@./scripts/infrastructure/create_environment.sh
+	@./ci/infrastructure/create_environment.sh
 
 # Provision Landing Zone VM with CentOS Stream 10
 provision-landing-zone:
@@ -370,7 +380,7 @@ provision-landing-zone:
 	@echo "Provisioning Landing Zone VM"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/infrastructure/provision_landing_zone.sh
+	@./ci/infrastructure/provision_landing_zone.sh
 	@echo ""
 	@echo "Verifying Landing Zone VM..."
 	@$(MAKE) -f Makefile.ci verify-landing-zone
@@ -385,7 +395,7 @@ verify-landing-zone:
 	@echo "Verifying Landing Zone VM"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/verification/verify_landing_zone.sh
+	@./ci/verification/verify_landing_zone.sh
 
 # Install Enclave Lab on Landing Zone VM
 install-enclave:
@@ -393,7 +403,7 @@ install-enclave:
 	@echo "Installing Enclave Lab on Landing Zone"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/deployment/install_enclave.sh
+	@./ci/deployment/install_enclave.sh
 	@echo ""
 	@echo "Verifying Enclave Lab installation..."
 	@$(MAKE) -f Makefile.ci verify-enclave-installation
@@ -408,7 +418,7 @@ verify-enclave-installation:
 	@echo "Verifying Enclave Lab Installation"
 	@echo "=========================================="
 	@echo ""
-	@./scripts/verification/verify_enclave_installation.sh
+	@./ci/verification/verify_enclave_installation.sh
 
 # Setup Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
 setup-ceph:
@@ -417,62 +427,44 @@ setup-ceph:
 		echo "Setting up Ceph on Landing Zone for ODF"; \
 		echo "=========================================="; \
 		echo ""; \
-		./scripts/infrastructure/setup_ceph_on_lz.sh; \
+		./ci/infrastructure/setup_ceph_on_lz.sh; \
 	else \
 		echo "Skipping Ceph setup (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
-	fi
-
-# Verify Ceph on Landing Zone (only when STORAGE_PLUGIN=odf)
-verify-ceph:
-	@if [ "$${STORAGE_PLUGIN:-lvms}" = "odf" ]; then \
-		echo "=========================================="; \
-		echo "Verifying Ceph on Landing Zone"; \
-		echo "=========================================="; \
-		echo ""; \
-		./scripts/infrastructure/verify_ceph_on_lz.sh; \
-	else \
-		echo "Skipping Ceph verification (STORAGE_PLUGIN=$${STORAGE_PLUGIN:-lvms})"; \
 	fi
 
 # Verify infrastructure
 verify:
 	@echo "Verifying infrastructure..."
-	@./scripts/verification/verify_infrastructure.sh
+	@./ci/verification/verify_infrastructure.sh
 
 # Clean up infrastructure
 clean: clean-infra
 
 # Verification targets
 verify-cluster:
-	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_cluster.sh
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_cluster.sh
 
 verify-spoke:
-	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_spoke.sh
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_spoke.sh
 
 # OSAC CLI post-install smoke test (connected environments only). Exercises the
 # fulfillment API end-to-end through its route via the osac CLI on the LZ.
 osac-smoke:
-	@./scripts/verification/run_osac_smoke.sh
-
-verify-cleanup:
-	@./scripts/cleanup/verify_cleanup.sh
+	@./ci/verification/run_osac_smoke.sh
 
 # Helper targets
-collect-step-logs:
-	@./scripts/verification/collect_step_logs.sh step-logs
-
 preflight-checks:
-	@./scripts/setup/preflight_checks.sh
+	@./ci/setup/preflight_checks.sh
 
 # Artifact collection wrappers (use existing script)
 collect-artifacts-basic:
-	@./scripts/verification/collect_ci_artifacts.sh basic artifacts
+	@./ci/verification/collect_ci_artifacts.sh basic artifacts
 
 collect-artifacts-deployment:
-	@./scripts/verification/collect_ci_artifacts.sh deployment artifacts
+	@./ci/verification/collect_ci_artifacts.sh deployment artifacts
 
 collect-artifacts-full:
-	@./scripts/verification/collect_ci_artifacts.sh full artifacts
+	@./ci/verification/collect_ci_artifacts.sh full artifacts
 
 # Full CI flow for local testing
 # Full flow for local runs. `environment` runs vm_infra.py, which generates the cluster
@@ -508,4 +500,4 @@ ci-flow-disconnected:
 	@ENCLAVE_DEPLOYMENT_MODE=disconnected $(MAKE) -f Makefile.ci ci-flow-connected
 
 generate-ironic-cert:
-	@./scripts/deployment/generate_ironic_cert.sh
+	@./ci/deployment/generate_ironic_cert.sh

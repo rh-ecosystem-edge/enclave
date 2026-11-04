@@ -1,0 +1,185 @@
+#!/bin/bash
+# Deploy a plugin to the OpenShift cluster
+#
+# This script connects to the Landing Zone VM and runs the
+# deploy-plugin.yaml playbook for the specified plugin.
+#
+# Usage: ./deploy_plugin.sh <plugin-name> [ansible-playbook extra args]
+# Example: ./deploy_plugin.sh openshift-ai
+# Example: ./deploy_plugin.sh openshift-ai --tags mirror
+
+set -euo pipefail
+
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/ci/lib/output.sh"
+source "${ENCLAVE_DIR}/ci/lib/validation.sh"
+source "${ENCLAVE_DIR}/ci/lib/config.sh"
+source "${ENCLAVE_DIR}/ci/lib/network.sh"
+source "${ENCLAVE_DIR}/ci/lib/ssh.sh"
+
+# Check arguments
+if [ $# -lt 1 ]; then
+    error "Usage: $0 <plugin-name> [--tags <tags>]"
+    error "Example: $0 openshift-ai"
+    error "Example: $0 openshift-ai --tags mirror"
+    exit 1
+fi
+
+PLUGIN_NAME="$1"
+shift
+ANSIBLE_EXTRA_ARGS="$*"
+
+# Validate plugin name format (prevent path traversal)
+if [[ ! "$PLUGIN_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    error "Invalid plugin name: '$PLUGIN_NAME'"
+    error "Plugin name must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    exit 1
+fi
+
+# Validate plugin exists locally
+if [ ! -f "${ENCLAVE_DIR}/plugins/${PLUGIN_NAME}/plugin.yaml" ]; then
+    error "Plugin not found: plugins/${PLUGIN_NAME}/plugin.yaml"
+    exit 1
+fi
+
+# Validate required environment variables
+
+# Determine cluster name for dynamic config file
+ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+
+# Source cluster environment
+load_cluster_env
+
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
+
+if [ -z "$CLUSTER_IP" ]; then
+    error "Could not determine Landing Zone IP address"
+    exit 1
+fi
+
+# Setup SSH configuration
+setup_ssh_config "$CLUSTER_IP"
+
+# Deployment mode: connected or disconnected (default: disconnected)
+DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
+
+info "Deploying plugin: $PLUGIN_NAME"
+info "Landing Zone: $CLUSTER_IP"
+info "Deployment mode: $DEPLOYMENT_MODE"
+info ""
+
+# Verify SSH connectivity
+if ! ssh_test_connection; then
+    error "Cannot connect to Landing Zone at $CLUSTER_IP"
+    exit 1
+fi
+
+# Verify Enclave Lab is installed
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/plugins/${PLUGIN_NAME}/plugin.yaml"; then
+    error "Plugin not found on Landing Zone: $LZ_ENCLAVE_DIR/plugins/${PLUGIN_NAME}/plugin.yaml"
+    exit 1
+fi
+
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
+    error "config/global.yaml not found at $LZ_ENCLAVE_DIR"
+    error "Run 'make -f Makefile.ci install-enclave' first"
+    exit 1
+fi
+
+# Build ansible-playbook command with extra vars
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
+plugin_name: ${PLUGIN_NAME}
+"
+
+# Set disconnected mode based on DEPLOYMENT_MODE
+if [ "$DEPLOYMENT_MODE" = "connected" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}disconnected: false
+"
+else
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}disconnected: true
+"
+fi
+
+# Set storage plugin from STORAGE_PLUGIN env var (overrides default in config)
+if [ -n "${STORAGE_PLUGIN:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}storage_plugin: ${STORAGE_PLUGIN}
+"
+    info "Storage plugin: $STORAGE_PLUGIN"
+fi
+
+# Set enabled plugins from ENABLED_PLUGINS env var (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}enabled_plugins:
+"
+    IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+    for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"  # trim whitespace
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
+"
+    done
+    info "Enabled plugins: $ENABLED_PLUGINS"
+fi
+
+# Copy AAP license file to Landing Zone if AAP_LICENSE_FILE is set
+if [ -n "${AAP_LICENSE_FILE:-}" ] && { [ "$PLUGIN_NAME" = "aap" ] || [ "$PLUGIN_NAME" = "osac" ]; }; then
+    if [ ! -f "$AAP_LICENSE_FILE" ]; then
+        error "AAP license file not found: $AAP_LICENSE_FILE"
+        exit 1
+    fi
+    LZ_AAP_LICENSE="${LZ_HOME}/aap-license.zip"
+    info "Copying AAP license file to Landing Zone: $LZ_AAP_LICENSE"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    scp $SSH_OPTS "$AAP_LICENSE_FILE" "${LZ_SSH}:${LZ_AAP_LICENSE}"
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    ssh $SSH_OPTS "$LZ_SSH" "chmod 600 '$LZ_AAP_LICENSE'"
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}osacAapLicenseFile: ${LZ_AAP_LICENSE}
+"
+    # Generate OSAC plugin config on LZ if it doesn't exist (CI environments)
+    # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+    if ! ssh $SSH_OPTS "$LZ_SSH" "test -f $LZ_ENCLAVE_DIR/config/plugins/osac.yaml"; then
+        info "Generating config/plugins/osac.yaml on Landing Zone"
+        if [ -n "${OSAC_CHART_VERSION:-}" ]; then
+            if [[ ! "$OSAC_CHART_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+                error "Invalid OSAC_CHART_VERSION: '$OSAC_CHART_VERSION'"
+                error "Version must match: ^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                exit 1
+            fi
+        fi
+        # shellcheck disable=SC2086,SC2087  # SSH_OPTS needs word splitting, we want client-side expansion
+        ssh $SSH_OPTS "$LZ_SSH" "mkdir -p $LZ_ENCLAVE_DIR/config/plugins && cat > $LZ_ENCLAVE_DIR/config/plugins/osac.yaml" <<OSAC_EOF
+---
+osacAapLicenseFile: "${LZ_AAP_LICENSE}"
+${OSAC_CHART_VERSION:+osacChartVersion: "${OSAC_CHART_VERSION}"}
+osacTestUsers: true
+OSAC_EOF
+    fi
+fi
+
+# Create the extra vars file on Landing Zone
+# shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
+ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
+$EXTRA_VARS_CONTENT
+EOF
+
+# Run ansible-playbook with the extra vars file
+LOG_FILE="deployment_plugin_${PLUGIN_NAME}.log"
+info "Running playbook (logging to $LOG_FILE)..."
+# shellcheck disable=SC2086  # SSH_OPTS needs word splitting
+set +e
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/deploy-plugin.yaml -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+PLUGIN_EXIT_CODE=$?
+set -e
+
+echo ""
+if [ $PLUGIN_EXIT_CODE -eq 0 ]; then
+    success "Plugin deployed successfully: $PLUGIN_NAME"
+else
+    error "Plugin deployment failed: $PLUGIN_NAME (exit code: $PLUGIN_EXIT_CODE)"
+    info "Check logs: ssh ${LZ_SSH} 'cat $LZ_ENCLAVE_DIR/$LOG_FILE'"
+    exit 1
+fi

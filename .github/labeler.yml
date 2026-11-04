@@ -5,8 +5,8 @@ deployment:
     - any-glob-to-any-file:
       - 'playbooks/0[1-7]-*.yaml'
       - 'playbooks/main.yaml'
-      - 'scripts/deployment/**/*'
-      - 'scripts/infrastructure/generate_*.sh'
+      - 'ci/deployment/**/*'
+      - 'ci/infrastructure/generate_*.sh'
       - 'Makefile'
       - 'defaults/**/*'
       - 'config/**/*'
@@ -15,14 +15,14 @@ ci-cd:
   - changed-files:
     - any-glob-to-any-file:
       - '.github/**/*'
-      - 'scripts/runners/**/*'
+      - 'ci/runners/**/*'
 
 infrastructure:
   - changed-files:
     - any-glob-to-any-file:
-      - 'scripts/infrastructure/**/*'
-      - 'scripts/setup/**/*'
-      - 'scripts/cleanup/**/*'
+      - 'ci/infrastructure/**/*'
+      - 'ci/setup/**/*'
+      - 'ci/cleanup/**/*'
       - 'playbooks/tasks/create_*.yaml'
       - 'playbooks/tasks/configure_*.yaml'
       - 'playbooks/tasks/provision_*.yaml'
@@ -31,7 +31,7 @@ validation:
   - changed-files:
     - any-glob-to-any-file:
       - 'schemas/**/*'
-      - 'scripts/verification/**/*'
+      - 'ci/verification/**/*'
       - 'validations.sh'
       - 'playbooks/tasks/validate_*.yaml'
 
@@ -46,8 +46,8 @@ operators:
 utilities:
   - changed-files:
     - any-glob-to-any-file:
-      - 'scripts/lib/**/*'
-      - 'scripts/utils/**/*'
+      - 'ci/lib/**/*'
+      - 'ci/utils/**/*'
 
 plugins:
   - changed-files:
@@ -60,4 +60,4 @@ plugins:
 diagnostics:
   - changed-files:
     - any-glob-to-any-file:
-      - 'scripts/diagnostics/**/*'
+      - 'ci/diagnostics/**/*'

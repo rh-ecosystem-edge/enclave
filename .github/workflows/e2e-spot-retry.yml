@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
-            scripts/infrastructure/spot-retry.sh
+            ci/infrastructure/spot-retry.sh
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -50,4 +50,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.event.workflow_run.id }}
           REPO: ${{ github.repository }}
-        run: scripts/infrastructure/spot-retry.sh
+        run: ci/infrastructure/spot-retry.sh

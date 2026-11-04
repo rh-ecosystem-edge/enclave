@@ -31,7 +31,7 @@ The Redfish path is also hardwired across the codebase, which makes adding an al
 1. **Plugins are not an option as they are today.** The existing plugin system mixes very
    different things in a flat `plugins/` directory (`foundation` plugins, which are storage
    providers, and `addon` plugins), merges plugin configuration into the global variable space,
-   and validates plugin structure only in CI (`scripts/verification/validate_plugins.sh`), so an
+   and validates plugin structure only in CI (`ci/verification/validate_plugins.sh`), so an
    out-of-tree plugin is never checked.
 
 ## Goals
@@ -361,7 +361,7 @@ also filter by `type` or `enabled_plugins`, so they ignore boot plugins. `load-v
 
 - `playbooks/validation/tasks/defaults_schema_validation.yaml`: its directory pass (`depth: 1`)
   would look up `plugins/boot/plugin.yaml`, which does not exist, and fail.
-- `scripts/verification/validate_plugins.sh`: it iterates every directory under `plugins/` and
+- `ci/verification/validate_plugins.sh`: it iterates every directory under `plugins/` and
   would validate `plugins/boot` as a `foundation`/`addon` plugin.
 
 `boot` becomes a reserved name: no `foundation`/`addon` plugin may be called `boot`.
@@ -395,7 +395,7 @@ again:
    identical values, skips the merge and only removes them from `global.yaml`, so credentials are
    neither lost nor duplicated.
 
-Diagnostics redaction (`scripts/diagnostics/gather_lz.sh`, which redacts known password fields of
+Diagnostics redaction (`ci/diagnostics/gather_lz.sh`, which redacts known password fields of
 `global.yaml`) must cover the new file.
 
 ### CI
@@ -414,7 +414,7 @@ Diagnostics redaction (`scripts/diagnostics/gather_lz.sh`, which redacts known p
     installation gate)
   - `playbooks/tasks/configure_hardware_filter_hosts.yaml`
   - `playbooks/tasks/pre_install_validate_plugins.yaml` (discovery waits and gate release)
-  - `scripts/infrastructure/generate_enclave_vars.sh` (writes the boot plugin configuration)
+  - `ci/infrastructure/generate_enclave_vars.sh` (writes the boot plugin configuration)
   - `.github/actions/check-e2e-needed/**` (the rule itself)
 
 `manual` runs if manual or shared files changed. `ironic` runs unless the only E2E-relevant changes
@@ -438,7 +438,7 @@ cluster name on separate runners (`vm_infra.py` only avoids clashes on the same 
 diagnostics artifacts would clash.
 
 **Configuration.** A `BOOT_PLUGIN` environment variable is consumed by
-`scripts/infrastructure/generate_enclave_vars.sh`, which writes the top-level `bootPlugin:` into
+`ci/infrastructure/generate_enclave_vars.sh`, which writes the top-level `bootPlugin:` into
 `config/global.yaml`. For `ironic` it writes `config/plugins/boot/ironic.yaml` instead of the
 Redfish fields in `agent_hosts`; for `manual` it writes no plugin file. Unlike `STORAGE_PLUGIN`,
 the value must not go through `extra_vars.yaml`: config validation only reads the configuration
@@ -466,7 +466,7 @@ No boot override call is needed: sushy-tools runs with `SUSHY_EMULATOR_IGNORE_BO
 VMs always follow the `cdrom, hd` boot order defined by `vm_infra.py`. The script logs to the
 working directory, and `collect_ci_artifacts.sh` adds the log to the diagnostics bundle.
 
-**Other CI script changes.** `scripts/verification/validate.sh` expects the task
+**Other CI script changes.** `ci/verification/validate.sh` expects the task
 `Configure and boot hosts via Ironic` behind the `hardware` tag of `03-deploy.yaml`, which becomes
 the boot plugin runner. `collect_ci_artifacts.sh` needs no change for configuration: it already
 collects `config/plugins/` recursively and redacts `password` keys.

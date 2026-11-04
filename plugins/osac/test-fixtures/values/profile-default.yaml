@@ -2,7 +2,7 @@
 # Profile: default (caas + vmaas)
 #
 # Override fixture for the OSAC values overlay schema check
-# (scripts/verification/validate_osac_values.sh). Contains ONLY the config
+# (ci/verification/validate_osac_values.sh). Contains ONLY the config
 # toggles for this permutation; runtime stubs (__r_ingress_config,
 # _osac_keycloak_hostname) come from plugin.yaml extractPlaceholders and the
 # rest from plugins/osac/defaults.yaml.

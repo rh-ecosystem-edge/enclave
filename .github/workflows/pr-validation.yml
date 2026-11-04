@@ -524,8 +524,8 @@ jobs:
             osac:
               - 'plugins/osac/**'
               - 'playbooks/validation/validate-osac-values.yaml'
-              - 'scripts/verification/validate_osac_values.sh'
-              - 'scripts/verification/validate.sh'
+              - 'ci/verification/validate_osac_values.sh'
+              - 'ci/verification/validate.sh'
               - 'Makefile.ci'
               # A helm bump here changes the version used to schema-check the
               # overlay (CI image installs helm from this file), so re-validate.

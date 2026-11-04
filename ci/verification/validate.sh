@@ -1,0 +1,394 @@
+#!/bin/bash
+# Enclave Lab Validation Script
+# Validates code quality (shell scripts, YAML, Ansible playbooks, Makefile)
+
+set -euo pipefail
+
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/ci/lib/output.sh"
+
+# Custom helper functions for this script
+print_header() {
+    echo -e "${GREEN}━━━ $1${NC}"
+}
+
+print_success() {
+    echo -e "${GREEN}✅ $1${NC}"
+    echo ""
+}
+
+print_error() {
+    echo -e "${RED}❌ $1${NC}"
+    echo ""
+}
+
+print_info() {
+    echo -e "${YELLOW}ℹ️  $1${NC}"
+    echo ""
+}
+
+# Validation functions
+validate_shell() {
+    print_header "Validating shell scripts with shellcheck"
+
+    if find scripts/ ci/ src/ -name "*.sh" -type f 2>/dev/null | grep -q .; then
+        if find scripts/ ci/ src/ -name "*.sh" -type f -print0 | xargs -0 shellcheck -x -S warning; then
+            print_success "Shell script validation passed"
+            return 0
+        else
+            print_error "Shell script validation failed"
+            return 1
+        fi
+    else
+        print_info "No shell scripts found to validate"
+        return 0
+    fi
+}
+
+validate_yaml() {
+    print_header "Validating YAML files with yamllint"
+
+    if yamllint -c .yamllint.yml .; then
+        print_success "YAML validation passed"
+        return 0
+    else
+        print_error "YAML validation failed"
+        return 1
+    fi
+}
+
+validate_json_schema() {
+    print_header "Validating JSON schema"
+
+    if ansible-playbook playbooks/validation/validate-schema.yaml --tags test-fixtures; then
+        print_success "JSON schema validation passed"
+        return 0
+    else
+        print_error "JSON schema validation failed"
+        return 1
+    fi
+}
+
+validate_ansible() {
+    print_header "Validating Ansible playbooks with ansible-lint"
+
+    # Check if playbooks directory exists or any playbook files exist
+    local has_playbooks=0
+    if [ -d playbooks ]; then
+        has_playbooks=1
+    else
+        # Check for YAML files that are playbooks (not vars files)
+        for file in *.yaml *.yml; do
+            if [ -f "$file" ] && [[ ! "$file" =~ ^vars ]]; then
+                has_playbooks=1
+                break
+            fi
+        done
+    fi
+
+    if [ $has_playbooks -eq 1 ]; then
+        if ansible-lint; then
+            print_success "Ansible playbook validation passed"
+            return 0
+        else
+            print_error "Ansible playbook validation failed"
+            return 1
+        fi
+    else
+        print_info "No Ansible playbooks found to validate"
+        return 0
+    fi
+}
+
+validate_tags() {
+    print_header "Validating Ansible playbook tags"
+
+    if [ ! -d playbooks ]; then
+        print_info "No playbooks directory found, skipping tag validation"
+        return 0
+    fi
+
+    # Create temporary config/global.yaml if it doesn't exist
+    local cleanup_vars=0
+    if [ ! -f config/global.yaml ]; then
+        touch config/global.yaml
+        cleanup_vars=1
+    fi
+
+    local failed=0
+
+    # Define tag -> expected task mapping
+    # Format: "playbook:tag:expected_task_name"
+    local tag_tests=(
+        "playbooks/01-prepare.yaml:download-content:Download content"
+        "playbooks/01-prepare.yaml:download-control-binaries:Download control binaries"
+        "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror-registry"
+        "playbooks/03-deploy.yaml:configure-abi:Include tasks for OCP ABI"
+        "playbooks/03-deploy.yaml:hardware:Configure and boot hosts via Ironic"
+        "playbooks/03-deploy.yaml:wait-deployment:Wait for deployment"
+        "playbooks/04-post-install.yaml:post-install-config:Post-install configurations"
+        "playbooks/05-operators.yaml:operators:Configure seed operators"
+        "playbooks/05-operators.yaml:operators:Configure remaining operators"
+        "playbooks/05-operators.yaml:operators:Mirrored catalogsource configuration ACM policy"
+        "playbooks/validation/validate-schema.yaml:test-fixtures:Include defaults schema validation tasks"
+        "playbooks/validation/validate-schema.yaml:validate-config:Include config schema validation tasks"
+        "playbooks/validation/validate-mirror.yaml:mirror-validation:Include mirror validation tasks"
+    )
+
+    for test in "${tag_tests[@]}"; do
+        local playbook
+        local tag
+        local expected_task
+        local output
+
+        playbook=$(echo "$test" | cut -d: -f1)
+        tag=$(echo "$test" | cut -d: -f2)
+        expected_task=$(echo "$test" | cut -d: -f3-)
+
+        if [ ! -f "$playbook" ]; then
+            print_error "Playbook not found: $playbook"
+            failed=1
+            continue
+        fi
+
+        # Run ansible-playbook --list-tasks with the tag and check if expected task appears
+        output=$(ansible-playbook "$playbook" -e workingDir=/tmp --tags "$tag" --list-tasks 2>&1)
+
+        if echo "$output" | grep -q "$expected_task"; then
+            : # Tag works, task found
+        else
+            print_error "Tag '$tag' in $playbook does not include task '$expected_task'"
+            failed=1
+        fi
+    done
+
+    # Cleanup temporary config/global.yaml
+    if [ $cleanup_vars -eq 1 ]; then
+        rm -f config/global.yaml
+    fi
+
+    if [ $failed -eq 0 ]; then
+        print_success "Ansible playbook tags validation passed"
+        return 0
+    else
+        print_error "Ansible playbook tags validation failed"
+        return 1
+    fi
+}
+
+validate_templates() {
+    print_header "Validating template rendering"
+
+    if ansible-playbook playbooks/validation/validate-templates.yaml -e@test-fixtures/templates/global.yaml; then
+        print_success "Template rendering validation passed"
+        return 0
+    else
+        print_error "Template rendering validation failed"
+        return 1
+    fi
+}
+
+validate_makefile() {
+    print_header "Validating Makefile syntax"
+
+    local failed=0
+
+    if make -n help >/dev/null 2>&1; then
+        print_success "Makefile syntax is valid"
+    else
+        print_error "Makefile syntax validation failed"
+        failed=1
+    fi
+
+    if [ -f Makefile.ci ]; then
+        if make -f Makefile.ci -n help >/dev/null 2>&1; then
+            print_success "Makefile.ci syntax is valid"
+        else
+            print_error "Makefile.ci syntax validation failed"
+            failed=1
+        fi
+    fi
+
+    return $failed
+}
+
+validate_plugins() {
+    print_header "Validating plugin directory structure"
+
+    if "${ENCLAVE_DIR}/ci/verification/validate_plugins.sh"; then
+        print_success "Plugin validation passed"
+        return 0
+    else
+        print_error "Plugin validation failed"
+        return 1
+    fi
+}
+
+validate_migrations() {
+    print_header "Validating migration files"
+
+    if "${ENCLAVE_DIR}/ci/verification/validate_migrations.sh"; then
+        print_success "Migration validation passed"
+        return 0
+    else
+        print_error "Migration validation failed"
+        return 1
+    fi
+}
+
+validate_osac_values() {
+    print_header "Validating OSAC values overlay against pinned chart schema"
+
+    if "${ENCLAVE_DIR}/ci/verification/validate_osac_values.sh"; then
+        print_success "OSAC values overlay validation passed"
+        return 0
+    else
+        print_error "OSAC values overlay validation failed"
+        return 1
+    fi
+}
+
+validate_mirror() {
+    print_header "Validating mirror artifacts on Landing Zone"
+
+    if make -f Makefile.ci validate-mirror; then
+        print_success "Mirror artifact validation passed"
+        return 0
+    else
+        print_error "Mirror artifact validation failed"
+        return 1
+    fi
+}
+
+validate_python() {
+    print_header "Validating Python code quality"
+
+    local failed=0
+
+    echo "Running ruff check..."
+    if ruff check src/; then
+        print_success "ruff check passed"
+    else
+        print_error "ruff check failed"
+        failed=1
+    fi
+
+    echo "Running ruff format check..."
+    if ruff format --check src/; then
+        print_success "ruff format check passed"
+    else
+        print_error "ruff format check failed"
+        failed=1
+    fi
+
+    echo "Running mypy..."
+    if mypy; then
+        print_success "mypy check passed"
+    else
+        print_error "mypy check failed"
+        failed=1
+    fi
+
+    echo "Running pytest..."
+    if pytest -v --cov --cov-report=term-missing; then
+        print_success "pytest passed"
+    else
+        print_error "pytest failed"
+        failed=1
+    fi
+
+    if [ $failed -eq 0 ]; then
+        print_success "Python validation passed"
+        return 0
+    else
+        print_error "Python validation failed"
+        return 1
+    fi
+}
+
+# Main function
+validate_all() {
+    local failed=0
+
+    echo ""
+    echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+    echo -e "${BLUE}║  Enclave Lab Code Quality Validation      ║${NC}"
+    echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+    echo ""
+
+    validate_shell || failed=1
+    validate_yaml || failed=1
+    validate_json_schema || failed=1
+    validate_ansible || failed=1
+    validate_tags || failed=1
+    validate_templates || failed=1
+    validate_makefile || failed=1
+    validate_plugins || failed=1
+    validate_migrations || failed=1
+    validate_python || failed=1
+
+    if [ $failed -eq 0 ]; then
+        echo -e "${GREEN}╔════════════════════════════════════════╗${NC}"
+        echo -e "${GREEN}║  ✅ All validation checks passed!       ║${NC}"
+        echo -e "${GREEN}╚════════════════════════════════════════╝${NC}"
+        echo ""
+        return 0
+    else
+        echo -e "${RED}╔════════════════════════════════════════╗${NC}"
+        echo -e "${RED}║  ❌ Some validation checks failed       ║${NC}"
+        echo -e "${RED}╚════════════════════════════════════════╝${NC}"
+        echo ""
+        return 1
+    fi
+}
+
+# Parse command line arguments
+case "${1:-all}" in
+    shell)
+        validate_shell
+        ;;
+    yaml)
+        validate_yaml
+        ;;
+    json-schema)
+        validate_json_schema
+        ;;
+    ansible)
+        validate_ansible
+        ;;
+    tags)
+        validate_tags
+        ;;
+    templates)
+        validate_templates
+        ;;
+    makefile)
+        validate_makefile
+        ;;
+    plugins)
+        validate_plugins
+        ;;
+    migrations)
+        validate_migrations
+        ;;
+    python)
+        validate_python
+        ;;
+    mirror)
+        validate_mirror
+        ;;
+    osac-values)
+        validate_osac_values
+        ;;
+    all)
+        validate_all
+        ;;
+    *)
+        echo "Usage: $0 {all|shell|yaml|json-schema|ansible|tags|templates|makefile|mirror|plugins|migrations|python|osac-values}"
+        exit 1
+        ;;
+esac

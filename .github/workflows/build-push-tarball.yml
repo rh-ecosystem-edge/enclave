@@ -74,6 +74,7 @@ jobs:
           username: ${{ secrets.QUAY_USER }}
           password: ${{ secrets.QUAY_TOKEN }}
 
+      # Do not ship cleanup_bootstrap_leftovers.sh, we don't support envs cleanup
       - name: Build tarball
         run: |
           tar --exclude='.git' \
@@ -81,7 +82,8 @@ jobs:
               --exclude='.github' \
               --exclude='.tekton' \
               --exclude='renovate.json' \
-              --exclude='scripts' \
+              --exclude='scripts/cleanup/cleanup_bootstrap_leftovers.sh' \
+              --exclude='ci' \
               --exclude='Makefile.ci' \
               --exclude='.coderabbit.yaml' \
               --exclude='test-fixtures' \

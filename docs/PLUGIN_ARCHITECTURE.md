@@ -109,7 +109,7 @@ Step 6 runs `helm template` on charts that have `extractImages: true`. Both loca
 
 ### PR-time values overlay schema validation (OSAC)
 
-The OSAC plugin also runs a **PR-time** check that renders its values overlay (`plugins/osac/templates/values.yaml.j2`) and validates it against the pinned chart's `values.schema.json` via `helm template`, without a cluster. This catches a chart bump that renames or retypes a key the overlay sets before it reaches E2E. It is driven by `make -f Makefile.ci validate-osac-values` (→ `scripts/verification/validate_osac_values.sh` + `playbooks/validation/validate-osac-values.yaml`), which:
+The OSAC plugin also runs a **PR-time** check that renders its values overlay (`plugins/osac/templates/values.yaml.j2`) and validates it against the pinned chart's `values.schema.json` via `helm template`, without a cluster. This catches a chart bump that renames or retypes a key the overlay sets before it reaches E2E. It is driven by `make -f Makefile.ci validate-osac-values` (→ `ci/verification/validate_osac_values.sh` + `playbooks/validation/validate-osac-values.yaml`), which:
 
 - pins the chart via `osacChartVersion` in `plugins/osac/defaults.yaml` (override with `OSAC_CHART_VERSION`);
 - reuses the same `extractPlaceholders` from `plugin.yaml` for deploy-time-only stubs (single source of truth with the extract path above);
@@ -255,7 +255,7 @@ Plugins can be deployed independently:
 ```bash
 make deploy-plugin PLUGIN=openshift-ai
 # or directly:
-./scripts/deployment/deploy_plugin.sh openshift-ai
+./ci/deployment/deploy_plugin.sh openshift-ai
 # or with Ansible:
 ansible-playbook playbooks/deploy-plugin.yaml -e plugin_name=openshift-ai -e workingDir=/home/cloud-user
 ```
@@ -274,7 +274,7 @@ Every plugin is validated at two levels:
 
 1. **JSON Schema** (`schemas/plugin.yaml`) -- validates field types, required fields, enum values, operator structure, and registry entries. Runs via `ansible.utils.validate` during `make validate`. If a plugin provides `schemas/defaults.yaml` or `schemas/config.yaml`, those are validated against defaults and user config files as well. Test fixtures under `test-fixtures/schemas/` are also run automatically: valid fixtures must pass, invalid fixtures must fail.
 
-2. **Shell script** (`scripts/verification/validate_plugins.sh`) -- validates directory structure:
+2. **Shell script** (`ci/verification/validate_plugins.sh`) -- validates directory structure:
    - `plugin.yaml` exists with required fields
    - `name` field matches the directory name
    - Plugin cannot have both `defaults.yaml` and a `defaults:` field in `plugin.yaml`

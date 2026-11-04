@@ -82,7 +82,7 @@ export LZ_RHSM_ACTIVATION_KEY="YOUR_RHSM_ACTIVATION_KEY"
 Validate environment before starting:
 
 ```bash
-./scripts/setup/preflight_checks.sh \
+./ci/setup/preflight_checks.sh \
   --check-pull-secret \
   --check-system-resources \
   --check-libvirt
@@ -216,20 +216,20 @@ curl -k https://100.64.X.1:8000/redfish/v1/Systems
 virsh list | grep landingzone
 
 # Get IP address
-./scripts/utils/get_landing_zone_ip.sh
+./ci/utils/get_landing_zone_ip.sh
 
 # SSH connectivity
-ssh cloud-user@$(./scripts/utils/get_landing_zone_ip.sh) hostname
+ssh cloud-user@$(./ci/utils/get_landing_zone_ip.sh) hostname
 
 # BMC network connectivity
-ssh cloud-user@$(./scripts/utils/get_landing_zone_ip.sh) \
+ssh cloud-user@$(./ci/utils/get_landing_zone_ip.sh) \
   "curl -k https://100.64.X.1:8000/redfish/v1/Systems"
 ```
 
 ### Check Enclave Installation
 
 ```bash
-LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 
 # Directory structure
 ssh cloud-user@$LZ_IP "ls -la /home/cloud-user/enclave"
@@ -247,7 +247,7 @@ ssh cloud-user@$LZ_IP "systemctl status httpd"
 ### Check Cluster
 
 ```bash
-LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Kubeconfig exists
@@ -289,7 +289,7 @@ make -f Makefile.ci ci-flow-connected
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 
 # Ping test
 ping -c 3 $LZ_IP
@@ -305,7 +305,7 @@ virsh console ${ENCLAVE_CLUSTER_NAME}_landingzone_0
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 
 # Check deployment logs
 ssh cloud-user@$LZ_IP "tail -f /home/cloud-user/enclave/deployment.log"
@@ -323,7 +323,7 @@ ssh cloud-user@$LZ_IP "journalctl -xef"
 
 **Debug**:
 ```bash
-LZ_IP=$(./scripts/utils/get_landing_zone_ip.sh)
+LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # Get degraded operators

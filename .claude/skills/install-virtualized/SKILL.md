@@ -70,7 +70,7 @@ or plugin order — derive everything from these files:
 
 2. **`Makefile.ci`** — understand target dependencies and the `clean` target
 
-3. **`scripts/infrastructure/vm_infra.py`** (`Config.from_env`) — extract current default
+3. **`ci/infrastructure/vm_infra.py`** (`Config.from_env`) — extract current default
    VM resource values (the `default_master_mem`/`_vcpu`/`_extra`, `default_lz_mem`/`_disk`
    branches keyed on `STORAGE_PLUGIN` / `ENCLAVE_DEPLOYMENT_MODE`, and the `MASTER_DISK` /
    `ENCLAVE_NUM_MASTERS` / `LANDINGZONE_VCPU` defaults)
@@ -152,7 +152,7 @@ If cleanup is selected, follow the **Cleanup** section procedure before
 continuing to Step 3.
 
 If day-2 addons is selected:
-1. Capture the LZ IP: `ssh <host> "cd ~/enclave && ./scripts/utils/get_landing_zone_ip.sh"`
+1. Capture the LZ IP: `ssh <host> "cd ~/enclave && ./ci/utils/get_landing_zone_ip.sh"`
 2. Verify cluster access via double-hop SSH:
    ```bash
    ssh <host> "ssh -o StrictHostKeyChecking=no cloud-user@<LZ_IP> 'export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && /home/cloud-user/sessions/1/bin/oc get clusterversion'"
@@ -285,7 +285,7 @@ Gather available resources:
 ssh <host> "free -m | awk '/Mem:/{print \$2}'; nproc; df -BG --output=avail / /home 2>/dev/null | tail -n+2"
 ```
 
-Use the defaults in `scripts/infrastructure/vm_infra.py` to calculate total
+Use the defaults in `ci/infrastructure/vm_infra.py` to calculate total
 requirements.
 
 **Important**: `vm_infra.py` is the single source of truth for all VM sizing. Master and
@@ -298,9 +298,9 @@ domain (including the LZ). Override via `MASTER_*` / `LANDINGZONE_*` env vars.
 Disk sizing differs between connected and disconnected modes. Extract the
 actual values dynamically from these files (do NOT hardcode them):
 
-- **`scripts/setup/validate_prerequisites.sh`** — grep for `MIN_DISK_GB` to
+- **`ci/setup/validate_prerequisites.sh`** — grep for `MIN_DISK_GB` to
   get the minimum disk thresholds for each deployment mode
-- **`scripts/infrastructure/vm_infra.py`** (`Config.from_env`) — the single source of
+- **`ci/infrastructure/vm_infra.py`** (`Config.from_env`) — the single source of
   all VM sizing defaults, keyed on `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE`:
   `default_master_extra` (per-master extra disk) and `default_lz_disk` (Landing Zone disk)
 
@@ -538,7 +538,7 @@ the env block for all steps (`make environment` creates the directory).
 
 After `provision-landing-zone`, capture the LZ IP for log monitoring:
 ```bash
-ssh <host> "cd ~/enclave && ./scripts/utils/get_landing_zone_ip.sh"
+ssh <host> "cd ~/enclave && ./ci/utils/get_landing_zone_ip.sh"
 ```
 Store this as `LZ_IP` — needed for monitoring long-running steps and log paths.
 

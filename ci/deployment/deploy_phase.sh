@@ -1,0 +1,175 @@
+#!/bin/bash
+# Deploy a specific phase of the OpenShift cluster deployment
+#
+# This script connects to the Landing Zone VM and runs a specific
+# Enclave Lab ansible playbook phase.
+#
+# Usage: ./deploy_phase.sh <playbook-file> [ansible-playbook extra args]
+# Example: ./deploy_phase.sh 04-post-install.yaml
+# Example: ./deploy_phase.sh 02-mirror.yaml --tags mirror-plugins
+
+set -euo pipefail
+
+# Detect Enclave repository root
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
+
+# Source shared utilities
+source "${ENCLAVE_DIR}/ci/lib/output.sh"
+source "${ENCLAVE_DIR}/ci/lib/validation.sh"
+source "${ENCLAVE_DIR}/ci/lib/config.sh"
+source "${ENCLAVE_DIR}/ci/lib/network.sh"
+source "${ENCLAVE_DIR}/ci/lib/ssh.sh"
+
+# Check arguments
+if [ $# -lt 1 ]; then
+    error "Usage: $0 <playbook-file> [--tags <tags>]"
+    error "Example: $0 04-post-install.yaml"
+    error "Example: $0 02-mirror.yaml --tags mirror-plugins"
+    exit 1
+fi
+
+PLAYBOOK_FILE="$1"
+shift
+ANSIBLE_EXTRA_ARGS="$*"
+
+# Validate required environment variables
+
+# Determine cluster name for dynamic config file
+ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
+
+# Source cluster environment
+load_cluster_env
+
+# Landing Zone IP (static DHCP lease, from cluster-env.sh)
+CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
+
+if [ -z "$CLUSTER_IP" ]; then
+    error "Could not determine Landing Zone IP address"
+    exit 1
+fi
+
+# Setup SSH configuration
+setup_ssh_config "$CLUSTER_IP"
+
+# Deployment mode: connected or disconnected (default: disconnected)
+DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}"
+
+info "Running phase: $PLAYBOOK_FILE"
+info "Landing Zone: $CLUSTER_IP"
+info "Deployment mode: $DEPLOYMENT_MODE"
+info ""
+
+# Verify SSH connectivity
+if ! ssh_test_connection; then
+    error "Cannot connect to Landing Zone at $CLUSTER_IP"
+    exit 1
+fi
+
+# Verify Enclave Lab is installed
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/playbooks/$PLAYBOOK_FILE"; then
+    error "Playbook not found: $LZ_ENCLAVE_DIR/playbooks/$PLAYBOOK_FILE"
+    exit 1
+fi
+
+if ! ssh_file_exists "$LZ_ENCLAVE_DIR/config/global.yaml"; then
+    error "config/global.yaml not found at $LZ_ENCLAVE_DIR"
+    error "Run 'make -f Makefile.ci install-enclave' first"
+    exit 1
+fi
+
+# Build ansible-playbook command with extra vars
+EXTRA_VARS_CONTENT="workingDir: /home/${LZ_USER}/sessions/1
+"
+
+# Set disconnected mode based on DEPLOYMENT_MODE
+if [ "$DEPLOYMENT_MODE" = "connected" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}disconnected: false
+"
+else
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}disconnected: true
+"
+fi
+
+# Set storage plugin from STORAGE_PLUGIN env var (overrides default in config)
+if [ -n "${STORAGE_PLUGIN:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}storage_plugin: ${STORAGE_PLUGIN}
+"
+    info "Storage plugin: $STORAGE_PLUGIN"
+fi
+
+# Set enabled plugins from ENABLED_PLUGINS env var (comma-separated)
+if [ -n "${ENABLED_PLUGINS:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}enabled_plugins:
+"
+    IFS=',' read -ra _plugins <<< "$ENABLED_PLUGINS"
+    for _plugin in "${_plugins[@]}"; do
+        _plugin="${_plugin// /}"  # trim whitespace
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  - ${_plugin}
+"
+    done
+    info "Enabled plugins: $ENABLED_PLUGINS"
+fi
+
+# Enable mirror dry-run mode if requested
+if [ "${ENCLAVE_MIRROR_DRY_RUN:-}" = "true" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}mirror_dry_run: true
+"
+fi
+
+# Disable Quay PinnedImageSet apply after mirror if requested
+if [ "${ENCLAVE_QUAY_PINNEDIMAGESET_ENABLED:-}" = "false" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}quayPinnedImageSetEnabled: false
+"
+fi
+
+# Log when HTTPS is requested for the Ironic ISO server
+# Note: ironic_https_configured is computed by the playbook from the cert/key vars
+if [ "${ENCLAVE_IRONIC_HTTPS:-}" = "true" ]; then
+    info "Ironic ISO server: HTTPS enabled"
+else
+    info "Ironic ISO server: HTTP only (HTTPS not configured)"
+fi
+
+# Inject Ironic ISO server TLS certificate if provided
+if [ -n "${ENCLAVE_IRONIC_CERT:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSCertificate: |
+"
+    while IFS= read -r line; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
+"
+    done < <(printf '%s\n' "${ENCLAVE_IRONIC_CERT}")
+fi
+
+# Inject Ironic ISO server TLS key if provided
+if [ -n "${ENCLAVE_IRONIC_KEY:-}" ]; then
+    EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}ironicHTTPSKey: |
+"
+    while IFS= read -r line; do
+        EXTRA_VARS_CONTENT="${EXTRA_VARS_CONTENT}  ${line}
+"
+    done < <(printf '%s\n' "${ENCLAVE_IRONIC_KEY}")
+fi
+
+# Create the extra vars file on Landing Zone
+# shellcheck disable=SC2087,SC2086  # We want client-side expansion of $EXTRA_VARS_CONTENT
+ssh $SSH_OPTS "$LZ_SSH" "cat > $LZ_ENCLAVE_DIR/phase_vars.yaml" <<EOF
+$EXTRA_VARS_CONTENT
+EOF
+
+# Run ansible-playbook with the extra vars file
+LOG_FILE="deployment_$(basename "$PLAYBOOK_FILE" .yaml).log"
+info "Running playbook (logging to $LOG_FILE)..."
+# shellcheck disable=SC2086  # SSH_OPTS and ANSIBLE_EXTRA_ARGS need word splitting
+ssh -t $SSH_OPTS "$LZ_SSH" "cd $LZ_ENCLAVE_DIR && bash -c 'export PATH=/home/${LZ_USER}/sessions/1/bin:\$PATH KUBECONFIG=/home/${LZ_USER}/sessions/1/ocp-cluster/auth/kubeconfig; set -o pipefail; ansible-playbook playbooks/$PLAYBOOK_FILE -e @phase_vars.yaml $ANSIBLE_EXTRA_ARGS 2>&1 | tee $LOG_FILE'"
+
+PHASE_EXIT_CODE=$?
+
+echo ""
+if [ $PHASE_EXIT_CODE -eq 0 ]; then
+    success "Phase completed successfully: $PLAYBOOK_FILE"
+else
+    error "Phase failed: $PLAYBOOK_FILE (exit code: $PHASE_EXIT_CODE)"
+    info "Check logs: ssh ${LZ_SSH} 'cat $LZ_ENCLAVE_DIR/$LOG_FILE'"
+    exit 1
+fi
