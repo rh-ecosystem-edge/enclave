@@ -1,9 +1,3 @@
-{% set cert_manager_operator = (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first) %}
-{% set nfd_operator = plugin.operators | selectattr('name', 'equalto', 'nfd') | first %}
-{% set servicemesh_operator = plugin.operators | selectattr('name', 'equalto', 'servicemeshoperator3') | first %}
-{% set rhcl_operator = plugin.operators | selectattr('name', 'equalto', 'rhcl-operator') | first %}
-{% set leader_worker_set_operator = plugin.operators | selectattr('name', 'equalto', 'leader-worker-set') | first %}
-{% set rhods_operator = plugin.operators | selectattr('name', 'equalto', 'rhods-operator') | first %}
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
@@ -256,9 +250,9 @@ spec:
           channel: stable
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "nfd.{{ nfd_operator.version | replace('+', '-') }}"
+          startingCSV: "nfd.{{ (plugin.operators | selectattr('name', 'equalto', 'nfd') | first).version | replace('+', '-') }}"
         versions:
-          - "nfd.{{ nfd_operator.version | replace('+', '-') }}"
+          - "nfd.{{ (plugin.operators | selectattr('name', 'equalto', 'nfd') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
@@ -283,9 +277,9 @@ spec:
           channel: stable
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "servicemeshoperator3.v{{ servicemesh_operator.version | replace('+', '-') }}"
+          startingCSV: "servicemeshoperator3.v{{ (plugin.operators | selectattr('name', 'equalto', 'servicemeshoperator3') | first).version | replace('+', '-') }}"
         versions:
-          - "servicemeshoperator3.v{{ servicemesh_operator.version | replace('+', '-') }}"
+          - "servicemeshoperator3.v{{ (plugin.operators | selectattr('name', 'equalto', 'servicemeshoperator3') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
@@ -308,9 +302,9 @@ spec:
           channel: stable
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "rhcl-operator.v{{ rhcl_operator.version | replace('+', '-') }}"
+          startingCSV: "rhcl-operator.v{{ (plugin.operators | selectattr('name', 'equalto', 'rhcl-operator') | first).version | replace('+', '-') }}"
         versions:
-          - "rhcl-operator.v{{ rhcl_operator.version | replace('+', '-') }}"
+          - "rhcl-operator.v{{ (plugin.operators | selectattr('name', 'equalto', 'rhcl-operator') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
@@ -333,9 +327,9 @@ spec:
           channel: stable-v1.0
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "leader-worker-set.v{{ leader_worker_set_operator.version | replace('+', '-') }}"
+          startingCSV: "leader-worker-set.v{{ (plugin.operators | selectattr('name', 'equalto', 'leader-worker-set') | first).version | replace('+', '-') }}"
         versions:
-          - "leader-worker-set.v{{ leader_worker_set_operator.version | replace('+', '-') }}"
+          - "leader-worker-set.v{{ (plugin.operators | selectattr('name', 'equalto', 'leader-worker-set') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
@@ -360,9 +354,9 @@ spec:
           channel: fast-3.x
           source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "rhods-operator.{{ rhods_operator.version | replace('+', '-') }}"
+          startingCSV: "rhods-operator.{{ (plugin.operators | selectattr('name', 'equalto', 'rhods-operator') | first).version | replace('+', '-') }}"
         versions:
-          - "rhods-operator.{{ rhods_operator.version | replace('+', '-') }}"
+          - "rhods-operator.{{ (plugin.operators | selectattr('name', 'equalto', 'rhods-operator') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
@@ -380,14 +374,14 @@ spec:
         complianceType: musthave
         upgradeApproval: Automatic
         subscription:
-          name: {{ cert_manager_operator.name }}
-          namespace: {{ cert_manager_operator.namespace }}
-          channel: {{ cert_manager_operator.channel }}
+          name: openshift-cert-manager-operator
+          namespace: cert-manager-operator
+          channel: stable-v1
           source: {{ fleet_rh_operator_catalog }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_operator.csvVersionSeparator | default('.v') }}{{ cert_manager_operator.version | replace('+', '-') }}"
+          startingCSV: "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
         versions:
-          - "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_operator.csvVersionSeparator | default('.v') }}{{ cert_manager_operator.version | replace('+', '-') }}"
+          - "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:

@@ -21,9 +21,17 @@
   delay: "{{ k8s_delay }}"
   until: r_acm_policy_model_catalogsources is success
 
-- name: Reconcile OpenShift AI fleet operator policy
-  ansible.builtin.include_tasks:
-    file: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
+- name: Create ACM Policy for Model prerequisites
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_acm_policy_model_prerequisites
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_acm_policy_model_prerequisites is success
 
 - name: Create ACM Policy for Model operators CRD readiness
   environment:

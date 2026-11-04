@@ -8,20 +8,36 @@
       {{ (mirror_certified_rh_operator_catalog if plugin.catalog | default('redhat') == 'certified'
           else mirror_rh_operator_catalog) ~ '-' ~ plugin.name }}
 
-- name: Check for a plugin-specific fleet operator policy task
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
-  register: r_plugin_fleet_operator_policy_task
+- name: Reconcile OpenShift AI fleet operator policy
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy-operators.yaml.j2') | from_yaml }}"
+  register: r_reconcile_openshift_ai_operator_policy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_reconcile_openshift_ai_operator_policy is success
+  when: plugin.name == 'openshift-ai'
 
-- name: Reconcile plugin-specific fleet operator policy
-  ansible.builtin.include_tasks:
-    file: "{{ plugin_dir }}/tasks/reconcile-fleet-operator-policy.yaml"
-  when: r_plugin_fleet_operator_policy_task.stat.exists
+- name: Reconcile NVIDIA GPU fleet operator policy
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: present
+    namespace: openshift-acm-policies
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/10-policy.yaml.j2') | from_yaml }}"
+  register: r_reconcile_nvidia_gpu_operator_policy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_reconcile_nvidia_gpu_operator_policy is success
+  when: plugin.name == 'nvidia-gpu'
 
 - name: Reconcile shared fleet operator policy
   ansible.builtin.include_tasks: configure_operator_policies_fleet.yaml
   when:
-    - not r_plugin_fleet_operator_policy_task.stat.exists
+    - plugin.name not in ['openshift-ai', 'nvidia-gpu']
     - plugin.clusterSelector is defined
     - plugin.clusterSelector | length > 0
     - plugin.installOperatorsFleet | default(true) | bool
