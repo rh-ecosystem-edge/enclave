@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
@@ -314,6 +316,52 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
     mock_reconcile.assert_called_once_with(
         "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
+
+
+def test_mgmt_cluster_version_uses_config_platforms_override(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    config_file = tmp_path / "platforms.yaml"
+    config_file.write_text(
+        "openshift_versions:\n"
+        "  - version: 4.21.7\n"
+        "    default: true\n"
+        "  - version: 4.21.8\n",
+        encoding="utf-8",
+    )
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=config_file)
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+    dry_run = True
+    allow_not_recommended = False
+
+    default_result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"], env=_KC
+    )
+    assert default_result.exit_code == 0, default_result.output
+    mock_reconcile.assert_called_once_with(
+        "4.21.7", dry_run, 180, 60, allow_not_recommended
+    )
+
+    mock_reconcile.reset_mock()
+    override_result = CliRunner().invoke(
+        cli,
+        ["mgmt-cluster-version", "--version", "4.21.8", "--dry-run"],
+        env=_KC,
+    )
+    assert override_result.exit_code == 0, override_result.output
+    mock_reconcile.assert_called_once_with(
+        "4.21.8", dry_run, 180, 60, allow_not_recommended
+    )
+
+    mock_reconcile.reset_mock()
+    replaced_default_result = CliRunner().invoke(
+        cli,
+        ["mgmt-cluster-version", "--version", "4.20.32", "--dry-run"],
+        env=_KC,
+    )
+    assert replaced_default_result.exit_code != 0
+    assert "Allowed: 4.21.7, 4.21.8" in replaced_default_result.output
+    mock_reconcile.assert_not_called()
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
