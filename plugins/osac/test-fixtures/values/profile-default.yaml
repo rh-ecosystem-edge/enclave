@@ -1,5 +1,5 @@
 ---
-# Profile: default (caas + vmaas)
+# Profile: default (caas + bmaas)
 #
 # Override fixture for the OSAC values overlay schema check
 # (ci/verification/validate_osac_values.sh). Contains ONLY the config
@@ -8,5 +8,5 @@
 # rest from plugins/osac/defaults.yaml.
 #
 # This profile deliberately overrides nothing: it exercises the shipped
-# defaults (osacProfilesList: [caas, vmaas], all backends disabled, built-in DB).
+# defaults (osacProfilesList: [caas, bmaas], all backends disabled, built-in DB).
 osac_profile_name: default

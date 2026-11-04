@@ -1,8 +1,8 @@
 ---
-# Profile: Netris network backend (global.networking facade)
+# Profile: Netris Fabric Manager (provider networking enabled)
 #
-# Exercises osacNetworking → Helm global.networking plus AAP IG enable flags.
-# Does not dual-write AAP NETRIS_* (chart derives those from the facade).
+# Exercises osacNetworking.netris → AAP networkFulfillment/clusterFulfillment
+# instance-group config and secret, plus the networkClass passthrough.
 osac_profile_name: netris
 osacNetworking:
   fabricManager: netris
@@ -18,5 +18,12 @@ osacNetworking:
     mgmtVpcId: "1"
     mgmtVpcName: mgmt
     resourceClassMap: '{"default": "default"}'
+  networkClass:
+    defaults:
+      virtualNetworkIPv4CIDR: "172.16.0.0/16"
+      subnetIPv4CIDR: "172.16.0.0/24"
+      egressRules:
+        - protocol: PROTOCOL_ALL
+          ipv4Cidr: "0.0.0.0/0"
 osacDnsClass: dns.route53.dns
 osacDnsZone: placeholder.example.com

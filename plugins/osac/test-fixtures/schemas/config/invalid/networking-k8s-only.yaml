@@ -1,0 +1,5 @@
+---
+# Invalid: k8s_only was removed by the network manager contract
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
+osacNetworking:
+  k8sManager: k8s_only

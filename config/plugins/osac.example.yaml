@@ -10,7 +10,11 @@
 # osacAapLicenseFile: "/path/to/aap-license.zip"
 
 # Optional: override OSAC Helm chart version (default from plugin defaults.yaml)
-# osacChartVersion: "0.0.9-nightly.20260911.6d92ac5.82.1"
+# osacChartVersion: "0.0.64-nightly.20261103.0d7c82b.148.1"
+#
+# OSAC supports fresh installs only: deploy fails if an installed OSAC release
+# uses a different chart version, unless this is set (unsupported upgrade):
+# osacAllowChartVersionChange: true
 
 # Optional: enabled service profiles (default: [caas, bmaas])
 # See docs/OSAC_DEPLOYMENT.md for valid profiles and prerequisites.
@@ -46,40 +50,41 @@
 #   aap_bootstrap: "ghcr.io/osac-project/osac-aap:v0.0.4"
 #   cli: "quay.io/openshift/origin-cli:4.20.0"
 
-# --- Networking (global.networking facade) ---
+# --- Networking (global.networking) ---
 # Maps to Helm global.networking (osac-installer $defs/globalNetworking).
-# See docs/OSAC_DEPLOYMENT.md and:
+# Fixed at installation. See docs/OSAC_DEPLOYMENT.md and:
 # https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md
 #
-# Default (agentless / k8s_only) — also the plugin defaults:
+# Default (no fabric), also the plugin defaults: provider networking off;
+# fabricManager only names the manager. k8sManager defaults to cudn_evpn with
+# vmaas, otherwise "":
 # osacNetworking:
-#   fabricManager: ""
-#   k8sManager: "k8s_only"
+#   provisioningEnabled: false
+#   fabricManager: "netris"
 #
-# Netris fabric manager (inline password — preferred for wizard-driven deploys):
+# Netris Fabric Manager (setting netris turns provider networking on):
 # osacNetworking:
 #   fabricManager: "netris"
-#   k8sManager: ""
 #   netris:
 #     controllerUrl: "https://ctl.netris.io"
 #     credentials:
 #       username: "netris"
-#       password: "changeme"
+#       password: "<netris-password>"
 #     siteId: "1"
 #     tenantId: "1"
 #     tenantName: "Admin"
-#     # Optional facade extras (networkingNetris only):
+#     # Optional CaaS settings:
 #     # mgmtVpcId: "4"
 #     # mgmtVpcName: "RH-Infra"
 #     # resourceClassMap: '{"fc430": {"server_cluster_template_id": 89, "mgmt_interface": "ens4", "vpc_interfaces": ["ens13"]}}'
-#   # Optional NetworkClass overrides (CIDRs / NAT / egressRules):
+#   # Optional NetworkClass values:
 #   # networkClass:
 #   #   defaults:
-#   #     enableNatGateway: true
+#   #     virtualNetworkIPv4CIDR: "172.16.0.0/16"
+#   #     subnetIPv4CIDR: "172.16.0.0/24"
 #
-# Expert-only fields that used to live under flat osacNetris* (SSH keys, AWS
-# keys, hosted-cluster domains, …) are NOT part of osacNetworking — configure
-# them via aap.instanceGroups + global.expertOverrides.aap if needed.
+# Other Netris settings (SSH keys, AWS keys, hosted-cluster domains) are not
+# part of osacNetworking, and Enclave does not set them.
 #
 # Optional DNS (still set on AAP IGs when Netris is selected):
 # osacDnsClass: "dns.route53.dns"

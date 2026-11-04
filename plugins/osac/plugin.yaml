@@ -35,6 +35,7 @@ additionalImages:
   - ghcr.io/osac-project/osac-operator:latest
   - ghcr.io/osac-project/fulfillment-service:latest
   - ghcr.io/osac-project/osac-aap:latest
+  - ghcr.io/osac-project/metering-service:latest
   - docker.io/envoyproxy/envoy:v1.33.0
   - quay.io/openshift/origin-cli:4.20.0
   - quay.io/keycloak/keycloak:26.3

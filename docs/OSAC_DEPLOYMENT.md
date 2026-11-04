@@ -97,7 +97,8 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `osacAapLicenseFile` | string | Yes | — | Path to AAP license manifest.zip on the Landing Zone |
-| `osacChartVersion` | string | No | `0.0.9-nightly.20260911.6d92ac5.82.1` | OSAC Helm chart version to deploy |
+| `osacChartVersion` | string | No | `0.0.64` | OSAC Helm chart version to deploy |
+| `osacAllowChartVersionChange` | boolean | No | `false` | Allow upgrading an installed OSAC release to a different chart version (unsupported: OSAC supports fresh installs only) |
 | `osacProfilesList` | list | No | `[caas, bmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
@@ -305,41 +306,60 @@ Helm `global.networking`, mirroring osac-installer
 [`$defs/globalNetworking`](https://github.com/osac-project/osac/blob/main/osac-installer/charts/osac/values.schema.json)
 ([network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md)).
 
-**Defaults (agentless):**
+Values are fixed at installation (network manager contract); changing them
+requires a fresh OSAC install with a new Fulfillment database. Fulfillment
+stores `provisioningEnabled` at first start and refuses to start on a later
+mismatch, so a reinstall against the existing database (and its data) fails.
+
+**Defaults (no fabric):**
 
 ```yaml
 osacNetworking:
-  fabricManager: ""
-  k8sManager: "k8s_only"
+  provisioningEnabled: false
+  fabricManager: "netris"
 ```
 
-**Netris (inline password):**
+Provider networking is off, so networking resources become READY without
+provider work. The chart still requires a `fabricManager` name; `netris` only
+names it, as in upstream installer CI. `k8sManager` defaults to `cudn_evpn`
+when `vmaas` is in `osacProfilesList` (the chart requires one with VMaaS),
+otherwise `""`.
+
+**Netris:**
 
 ```yaml
 osacNetworking:
   fabricManager: "netris"
-  k8sManager: ""
   netris:
     controllerUrl: "https://ctl.netris.io"
     credentials:
       username: "netris"
-      password: "changeme"
+      password: "<netris-password>"
     siteId: "1"
     tenantId: "1"
     tenantName: "Admin"
 ```
 
-When `fabricManager` is `netris`, Enclave turns on the AAP instance groups
-used for cluster and network fulfillment (`clusterFulfillment` and
-`networkFulfillment`). The OSAC Helm chart then fills in the Netris
-connection settings those groups need from `global.networking.netris`
-(you do not set AAP env vars by hand). For what instance groups are and how
-they are configured, see
+Setting `netris` turns provider networking on (`provisioningEnabled` defaults
+to `true`). Enclave renders the settings into the AAP instance groups:
+connection settings into `networkFulfillment` (networking jobs) and CaaS
+settings into `clusterFulfillment`. The password is written to both
+chart-managed instance-group Secrets (`network-fulfillment-ig`,
+`cluster-fulfillment-ig`) in the `osac` namespace; networking jobs read only
+`network-fulfillment-ig`, so an externally managed `netris-credentials`
+Secret is not supported. See
 [AAP Configuration](https://github.com/osac-project/osac/blob/main/osac-installer/docs/aap-configuration.md).
+`config/plugins/osac.yaml` then holds the password in plain text: restrict it
+with `chmod 600 config/plugins/osac.yaml`.
 
-Extra settings such as SSH bastion/server keys, AWS keys, or hosted-cluster
-domains are not part of `osacNetworking`. For those, use expert AAP / Helm
-overrides (see [network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md)).
+Optional `networkClass` values (`defaults`, `eastWestCapabilities`,
+`addressPlan`) pass through to `global.networking.networkClass`; see
+[network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md).
+
+Other Netris settings (SSH keys, AWS keys, hosted-cluster domains) are not
+part of `osacNetworking`, and Enclave does not set them; see
+[network-backend.md](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md)
+for the chart keys.
 
 ## Post-Install Steps
 

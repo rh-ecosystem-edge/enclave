@@ -1,6 +1,6 @@
 ---
-# Invalid: fabricManager=netris requires netris connection fields
-osacAapLicenseFile: /tmp/manifest.zip
+# Invalid: provisioningEnabled=true requires netris connection settings
+osacAapLicenseFile: "/home/cloud-user/aap-license.zip"
 osacNetworking:
+  provisioningEnabled: true
   fabricManager: netris
-  k8sManager: ""

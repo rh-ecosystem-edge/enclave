@@ -860,6 +860,9 @@
       metadata:
         name: config-as-code-manifest-ig
         namespace: osac
+        labels:
+          # Required by the chart's install preflight (aap-license-secret check)
+          osac.openshift.io/project: osac-aap
       type: Opaque
       data:
         license.zip: "{{ lookup('ansible.builtin.file', osacAapLicenseFile) | b64encode }}"
