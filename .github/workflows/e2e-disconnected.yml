@@ -81,6 +81,9 @@ permissions:
 
 jobs:
   e2e:
+    # TEMPORARY: skip generic e2e on the spoke branch while iterating
+    # on the dedicated E2E Spoke OpenShift AI run. Remove before merge.
+    if: github.head_ref != 'feature/OSAC-6417-import-spoke-acm'
     uses: ./.github/workflows/e2e-deployment.yml
     with:
       mode: disconnected
