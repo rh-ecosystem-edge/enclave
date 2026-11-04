@@ -8,8 +8,6 @@ operators:
     version: 4.20.0-202602261925
     channel: stable
     init_version: 4.20.0-202602261925
-    namespace: openshift-nfd
-    csvVersionSeparator: "."
   - name: limitador-operator
     version: 1.4.2
     channel: stable
@@ -26,25 +24,18 @@ operators:
     version: 1.4.3
     channel: stable
     init_version: 1.3.0
-    namespace: openshift-operators
   - name: leader-worker-set
     version: 1.0.0
     channel: stable-v1.0
     init_version: 1.0.0
-    namespace: openshift-lws-operator
   - name: rhods-operator
     version: 3.5.0
     channel: fast-3.x
     init_version: 3.3.0
-    namespace: redhat-ods-operator
-    global: true
-    csvVersionSeparator: "."
   - name: servicemeshoperator3
     version: 3.2.2
     channel: stable
     init_version: 3.1.0
-    namespace: openshift-operators
-    source: redhat-operators
 
 installOperators: false
 

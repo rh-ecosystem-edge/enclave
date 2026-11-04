@@ -70,7 +70,7 @@ registries:
 | `type` | `foundation` -- deploys before core operators (storage, networking). `addon` -- deploys after core operators and Quay mirroring. |
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
-| `operators` | List of OLM operators to install. Each entry provides its package name, target `version`, and channel; fleet-managed entries also provide a namespace. When deployed to the fleet, an ACM `OperatorPolicy` pins the subscription to the target CSV. `csvNames` overrides the CSV name prefix when it differs from the package name. `csvVersionSeparator` overrides the default `.v` separator. |
+| `operators` | List of OLM operators to install. Each entry provides its package name, target `version`, and channel. The shared fleet policy also uses the operator namespace. When deployed to the fleet, an ACM `OperatorPolicy` pins the subscription to the target CSV. `csvNames` overrides the CSV name prefix when it differs from the package name. `csvVersionSeparator` overrides the default `.v` separator. |
 | `init_version` | Minimum operator bundle version included when mirroring. It does not set the fleet install target; fleet policies use `version`. |
 | `installOperators` | Set to `false` to skip installing operators on the management cluster. Fleet installation is still controlled by `clusterSelector` and `installOperatorsFleet`. Defaults to `true`. |
 | `installOperatorsFleet` | Controls operator policy creation for fleet. Set to `false` to deploy only the catalog source to fleet when `clusterSelector` is set (no operator subscriptions). Defaults to `true`. Requires `clusterSelector`. |

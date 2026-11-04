@@ -1,5 +1,9 @@
 {% set cert_manager_operator = (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first) %}
-{% set fleet_operator_names = ['nfd', 'servicemeshoperator3', 'rhcl-operator', 'leader-worker-set', 'rhods-operator'] %}
+{% set nfd_operator = plugin.operators | selectattr('name', 'equalto', 'nfd') | first %}
+{% set servicemesh_operator = plugin.operators | selectattr('name', 'equalto', 'servicemeshoperator3') | first %}
+{% set rhcl_operator = plugin.operators | selectattr('name', 'equalto', 'rhcl-operator') | first %}
+{% set leader_worker_set_operator = plugin.operators | selectattr('name', 'equalto', 'leader-worker-set') | first %}
+{% set rhods_operator = plugin.operators | selectattr('name', 'equalto', 'rhods-operator') | first %}
 apiVersion: policy.open-cluster-management.io/v1
 kind: Policy
 metadata:
@@ -183,7 +187,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: {{ cert_manager_operator.name }}
+              name: cert-manager-operator
               namespace: cert-manager-operator
             spec:
               targetNamespaces:
@@ -202,7 +206,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: leader-worker-set
+              name: openshift-lws-operator
               namespace: openshift-lws-operator
             spec:
               targetNamespaces:
@@ -232,41 +236,139 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: rhods-operator
+              name: rhods-operator-group
               namespace: redhat-ods-operator
             spec: {}
-{% for operator in plugin.operators | selectattr('name', 'in', fleet_operator_names) %}
-{% set csv_version_separator = operator.csvVersionSeparator | default('.v') %}
+
   - objectDefinition:
       apiVersion: policy.open-cluster-management.io/v1beta1
       kind: OperatorPolicy
       metadata:
-        name: openshift-ai-{{ operator.name }}
+        name: openshift-ai-nfd
       spec:
         remediationAction: enforce
         severity: medium
         complianceType: musthave
         upgradeApproval: Automatic
         subscription:
-          name: {{ operator.name }}
-          namespace: {{ operator.namespace }}
-          channel: {{ operator.channel }}
-          source: {{ operator.source | default(catalog_mirror) }}
+          name: nfd
+          namespace: openshift-nfd
+          channel: stable
+          source: {{ catalog_mirror }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "{{ operator.csvNames | default([operator.name]) | first }}{{ csv_version_separator }}{{ operator.version | replace('+', '-') }}"
+          startingCSV: "nfd.{{ nfd_operator.version | replace('+', '-') }}"
         versions:
-          - "{{ operator.csvNames | default([operator.name]) | first }}{{ csv_version_separator }}{{ operator.version | replace('+', '-') }}"
+          - "nfd.{{ nfd_operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
-          name: "{{ 'global-operators' if operator.namespace == 'openshift-operators' else operator.name }}"
-          namespace: {{ operator.namespace }}
-{% if operator.namespace != 'openshift-operators' and not (operator.global | default(false) | bool) %}
+          name: nfd
+          namespace: openshift-nfd
           targetNamespaces:
-            - {{ operator.namespace }}
-{% endif %}
-{% endfor %}
-{% set cert_manager_csv_version_separator = cert_manager_operator.csvVersionSeparator | default('.v') %}
+            - openshift-nfd
+
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-servicemeshoperator3
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: servicemeshoperator3
+          namespace: openshift-operators
+          channel: stable
+          source: {{ catalog_mirror }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "servicemeshoperator3.v{{ servicemesh_operator.version | replace('+', '-') }}"
+        versions:
+          - "servicemeshoperator3.v{{ servicemesh_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: global-operators
+          namespace: openshift-operators
+
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-rhcl-operator
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: rhcl-operator
+          namespace: openshift-operators
+          channel: stable
+          source: {{ catalog_mirror }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "rhcl-operator.v{{ rhcl_operator.version | replace('+', '-') }}"
+        versions:
+          - "rhcl-operator.v{{ rhcl_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: global-operators
+          namespace: openshift-operators
+
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-leader-worker-set
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: leader-worker-set
+          namespace: openshift-lws-operator
+          channel: stable-v1.0
+          source: {{ catalog_mirror }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "leader-worker-set.v{{ leader_worker_set_operator.version | replace('+', '-') }}"
+        versions:
+          - "leader-worker-set.v{{ leader_worker_set_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: openshift-lws-operator
+          namespace: openshift-lws-operator
+          targetNamespaces:
+            - openshift-lws-operator
+
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
+        name: openshift-ai-rhods-operator
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: rhods-operator
+          namespace: redhat-ods-operator
+          channel: fast-3.x
+          source: {{ catalog_mirror }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "rhods-operator.{{ rhods_operator.version | replace('+', '-') }}"
+        versions:
+          - "rhods-operator.{{ rhods_operator.version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: rhods-operator-group
+          namespace: redhat-ods-operator
+
   - objectDefinition:
       apiVersion: policy.open-cluster-management.io/v1beta1
       kind: OperatorPolicy
@@ -283,13 +385,13 @@ spec:
           channel: {{ cert_manager_operator.channel }}
           source: {{ fleet_rh_operator_catalog }}
           sourceNamespace: openshift-marketplace
-          startingCSV: "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_csv_version_separator }}{{ cert_manager_operator.version | replace('+', '-') }}"
+          startingCSV: "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_operator.csvVersionSeparator | default('.v') }}{{ cert_manager_operator.version | replace('+', '-') }}"
         versions:
-          - "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_csv_version_separator }}{{ cert_manager_operator.version | replace('+', '-') }}"
+          - "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_operator.csvVersionSeparator | default('.v') }}{{ cert_manager_operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
         operatorGroup:
-          name: {{ cert_manager_operator.name }}
-          namespace: {{ cert_manager_operator.namespace }}
+          name: cert-manager-operator
+          namespace: cert-manager-operator
           targetNamespaces:
-            - {{ cert_manager_operator.namespace }}
+            - cert-manager-operator
