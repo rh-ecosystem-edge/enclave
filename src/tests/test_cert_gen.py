@@ -1,4 +1,4 @@
-"""Unit tests for enclave.cert_gen.main."""
+"""Unit tests for enclave_ci.cert_gen.main."""
 
 import subprocess
 from pathlib import Path
@@ -12,7 +12,7 @@ from click.testing import CliRunner
 from cryptography import x509
 from cryptography.hazmat.primitives.serialization import Encoding
 
-from enclave.cert_gen.main import (
+from enclave_ci.cert_gen.main import (
     CertIssuanceError,
     RootCaExtractionError,
     _fetch_cert,
@@ -179,7 +179,7 @@ class TestExtractRootCa:
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_resp.raw.read.return_value = root_der
 
-        with patch("enclave.cert_gen.main.requests.get", return_value=mock_resp):
+        with patch("enclave_ci.cert_gen.main.requests.get", return_value=mock_resp):
             result = extract_root_ca(chain_path)
 
         cert = x509.load_pem_x509_certificate(result.encode())
@@ -205,7 +205,7 @@ class TestExtractRootCa:
         mock_resp.raw.read.return_value = inter_der
 
         with (
-            patch("enclave.cert_gen.main.requests.get", return_value=mock_resp),
+            patch("enclave_ci.cert_gen.main.requests.get", return_value=mock_resp),
             pytest.raises(RootCaExtractionError, match="after 5 AIA hops"),
         ):
             extract_root_ca(chain_path)
@@ -221,7 +221,7 @@ class TestFetchCert:
     def test_request_exception_raises(self) -> None:
         with (
             patch(
-                "enclave.cert_gen.main.requests.get",
+                "enclave_ci.cert_gen.main.requests.get",
                 side_effect=requests.RequestException("timeout"),
             ),
             pytest.raises(RootCaExtractionError, match="Failed to fetch AIA issuer"),
@@ -234,7 +234,7 @@ class TestFetchCert:
         mock_resp.__exit__ = MagicMock(return_value=False)
         mock_resp.raw.read.return_value = b"not a cert"
         with (
-            patch("enclave.cert_gen.main.requests.get", return_value=mock_resp),
+            patch("enclave_ci.cert_gen.main.requests.get", return_value=mock_resp),
             pytest.raises(RootCaExtractionError, match="Cannot parse cert"),
         ):
             _fetch_cert("http://example.com/cert.crt")
@@ -508,7 +508,7 @@ class TestCliIngressApi:
         runner = CliRunner()
         san = "api.smoke.nodns.in"
         with patch(
-            "enclave.cert_gen.main.issue_cert",
+            "enclave_ci.cert_gen.main.issue_cert",
             side_effect=_make_issue_cert_side_effect(san),
         ):
             result = runner.invoke(
@@ -524,7 +524,7 @@ class TestCliIngressApi:
     def test_issue_cert_failure(self) -> None:
         runner = CliRunner()
         with patch(
-            "enclave.cert_gen.main.issue_cert",
+            "enclave_ci.cert_gen.main.issue_cert",
             side_effect=CertIssuanceError("cert failed"),
         ):
             result = runner.invoke(
@@ -570,7 +570,7 @@ class TestCliIronic:
         runner = CliRunner()
         san = "ironic.smoke.nodns.in"
         with patch(
-            "enclave.cert_gen.main.issue_cert",
+            "enclave_ci.cert_gen.main.issue_cert",
             side_effect=_make_issue_cert_side_effect(san),
         ):
             result = runner.invoke(

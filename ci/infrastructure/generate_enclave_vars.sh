@@ -188,10 +188,10 @@ done
 CLUSTER_FQDN="${CLUSTER_NAME}.${BASE_DOMAIN}"
 
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
-    info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
+    info "Requesting real TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-ci cert-gen..."
     CERTS_VARS_TEMP=$(mktemp "$(dirname "$CERTS_VARS_OUTPUT")/certificates.XXXXXX")
     trap 'rm -f "$CERTS_VARS_TEMP"' EXIT
-    uv run --group cert-gen enclave-cert-gen ingress-api \
+    uv run --package enclave-ci enclave-ci cert-gen ingress-api \
         --san "api.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
         --san "*.apps.${CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
         --type "${ENCLAVE_CERT_TYPE}" \
@@ -386,7 +386,7 @@ info "  - Storage: ${ACTIVE_STORAGE} with /dev/vda root disk"
 info "  - Registry: ${ACTIVE_REGISTRY}"
 info "  - Pull secret: Embedded in config/global.yaml (written to pullSecretPath at runtime)"
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
-    info "  - SSL certificates: Real CA (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen"
+    info "  - SSL certificates: Real CA (${ENCLAVE_CERT_TYPE}) via enclave-ci cert-gen"
 else
     info "  - SSL certificates: Self-signed (generated for CI/testing)"
 fi

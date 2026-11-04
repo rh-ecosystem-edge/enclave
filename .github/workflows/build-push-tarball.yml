@@ -88,6 +88,8 @@ jobs:
               --exclude='.coderabbit.yaml' \
               --exclude='test-fixtures' \
               --exclude='plugins/*/test-fixtures' \
+              --exclude='src/enclave_ci' \
+              --exclude='src/tests' \
               -czvf /tmp/enclave.tar.gz .
           mv /tmp/enclave.tar.gz .
           ls -lh enclave.tar.gz
@@ -148,6 +150,8 @@ jobs:
             ".github/"
             "renovate.json"
             "Makefile.ci"
+            "src/enclave_ci/"
+            "src/tests/"
           )
 
           for path in "${EXCLUDED_PATHS[@]}"; do
