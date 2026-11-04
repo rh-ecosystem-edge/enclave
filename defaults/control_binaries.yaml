@@ -10,5 +10,5 @@ control_binaries:
     url: "https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.12/mirror-registry-amd64.tar.gz"
     checksum: "sha256:6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
   oc_mirror:
-    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.20.15/oc-mirror.tar.gz"
-    checksum: "sha256:59791d2e6b84ee380bc6a180e4e5e2006590ca1e0f146b0176819386e11e26d1"
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.21.32/oc-mirror.tar.gz"
+    checksum: "sha256:730660229becb6526725bd017e9482b3d01bd9b725f88065e702027cd40de6ca"
