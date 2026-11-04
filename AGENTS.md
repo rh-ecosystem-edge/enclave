@@ -119,8 +119,9 @@ root `[tool.uv.workspace] members` and are excluded from the release tarball
 **CLIs.** Click-based, one console script per package: `enclave = enclave.cli:cli`
 (root), `enclave-ci = enclave_ci.cli:cli` (member). Each is a top-level group with
 subcommands/subgroups (e.g. `enclave reconcile`, `enclave tools`,
-`enclave-ci cert-gen`). Entry-point CLIs call `configure_logging()` from
-`src/enclave/utils.py`.
+`enclave-ci cert-gen`). The `enclave` entry points call `configure_logging()` from
+`src/enclave/utils.py`. A member does not depend on `enclave`, so it must not import
+that helper; it handles its own logging (add a member-local helper if one is needed).
 
 **Dependencies.** Pin exact versions with `==` for every runtime dependency,
 including the `hatchling` build backend in each `[build-system] requires`. Member
