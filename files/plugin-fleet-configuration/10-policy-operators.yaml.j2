@@ -75,4 +75,11 @@ spec:
           - "{{ operator.csvNames | default([operator.name]) | first }}{{ operator.csvVersionSeparator | default('.v') }}{{ operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: "{{ 'global-operators' if operator.namespace == 'openshift-operators' else operator.name }}"
+          namespace: {{ operator.namespace }}
+{% if operator.namespace != 'openshift-operators' and not (operator.global | default(false) | bool) %}
+          targetNamespaces:
+            - {{ operator.namespace }}
+{% endif %}
 {% endfor %}

@@ -43,7 +43,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: nvidia-gpu-operator-group
+              name: {{ gpu_operator.name }}
               namespace: nvidia-gpu-operator
             spec:
               targetNamespaces:
@@ -161,3 +161,8 @@ spec:
           - "{{ gpu_operator.csvNames | default([gpu_operator.name]) | first }}{{ gpu_csv_version_separator }}{{ gpu_operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: {{ gpu_operator.name }}
+          namespace: {{ gpu_operator.namespace }}
+          targetNamespaces:
+            - {{ gpu_operator.namespace }}

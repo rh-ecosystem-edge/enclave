@@ -37,6 +37,7 @@ operators:
     channel: fast-3.x
     init_version: 3.3.0
     namespace: redhat-ods-operator
+    global: true
     csvVersionSeparator: "."
   - name: servicemeshoperator3
     version: 3.2.2

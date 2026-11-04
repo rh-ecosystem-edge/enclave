@@ -183,7 +183,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: cert-manager-operator
+              name: {{ cert_manager_operator.name }}
               namespace: cert-manager-operator
             spec:
               targetNamespaces:
@@ -202,7 +202,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: openshift-lws-operator
+              name: leader-worker-set
               namespace: openshift-lws-operator
             spec:
               targetNamespaces:
@@ -232,7 +232,7 @@ spec:
             apiVersion: operators.coreos.com/v1
             kind: OperatorGroup
             metadata:
-              name: rhods-operator-group
+              name: rhods-operator
               namespace: redhat-ods-operator
             spec: {}
 {% for operator in plugin.operators | selectattr('name', 'in', fleet_operator_names) %}
@@ -258,6 +258,13 @@ spec:
           - "{{ operator.csvNames | default([operator.name]) | first }}{{ csv_version_separator }}{{ operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: "{{ 'global-operators' if operator.namespace == 'openshift-operators' else operator.name }}"
+          namespace: {{ operator.namespace }}
+{% if operator.namespace != 'openshift-operators' and not (operator.global | default(false) | bool) %}
+          targetNamespaces:
+            - {{ operator.namespace }}
+{% endif %}
 {% endfor %}
 {% set cert_manager_csv_version_separator = cert_manager_operator.csvVersionSeparator | default('.v') %}
   - objectDefinition:
@@ -281,3 +288,8 @@ spec:
           - "{{ cert_manager_operator.csvNames | default([cert_manager_operator.name]) | first }}{{ cert_manager_csv_version_separator }}{{ cert_manager_operator.version | replace('+', '-') }}"
         complianceConfig:
           upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: {{ cert_manager_operator.name }}
+          namespace: {{ cert_manager_operator.namespace }}
+          targetNamespaces:
+            - {{ cert_manager_operator.namespace }}
