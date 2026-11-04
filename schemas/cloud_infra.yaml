@@ -9,4 +9,4 @@ properties:
     type: array
     description: List of discovery hosts for hardware discovery
     items:
-      "$ref": "#/definitions/hostEntry"
+      "$ref": "#/definitions/discoveryHostEntry"

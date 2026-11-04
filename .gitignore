@@ -4,6 +4,8 @@ config/*.json
 !config/*.example.yaml
 config/plugins/*.yaml
 !config/plugins/*.example.yaml
+config/plugins/boot/*.yaml
+!config/plugins/boot/*.example.yaml
 debug.yaml
 .claude/settings.local.json
 tmp/

@@ -1,0 +1,26 @@
+---
+# Run the post-install hook of every boot plugin in use, then the cleanup hook of
+# every boot plugin in use, even if a post-install hook fails.
+
+- name: Load boot plugins
+  ansible.builtin.include_tasks: load_plugins.yaml
+
+- name: Run post-install and cleanup hooks of the boot plugins
+  block:
+    - name: Run post-install hook of each boot plugin
+      ansible.builtin.include_tasks: run_hook.yaml
+      vars:
+        boot_hook: post-install
+      loop: "{{ boot_plugins }}"
+      loop_control:
+        loop_var: boot_plugin
+        label: "{{ boot_plugin.name }}"
+  always:
+    - name: Run cleanup hook of each boot plugin
+      ansible.builtin.include_tasks: run_hook.yaml
+      vars:
+        boot_hook: cleanup
+      loop: "{{ boot_plugins }}"
+      loop_control:
+        loop_var: boot_plugin
+        label: "{{ boot_plugin.name }}"

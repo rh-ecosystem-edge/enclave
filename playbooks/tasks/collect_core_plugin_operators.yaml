@@ -6,7 +6,7 @@
 
 - name: Find plugin descriptors
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../plugins"
+    paths: "{{ (playbook_dir ~ '/../plugins') | realpath }}"
     patterns: "plugin.yaml"
     recurse: true
     depth: 2

@@ -1,0 +1,12 @@
+---
+# Run the setup and boot hooks of one boot plugin (boot_plugin).
+
+- name: Run setup hook of boot plugin {{ boot_plugin.name }}
+  ansible.builtin.include_tasks: run_hook.yaml
+  vars:
+    boot_hook: setup
+
+- name: Run boot hook of boot plugin {{ boot_plugin.name }}
+  ansible.builtin.include_tasks: run_hook.yaml
+  vars:
+    boot_hook: boot

@@ -64,7 +64,7 @@
 
 - name: Find all plugin.yaml files
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../../plugins"
+    paths: "{{ (playbook_dir ~ '/../../plugins') | realpath }}"
     patterns: "plugin.yaml"
     recurse: true
     depth: 2
@@ -79,11 +79,13 @@
   loop_control:
     label: "{{ item.path | dirname | basename }}"
 
+# plugins/boot holds boot plugins (plugins/boot/<name>), not a foundation/addon plugin.
 - name: Find plugin directories
   ansible.builtin.find:
-    paths: "{{ playbook_dir }}/../../plugins"
+    paths: "{{ (playbook_dir ~ '/../../plugins') | realpath }}"
     file_type: directory
     depth: 1
+    excludes: boot
   register: r_plugin_dirs
 
 - name: Validate plugin defaults against schemas/defaults.yaml (if present)
@@ -202,6 +204,45 @@
   loop_control:
     label: "{{ item.item.0.item.path | basename }}/config/invalid/{{ item.item.1.path | basename }}"
   when: r_config_invalid_results.results is defined
+
+- name: Find boot plugin config valid fixtures
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../../test-fixtures/plugins/boot"
+    patterns: "*.yaml"
+    recurse: true
+  register: r_boot_plugin_config_fixtures
+
+- name: Validate boot plugin config valid fixtures (must pass)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../plugins/boot/' ~ _plugin ~ '/schemas/config.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+  vars:
+    _plugin: "{{ item.path | regex_search('test-fixtures/plugins/boot/[^/]+') | basename }}"
+  loop: "{{ r_boot_plugin_config_fixtures.files | selectattr('path', 'search', '/config/valid/') | list }}"
+  loop_control:
+    label: "{{ _plugin }}/config/valid/{{ item.path | basename }}"
+
+- name: Validate boot plugin config invalid fixtures (must fail)
+  ansible.utils.validate:
+    data: "{{ lookup('ansible.builtin.file', item.path) | from_yaml | to_json }}"
+    criteria: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../../plugins/boot/' ~ _plugin ~ '/schemas/config.yaml') | from_yaml | to_json }}"
+    engine: ansible.utils.jsonschema
+  vars:
+    _plugin: "{{ item.path | regex_search('test-fixtures/plugins/boot/[^/]+') | basename }}"
+  loop: "{{ r_boot_plugin_config_fixtures.files | selectattr('path', 'search', '/config/invalid/') | list }}"
+  loop_control:
+    label: "{{ _plugin }}/config/invalid/{{ item.path | basename }}"
+  register: r_boot_config_invalid_results
+  ignore_errors: true
+
+- name: Assert boot plugin config invalid fixtures failed validation
+  ansible.builtin.assert:
+    that: item.failed
+    fail_msg: "Invalid boot plugin config fixture {{ item.item.path | basename }} unexpectedly passed schema validation"
+  loop: "{{ r_boot_config_invalid_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.path | basename }}"
 
 - name: Include deployment vars
   ansible.builtin.include_vars: ../../defaults/platforms.yaml

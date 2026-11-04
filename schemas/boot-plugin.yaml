@@ -1,0 +1,32 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+version: "1.0"
+title: Boot plugin descriptor
+description: >-
+  Descriptor of a boot plugin (plugins/boot/<name>/plugin.yaml). Self-contained: it ships with
+  the enclave package and is used without schemas/definitions.yaml.
+type: object
+
+additionalProperties: false
+properties:
+  name:
+    type: string
+    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    description: Plugin name. Must match the plugin directory name.
+  type:
+    const: boot
+    description: Plugin type. Always boot.
+  description:
+    type: string
+    minLength: 1
+    description: One-line description of how the plugin boots hosts.
+  discoveryTimeout:
+    type: integer
+    minimum: 60
+    description: >-
+      Seconds to wait for the rendezvous host to become reachable and for the hosts to register
+      with Assisted Service. Default: 600.
+required:
+  - name
+  - type
+  - description

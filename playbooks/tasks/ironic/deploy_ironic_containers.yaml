@@ -1,5 +1,6 @@
 ---
-# Ironic ephemeral container deployment (non-persistent path)
+# Shared Ironic tasks library: ephemeral (rootless) Ironic containers.
+# Included by deploy_ironic.yaml; not meant to be included directly.
 
 - name: Create metal3-ironic pod
   containers.podman.podman_pod:

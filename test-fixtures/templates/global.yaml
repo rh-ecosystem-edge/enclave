@@ -33,21 +33,12 @@ agent_hosts:
   - name: validation-node-01
     macAddress: "00:00:00:00:00:01"
     ipAddress: 192.0.2.10
-    redfish: 192.0.2.100
     rootDisk: /dev/sda
-    redfishUser: admin
-    redfishPassword: admin
   - name: validation-node-02
     macAddress: "00:00:00:00:00:02"
     ipAddress: 192.0.2.11
-    redfish: 192.0.2.101
     rootDisk: /dev/sda
-    redfishUser: admin
-    redfishPassword: admin
   - name: validation-node-03
     macAddress: "00:00:00:00:00:03"
     ipAddress: 192.0.2.12
-    redfish: 192.0.2.102
     rootDisk: /dev/sda
-    redfishUser: admin
-    redfishPassword: admin

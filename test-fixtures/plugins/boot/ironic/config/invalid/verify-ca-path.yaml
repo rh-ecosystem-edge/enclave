@@ -1,0 +1,10 @@
+---
+# Invalid fixture: redfishVerifyCA as a CA bundle path (only booleans are supported).
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
+      redfishVerifyCA: /etc/pki/bmc-ca.pem

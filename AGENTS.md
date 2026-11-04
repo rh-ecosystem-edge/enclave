@@ -18,10 +18,14 @@ ingress into air-gapped environments.
 ```
 playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
 plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, vast-csi)
+  boot/          Boot plugins that boot the management cluster hosts (ironic)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
 src/             Python source root (src layout)
   reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
   tools/         Additional Python tools (enclave tools subcommand); new tools go here
+  boot/          Boot flow helpers (enclave boot subcommand), e.g. waiting for agent hosts
+  plugins/       Plugin contract validation (enclave plugins subcommand)
+  migrations/    Configuration migrations called from upgrade migrations (enclave migrations)
   cli.py         Unified CLI entry point (reconcile + tools subcommands)
   utils.py       Shared utilities for all Python packages under src/
   tests/         All Python tests (pytest, shared fixtures)
@@ -111,6 +115,10 @@ artifact map and step-by-step recipes.
 - Each plugin has a single `plugin.yaml` descriptor validated against `schemas/plugin.yaml`
 - Optional lifecycle task files: `tasks/early-validate.yaml`, `tasks/deploy.yaml`, `tasks/post-validate.yaml`
 - Declarative operator and registry requirements in the descriptor
+- Boot plugins (`plugins/boot/<name>/`) follow a separate contract (`schemas/boot-plugin.yaml`, hook
+  files `tasks/{validate,setup,boot,post-install,cleanup}.yaml`, helper task files in `tasks/lib/`),
+  checked by `enclave plugins validate --type boot`; see `docs/BOOT_PLUGIN_ARCHITECTURE.md` (and
+  `docs/design/boot-plugins.md` for the design rationale)
 
 ### Config and schemas (`config/`, `defaults/`, `schemas/`)
 

@@ -229,7 +229,9 @@ old random-MACs-plus-`macs.json` scheme.)
 Libvirt domain UUIDs are **deterministic** too — `uuid5` of `enclave:cluster_name:vm`,
 set in `domain.xml.j2` — so they are known before any domain is defined and are
 emitted in `cluster-env.sh` as `ENCLAVE_MASTER_<i>_UUID` / `ENCLAVE_SPOKE_<i>_UUID`.
-sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
+sushy-tools uses them as Redfish system IDs; `generate_enclave_vars.sh` writes the
+master UUIDs as `redfishSystemId` (`/redfish/v1/Systems/<uuid>`) in
+`config/plugins/boot/ironic.yaml`.
 
 ## Python tool
 

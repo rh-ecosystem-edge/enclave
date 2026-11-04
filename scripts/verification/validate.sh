@@ -128,7 +128,7 @@ validate_tags() {
         "playbooks/01-prepare.yaml:download-control-binaries:Download control binaries"
         "playbooks/02-mirror.yaml:mirror-registry:Include tasks for mirror-registry"
         "playbooks/03-deploy.yaml:configure-abi:Include tasks for OCP ABI"
-        "playbooks/03-deploy.yaml:hardware:Configure and boot hosts via Ironic"
+        "playbooks/03-deploy.yaml:hardware:Boot hosts via boot plugins"
         "playbooks/03-deploy.yaml:wait-deployment:Wait for deployment"
         "playbooks/04-post-install.yaml:post-install-config:Post-install configurations"
         "playbooks/05-operators.yaml:operators:Configure seed operators"
@@ -219,13 +219,24 @@ validate_makefile() {
 validate_plugins() {
     print_header "Validating plugin directory structure"
 
+    local failed=0
+
     if "${ENCLAVE_DIR}/scripts/verification/validate_plugins.sh"; then
         print_success "Plugin validation passed"
-        return 0
     else
         print_error "Plugin validation failed"
-        return 1
+        failed=1
     fi
+
+    local boot_plugins=("${ENCLAVE_DIR}"/plugins/boot/*/)
+    if uv run enclave plugins validate --type boot "${boot_plugins[@]}"; then
+        print_success "Boot plugin validation passed"
+    else
+        print_error "Boot plugin validation failed"
+        failed=1
+    fi
+
+    return $failed
 }
 
 validate_migrations() {

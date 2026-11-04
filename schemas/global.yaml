@@ -11,11 +11,19 @@ properties:
     maxItems: 3
     description: List of exactly 3 control plane nodes
     items:
-      "$ref": "#/definitions/hostEntry"
+      "$ref": "#/definitions/agentHostEntry"
   apiVIP:
     "$ref": "#/definitions/ipv4Address"
   baseDomain:
     "$ref": "#/definitions/nonEmptyString"
+  bootDiscoveryTimeout:
+    type: integer
+    minimum: 60
+    description: >-
+      Seconds to wait for the rendezvous host to become reachable and for all agent_hosts to
+      register with Assisted Service. Overrides the discoveryTimeout of the boot plugins in use.
+  bootPlugin:
+    "$ref": "#/definitions/bootPluginName"
   storage_plugin:
     type: string
     enum: [lvms, odf, vast-csi]

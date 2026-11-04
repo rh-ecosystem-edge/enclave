@@ -4,6 +4,8 @@
 
 The plugin system allows components (storage backends, AI/ML stacks, GPU operators) to be packaged as self-contained units under `plugins/`. Each plugin carries its own operator definitions, mirroring configuration, deployment logic, and defaults. The core pipeline discovers and runs plugins through a standard interface without component-specific branching.
 
+Boot plugins, under `plugins/boot/`, are not covered here: they have a separate code path, contract and validation. See [Boot Plugin Architecture](BOOT_PLUGIN_ARCHITECTURE.md).
+
 ## Directory Structure
 
 A plugin is a directory under `plugins/` with a single descriptor and optional task files:

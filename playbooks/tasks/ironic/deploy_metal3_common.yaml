@@ -1,5 +1,15 @@
 ---
-# Common tasks for Metal3 deployment - shared authentication secrets
+# Shared Ironic tasks library: Ironic API credentials.
+#
+# Creates (or reads back) the metal3-ironic-username and metal3-ironic-password
+# podman secrets. Include before deploy_ironic.yaml.
+#
+# Inputs:
+#   metal3_persistent  unset/false: rootless podman (ephemeral Ironic for booting);
+#                      true: root podman (persistent Ironic for Day 2)
+#
+# Outputs (facts):
+#   metal3_ironic_username, metal3_ironic_password
 
 - name: Check if metal3-ironic-username secret exists
   become: "{{ metal3_persistent | default(false) | bool }}"

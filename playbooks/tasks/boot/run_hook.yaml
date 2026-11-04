@@ -1,0 +1,66 @@
+---
+# Run one hook of one boot plugin, if the plugin has it.
+#
+# Inputs:
+#   boot_plugin  entry of boot_plugins (see load_plugins.yaml)
+#   boot_hook    hook name: validate, setup, boot, post-install or cleanup
+#   enclave_dir  optional, repository root (default: {{ playbook_dir }}/..)
+#
+# Variables available to the hook:
+#   bootPluginConfig      plugin defaults.yaml merged with
+#                         config/plugins/boot/<name>.yaml (user values win)
+#   bootHosts             agent_hosts entries booted by the plugin
+#   bootHostsToProvision  setup and boot only: bootHosts not yet in the cluster
+#   bootIsoPath           agent ISO on the Landing Zone
+#   workingDir
+
+- name: Check {{ boot_hook }} hook of boot plugin {{ boot_plugin.name }}
+  ansible.builtin.stat:
+    path: "{{ boot_plugin.path }}/tasks/{{ boot_hook }}.yaml"
+  register: r_boot_hook
+
+- name: Load configuration of boot plugin {{ boot_plugin.name }}
+  when: r_boot_hook.stat.exists
+  block:
+    - name: Check configuration files of boot plugin {{ boot_plugin.name }}
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ boot_plugin.path }}/defaults.yaml"
+        - "{{ enclave_dir | default(playbook_dir ~ '/..') }}/config/plugins/boot/{{ boot_plugin.name }}.yaml"
+      register: r_boot_plugin_config_files
+
+    - name: Merge configuration of boot plugin {{ boot_plugin.name }}
+      ansible.builtin.set_fact:
+        _boot_plugin_config: >-
+          {{ ((lookup('ansible.builtin.file', _defaults.item) | from_yaml) if _defaults.stat.exists else {}) | default({}, true)
+             | combine(((lookup('ansible.builtin.file', _user.item) | from_yaml) if _user.stat.exists else {}) | default({}, true),
+                       recursive=true) }}
+      vars:
+        _defaults: "{{ r_boot_plugin_config_files.results[0] }}"
+        _user: "{{ r_boot_plugin_config_files.results[1] }}"
+      no_log: true
+
+- name: Run {{ boot_hook }} hook of boot plugin {{ boot_plugin.name }}
+  ansible.builtin.include_tasks:
+    file: "{{ boot_plugin.path }}/tasks/{{ boot_hook }}.yaml"
+  vars:
+    bootPluginConfig: "{{ _boot_plugin_config }}"
+    bootHosts: "{{ boot_plugin.hosts }}"
+    bootIsoPath: "{{ workingDir }}/ocp-cluster/abi-iso/agent.x86_64.iso"
+  when:
+    - r_boot_hook.stat.exists
+    - boot_hook not in ['setup', 'boot']
+
+- name: Run {{ boot_hook }} hook of boot plugin {{ boot_plugin.name }} for hosts to provision
+  ansible.builtin.include_tasks:
+    file: "{{ boot_plugin.path }}/tasks/{{ boot_hook }}.yaml"
+  vars:
+    bootPluginConfig: "{{ _boot_plugin_config }}"
+    bootHosts: "{{ boot_plugin.hosts }}"
+    bootHostsToProvision: >-
+      {{ boot_plugin.hosts | selectattr('name', 'in', agent_hosts_to_provision | map(attribute='name') | list) | list }}
+    bootIsoPath: "{{ workingDir }}/ocp-cluster/abi-iso/agent.x86_64.iso"
+  when:
+    - r_boot_hook.stat.exists
+    - boot_hook in ['setup', 'boot']

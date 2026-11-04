@@ -1,0 +1,3 @@
+---
+# Invalid fixture: no hosts.
+hosts: {}

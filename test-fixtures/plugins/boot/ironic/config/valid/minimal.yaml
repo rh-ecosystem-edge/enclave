@@ -1,0 +1,9 @@
+---
+# Valid fixture: one Redfish host with the required driverInfo.
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: 192.168.1.101
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD

@@ -1,0 +1,34 @@
+---
+# Move Redfish Settings to the ironic Boot Plugin Migration
+#
+# Moves redfish, redfishUser, redfishPassword and bmcSystemId from each
+# agent_hosts entry of config/global.yaml into hosts.<name> of
+# config/plugins/boot/ironic.yaml (as address, username, password and systemId).
+# discovery_hosts is not touched. Does nothing when no agent_hosts entry has
+# those fields.
+#
+# Safe to run again after a failure: a host entry already in ironic.yaml with
+# identical values is left as is; with different values the migration fails,
+# naming the host, before writing anything. Both files keep their comments, and
+# a timestamped backup of each original is kept.
+
+- name: Move Redfish settings of agent_hosts to config/plugins/boot/ironic.yaml
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - --log-format
+      - plain
+      - migrations
+      - redfish-to-ironic
+      - --global-config
+      - "{{ vars_file | default(playbook_dir ~ '/../config/global.yaml', true) | realpath }}"
+      - --ironic-config
+      - "{{ (playbook_dir ~ '/../config/plugins/boot/ironic.yaml') | realpath }}"
+      - --ironic-schema
+      - "{{ (playbook_dir ~ '/../plugins/boot/ironic/schemas/config.yaml') | realpath }}"
+  register: r_redfish_migration
+  changed_when: r_redfish_migration.stdout == 'changed'
+
+- name: Display Redfish settings migration output
+  ansible.builtin.debug:
+    var: r_redfish_migration.stderr_lines

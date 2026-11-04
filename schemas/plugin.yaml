@@ -238,8 +238,12 @@ additionalProperties: false
 properties:
   name:
     type: string
-    description: Plugin identifier. Must match the directory name.
+    description: >-
+      Plugin identifier. Must match the directory name. "boot" is reserved for the boot plugins
+      directory.
     pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    not:
+      const: boot
   type:
     type: string
     enum:

@@ -18,10 +18,10 @@
       Upgrading Metal3 components to OpenShift version {{ mgmt_openshift_version }}
 
 - name: Deploy Metal3 common resources
-  ansible.builtin.include_tasks: ../../tasks/deploy_metal3_common.yaml
+  ansible.builtin.include_tasks: ../../tasks/ironic/deploy_metal3_common.yaml
 
 - name: Upgrade Ironic
-  ansible.builtin.include_tasks: ../../tasks/deploy_ironic.yaml
+  ansible.builtin.include_tasks: ../../tasks/ironic/deploy_ironic.yaml
 
 - name: Upgrade Baremetal Operator
   ansible.builtin.include_tasks: ../../tasks/deploy_bmo.yaml

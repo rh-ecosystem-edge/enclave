@@ -1,0 +1,9 @@
+---
+# Invalid fixture: BMC address with a scheme other than http or https.
+hosts:
+  mgmt-ctl01:
+    driver: redfish
+    driverInfo:
+      redfishAddress: ftp://100.64.1.1
+      redfishUsername: admin
+      redfishPassword: YOUR_BMC_PASSWORD
