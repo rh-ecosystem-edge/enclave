@@ -15,7 +15,7 @@
 # Exports ENCLAVE_IRONIC_CERT and ENCLAVE_IRONIC_KEY to GITHUB_ENV for
 # use by subsequent workflow steps (picked up by deploy_phase.sh).
 #
-# Usage: ./generate_ironic_cert.sh
+# Usage: GITHUB_ENV=<writable-file> ./generate_ironic_cert.sh
 
 set -euo pipefail
 
@@ -32,6 +32,12 @@ source "${ENCLAVE_DIR}/scripts/lib/ssh.sh"
 
 require_env_var "WORKING_DIR"
 
+if [ -z "${GITHUB_ENV:-}" ]; then
+    error "GITHUB_ENV is not set; refusing to print TLS certificate or private key material."
+    error "Set GITHUB_ENV to a writable environment file and rerun."
+    exit 1
+fi
+
 # Determine cluster name before the real-CA early-exit path below.
 ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 
@@ -45,25 +51,21 @@ if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     IRONIC_YAML=$(uv run --group cert-gen enclave-cert-gen ironic \
         --san "ironic.${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
         --type "${ENCLAVE_CERT_TYPE}")
-    if [ -n "${GITHUB_ENV:-}" ]; then
-        # Parse into variables first; a failure here aborts before any write to
-        # GITHUB_ENV, preventing a truncated heredoc delimiter in that file.
-        IRONIC_CERT=$(echo "${IRONIC_YAML}" | uv run python -c \
-            "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSCertificate'].strip())")
-        IRONIC_KEY=$(echo "${IRONIC_YAML}" | uv run python -c \
-            "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSKey'].strip())")
-        {
-            echo "ENCLAVE_IRONIC_CERT<<EOF"
-            echo "${IRONIC_CERT}"
-            echo "EOF"
-            echo "ENCLAVE_IRONIC_KEY<<EOF"
-            echo "${IRONIC_KEY}"
-            echo "EOF"
-        } >> "$GITHUB_ENV"
-        success "Ironic real CA certificate exported to GITHUB_ENV"
-    else
-        echo "$IRONIC_YAML"
-    fi
+    # Parse into variables first; a failure here aborts before any write to
+    # GITHUB_ENV, preventing a truncated heredoc delimiter in that file.
+    IRONIC_CERT=$(echo "${IRONIC_YAML}" | uv run python -c \
+        "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSCertificate'].strip())")
+    IRONIC_KEY=$(echo "${IRONIC_YAML}" | uv run python -c \
+        "import sys,yaml; d=yaml.safe_load(sys.stdin); print(d['ironicHTTPSKey'].strip())")
+    {
+        echo "ENCLAVE_IRONIC_CERT<<EOF"
+        echo "${IRONIC_CERT}"
+        echo "EOF"
+        echo "ENCLAVE_IRONIC_KEY<<EOF"
+        echo "${IRONIC_KEY}"
+        echo "EOF"
+    } >> "$GITHUB_ENV"
+    success "Ironic real CA certificate exported to GITHUB_ENV"
     exit 0
 fi
 
@@ -145,24 +147,16 @@ openssl x509 -req \
 CERT_CONTENT=$(cat "${WORK_DIR}/server.crt")
 KEY_CONTENT=$(cat "${WORK_DIR}/server.key")
 
-# Export to GITHUB_ENV for subsequent steps, or print for local use
-if [ -n "${GITHUB_ENV:-}" ]; then
-    {
-        echo "ENCLAVE_IRONIC_CERT<<EOF"
-        echo "$CERT_CONTENT"
-        echo "EOF"
-    } >> "$GITHUB_ENV"
-    {
-        echo "ENCLAVE_IRONIC_KEY<<EOF"
-        echo "$KEY_CONTENT"
-        echo "EOF"
-    } >> "$GITHUB_ENV"
-    success "Ironic ISO server certificate exported to GITHUB_ENV"
-else
-    info "GITHUB_ENV not set - printing certificate to stdout (local use)"
-    echo "ENCLAVE_IRONIC_CERT:"
+# Export to GITHUB_ENV for subsequent workflow/ci-flow steps. Never print PEM
+# material to stdout, where command logs may retain the private key.
+{
+    echo "ENCLAVE_IRONIC_CERT<<EOF"
     echo "$CERT_CONTENT"
-    echo ""
-    echo "ENCLAVE_IRONIC_KEY:"
+    echo "EOF"
+} >> "$GITHUB_ENV"
+{
+    echo "ENCLAVE_IRONIC_KEY<<EOF"
     echo "$KEY_CONTENT"
-fi
+    echo "EOF"
+} >> "$GITHUB_ENV"
+success "Ironic ISO server certificate exported to GITHUB_ENV"
