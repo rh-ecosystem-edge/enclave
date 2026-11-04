@@ -79,6 +79,7 @@ help:
 	@echo ""
 	@echo "CI Verification targets:"
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
+	@echo "  make -f Makefile.ci verify-spoke                     - Verify the SNO spoke cluster deployment"
 	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
 	@echo "  make -f Makefile.ci verify-cleanup                   - Verify infrastructure cleanup"
 	@echo ""
@@ -108,6 +109,7 @@ help:
 	@echo "  make -f Makefile.ci deploy-cluster-day2              - Day-2 operations"
 	@echo "  make -f Makefile.ci deploy-cluster-discovery              - Configure hardware discovery"
 	@echo "  make -f Makefile.ci deploy-cluster-write-migration-tasks  - Seed migration control file"
+	@echo "  make -f Makefile.ci deploy-spoke                          - Provision the SNO spoke cluster"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -222,6 +224,9 @@ deploy-cluster-discovery:
 
 deploy-cluster-write-migration-tasks:
 	@./scripts/deployment/deploy_bootstrap_step.sh write-migration-tasks
+
+deploy-spoke:
+	@./scripts/deployment/provision_spoke.sh
 
 deploy-plugin:
 	@./scripts/deployment/deploy_plugin.sh $(PLUGIN)
@@ -440,6 +445,9 @@ clean: clean-infra
 # Verification targets
 verify-cluster:
 	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_cluster.sh
+
+verify-spoke:
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./scripts/verification/verify_spoke.sh
 
 # OSAC CLI post-install smoke test (connected environments only). Exercises the
 # fulfillment API end-to-end through its route via the osac CLI on the LZ.
