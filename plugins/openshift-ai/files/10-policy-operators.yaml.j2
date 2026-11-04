@@ -265,6 +265,33 @@ spec:
       apiVersion: policy.open-cluster-management.io/v1beta1
       kind: OperatorPolicy
       metadata:
+        name: openshift-ai-openshift-cert-manager-operator
+      spec:
+        remediationAction: enforce
+        severity: medium
+        complianceType: musthave
+        upgradeApproval: Automatic
+        subscription:
+          name: openshift-cert-manager-operator
+          namespace: cert-manager-operator
+          channel: stable-v1
+          source: {{ fleet_rh_operator_catalog }}
+          sourceNamespace: openshift-marketplace
+          startingCSV: "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
+        versions:
+          - "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
+        complianceConfig:
+          upgradesAvailable: NonCompliant
+        operatorGroup:
+          name: cert-manager-operator
+          namespace: cert-manager-operator
+          targetNamespaces:
+            - cert-manager-operator
+
+  - objectDefinition:
+      apiVersion: policy.open-cluster-management.io/v1beta1
+      kind: OperatorPolicy
+      metadata:
         name: openshift-ai-servicemeshoperator3
       spec:
         remediationAction: enforce
@@ -362,30 +389,3 @@ spec:
         operatorGroup:
           name: rhods-operator-group
           namespace: redhat-ods-operator
-
-  - objectDefinition:
-      apiVersion: policy.open-cluster-management.io/v1beta1
-      kind: OperatorPolicy
-      metadata:
-        name: openshift-ai-openshift-cert-manager-operator
-      spec:
-        remediationAction: enforce
-        severity: medium
-        complianceType: musthave
-        upgradeApproval: Automatic
-        subscription:
-          name: openshift-cert-manager-operator
-          namespace: cert-manager-operator
-          channel: stable-v1
-          source: {{ fleet_rh_operator_catalog }}
-          sourceNamespace: openshift-marketplace
-          startingCSV: "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
-        versions:
-          - "cert-manager-operator.v{{ (operators | selectattr('name', 'equalto', 'openshift-cert-manager-operator') | first).version | replace('+', '-') }}"
-        complianceConfig:
-          upgradesAvailable: NonCompliant
-        operatorGroup:
-          name: cert-manager-operator
-          namespace: cert-manager-operator
-          targetNamespaces:
-            - cert-manager-operator
