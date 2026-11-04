@@ -30,8 +30,52 @@ def defaults_path(filename: str) -> Path:
     return path
 
 
+def config_path(filename: str) -> Path:
+    """Resolve an optional config file from the current directory or source checkout."""
+    enclave_pkg = Path(__file__).resolve().parent.parent
+    candidates = (
+        Path.cwd() / "config" / filename,
+        enclave_pkg.parent.parent / "config" / filename,
+    )
+    return next((path for path in candidates if path.exists()), candidates[0])
+
+
+def _validate_openshift_versions(
+    versions: object, source_file: Path
+) -> list[dict[str, object]]:
+    """Validate a version list and require exactly one default entry."""
+    if not isinstance(versions, list) or not versions:
+        raise click.ClickException(
+            f"{source_file} must define a non-empty 'openshift_versions' list"
+        )
+    if not all(isinstance(version, dict) for version in versions):
+        raise click.ClickException(
+            f"{source_file} 'openshift_versions' entries must be mappings"
+        )
+
+    version_entries = cast("list[dict[str, object]]", versions)
+    for entry in version_entries:
+        version = entry.get("version")
+        if not isinstance(version, str) or not version:
+            raise click.ClickException(
+                f"{source_file} version entries require a non-empty 'version'"
+            )
+        if "default" in entry and not isinstance(entry["default"], bool):
+            raise click.ClickException(
+                f"{source_file} version 'default' values must be boolean"
+            )
+
+    default_count = sum(entry.get("default") is True for entry in version_entries)
+    if default_count != 1:
+        raise click.ClickException(
+            f"{source_file} must have exactly one version with 'default: true', "
+            f"found {default_count}"
+        )
+    return version_entries
+
+
 def load_openshift_versions() -> list[dict[str, object]]:
-    """Load the openshift_versions list from defaults/platforms.yaml."""
+    """Load default OpenShift versions and apply an optional config override."""
     defaults_file = defaults_path("platforms.yaml")
     try:
         with defaults_file.open(encoding="utf-8") as fh:
@@ -47,11 +91,26 @@ def load_openshift_versions() -> list[dict[str, object]]:
         raise click.ClickException(
             f"{defaults_file} must be a mapping with an 'openshift_versions' list"
         )
-    openshift_versions = platforms.get("openshift_versions")
-    if not isinstance(openshift_versions, list) or not openshift_versions:
-        raise click.ClickException(
-            f"{defaults_file} must define a non-empty 'openshift_versions' list"
-        )
+    openshift_versions = _validate_openshift_versions(
+        platforms.get("openshift_versions"), defaults_file
+    )
+
+    config_file = config_path("platforms.yaml")
+    if config_file.exists():
+        try:
+            with config_file.open(encoding="utf-8") as fh:
+                config_platforms = yaml.safe_load(fh)
+        except yaml.YAMLError as exc:
+            raise click.ClickException(f"Failed to parse {config_file}: {exc}") from exc
+
+        if config_platforms is None:
+            config_platforms = {}
+        if not isinstance(config_platforms, dict):
+            raise click.ClickException(f"{config_file} must contain a YAML mapping")
+        if "openshift_versions" in config_platforms:
+            openshift_versions = _validate_openshift_versions(
+                config_platforms["openshift_versions"], config_file
+            )
 
     return openshift_versions
 
@@ -162,14 +221,20 @@ def operator_versions(
     "--use-defaults",
     is_flag=True,
     default=False,
-    help="Load the default version from defaults/platforms.yaml (mutually exclusive with --version, --latest)",
+    help=(
+        "Load the default version from the configured OpenShift list "
+        "(mutually exclusive with --version, --latest)"
+    ),
 )
 @click.option(
     "--latest",
     "use_latest",
     is_flag=True,
     default=False,
-    help="Upgrade to the highest semver version in defaults/platforms.yaml (mutually exclusive with --version, --use-defaults)",
+    help=(
+        "Upgrade to the highest semver version in the configured OpenShift list "
+        "(mutually exclusive with --version, --use-defaults)"
+    ),
 )
 @click.option("--dry-run/--no-dry-run", default=False)
 @click.option(
@@ -218,7 +283,7 @@ def mgmt_cluster_version(
         )
         if default_entry is None:
             raise click.ClickException(
-                "No default version found in defaults/platforms.yaml; "
+                "No default version found in the configured OpenShift list; "
                 "set 'default: true' on one entry"
             )
         resolved_version: str = str(default_entry["version"])
@@ -233,7 +298,8 @@ def mgmt_cluster_version(
         allowed_versions = {str(v["version"]) for v in openshift_versions}
         if resolved_version not in allowed_versions:
             raise click.UsageError(
-                f"Version '{resolved_version}' is not in defaults/platforms.yaml. "
+                f"Version '{resolved_version}' is not in defaults/platforms.yaml's "
+                "effective version list. "
                 f"Allowed: {', '.join(sorted(allowed_versions))}"
             )
 
