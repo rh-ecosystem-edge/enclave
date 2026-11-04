@@ -4,8 +4,10 @@
 # Phase 07 discovery boots the spoke VM and registers it as an unbound Agent in
 # the `infraenv` namespace (see generate_enclave_vars.sh, which adds the spoke to
 # discovery_hosts). This script creates the spoke ClusterDeployment +
-# AgentClusterInstall, binds/approves the discovered agent, waits for the SNO
-# install, and extracts the spoke kubeconfig. CI-only; consumes cluster-env.sh.
+# AgentClusterInstall, ManagedCluster + KlusterletAddonConfig in a namespace named
+# after the spoke (so ACM auto-imports it via Hive), binds/approves the discovered
+# agent across namespaces, waits for the SNO install and the ACM import, and
+# extracts the spoke kubeconfig. CI-only; consumes cluster-env.sh.
 #
 # Usage: ./provision_spoke.sh
 
@@ -78,14 +80,19 @@ ssh $SSH_OPTS "$LZ_SSH" "${REMOTE_ENV} bash -s" <<'REMOTE' 2>&1 | tee "$LOG_FILE
 set -euo pipefail
 export PATH="${LZ_WORKDIR}/bin:${PATH}"
 export KUBECONFIG="${LZ_WORKDIR}/ocp-cluster/auth/kubeconfig"
-NS=infraenv
+# Phase 07 discovers the agent in infraenv; the cluster resources live in a namespace
+# named after the spoke, which ACM's import controller requires for Hive auto-import.
+AGENT_NS=infraenv
+NS="$SPOKE"
+# Selects the spoke for the openshift-ai plugin's ACM policies.
+OPENSHIFT_AI_LABEL="sovcloud.open-cluster-management.io/openshift-ai"
 
 # Tolerant oc for the poll loops: a transient hub API error (blip/restart during
 # the spoke install) must not abort the script under set -e. Returns empty instead.
 ocq() { oc --request-timeout=30s "$@" 2>/dev/null || true; }
 
 # Dump spoke install diagnostics: AgentClusterInstall conditions + state, agent
-# progress/conditions, and recent namespace events.
+# progress/conditions, ManagedCluster conditions, and recent events.
 dump_spoke_diag() {
     echo "----- AgentClusterInstall/${SPOKE} conditions -----"
     ocq -n "$NS" get agentclusterinstall "$SPOKE" \
@@ -95,11 +102,16 @@ dump_spoke_diag() {
         -o jsonpath='state={.status.debugInfo.state}{"\n"}stateInfo={.status.debugInfo.stateInfo}{"\n"}'
     if [ -n "${AGENT:-}" ]; then
         echo "----- Agent ${AGENT} -----"
-        ocq -n "$NS" get agent "$AGENT" \
+        ocq -n "$AGENT_NS" get agent "$AGENT" \
             -o jsonpath='approved={.spec.approved} role={.status.role} stage={.status.progress.currentStage}{"\n"}{range .status.conditions[*]}  {.type}={.status} ({.reason}) {.message}{"\n"}{end}'
     fi
-    echo "----- recent events (${NS}) -----"
-    ocq -n "$NS" get events --sort-by=.lastTimestamp | tail -25
+    echo "----- ManagedCluster/${SPOKE} conditions -----"
+    ocq get managedcluster "$SPOKE" \
+        -o jsonpath='{range .status.conditions[*]}{.type}={.status} ({.reason}) {.message}{"\n"}{end}'
+    for ns in "$NS" "$AGENT_NS"; do
+        echo "----- recent events (${ns}) -----"
+        ocq -n "$ns" get events --sort-by=.lastTimestamp | tail -25
+    done
 }
 
 echo "==> Resolving a mirror-backed ClusterImageSet"
@@ -123,8 +135,41 @@ echo "    ClusterImageSet: $CIS -> $(oc get clusterimageset "$CIS" -o jsonpath='
 
 SSHKEY=$(cat "${LZ_WORKDIR}/.ssh/id_rsa.pub")
 
-echo "==> Applying ClusterDeployment + AgentClusterInstall for ${SPOKE}"
+echo "==> Creating namespace ${NS} with the install pull secret"
+oc create namespace "$NS" --dry-run=client -o yaml | oc apply -f -
+# The ClusterDeployment's pullSecretRef is namespace-local; reuse Phase 07's secret.
+oc -n "$AGENT_NS" get secret pullsecret -o json \
+    | jq --arg ns "$NS" '{apiVersion, kind, type, data, metadata: {name: .metadata.name, namespace: $ns}}' \
+    | oc apply -f -
+
+echo "==> Applying ManagedCluster, KlusterletAddonConfig, ClusterDeployment + AgentClusterInstall for ${SPOKE}"
 oc apply -f - <<YAML
+apiVersion: cluster.open-cluster-management.io/v1
+kind: ManagedCluster
+metadata:
+  name: ${SPOKE}
+  labels:
+    cloud: auto-detect
+    vendor: auto-detect
+    ${OPENSHIFT_AI_LABEL}: "true"
+spec:
+  hubAcceptsClient: true
+---
+apiVersion: agent.open-cluster-management.io/v1
+kind: KlusterletAddonConfig
+metadata:
+  name: ${SPOKE}
+  namespace: ${NS}
+spec:
+  applicationManager:
+    enabled: true
+  certPolicyController:
+    enabled: true
+  policyController:
+    enabled: true
+  searchCollector:
+    enabled: true
+---
 apiVersion: hive.openshift.io/v1
 kind: ClusterDeployment
 metadata:
@@ -172,30 +217,30 @@ YAML
 echo "==> Waiting for the discovered agent with MAC ${SPOKE_MAC}"
 AGENT=""
 for _ in $(seq 1 60); do
-    AGENT=$(ocq -n "$NS" get agents -o json | jq -r --arg m "$SPOKE_MAC" \
+    AGENT=$(ocq -n "$AGENT_NS" get agents -o json | jq -r --arg m "$SPOKE_MAC" \
         '.items[] | select(any(.status.inventory.interfaces[]?; (.macAddress // "" | ascii_downcase) == ($m | ascii_downcase))) | .metadata.name' 2>/dev/null | head -1 || true)
     if [ -n "$AGENT" ]; then break; fi
     sleep 15
 done
 if [ -z "$AGENT" ]; then
     echo "ERROR: spoke agent with MAC ${SPOKE_MAC} not discovered after ~15m"
-    echo "----- BareMetalHosts (${NS}) -----"
-    ocq -n "$NS" get bmh -o wide
-    ocq -n "$NS" get bmh -o jsonpath='{range .items[*]}{.metadata.name}: state={.status.provisioning.state} error={.status.errorMessage}{"\n"}{end}'
-    echo "----- InfraEnv (${NS}) -----"
-    ocq -n "$NS" get infraenv -o wide
-    echo "----- Agents (${NS}) with MACs -----"
-    ocq -n "$NS" get agents -o wide
-    ocq -n "$NS" get agents -o jsonpath='{range .items[*]}{.metadata.name}: {range .status.inventory.interfaces[*]}{.macAddress}{" "}{end}{"\n"}{end}'
-    echo "----- recent events (${NS}) -----"
-    ocq -n "$NS" get events --sort-by=.lastTimestamp | tail -30
+    echo "----- BareMetalHosts (${AGENT_NS}) -----"
+    ocq -n "$AGENT_NS" get bmh -o wide
+    ocq -n "$AGENT_NS" get bmh -o jsonpath='{range .items[*]}{.metadata.name}: state={.status.provisioning.state} error={.status.errorMessage}{"\n"}{end}'
+    echo "----- InfraEnv (${AGENT_NS}) -----"
+    ocq -n "$AGENT_NS" get infraenv -o wide
+    echo "----- Agents (${AGENT_NS}) with MACs -----"
+    ocq -n "$AGENT_NS" get agents -o wide
+    ocq -n "$AGENT_NS" get agents -o jsonpath='{range .items[*]}{.metadata.name}: {range .status.inventory.interfaces[*]}{.macAddress}{" "}{end}{"\n"}{end}'
+    echo "----- recent events (${AGENT_NS}) -----"
+    ocq -n "$AGENT_NS" get events --sort-by=.lastTimestamp | tail -30
     exit 1
 fi
 echo "    Agent: $AGENT"
 
-echo "==> Binding and approving the agent"
-oc -n "$NS" label agent "$AGENT" "enclave.openshift.io/spoke=${SPOKE}" --overwrite
-oc -n "$NS" patch agent "$AGENT" --type merge \
+echo "==> Binding and approving the agent (${AGENT_NS} -> ClusterDeployment in ${NS})"
+oc -n "$AGENT_NS" label agent "$AGENT" "enclave.openshift.io/spoke=${SPOKE}" --overwrite
+oc -n "$AGENT_NS" patch agent "$AGENT" --type merge \
     -p "{\"spec\":{\"approved\":true,\"hostname\":\"${SPOKE}-0\",\"role\":\"master\",\"clusterDeploymentName\":{\"name\":\"${SPOKE}\",\"namespace\":\"${NS}\"}}}"
 
 echo "==> Waiting for the SNO installation to complete (up to 90m)"
@@ -212,7 +257,7 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
         -o jsonpath='{range .status.conditions[?(@.type=="Completed")]}{.status}{end}')
     FAILED=$(ocq -n "$NS" get agentclusterinstall "$SPOKE" \
         -o jsonpath='{range .status.conditions[?(@.type=="Failed")]}{.status}{end}')
-    STAGE=$(ocq -n "$NS" get agent "$AGENT" -o jsonpath='{.status.progress.currentStage}')
+    STAGE=$(ocq -n "$AGENT_NS" get agent "$AGENT" -o jsonpath='{.status.progress.currentStage}')
     echo "    [$i] Completed=${COMPLETED:-?} Failed=${FAILED:-?} stage=${STAGE:-?}"
     if [ "$COMPLETED" = "True" ]; then DONE=yes; break; fi
     if [ "$FAILED" = "True" ]; then
@@ -235,7 +280,31 @@ umask 077
 oc -n "$NS" get secret "${SPOKE}-admin-kubeconfig" -o jsonpath='{.data.kubeconfig}' \
     | base64 -d > "${LZ_WORKDIR}/${SPOKE}-kubeconfig"
 echo "    Spoke kubeconfig: ${LZ_WORKDIR}/${SPOKE}-kubeconfig"
-echo "==> Spoke ${SPOKE} installed"
+
+echo "==> Waiting for ACM to import ${SPOKE} (up to 20m)"
+# The import controller links the ManagedCluster to the installed ClusterDeployment of
+# the same name/namespace and deploys the klusterlet with Hive's admin kubeconfig.
+IMPORTED=""
+DEADLINE=$(( $(date +%s) + 20 * 60 ))
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    JOINED=$(ocq get managedcluster "$SPOKE" \
+        -o jsonpath='{range .status.conditions[?(@.type=="ManagedClusterJoined")]}{.status}{end}')
+    AVAILABLE=$(ocq get managedcluster "$SPOKE" \
+        -o jsonpath='{range .status.conditions[?(@.type=="ManagedClusterConditionAvailable")]}{.status}{end}')
+    echo "    Joined=${JOINED:-?} Available=${AVAILABLE:-?}"
+    if [ "$JOINED" = "True" ] && [ "$AVAILABLE" = "True" ]; then IMPORTED=yes; break; fi
+    sleep 30
+done
+if [ -z "$IMPORTED" ]; then
+    echo "ERROR: ManagedCluster ${SPOKE} not Joined/Available after 20m"
+    dump_spoke_diag
+    echo "----- klusterlet on the spoke -----"
+    ocq --kubeconfig "${LZ_WORKDIR}/${SPOKE}-kubeconfig" get pods -n open-cluster-management-agent -o wide
+    exit 1
+fi
+echo "    ${OPENSHIFT_AI_LABEL}=$(ocq get managedcluster "$SPOKE" -o json \
+    | jq -r --arg k "$OPENSHIFT_AI_LABEL" '.metadata.labels[$k] // "missing"')"
+echo "==> Spoke ${SPOKE} installed and imported into ACM"
 REMOTE
 SPOKE_EXIT_CODE=${PIPESTATUS[0]}
 set -e

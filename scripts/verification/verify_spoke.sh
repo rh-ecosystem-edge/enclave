@@ -3,8 +3,9 @@
 #
 # Using the spoke kubeconfig provision_spoke.sh wrote on the Landing Zone, checks
 # that the spoke is healthy: ClusterVersion Available, all nodes Ready, and all
-# cluster operators Available and not Degraded. Allows a short settle window, and
-# dumps diagnostics on failure. CI-only; no-op when no spoke was created.
+# cluster operators Available and not Degraded. On the hub, checks that the spoke is
+# an Available ManagedCluster carrying the openshift-ai label. Allows a short settle
+# window, and dumps diagnostics on failure. CI-only; no-op when no spoke was created.
 #
 # Usage: ./verify_spoke.sh
 
@@ -50,7 +51,7 @@ info "Verifying spoke cluster: $SPOKE_CLUSTER_NAME (via $LZ_IP)"
 set +e
 # shellcheck disable=SC2086  # SSH_OPTS needs word splitting
 ssh $SSH_OPTS "cloud-user@${LZ_IP}" \
-    "KUBECONFIG=${SPOKE_KUBECONFIG} SPOKE=${SPOKE_CLUSTER_NAME} PATH=${LZ_SESSION_DIR}/bin:\$PATH bash -s" \
+    "KUBECONFIG=${SPOKE_KUBECONFIG} HUB_KUBECONFIG=${LZ_SESSION_DIR}/ocp-cluster/auth/kubeconfig SPOKE=${SPOKE_CLUSTER_NAME} PATH=${LZ_SESSION_DIR}/bin:\$PATH bash -s" \
     2>&1 <<'REMOTE' | tee -a "$SUMMARY"
 set -uo pipefail
 
@@ -60,6 +61,8 @@ if [ ! -f "$KUBECONFIG" ]; then
 fi
 
 ocq() { oc --request-timeout=30s "$@" 2>/dev/null; }
+hubq() { ocq --kubeconfig "$HUB_KUBECONFIG" "$@"; }
+OPENSHIFT_AI_LABEL="sovcloud.open-cluster-management.io/openshift-ai"
 unhealthy_cos() { ocq get clusteroperators -o json | jq -r ".items[] | select(any(.status.conditions[]; .type==\"$1\" and .status==\"$2\")) | .metadata.name" | paste -sd' ' -; }
 
 ok=""
@@ -69,11 +72,15 @@ for i in $(seq 1 10); do
     READY=$(ocq get nodes --no-headers | awk '$2 ~ /(^|,)Ready(,|$)/ {c++} END{print c+0}')
     UNAVAIL=$(unhealthy_cos Available False)
     DEGRADED=$(unhealthy_cos Degraded True)
+    MC_AVAIL=$(hubq get managedcluster "$SPOKE" \
+        -o jsonpath='{range .status.conditions[?(@.type=="ManagedClusterConditionAvailable")]}{.status}{end}')
+    MC_LABEL=$(hubq get managedcluster "$SPOKE" -o json | jq -r --arg k "$OPENSHIFT_AI_LABEL" '.metadata.labels[$k] // empty')
     if [ "$CV" = "True" ] && [ "${TOTAL:-0}" -ge 1 ] && [ "${READY:-0}" = "${TOTAL:-0}" ] \
-       && [ -z "$UNAVAIL" ] && [ -z "$DEGRADED" ]; then
+       && [ -z "$UNAVAIL" ] && [ -z "$DEGRADED" ] \
+       && [ "$MC_AVAIL" = "True" ] && [ "$MC_LABEL" = "true" ]; then
         ok=1; break
     fi
-    echo "  [$i/10] ClusterVersion=${CV:-?} nodesReady=${READY:-0}/${TOTAL:-0} unavailable='${UNAVAIL}' degraded='${DEGRADED}' — waiting 30s"
+    echo "  [$i/10] ClusterVersion=${CV:-?} nodesReady=${READY:-0}/${TOTAL:-0} unavailable='${UNAVAIL}' degraded='${DEGRADED}' managedCluster=${MC_AVAIL:-?} label=${MC_LABEL:-missing} — waiting 30s"
     sleep 30
 done
 
@@ -81,6 +88,8 @@ echo "ClusterVersion Available: ${CV:-unknown}"
 echo "Nodes Ready: ${READY:-0}/${TOTAL:-0}"
 echo "Unavailable operators: ${UNAVAIL:-none}"
 echo "Degraded operators: ${DEGRADED:-none}"
+echo "ManagedCluster Available (hub): ${MC_AVAIL:-unknown}"
+echo "${OPENSHIFT_AI_LABEL}: ${MC_LABEL:-missing}"
 
 if [ -n "$ok" ]; then
     echo "✅ Spoke cluster is healthy"
@@ -99,6 +108,9 @@ done
 echo "----- Cluster operators -----"
 ocq get clusteroperators || true
 ocq get clusteroperators -o json | jq -r '.items[] | select(any(.status.conditions[]; (.type=="Available" and .status!="True") or (.type=="Degraded" and .status=="True"))) | .metadata.name + " -> " + ([.status.conditions[] | select(.type=="Available" or .type=="Degraded" or .type=="Progressing") | "\(.type)=\(.status) \(.message // "")"] | join(" | "))' || true
+echo "----- ManagedCluster (hub) -----"
+hubq get managedcluster "$SPOKE" --show-labels || true
+hubq get managedcluster "$SPOKE" -o jsonpath='{range .status.conditions[*]}{.type}={.status} ({.reason}) {.message}{"\n"}{end}' || true
 echo "----- Non-running pods -----"
 ocq get pods -A | grep -vE 'Running|Completed' | head -40 || true
 echo "----- Recent events -----"
