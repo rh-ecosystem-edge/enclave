@@ -102,7 +102,20 @@
 - name: Resolve optional OpenShift platforms config path
   ansible.builtin.set_fact:
     resolved_platforms_vars_file: >-
-      {{ (resolved_platforms_vars_file | default(platforms_vars_file | default(playbook_dir + '/../config/platforms.yaml', true))) | realpath }}
+      {{
+        (
+          resolved_platforms_vars_file
+          | default(
+              (
+                platforms_vars_file | default('', true)
+                if (platforms_vars_file | default('', true) | string | trim | length) > 0
+                else ''
+              )
+              | default(playbook_dir + '/../config/platforms.yaml', true)
+            )
+        )
+        | realpath
+      }}
 
 - name: Check for optional OpenShift platforms override
   ansible.builtin.stat:
