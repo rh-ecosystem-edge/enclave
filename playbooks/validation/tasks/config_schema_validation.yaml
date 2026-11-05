@@ -4,11 +4,12 @@
 
 - name: Set OpenShift platforms config path
   ansible.builtin.set_fact:
-    platforms_config_path: "{{ platforms_vars_file | default('../../config/platforms.yaml', true) }}"
+    platforms_vars_file: "{{ platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true) }}"
+    platforms_config_path: "{{ platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true) }}"
 
 - name: Validate platforms.yaml against platforms schema (if present)
   ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | to_json }}"
+    data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | default({}, true) | to_json }}"
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
@@ -25,7 +26,7 @@
     fail_msg: >-
       {{ platforms_config_path }} must have exactly one version with 'default: true'
   vars:
-    platforms_data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml }}"
+    platforms_data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | default({}, true) }}"
   when:
     - lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
     - platforms_data.openshift_versions is defined

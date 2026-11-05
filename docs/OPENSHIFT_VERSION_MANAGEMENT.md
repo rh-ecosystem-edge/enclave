@@ -28,7 +28,7 @@ The override mechanism shifts version management responsibility to consumers whi
 - **Defines**: Tested y-stream release range
 - **Updates**: With each Enclave release based on validation and testing
 
-The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes tested versions in `defaults/platforms.yaml`. Every version in that list is part of the Enclave-tested baseline. The `default: true` marker selects the default for a fresh management cluster installation and for `--use-defaults`; other listed versions remain available as explicit choices.
+The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes tested versions in `defaults/platforms.yaml`. Every version in that list is part of the Enclave-tested baseline. The current defaults list 4.20.21 and 4.20.32, with 4.20.32 marked as the default; the examples below assume that baseline unless stated otherwise. The `default: true` marker selects the default for a fresh management cluster installation and for `--use-defaults`; other listed versions remain available as explicit choices.
 
 **Example** `defaults/platforms.yaml`:
 ```yaml
@@ -39,7 +39,7 @@ openshift_versions:
     default: true
 ```
 
-This signals: "Enclave v2.5.0 has been tested with the listed OpenShift versions, with 4.20.32 selected as the default."
+This signals that the listed versions have been tested with this Enclave release, with 4.20.32 selected as the default.
 
 ### Consumer Responsibility
 
@@ -117,43 +117,21 @@ openshift_versions:
 
 **Result**: Version 4.20.21 is no longer offered, preventing invalid upgrade attempts.
 
-### 3. Fleet Management Policy
-
-**Scenario**: An organization's change control policy requires a 30-day validation window before allowing new OpenShift versions in production.
-
-**Action**: Use `config/platforms.yaml` to control when versions become available, independent of when enclave or Red Hat publishes them.
-
-```yaml
----
-openshift_versions:
-  - version: 4.20.32  # Validated, approved for production
-    default: true
-  # Version 4.20.35 published but not yet validated—intentionally omitted
-```
-
-**Result**: New versions enter the fleet on the organization's schedule, not Red Hat's or enclave's.
-
-### 4. Multi-Cluster Version Control
+### 3. Multi-Cluster Version Rollout
 
 **Scenario**: A consumer manages 50 clusters via ACM. They want to stage version rollouts: dev clusters first, then staging, then production.
 
-**Action**: Promote the same Enclave release and version configuration through environments at different times when consistent configuration is desired. Use different `config/platforms.yaml` files only when environments intentionally have different version policies.
+**Action**: Keep the same version list in each environment. The list controls which versions ACM can offer; ACM controls which clusters receive an upgrade and when. Upgrade development clusters first, then promote the same configuration and release package to staging and production after validation.
 
-**Dev** `config/platforms.yaml`:
+**Shared `config/platforms.yaml`**:
 ```yaml
 openshift_versions:
   - version: 4.20.32
     default: true
-  - version: 4.20.35  # Latest available
+  - version: 4.20.35
 ```
 
-**Production** `config/platforms.yaml` (weeks later):
-```yaml
-openshift_versions:
-  - version: 4.20.32
-    default: true
-  # Version 4.20.35 added only after successful dev/staging validation
-```
+After the development rollout succeeds, select 4.20.35 for production clusters through ACM. The shared config does not need to change.
 
 ## Constraints and Responsibilities
 
@@ -181,7 +159,7 @@ Enclave makes no compatibility or support guarantees about versions not listed i
 
 ### Management Cluster Installation
 
-During initial deployment:
+During a fresh disconnected deployment:
 - **Fresh install** (`fresh: true`): Only the **default** version's release images are mirrored
 - **Default version** is used for the management cluster
 - Non-default versions are **not mirrored** during fresh install (to reduce mirror time and storage)
@@ -190,7 +168,7 @@ During initial deployment:
 
 The ACM `ClusterImageSet` resources and mirrored release images are based on the effective `openshift_versions` list. On a fresh disconnected install, Enclave narrows that list to the default version, so only that version is mirrored and configured for ACM.
 
-To mirror the full configured list after installation, set `fresh: false` in `config/global.yaml` and run Phase 2 (`playbooks/02-mirror.yaml`). Then run Phase 6 (`playbooks/06-day2.yaml`) to reconcile ACM `ClusterImageSet` resources. Removing or changing versions in the config takes effect in those resources only when the relevant playbooks run again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
+To mirror the full configured list after installation, run `bash sync.sh` from the Enclave checkout. The script runs the relevant phases with `fresh=false`, mirrors the configured releases, and reconciles ACM `ClusterImageSet` resources. Do not add `fresh` to `config/global.yaml`; that file's schema does not allow it. Removing or changing versions in the config takes effect in ACM only when the sync runs again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
 
 ### Cluster Upgrades
 
@@ -212,93 +190,9 @@ No action required. Existing deployments continue using `defaults/platforms.yaml
 1. **Review** current `defaults/platforms.yaml`
 2. **Copy** `config/platforms.example.yaml` to `config/platforms.yaml`
 3. **Edit** `openshift_versions` with your desired versions
-4. **Validate** schema: `make -f Makefile.ci validate-json-schema`
-5. **Deploy** as usual—override is automatically detected
+4. **Validate** the local configuration from the Enclave checkout with `make validate-schema`
+5. The override is read on the next Enclave run. To upgrade an existing management cluster, explicitly run `enclave reconcile mgmt-cluster-version --version X.Y.Z` (or `--use-defaults`). For non-default managed-cluster choices in disconnected environments, run `bash sync.sh` to mirror the release and update ACM `ClusterImageSet` resources.
 
 ### Reverting the Override
 
 Remove `openshift_versions` from `config/platforms.yaml` or remove the file. Later Enclave runs then use `defaults/platforms.yaml`. This does not change a management or managed cluster that is already running; rerun the relevant deployment or ACM configuration playbooks to update available choices.
-
-## Technical Implementation
-
-### File Locations
-
-- `defaults/platforms.yaml` — Enclave's tested versions (field: `openshift_versions`)
-- `config/platforms.yaml` — Consumer override (field: `openshift_versions`)
-- `config/platforms.example.yaml` — Example template for consumer override
-- `schemas/platforms.yaml` — JSON schema validator for both files
-
-### Loading Order
-
-**Ansible** (`playbooks/common/load-vars.yaml`):
-1. Load `defaults/platforms.yaml` → sets `openshift_versions`
-2. Load `config/platforms.yaml` if it exists
-3. If it defines `openshift_versions`, that list replaces the defaults
-
-**Python CLI** (`src/enclave/reconcile/cli.py`):
-1. Load `defaults/platforms.yaml` → extract `openshift_versions`
-2. Check for `config/platforms.yaml`
-3. If it defines `openshift_versions`, use that list instead
-
-### Validation
-
-- **Schema validation**: `make -f Makefile.ci validate-json-schema`
-- **Defaults validation**: `playbooks/validation/tasks/defaults_schema_validation.yaml` enforces exactly one default
-- **Config validation**: `playbooks/validation/tasks/config_schema_validation.yaml` validates the optional config and its default selection
-
-## Best Practices
-
-### For Consumers
-
-1. **Start conservatively**: Begin with versions from `defaults/platforms.yaml`
-2. **Test thoroughly**: Validate new versions in dev/staging before production
-3. **Document changes**: Track why each version was added or removed
-4. **Monitor Red Hat advisories**: Subscribe to OpenShift security and EOL notifications
-5. **Coordinate with enclave releases**: Review `defaults/platforms.yaml` changes with each enclave update
-
-### For Enclave Team
-
-1. **Communicate version changes**: Announce changes to `defaults/platforms.yaml` in release notes
-2. **Test across y-streams**: Validate the full range of listed versions
-3. **Document testing scope**: Clearly state which versions were validated
-4. **Provide migration guidance**: Help consumers understand version compatibility
-
-## Support and Troubleshooting
-
-### Consumer Override Issues
-
-If a version in `config/platforms.yaml` fails:
-1. **Check version availability**: Verify the release is available from the configured source with `oc adm release info`
-2. **Review enclave compatibility**: Compare against `defaults/platforms.yaml` for the enclave version
-3. **Check upgrade paths**: Ensure valid upgrade edges exist (`oc adm upgrade`)
-4. **Test in isolation**: Deploy a test cluster with the problematic version
-
-### Schema Validation Failures
-
-```
-TASK [Validate OpenShift version override default (if provided)] ***
-fatal: [localhost]: FAILED! => {"msg": "config/platforms.yaml must have exactly one version with 'default: true'"}
-```
-
-**Solution**: Ensure exactly one version has `default: true`.
-
-### Version Not Available
-
-```
-ClickException: Version '4.20.99' is not in defaults/platforms.yaml's effective version list. Allowed: 4.20.21, 4.20.32
-```
-
-**Solution**: Add the version to `config/platforms.yaml` or use a version from the configured list.
-
-## Summary
-
-The OpenShift version management override mechanism shifts version lifecycle control to consumers while preserving enclave's tested baseline. Enclave defines a supported y-stream range; consumers manage version additions, removals, and fleet policies independently of enclave releases.
-
-**Key takeaways**:
-- `defaults/platforms.yaml` = enclave's tested range
-- `config/platforms.yaml` = optional consumer override for the `openshift_versions` list
-- Override enables: CVE response, version deprecation, fleet management
-- Consumer accepts: validation responsibility for non-default versions
-- Enclave provides: tested baseline, no guarantees beyond it
-
-This contract balances stability (enclave's tested versions) with agility (consumer-controlled updates).
