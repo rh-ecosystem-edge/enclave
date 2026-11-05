@@ -496,8 +496,16 @@ jobs:
             fi
           fi
 
-      - name: Upload artifacts
+      # The repository is public, so artifacts are downloadable by any logged-in
+      # GitHub user: scrub credentials before upload, and skip the upload when the
+      # scrub fails rather than publish an unscrubbed bundle.
+      - name: Scrub artifacts
         if: always()
+        id: scrub_artifacts
+        run: uv run --package enclave-ci enclave-ci scrub-artifacts artifacts
+
+      - name: Upload artifacts
+        if: always() && steps.scrub_artifacts.outcome == 'success'
         id: upload_artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -621,8 +629,13 @@ jobs:
             echo "These should be swept by the reap/cleanup workflows." >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload post-cleanup artifacts
+      - name: Scrub post-cleanup artifacts
         if: always()
+        id: scrub_post_cleanup
+        run: uv run --package enclave-ci enclave-ci scrub-artifacts cleanup-logs cleanup-state
+
+      - name: Upload post-cleanup artifacts
+        if: always() && steps.scrub_post_cleanup.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: post-cleanup-${{ inputs.mode }}-${{ github.run_id }}

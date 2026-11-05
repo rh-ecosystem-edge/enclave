@@ -70,6 +70,7 @@ on e2e jobs; lighter jobs use `basic`/`infra`.
 
 ```
 artifacts/
+├── scrub-report.txt            What the pre-upload scrub redacted/removed (counts only)
 ├── system/                     Runner host: system-info, processes, top, iostat, vmstat, journal
 ├── libvirt/                    VM list/details/XML, networks, storage pools
 ├── network/                    Host interfaces, bridges, firewall, DNS resolution
@@ -101,7 +102,7 @@ artifacts/
     │   │                       policy-compliance.txt (policies replicated to the SNO)
     │   └── sno/                ClusterVersion and ClusterOperators (YAML), nodes, pods
     └── failure/                On failure only (level: full)
-        ├── hub/                install-events.txt and install-logs.tar (assisted-service),
+        ├── hub/                install-events.txt and install-logs.extracted/ (assisted-service),
         │                       agent-validations.txt, events, logs/ (assisted-service,
         │                       import controller, policy propagator)
         ├── lz/                 ironic / baremetal-operator container logs
@@ -112,11 +113,18 @@ artifacts/
 The in-flight sampler also writes `inflight/managed-sno.log` (SNO VM state and SNO API
 latency) when the SNO VM exists.
 
-Security note: `vars.yaml` (pull secrets, Quay admin password) is intentionally **not**
-collected. Secrets appear by name only. The `config/` and `helm-values/` files are passed
-through a redactor before upload — values under secret-like keys (password, secret, key,
-token, credential, auth, cert) are replaced with `REDACTED`, and credentials embedded in
-URLs are stripped — but treat them as best-effort: do not add raw secret dumps to the bundle.
+Security note: the repository is public, so artifacts are downloadable by any logged-in
+GitHub user. `vars.yaml` (pull secrets, Quay admin password), Secret objects and kubeconfigs
+are never collected. The `config/` and `helm-values/` files are passed through a redactor at
+collection time (values under secret-like keys are replaced with `REDACTED`). Then, before
+upload, the whole bundle goes through `enclave-ci scrub-artifacts`
+(`src/enclave_ci/enclave_ci/scrub_artifacts/`): pull-secret auth values, discovery ISO
+download tokens, JWTs and other bearer tokens, credentialed URLs, kubeconfig credentials and
+private keys are redacted; archives (`*.tar.gz`, `*.tar`, `*.zip`, e.g. must-gather or the
+assisted install logs) are extracted to `<name>.extracted/` and scrubbed; binary files and
+anything that cannot be scanned are removed. `scrub-report.txt` at the top of the bundle lists
+what was redacted or removed per file (counts only). If the scrub fails, the bundle is not
+uploaded. Still, do not add raw secret dumps to the bundle.
 
 ## 5. Reading the bundle by failure signature
 

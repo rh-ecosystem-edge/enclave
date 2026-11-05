@@ -676,13 +676,6 @@ check_kubeconfig_exists() {
     ssh_lz "$lz_ip" "test -f /home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig" 2>/dev/null
 }
 
-collect_cluster_kubeconfig() {
-    local lz_ip="$1"
-
-    mkdir -p "${OUTPUT_DIR}/cluster"
-    info "Collecting kubeconfig..."
-    scp_lz cloud-user@"$lz_ip":/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig "${OUTPUT_DIR}/cluster/" 2>/dev/null || warn "Could not collect kubeconfig"
-}
 
 collect_cluster_status() {
     local lz_ip="$1"
@@ -1221,7 +1214,6 @@ collect_full() {
         return
     fi
 
-    collect_cluster_kubeconfig "$lz_ip"
     collect_cluster_status "$lz_ip"
     collect_cluster_events "$lz_ip"
     collect_cluster_pods "$lz_ip"

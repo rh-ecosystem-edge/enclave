@@ -305,7 +305,8 @@ See [CI_TROUBLESHOOTING.md](CI_TROUBLESHOOTING.md) for detailed troubleshooting 
 - Run cleanup workflow (deep level)
 
 **Can't access cluster**:
-- Download kubeconfig artifact
+- Kubeconfigs are not uploaded (artifacts are public); use the cluster state in the
+  diagnostics bundle, or `skip-cleanup` and the Landing Zone for live access
 - Check deployment.log for errors
 - SSH to Landing Zone for debugging
 
