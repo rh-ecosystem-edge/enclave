@@ -1360,7 +1360,7 @@ openshift_versions:
   - version: 4.20.35
 ```
 
-The default version is used for the management cluster. On a fresh install, Enclave narrows the effective list to that version. For disconnected installs, only that release is mirrored and configured as an ACM install choice. Non-default versions become managed-cluster choices after `bash sync.sh` mirrors the configured list and reconciles ACM `ClusterImageSet` resources. The `enclave reconcile mgmt-cluster-version` command accepts versions from the effective list, then checks OpenShift's available update graph.
+The default version is used for the management cluster. On a fresh install, Enclave narrows the effective list to that version. For disconnected installs, only that release is mirrored and configured as an ACM install choice. In disconnected deployments, non-default versions become managed-cluster choices after `bash sync.sh` mirrors the configured list and reconciles ACM `ClusterImageSet` resources. The `enclave reconcile mgmt-cluster-version` command accepts versions from the effective list, then checks OpenShift's available update graph.
 
 See [OpenShift Version Management](OPENSHIFT_VERSION_MANAGEMENT.md) for the contract, responsibilities, and examples.
 

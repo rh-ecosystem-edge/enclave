@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 from enclave.utils import (
+    SemverKey,
     log_subprocess_output,
     parse_jsonpath_value,
     run_oc_command,
@@ -110,9 +111,7 @@ def get_current_version() -> str:
     return version
 
 
-def parse_version(
-    version: str, context: str = "version"
-) -> tuple[tuple[int, ...], tuple[int, str, int]]:
+def parse_version(version: str, context: str = "version") -> SemverKey:
     """Parse and validate a semantic version string into a comparable tuple.
 
     OpenShift versions follow the format: major.minor.patch[-prerelease]
