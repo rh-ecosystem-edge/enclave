@@ -18,6 +18,14 @@
       ansible.builtin.include_tasks:
         file: common/load-vars.yaml
 
+    - name: Reject missing explicit OpenShift platforms config path
+      ansible.builtin.fail:
+        msg: "OpenShift platforms config file not found: {{ resolved_platforms_vars_file }}"
+      when:
+        - platforms_vars_file is defined
+        - (platforms_vars_file | default('', true) | string | trim | length) > 0
+        - not r_platforms_override.stat.exists
+
     - name: Run migrations
       ansible.builtin.include_tasks:
         file: tasks/migrations.yaml

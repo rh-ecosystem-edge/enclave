@@ -12,7 +12,7 @@ import click
 
 logger = logging.getLogger(__name__)
 
-SemverIdentifierKey = tuple[int, str, int]
+SemverIdentifierKey = tuple[int, str, int, int]
 SemverKey = tuple[tuple[int, ...], tuple[int, tuple[SemverIdentifierKey, ...]]]
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -121,7 +121,7 @@ def semver_key(v_string: str) -> SemverKey:
     identifiers: list[SemverIdentifierKey] = []
     for identifier in parts[1].split("."):
         if re.fullmatch(r"[0-9]+", identifier):
-            identifiers.append((0, "", int(identifier)))
+            identifiers.append((0, "", 0, int(identifier)))
             continue
 
         label_and_number = re.fullmatch(r"([a-zA-Z]+)([0-9]+)", identifier)
@@ -129,10 +129,11 @@ def semver_key(v_string: str) -> SemverKey:
             identifiers.append((
                 1,
                 label_and_number.group(1),
+                1,
                 int(label_and_number.group(2)),
             ))
         else:
-            identifiers.append((1, identifier, 0))
+            identifiers.append((1, identifier, 0, 0))
 
     return (main_version, (0, tuple(identifiers)))
 
