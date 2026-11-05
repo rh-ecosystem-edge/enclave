@@ -73,6 +73,11 @@ def test_semver_numeric_prerelease_ordering() -> None:
     assert semver_key("4.16.3-rc10") > semver_key("4.16.3-rc9")
 
 
+def test_semver_dotted_numeric_prerelease_ordering() -> None:
+    """Dotted pre-release numbers are compared numerically."""
+    assert semver_key("4.20.1-rc.10") > semver_key("4.20.1-rc.9")
+
+
 # ---------------------------------------------------------------------------
 # run_oc_command
 # ---------------------------------------------------------------------------

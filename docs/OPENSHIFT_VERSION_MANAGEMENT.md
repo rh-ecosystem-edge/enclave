@@ -124,6 +124,7 @@ openshift_versions:
 **Action**: Keep the same version list in each environment. The list controls which versions ACM can offer; ACM controls which clusters receive an upgrade and when. Upgrade development clusters first, then promote the same configuration and release package to staging and production after validation.
 
 **Shared `config/platforms.yaml`**:
+
 ```yaml
 openshift_versions:
   - version: 4.20.32
@@ -191,7 +192,7 @@ No action required. Existing deployments continue using `defaults/platforms.yaml
 2. **Copy** `config/platforms.example.yaml` to `config/platforms.yaml`
 3. **Edit** `openshift_versions` with your desired versions
 4. **Validate** the local configuration from the Enclave checkout with `make validate-schema`
-5. The override is read on the next Enclave run. To upgrade an existing management cluster, explicitly run `enclave reconcile mgmt-cluster-version --version X.Y.Z` (or `--use-defaults`). For non-default managed-cluster choices in disconnected environments, run `bash sync.sh` to mirror the release and update ACM `ClusterImageSet` resources.
+5. The override is read on the next Enclave run. In a disconnected deployment, if the management-cluster target release is not already mirrored, run `bash sync.sh` first to mirror it. Skip this step when the release is already mirrored. Then upgrade an existing management cluster with `enclave reconcile mgmt-cluster-version --version X.Y.Z` (or `--use-defaults`). For non-default managed-cluster choices in disconnected environments, run `bash sync.sh` to mirror the configured releases and update ACM `ClusterImageSet` resources.
 
 ### Reverting the Override
 

@@ -113,7 +113,7 @@ def semver_key(v_string: str) -> tuple[tuple[int, ...], tuple[int, str, int]]:
 
     if len(parts) == 1:
         return (main_version, (2**31, "", 0))
-    m = re.match(r"^([a-zA-Z]*)(\d*)$", parts[1])
+    m = re.match(r"^([a-zA-Z]*)\.?(\d*)$", parts[1])
     label = m.group(1) if m else parts[1]
     num = int(m.group(2)) if m and m.group(2) else 0
     return (main_version, (0, label, num))
