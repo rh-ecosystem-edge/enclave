@@ -6,7 +6,7 @@ import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from enclave.reconcile.cli import cli, defaults_path
+from enclave.reconcile.cli import cli, config_path, defaults_path
 
 _KC = {"KUBECONFIG": "/fake/kubeconfig"}
 
@@ -351,6 +351,68 @@ def test_mgmt_cluster_version_uses_config_platforms_override(
     assert replaced_default_result.exit_code != 0
     assert "Allowed: 4.21.7, 4.21.8" in replaced_default_result.output
     mock_reconcile.assert_not_called()
+
+
+def test_config_path_uses_enclave_checkout_from_another_working_directory(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    checkout = tmp_path / "enclave"
+    (checkout / "defaults").mkdir(parents=True)
+    (checkout / "defaults/platforms.yaml").touch()
+    (checkout / "playbooks/common").mkdir(parents=True)
+    (checkout / "playbooks/common/load-vars.yaml").touch()
+    (checkout / "config").mkdir()
+
+    other_project = tmp_path / "other-project"
+    (other_project / "config").mkdir(parents=True)
+    (other_project / "config/platforms.yaml").touch()
+
+    source_file = checkout / "src/enclave/reconcile/cli.py"
+    source_file.parent.mkdir(parents=True)
+    mocker.patch("enclave.reconcile.cli.__file__", str(source_file))
+    mocker.patch("enclave.reconcile.cli.Path.cwd", return_value=other_project)
+
+    assert config_path("platforms.yaml") == checkout / "config/platforms.yaml"
+
+
+def test_mgmt_cluster_version_rejects_invalid_config_version(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    config_file = tmp_path / "platforms.yaml"
+    config_file.write_text(
+        "openshift_versions:\n  - version: 4.20.x\n    default: true\n",
+        encoding="utf-8",
+    )
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=config_file)
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--latest", "--dry-run"], env=_KC
+    )
+
+    assert result.exit_code != 0
+    assert "openshift_versions[0].version" in result.output
+    assert "Invalid version" in result.output
+    assert "ValueError" not in result.output
+    mock_reconcile.assert_not_called()
+
+
+def test_mgmt_cluster_version_hides_yaml_parse_contents(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    config_file = tmp_path / "platforms.yaml"
+    config_file.write_text(
+        "openshift_versions:\n  - version: 'secret-token\n", encoding="utf-8"
+    )
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=config_file)
+
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--use-defaults", "--dry-run"], env=_KC
+    )
+
+    assert result.exit_code != 0
+    assert "Failed to parse" in result.output
+    assert "secret-token" not in result.output
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:

@@ -101,12 +101,12 @@
 
 - name: Check for optional OpenShift platforms override
   ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../config/platforms.yaml"
+    path: "{{ platforms_vars_file | default(playbook_dir + '/../config/platforms.yaml', true) }}"
   register: r_platforms_override
 
 - name: Load optional OpenShift platforms override
   ansible.builtin.include_vars:
-    file: "{{ playbook_dir }}/../config/platforms.yaml"
+    file: "{{ platforms_vars_file | default(playbook_dir + '/../config/platforms.yaml', true) }}"
   when: r_platforms_override.stat.exists
 
 - name: Set Management cluster OpenShift version from default

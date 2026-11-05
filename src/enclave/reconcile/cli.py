@@ -8,6 +8,8 @@ import yaml
 
 from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
+    InvalidVersionError,
+    parse_version,
     reconcile as cluster_upgrade_reconcile,
 )
 from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
@@ -19,8 +21,24 @@ from enclave.utils import (
 )
 
 
+def _enclave_checkout_root() -> Path | None:
+    """Find the checkout whose playbooks and defaults belong to this CLI."""
+    package_dir = Path(__file__).resolve().parent
+    for start in (Path.cwd(), package_dir):
+        for candidate in (start, *start.parents):
+            if (candidate / "defaults/platforms.yaml").is_file() and (
+                candidate / "playbooks/common/load-vars.yaml"
+            ).is_file():
+                return candidate
+    return None
+
+
 def defaults_path(filename: str) -> Path:
-    """Return the path of a bundled defaults file, for installed and editable layouts."""
+    """Resolve a defaults file from the active checkout or installed package."""
+    checkout = _enclave_checkout_root()
+    if checkout is not None:
+        return checkout / "defaults" / filename
+
     # Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/ → enclave/defaults/
     # Editable:  src/enclave/reconcile/cli.py → src/enclave/ (no defaults/) → repo_root/defaults/
     enclave_pkg = Path(__file__).resolve().parent.parent
@@ -31,13 +49,13 @@ def defaults_path(filename: str) -> Path:
 
 
 def config_path(filename: str) -> Path:
-    """Resolve an optional config file from the current directory or source checkout."""
+    """Resolve config from the Enclave checkout used by its Ansible playbooks."""
+    checkout = _enclave_checkout_root()
+    if checkout is not None:
+        return checkout / "config" / filename
+
     enclave_pkg = Path(__file__).resolve().parent.parent
-    candidates = (
-        Path.cwd() / "config" / filename,
-        enclave_pkg.parent.parent / "config" / filename,
-    )
-    return next((path for path in candidates if path.exists()), candidates[0])
+    return enclave_pkg.parent.parent / "config" / filename
 
 
 def _validate_openshift_versions(
@@ -54,12 +72,16 @@ def _validate_openshift_versions(
         )
 
     version_entries = cast("list[dict[str, object]]", versions)
-    for entry in version_entries:
+    for index, entry in enumerate(version_entries):
         version = entry.get("version")
         if not isinstance(version, str) or not version:
             raise click.ClickException(
-                f"{source_file} version entries require a non-empty 'version'"
+                f"{source_file} openshift_versions[{index}] requires a non-empty 'version'"
             )
+        try:
+            parse_version(version, f"{source_file} openshift_versions[{index}].version")
+        except InvalidVersionError as exc:
+            raise click.ClickException(str(exc)) from exc
         if "default" in entry and not isinstance(entry["default"], bool):
             raise click.ClickException(
                 f"{source_file} version 'default' values must be boolean"
@@ -101,7 +123,9 @@ def load_openshift_versions() -> list[dict[str, object]]:
             with config_file.open(encoding="utf-8") as fh:
                 config_platforms = yaml.safe_load(fh)
         except yaml.YAMLError as exc:
-            raise click.ClickException(f"Failed to parse {config_file}: {exc}") from exc
+            raise click.ClickException(
+                f"Failed to parse {config_file} as YAML"
+            ) from exc
 
         if config_platforms is None:
             config_platforms = {}
