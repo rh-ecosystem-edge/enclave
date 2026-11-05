@@ -69,6 +69,11 @@ on:
           - le-ecdsa-short
           - zerossl-rsa
           - zerossl-ecdsa
+      additional-sno-vm:
+        description: 'Add an SNO managed cluster on an additional VM, installed and imported into ACM'
+        required: false
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened]
   merge_group:
@@ -95,4 +100,5 @@ jobs:
       workflow-display-name: ${{ inputs.workflow-display-name || 'E2E Disconnected' }}
       osac-chart-version: ${{ inputs.osac-chart-version || '' }}
       cert-type: ${{ inputs.cert-type || '' }}
+      additional-sno-vm: ${{ inputs.additional-sno-vm || false }}
     secrets: inherit

@@ -339,9 +339,9 @@ safety:
   no cluster pool owns. `reap` deletes those not referenced by any defined domain
   and older than the threshold.
 
-The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, safely above
-the longest e2e job timeout of 600 minutes). A destructive reap refuses a
-threshold below the safety floor (`11h`, just above that timeout) unless `--force`
+The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, above the
+longest e2e job timeout of 660 minutes). A destructive reap refuses a
+threshold below the safety floor (`12h`, just above that timeout) unless `--force`
 is given, so a misconfigured value cannot tear down an in-flight run sharing the
 host; `--dry-run` is exempt. Non-numeric or non-finite thresholds are rejected.
 Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
