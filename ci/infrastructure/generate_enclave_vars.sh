@@ -265,6 +265,29 @@ EOF
     info "✓ Self-signed certificates generated for api.${CLUSTER_FQDN} and *.apps.${CLUSTER_FQDN}"
 fi
 
+# Add the additional SNO VM to discovery_hosts so discovery registers it as an
+# unbound Agent. Written to config/cloud_infra.yaml, which phase 07 reads and the
+# node-management plugin keeps reading as a fallback. Empty otherwise.
+case "${ENCLAVE_SNO_VM_ENABLED:-false}" in
+    true | false) ;;
+    *) error "ENCLAVE_SNO_VM_ENABLED must be true or false, got: '${ENCLAVE_SNO_VM_ENABLED}'"; exit 1 ;;
+esac
+DISCOVERY_HOSTS_BLOCK="discovery_hosts: []"
+if [ "${ENCLAVE_SNO_VM_ENABLED:-false}" = "true" ]; then
+    # Same shape as the masters' agent_hosts: libvirt UUID as Redfish system id,
+    # virtio primary disk as root disk.
+    DISCOVERY_HOSTS_BLOCK="discovery_hosts:
+  - name: ${ENCLAVE_SNO_VM_CLUSTER_NAME:?ENCLAVE_SNO_VM_CLUSTER_NAME not set}
+    macAddress: \"${ENCLAVE_SNO_VM_CLUSTER_MAC:?ENCLAVE_SNO_VM_CLUSTER_MAC not set}\"
+    ipAddress: ${ENCLAVE_SNO_VM_CLUSTER_IP:?ENCLAVE_SNO_VM_CLUSTER_IP not set}
+    redfish: ${BMC_BASEURI}
+    bmcSystemId: ${ENCLAVE_SNO_VM_UUID:?ENCLAVE_SNO_VM_UUID not set}
+    rootDisk: \"/dev/vda\"
+    redfishUser: admin
+    redfishPassword: password"
+    info "Added the SNO VM (${ENCLAVE_SNO_VM_NAME:-}) to discovery_hosts"
+fi
+
 # Generate config/cloud_infra.yaml file
 cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 ---
@@ -278,7 +301,7 @@ cat > "$CLOUD_INFRA_VARS_OUTPUT" <<EOF
 # Discovery hosts for cloud infrastructure (CaaS)
 # These are worker nodes that will be discovered and added to the cluster
 # Set to an empty list if no discovery hosts are needed:
-discovery_hosts: []
+${DISCOVERY_HOSTS_BLOCK}
 EOF
 
 # Override storage plugin and quay backend when STORAGE_PLUGIN=odf
