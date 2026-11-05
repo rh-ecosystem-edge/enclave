@@ -369,7 +369,7 @@ def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> No
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.21", dry_run, 180, 60, allow_not_recommended
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
