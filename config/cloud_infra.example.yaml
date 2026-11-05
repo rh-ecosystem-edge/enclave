@@ -14,7 +14,8 @@
 # Or add hosts to discover:
 discovery_hosts:
   - name: YOUR_NODE_NAME              # Example: node01
-    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
+    # Optional with simple IP-based config. Omit to discover from the Redfish BMC.
+    # macAddress: YOUR_MAC_ADDRESS    # Example: 0c:c4:7a:62:fe:ec
     ipAddress: YOUR_IP_ADDRESS        # Should be in machineNetwork
     # interfaceName: eno1np0          # Optional: NIC name (default: eno1). Override for hardware with different naming
     redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP

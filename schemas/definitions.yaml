@@ -126,7 +126,6 @@ definitions:
       - redfishPassword
       - redfishUser
       - rootDisk
-      - macAddress
     oneOf:
       - required:
           - ipAddress
@@ -139,6 +138,7 @@ definitions:
       - required:
           - networkConfig
           - mapInterfaces
+          - macAddress
         not:
           required:
             - ipAddress

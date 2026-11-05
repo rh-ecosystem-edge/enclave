@@ -29,6 +29,20 @@
           tags: always
       tags: always
 
+    - name: Resolve missing agent host MAC addresses
+      ansible.builtin.include_tasks:
+        file: tasks/resolve_host_macs.yaml
+        apply:
+          tags: always
+      vars:
+        hosts_to_resolve: "{{ agent_hosts }}"
+      tags: always
+
+    - name: Use resolved agent host MAC addresses
+      ansible.builtin.set_fact:
+        agent_hosts: "{{ resolved_host_macs }}"
+      tags: always
+
     - name: Execute tasks with workingDir in PATH
       environment:
         PATH: "{{ workingDir }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
