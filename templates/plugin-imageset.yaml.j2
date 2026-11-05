@@ -9,7 +9,8 @@ mirror:
       packages:
 {% for operator in plugin.operators %}
 {% set additional_operator_names = operator.csvNames if (operator.csvMirror | default(false) | bool) else [] %}
-{% for operator_name in [operator.name] + additional_operator_names %}
+{% set operator_names = ([operator.name] + additional_operator_names) | unique | list %}
+{% for operator_name in operator_names %}
         - name: {{ operator_name }}
           defaultChannel: {{ operator.channel }}
           channels:
