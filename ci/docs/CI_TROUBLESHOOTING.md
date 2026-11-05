@@ -93,7 +93,24 @@ artifacts/
         ├── <pod>_describe.txt  Per-pod describe
         ├── <pod>.log           Per-pod logs, all containers, 2000-line tail (+ _previous.log)
         └── health-instance.txt /health/instance body naming the failing subsystem
+└── managed_sno/                Only when the SNO managed cluster is enabled (additional-sno-vm)
+    ├── logs/                   deploy_sno / verify_sno / verify_sno_update_service step logs
+    ├── state/                  Every run (level: deployment)
+    │   ├── hub/                AgentClusterInstall, ClusterDeployment, Agents, BareMetalHosts,
+    │   │                       InfraEnv, ManagedCluster, add-ons (YAML with status),
+    │   │                       policy-compliance.txt (policies replicated to the SNO)
+    │   └── sno/                ClusterVersion and ClusterOperators (YAML), nodes, pods
+    └── failure/                On failure only (level: full)
+        ├── hub/                install-events.txt and install-logs.tar (assisted-service),
+        │                       agent-validations.txt, events, logs/ (assisted-service,
+        │                       import controller, policy propagator)
+        ├── lz/                 ironic / baremetal-operator container logs
+        └── sno/                problem-pods/ (describe, logs, --previous), events, klusterlet
+                                and add-on pod logs, ConfigurationPolicies
 ```
+
+The in-flight sampler also writes `inflight/managed-sno.log` (SNO VM state and SNO API
+latency) when the SNO VM exists.
 
 Security note: `vars.yaml` (pull secrets, Quay admin password) is intentionally **not**
 collected. Secrets appear by name only. The `config/` and `helm-values/` files are passed
@@ -111,6 +128,8 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 | PVC unbound / storage | `cluster/quay-diagnostics-*/overview.txt` (PVCs), `cluster/events.txt`, `libvirt/` storage |
 | Mirroring / disconnected image pull | `landing-zone/pipeline-logs/` (`oc-mirror*`, `mirroring_errors_*`) |
 | Install never reaches a cluster (no `cluster/` dir) | `landing-zone/.openshift_install.log`, `landing-zone/pipeline-logs/`, `landing-zone/serial-console.log` |
+| SNO managed cluster never installs / never joins ACM | `managed_sno/logs/deploy_sno_*.log`, then `managed_sno/failure/hub/install-events.txt`, `agent-validations.txt`, `managed_sno/state/hub/managedcluster.yaml` (conditions) and `failure/hub/logs/import-controller.log` |
+| Update service patch missing on the SNO | `managed_sno/state/hub/policy-compliance.txt`, `managed_sno/state/sno/clusterversion.yaml` (`spec.upstream`), `managed_sno/failure/sno/configurationpolicies.yaml` |
 | Plugin deploys wrong values / misconfiguration (e.g. a service enabled/disabled unexpectedly, bad hostname) | `landing-zone/config/` (input config, incl. `config/plugins/<plugin>.yaml`), `landing-zone/helm-values/` (what was actually rendered and applied) |
 
 Worked example: an LVMS Quay rollout hang (OSAC-4957) showed only
