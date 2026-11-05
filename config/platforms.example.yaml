@@ -3,9 +3,16 @@
 # Platform Configuration Overrides
 # ============================================================================
 # This file allows you to override platform defaults from defaults/platforms.yaml
-# Copy this file to platforms.yaml and uncomment/modify as needed.
+# Copy this file to platforms.yaml and edit the settings as needed.
 
 # Allow management cluster upgrades to not-recommended versions (default: false)
 # When true, the upgrade process will allow versions from conditionalUpdates.
 # WARNING: Only use when necessary. Follow Red Hat supported upgrade paths when possible.
 # allow_not_recommended_upgrades: false
+
+# Optional version list override. Uncomment and edit to replace the tested list
+# from defaults/platforms.yaml. Exactly one entry must have default: true.
+# openshift_versions:
+#   - version: 4.20.21
+#   - version: 4.20.32
+#     default: true

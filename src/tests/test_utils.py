@@ -71,6 +71,22 @@ def test_semver_numeric_prerelease_ordering() -> None:
     assert semver_key("4.16.3-rc10") > semver_key("4.16.3-rc9")
 
 
+def test_semver_dotted_numeric_prerelease_ordering() -> None:
+    """Dotted pre-release numbers are compared numerically."""
+    assert semver_key("4.20.1-rc.10") > semver_key("4.20.1-rc.9")
+
+
+def test_semver_bare_label_sorts_before_label_with_number() -> None:
+    """A bare label and its numbered form have distinct identifier keys."""
+    assert semver_key("4.20.1-rc.10") < semver_key("4.20.1-rc0.2")
+
+
+def test_semver_multi_segment_prerelease_ordering() -> None:
+    """All numeric pre-release identifiers are compared numerically."""
+    assert semver_key("4.20.1-rc.1.10") > semver_key("4.20.1-rc.1.9")
+    assert semver_key("4.20.1") > semver_key("4.20.1-rc.1.10")
+
+
 # ---------------------------------------------------------------------------
 # run_oc_command
 # ---------------------------------------------------------------------------

@@ -18,6 +18,14 @@
       ansible.builtin.include_tasks:
         file: common/load-vars.yaml
 
+    - name: Reject missing explicit OpenShift platforms config path
+      ansible.builtin.fail:
+        msg: "OpenShift platforms config file not found: {{ resolved_platforms_vars_file }}"
+      when:
+        - platforms_vars_file is defined
+        - (platforms_vars_file | default('', true) | string | trim | length) > 0
+        - not r_platforms_override.stat.exists
+
     - name: Run migrations
       ansible.builtin.include_tasks:
         file: tasks/migrations.yaml
@@ -30,6 +38,8 @@
         mgmt_cluster_upgrade_argv: >-
           {{
             ['enclave', 'reconcile', 'mgmt-cluster-version', '--use-defaults']
+            + (['--platforms-vars-file', resolved_platforms_vars_file]
+              if r_platforms_override.stat.exists else [])
             + (['--allow-not-recommended'] if (allow_not_recommended_upgrades | default(false) | bool) else [])
           }}
       when: upgrade_mgmt_cluster | default(true) | bool
@@ -37,6 +47,7 @@
     - name: Upgrade management cluster OpenShift version
       ansible.builtin.command:
         argv: "{{ mgmt_cluster_upgrade_argv }}"
+        chdir: "{{ (playbook_dir + '/..') | realpath }}"
       register: r_mgmt_cluster_upgrade
       when: upgrade_mgmt_cluster | default(true) | bool
 
@@ -52,6 +63,7 @@
           - reconcile
           - operator-versions
           - --use-defaults
+        chdir: "{{ (playbook_dir + '/..') | realpath }}"
       register: r_operator_versions_upgrade
       when: upgrade_operators | default(true) | bool
 
