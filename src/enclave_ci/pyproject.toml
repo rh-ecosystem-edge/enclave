@@ -3,6 +3,10 @@ name = "enclave-ci"
 version = "0.1.0"
 description = "Red Hat Sovereign Enclave CI tooling (not shipped to clients)"
 requires-python = "==3.12.*"
+# libvirt-python is deliberately not listed: PyPI ships it as an sdist only, so
+# installing it would compile it (gcc, libvirt-devel). The libvirt bindings come
+# from the host's python3-libvirt RPM instead, which requires running enclave-ci
+# from a venv created on the host python3 with --system-site-packages.
 dependencies = [
     "certbot ==5.8.0",
     "certbot-dns-hetzner ==4.0.0",
