@@ -89,8 +89,19 @@ api.<cluster>.<base_domain>         -> API VIP      (192.168.N.100)
 *.apps.<cluster>.<base_domain>      -> ingress VIP  (192.168.N.101, true wildcard)
 ```
 
-These are added to the **cluster** network (masters resolve via its dnsmasq) and, in
-disconnected mode, also to the **uplink** network (the LZ resolves via that one).
+When the additional SNO VM is created (`ENCLAVE_ADDITIONAL_SNO_VM=true`), SNO
+records for the `<cluster>-sno` cluster are appended; a single node serves both API
+and ingress, so all three resolve to the VM's IP (192.168.N.30):
+
+```text
+api.<cluster>-sno.<base_domain>       -> SNO VM (192.168.N.30)
+api-int.<cluster>-sno.<base_domain>   -> SNO VM (192.168.N.30)
+*.apps.<cluster>-sno.<base_domain>    -> SNO VM (192.168.N.30, true wildcard)
+```
+
+These are added to the **cluster** network (masters and the SNO VM resolve via its
+dnsmasq) and, in disconnected mode, also to the **uplink** network (the LZ resolves
+via that one).
 
 ### NIC assignments
 
@@ -99,12 +110,13 @@ disconnected mode, also to the **uplink** network (the LZ resolves via that one)
 | `{cluster}_landingzone_0` (connected) | `{cluster}-p` | `{cluster}-e` | — |
 | `{cluster}_landingzone_0` (disconnected) | `{cluster}-p` | `{cluster}-e` | `{cluster}-u` |
 | `{cluster}_master_N` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
+| `{cluster}_sno` (both modes) | `{cluster}-p` (L2 only) | `{cluster}-e` | — |
 
-Masters have no IP on the BMC bridge. sushy-tools exposes them as
+Masters and the SNO VM have no IP on the BMC bridge. sushy-tools exposes them as
 Redfish systems identified by their libvirt domain UUID (see *Domain UUIDs*).
 
 VM names follow the dev-scripts convention (`{cluster}_landingzone_0`,
-`{cluster}_master_{i}`) so no downstream scripts need to change.
+`{cluster}_master_{i}`, plus `{cluster}_sno`) so no downstream scripts need to change.
 
 ### Boot order
 
@@ -112,6 +124,9 @@ Master VMs (`{cluster}_master_N`) are defined with `<os><boot dev='cdrom'/><boot
 
 1. SATA CD-ROM (first) — sushy-tools mounts the ABI ISO here via Redfish VirtualMedia
 2. virtio primary disk (second) — boots RHCOS after installation
+
+The SNO VM (`{cluster}_sno`) uses the same boot order, so any ISO (e.g. an
+assisted-installer discovery ISO) can be mounted the same way.
 
 sushy-tools changes the boot device by modifying `<os><boot>` elements via the
 libvirt API. Per-device `<boot order='N'/>` attributes on disk elements must NOT
@@ -125,6 +140,31 @@ builds the cloud-init ISO at that path, writes the cloud image into the existing
 volume (and resizes it), then `virsh start`s the already-defined domain — it never
 undefines/recreates it or manages the pool. The uplink NIC (`{cluster}-u`) is part of
 the domain definition in disconnected mode.
+
+## Additional SNO VM
+
+By default `vm_infra.py` builds the hub only (1 LZ + N masters). Setting
+`ENCLAVE_ADDITIONAL_SNO_VM=true` additionally creates one VM sized and wired for a
+single-node OpenShift (SNO) install, `{cluster}_sno`. `vm_infra.py` does not know what
+the VM is used for; it only creates it and its network/DNS plumbing. It is a plain
+libvirt domain on the same host, so the existing per-cluster sushy-tools instance
+exposes it automatically (no new BMC port); it reuses `ENCLAVE_BMC_ENDPOINT`.
+
+The VM is defined exactly like a master — empty cdrom, cdrom-first boot, the same
+NICs — so an ISO can be mounted as Redfish virtual media via sushy-tools. It is
+created the same way in both modes; in disconnected mode the cluster bridge is
+isolated, so anything installed on it pulls from the hub mirror. It gets a static
+cluster-network lease (`192.168.N.30`), SNO DNS records for `<cluster>-sno` (see
+*DNS records*), and an extra data disk. Its identity is emitted to `cluster-env.sh`
+under the `ENCLAVE_SNO_VM_*` keys (`ENCLAVE_SNO_VM_ENABLED` is always emitted).
+
+Like all topology, the VM is fixed at **create** time: the cluster network (and its
+DHCP/DNS records) is defined once and `create` is otherwise idempotent, so adding or
+removing it on an existing cluster requires a `destroy` + `create`, not a re-run.
+
+`destroy` tears the VM down with the rest of the cluster (it matches the shared
+`{cluster}_` domain prefix and the `*-extra.img` glob), and `reap` recognizes
+`{cluster}_sno` domains so a cluster left with only that VM is still reclaimed.
 
 ## Parallelism and isolation
 
@@ -166,6 +206,12 @@ export ENCLAVE_MASTER_0_CLUSTER_MAC="52:54:00:…"
 export ENCLAVE_MASTER_0_CLUSTER_IP="192.168.N.20"
 export ENCLAVE_MASTER_0_UUID="3f9c1e2a-…"
 # … and so on
+export ENCLAVE_SNO_VM_ENABLED="false"   # true adds the keys below
+# export ENCLAVE_SNO_VM_NAME="eci-ab12cd34_sno"
+# export ENCLAVE_SNO_VM_CLUSTER_NAME="eci-ab12cd34-sno"
+# export ENCLAVE_SNO_VM_CLUSTER_MAC="52:54:00:…"
+# export ENCLAVE_SNO_VM_CLUSTER_IP="192.168.N.30"
+# export ENCLAVE_SNO_VM_UUID="7a4d0b9e-…"
 ```
 
 ### MAC addresses
@@ -180,7 +226,7 @@ old random-MACs-plus-`macs.json` scheme.)
 
 Libvirt domain UUIDs are **deterministic** too — `uuid5` of `enclave:cluster_name:vm`,
 set in `domain.xml.j2` — so they are known before any domain is defined and are
-emitted in `cluster-env.sh` as `ENCLAVE_MASTER_<i>_UUID`.
+emitted in `cluster-env.sh` as `ENCLAVE_MASTER_<i>_UUID` / `ENCLAVE_SNO_VM_UUID`.
 sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 
 ## Python tool
@@ -199,6 +245,7 @@ sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 | `ENCLAVE_BMC_NETWORK` | no | derived | Alternative way to pin N via its third octet (e.g. `100.64.5.0/24`); ignored if `ENCLAVE_SUBNET_ID` is set |
 | `ENCLAVE_DEPLOYMENT_MODE` | no | `disconnected` | `connected` or `disconnected` |
 | `ENCLAVE_NUM_MASTERS` | no | `3` | Number of master VMs |
+| `ENCLAVE_ADDITIONAL_SNO_VM` | no | `false` | `true` adds one VM sized and wired for a single-node OpenShift install (`{cluster}_sno`) |
 | `STORAGE_PLUGIN` | no | `lvms` | `lvms` or `odf` — affects VM sizing defaults |
 | `MASTER_MEMORY` | no | 32768 / 49152 (odf) | Master RAM in MiB. ODF masters get 48 GB for the ODF/ACM/MCE control plane and Ceph consumers; more does not help (the operators-phase Quay CrashLoop is a Quay-backend health-probe issue, not master memory) |
 | `MASTER_VCPU` | no | 12 / 16 (odf) | Master vCPU count |
@@ -207,6 +254,10 @@ sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 | `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB; the odf default gives Ceph-on-LZ headroom |
 | `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (odf) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; odf additionally needs ~900 GB for the Ceph loopback OSD files |
 | `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count |
+| `SNO_VM_MEMORY` | no | 32768 | SNO VM RAM in MiB |
+| `SNO_VM_VCPU` | no | 16 | SNO VM vCPU count |
+| `SNO_VM_DISK` | no | 200 | SNO VM primary disk in GiB (larger than a master's: in disconnected mode every image is pulled from the mirror onto it) |
+| `SNO_VM_EXTRA_DISK` | no | 200 | SNO VM extra data disk in GiB (e.g. for LVMS); 0 to omit |
 
 ### XML templates
 
