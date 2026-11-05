@@ -27,7 +27,7 @@ src/             Python source root; a uv workspace (root package + members)
     tools/       Additional tools (enclave tools subcommand); new shipped tools go here
   enclave_ci/    CI-only workspace member (the `enclave-ci` CLI); never shipped to clients
     pyproject.toml   Member project metadata + its own dependencies
-    enclave_ci/  Package code (cli.py, cert_gen/, ...)
+    enclave_ci/  Package code (cli.py, cert_gen/, environment/ (vm_infra.py), ...)
   tests/         All Python tests for every package (pytest, shared fixtures/helpers)
 ci/              CI/E2E automation invoked by .github, by function (lib, infrastructure, deployment, verification, diagnostics)
 scripts/         Host-local helper scripts not invoked by CI
@@ -173,7 +173,8 @@ python-format` (auto-format).
 
 ## CI test environment — `vm_infra.py` is the single source of truth
 
-`ci/infrastructure/vm_infra.py` owns the entire CI test environment: the cluster
+`src/enclave_ci/enclave_ci/environment/vm_infra.py` (run as `enclave-ci environment`)
+owns the entire CI test environment: the cluster
 identity (generates the name, derives `WORKING_DIR`), libvirt networks and bridges, DNS
 records, the storage pool, volumes, disks, and all VM domains (including the Landing
 Zone). It writes everything downstream needs to one file, `$WORKING_DIR/cluster-env.sh`

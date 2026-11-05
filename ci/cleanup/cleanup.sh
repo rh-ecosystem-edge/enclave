@@ -34,10 +34,8 @@ try_load_cluster_env "${CLUSTER_NAME}" || true
 
 # ─── VM infrastructure teardown via vm_infra.py ───────────────────────────────
 info "Destroying VM infrastructure (VMs, networks, pool)..."
-VM_INFRA="${ENCLAVE_DIR}/ci/infrastructure/vm_infra.py"
-
 _DESTROY_OK=false
-if [ -f "${VM_INFRA}" ]; then
+if ENCLAVE_CI="$(enclave_ci_environment_bin)"; then
     # Pass env explicitly via `sudo env`: inline VAR=... prefixes are dropped by
     # sudo's env_reset, and `sudo -E` only preserves them when sudoers allows it.
     # destroy selects no subnet, so it needs only the cluster name and working dir.
@@ -46,13 +44,13 @@ if [ -f "${VM_INFRA}" ]; then
        ENCLAVE_DEPLOYMENT_MODE="${ENCLAVE_DEPLOYMENT_MODE:-disconnected}" \
        ENCLAVE_NUM_MASTERS="${ENCLAVE_NUM_MASTERS:-3}" \
        WORKING_DIR="${WORKING_DIR}" \
-         python3 "${VM_INFRA}" destroy; then
+         "${ENCLAVE_CI}" environment destroy; then
         _DESTROY_OK=true
     else
         warning "vm_infra.py destroy reported errors — running manual virsh fallback"
     fi
 else
-    warning "vm_infra.py not found — falling back to manual virsh teardown"
+    warning "Cannot set up the enclave-ci environment venv — falling back to manual virsh teardown"
 fi
 
 if [ "${_DESTROY_OK}" = "false" ]; then

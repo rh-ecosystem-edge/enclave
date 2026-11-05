@@ -3,6 +3,7 @@
 import click
 
 from enclave_ci.cert_gen.main import cli as cert_gen_cli
+from enclave_ci.environment.cli import cli as environment_cli
 
 
 @click.group()
@@ -11,3 +12,4 @@ def cli() -> None:
 
 
 cli.add_command(cert_gen_cli, name="cert-gen")
+cli.add_command(environment_cli, name="environment")

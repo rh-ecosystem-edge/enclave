@@ -148,9 +148,17 @@ ignore_missing_imports = true
 module = ["yaml"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["libvirt"]
+ignore_missing_imports = true
+
 [tool.coverage.run]
 branch = true
-omit = ["*/tests/*"]
+omit = [
+    "*/tests/*",
+    # Deliberately untested.
+    "*/enclave_ci/environment/*",
+]
 
 [tool.coverage.report]
 fail_under = 90

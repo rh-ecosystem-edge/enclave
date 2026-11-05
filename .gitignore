@@ -12,6 +12,7 @@ dist/
 ocp-cluster/
 *.pyc
 __pycache__/
+.venv-enclave-ci/
 *.egg-info/
 .ruff_cache/
 .coverage
