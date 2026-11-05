@@ -4,32 +4,39 @@
 
 - name: Set OpenShift platforms config path
   ansible.builtin.set_fact:
-    platforms_vars_file: "{{ platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true) }}"
-    platforms_config_path: "{{ platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true) }}"
+    resolved_platforms_vars_file: >-
+      {{ (platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true)) | realpath }}
+    platforms_config_path: >-
+      {{ (platforms_vars_file | default(playbook_dir + '/../../config/platforms.yaml', true)) | realpath }}
+
+- name: Load OpenShift platforms config data (if present)
+  ansible.builtin.set_fact:
+    platforms_config_data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml }}"
+  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
 
 - name: Validate platforms.yaml against platforms schema (if present)
   ansible.utils.validate:
-    data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | default({}, true) | to_json }}"
+    data: "{{ ({} if platforms_config_data is none else platforms_config_data) | to_json }}"
     criteria: "{{ lookup('ansible.builtin.file', '../../schemas/platforms.yaml') | from_yaml | combine(schema_definitions, recursive=True) | to_json }}"
     engine: ansible.utils.jsonschema
   no_log: "{{ schemaValidationNoLog | default(false) }}"
-  when: lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
+  when: platforms_config_data is defined
 
 - name: Validate OpenShift version override default (if provided)
   ansible.builtin.assert:
     that:
       - >-
-        platforms_data.openshift_versions
+        platforms_config_data.openshift_versions
         | selectattr('default', 'defined')
         | selectattr('default', 'equalto', true)
         | list | length == 1
     fail_msg: >-
       {{ platforms_config_path }} must have exactly one version with 'default: true'
-  vars:
-    platforms_data: "{{ lookup('ansible.builtin.file', platforms_config_path) | from_yaml | default({}, true) }}"
   when:
-    - lookup('ansible.builtin.fileglob', platforms_config_path) | length > 0
-    - platforms_data.openshift_versions is defined
+    - platforms_config_data is defined
+    - >-
+      platforms_config_data is mapping and
+      platforms_config_data.openshift_versions is defined
 
 - name: Include load-vars to resolve user config file paths
   ansible.builtin.include_tasks:
