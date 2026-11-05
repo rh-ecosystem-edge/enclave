@@ -78,6 +78,26 @@ The same `openshift_versions` list is used by management-cluster version selecti
 
 Ansible validates the config structure against `schemas/platforms.yaml` and requires exactly one `default: true` entry. The Python CLI checks the version-list structure and the single default before selecting a version. Neither path checks whether a version is present in the OpenShift update graph, whether an upgrade path exists from a particular cluster, or whether an overridden version is compatible with the Enclave stack or downstream products. The override only makes a version selectable in Enclave; the management-cluster upgrade command still checks OpenShift's available updates. `allow_not_recommended_upgrades` separately permits versions reported as conditional updates. Enclave does not monitor the update graph or automate these consumer checks.
 
+## Migration Path
+
+### Existing Deployments
+
+No action required. Existing deployments continue using `defaults/platforms.yaml` as before.
+
+### Adopting the Override
+
+1. **Review** current `defaults/platforms.yaml`
+2. **Copy** `config/platforms.example.yaml` to `config/platforms.yaml`
+3. **Edit** `openshift_versions` with your desired versions
+4. **Validate** the local configuration from the Enclave checkout with `make validate-schema`
+5. **Sync disconnected deployments**: After changing the override, run `bash sync.sh` from the Enclave checkout. The script runs relevant phases with `fresh=false`, mirrors configured OpenShift releases, and reconciles ACM `ClusterImageSet` resources. This makes the configured versions available for the use cases below.
+   Connected deployments do not need this mirroring step. Do not add `fresh` to `config/global.yaml`; its schema does not allow it.
+6. **Use the configured versions**: The override is read on the next Enclave run. Upgrade an existing management cluster with `enclave reconcile mgmt-cluster-version --version X.Y.Z` (or `--use-defaults`), and select versions for managed clusters through ACM. In disconnected deployments, complete step 5 before using a newly configured version.
+
+### Reverting the Override
+
+Remove `openshift_versions` from `config/platforms.yaml` or remove the file. Later Enclave runs then use `defaults/platforms.yaml`. This does not change a management or managed cluster that is already running; rerun the relevant deployment or ACM configuration playbooks to update available choices.
+
 ## Use Cases
 
 ### 1. Urgent CVE Z-Stream Fix
@@ -117,23 +137,6 @@ openshift_versions:
 
 **Result**: Version 4.20.21 is no longer offered, preventing invalid upgrade attempts.
 
-### 3. Multi-Cluster Version Rollout
-
-**Scenario**: A consumer manages 50 clusters via ACM. They want to stage version rollouts: dev clusters first, then staging, then production.
-
-**Action**: Keep the same version list in each environment. The list controls which versions ACM can offer; ACM controls which clusters receive an upgrade and when. Upgrade development clusters first, then promote the same configuration and release package to staging and production after validation.
-
-**Shared `config/platforms.yaml`**:
-
-```yaml
-openshift_versions:
-  - version: 4.20.32
-    default: true
-  - version: 4.20.35
-```
-
-After the development rollout succeeds, select 4.20.35 for production clusters through ACM. The shared config does not need to change.
-
 ## Constraints and Responsibilities
 
 ### Consumer Constraints
@@ -167,9 +170,7 @@ During a fresh disconnected deployment:
 
 ### Managed Cluster Deployments (ACM)
 
-The ACM `ClusterImageSet` resources and mirrored release images are based on the effective `openshift_versions` list. On a fresh disconnected install, Enclave narrows that list to the default version, so only that version is mirrored and configured for ACM.
-
-To mirror the full configured list after installation in a disconnected deployment, run `bash sync.sh` from the Enclave checkout. The script runs the relevant phases with `fresh=false`, mirrors the configured releases, and reconciles ACM `ClusterImageSet` resources. Do not add `fresh` to `config/global.yaml`; that file's schema does not allow it. Removing or changing versions in the config takes effect in ACM only when the sync runs again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
+The ACM `ClusterImageSet` resources and mirrored release images are based on the effective `openshift_versions` list. On a fresh disconnected install, Enclave narrows that list to the default version, so only that version is mirrored and configured for ACM. For disconnected deployments, follow the shared sync step in the Migration Path to mirror the configured list and reconcile ACM `ClusterImageSet` resources. Removing or changing versions in the config takes effect in ACM only when the sync runs again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
 
 ### Cluster Upgrades
 
@@ -179,21 +180,3 @@ The `enclave reconcile mgmt-cluster-version` command:
 - Supports `--use-defaults` (use the default version), `--latest` (highest semver), or `--version X.Y.Z`
 
 `--latest` can select a different version after the configured list changes. Use `--version` in repeatable automation when the target must stay pinned.
-
-## Migration Path
-
-### Existing Deployments
-
-No action required. Existing deployments continue using `defaults/platforms.yaml` as before.
-
-### Adopting the Override
-
-1. **Review** current `defaults/platforms.yaml`
-2. **Copy** `config/platforms.example.yaml` to `config/platforms.yaml`
-3. **Edit** `openshift_versions` with your desired versions
-4. **Validate** the local configuration from the Enclave checkout with `make validate-schema`
-5. The override is read on the next Enclave run. In a disconnected deployment, if the management-cluster target release is not already mirrored, run `bash sync.sh` first to mirror it. Skip this step when the release is already mirrored. Then upgrade an existing management cluster with `enclave reconcile mgmt-cluster-version --version X.Y.Z` (or `--use-defaults`). For non-default managed-cluster choices in disconnected environments, run `bash sync.sh` to mirror the configured releases and update ACM `ClusterImageSet` resources.
-
-### Reverting the Override
-
-Remove `openshift_versions` from `config/platforms.yaml` or remove the file. Later Enclave runs then use `defaults/platforms.yaml`. This does not change a management or managed cluster that is already running; rerun the relevant deployment or ACM configuration playbooks to update available choices.
