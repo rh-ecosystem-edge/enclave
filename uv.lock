@@ -3,6 +3,10 @@ revision = 5
 requires-python = "==3.12.*"
 
 [manifest]
+members = [
+    "enclave",
+    "enclave-ci",
+]
 constraints = [{ name = "google-auth", specifier = ">=2.56.2" }]
 
 [[package]]
@@ -515,10 +519,6 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-cert-gen = [
-    { name = "certbot" },
-    { name = "certbot-dns-hetzner" },
-]
 dev = [
     { name = "ansible-lint" },
     { name = "anymarkup" },
@@ -551,10 +551,6 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-cert-gen = [
-    { name = "certbot", specifier = "==5.8.0" },
-    { name = "certbot-dns-hetzner", specifier = "==4.0.0" },
-]
 dev = [
     { name = "ansible-lint", specifier = "==26.10.1" },
     { name = "anymarkup", specifier = "==0.8.1" },
@@ -564,6 +560,29 @@ dev = [
     { name = "pytest-mock", specifier = "==3.15.1" },
     { name = "ruff", specifier = "==0.16.10" },
     { name = "yamllint", specifier = "==1.38.0" },
+]
+
+[[package]]
+name = "enclave-ci"
+version = "0.1.0"
+source = { editable = "src/enclave_ci" }
+dependencies = [
+    { name = "certbot" },
+    { name = "certbot-dns-hetzner" },
+    { name = "click" },
+    { name = "cryptography" },
+    { name = "pyyaml" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "certbot", specifier = "==5.8.0" },
+    { name = "certbot-dns-hetzner", specifier = "==4.0.0" },
+    { name = "click", specifier = "==8.5.0" },
+    { name = "cryptography", specifier = "==50.0.2" },
+    { name = "pyyaml", specifier = "==6.0.3" },
+    { name = "requests", specifier = "==2.34.2" },
 ]
 
 [[package]]

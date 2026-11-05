@@ -150,10 +150,10 @@ python-linter-test:
 	uv run ruff format --check src/
 
 python-unit-test: ## Run unit tests
-	uv run pytest --cov --cov-report=term-missing
+	uv run --all-packages pytest --cov --cov-report=term-missing
 
 python-types-test:
-	uv run mypy src/
+	uv run --all-packages mypy src/
 
 dev-env:
 	uv sync --all-packages

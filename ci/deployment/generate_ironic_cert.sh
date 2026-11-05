@@ -3,7 +3,7 @@
 # produced by generate_ironic_ca.sh
 #
 # When ENCLAVE_CERT_TYPE is set, requests a real certificate from a public CA
-# via enclave-cert-gen using a DNS-01 challenge (dns-hetzner) and exits early
+# via enclave-ci cert-gen using a DNS-01 challenge (dns-hetzner) and exits early
 # without needing SSH or local CA files. The only SAN issued is the DNS name
 # ironic.<cluster>.<domain>; public CAs cannot issue IP SANs. lzBmcHostname in
 # config/global.yaml must match that DNS name exactly for TLS validation to pass.
@@ -47,8 +47,8 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 # config/global.yaml must match that DNS name exactly.
 if [ -n "${ENCLAVE_CERT_TYPE:-}" ]; then
     require_env_var "ENCLAVE_BASE_DOMAIN"
-    info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-cert-gen..."
-    IRONIC_YAML=$(uv run --group cert-gen enclave-cert-gen ironic \
+    info "Requesting real ironic TLS certificate (${ENCLAVE_CERT_TYPE}) via enclave-ci cert-gen..."
+    IRONIC_YAML=$(uv run --package enclave-ci enclave-ci cert-gen ironic \
         --san "ironic.${ENCLAVE_CLUSTER_NAME}.${ENCLAVE_BASE_DOMAIN}" \
         --type "${ENCLAVE_CERT_TYPE}")
     # Parse into variables first; a failure here aborts before any write to

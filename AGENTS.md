@@ -19,12 +19,16 @@ ingress into air-gapped environments.
 playbooks/       Ansible playbooks: 01-prepare → 07-configure-discovery
 plugins/         Optional components (lvms, odf, openshift-ai, nvidia-gpu, vast-csi)
 experiences/     Experience bundles (collections of plugins, e.g. osac, aiaas)
-src/             Python source root (src layout)
-  reconcile/     Cluster/operator version reconciliation (enclave reconcile subcommand)
-  tools/         Additional Python tools (enclave tools subcommand); new tools go here
-  cli.py         Unified CLI entry point (reconcile + tools subcommands)
-  utils.py       Shared utilities for all Python packages under src/
-  tests/         All Python tests (pytest, shared fixtures)
+src/             Python source root; a uv workspace (root package + members)
+  enclave/       Shipped root package (the `enclave` CLI), installed on clients
+    cli.py       Unified CLI entry point (reconcile + tools subcommands)
+    utils.py     Shared utilities (configure_logging, etc.) for the enclave package
+    reconcile/   Cluster/operator version reconciliation (enclave reconcile subcommand)
+    tools/       Additional tools (enclave tools subcommand); new shipped tools go here
+  enclave_ci/    CI-only workspace member (the `enclave-ci` CLI); never shipped to clients
+    pyproject.toml   Member project metadata + its own dependencies
+    enclave_ci/  Package code (cli.py, cert_gen/, ...)
+  tests/         All Python tests for every package (pytest, shared fixtures/helpers)
 ci/              CI/E2E automation invoked by .github, by function (lib, infrastructure, deployment, verification, diagnostics)
 scripts/         Host-local helper scripts not invoked by CI
 templates/       Jinja2 templates for cluster and registry configs
@@ -91,12 +95,55 @@ artifact map and step-by-step recipes.
 ## Code conventions
 
 ### Python (`src/`)
-- Strict mypy: all functions must have type annotations
-- ruff: 88-char line limit, comprehensive linting and import sorting
-- Custom exception hierarchy with descriptive messages
-- Click-based CLIs with subcommands (one per package)
-- Shared utilities live in `src/utils.py` (includes `configure_logging()` for CLI entry points); new Python tools go under `src/tools/`
-- Check python-*-test Makefile targets
+
+**Workspace layout.** `src/` is a uv workspace. The root project `enclave`
+(declared in the repo-root `pyproject.toml`) is the only package shipped to clients;
+its `[tool.hatch.build.targets.wheel] only-include = ["src/enclave"]` keeps the
+wheel to that package, and `setup_ansible.sh` installs it on the Landing Zone with
+`uv tool install .`. CI-only Python lives in workspace members under `src/` (each
+with its own `pyproject.toml`), currently `enclave_ci`. Members are declared in the
+root `[tool.uv.workspace] members` and are excluded from the release tarball
+(`.github/workflows/build-push-tarball.yml`), so they never reach clients.
+
+**Where code goes.**
+- Shipped code (runs on a client/Landing Zone): a package under `src/enclave/`.
+  New shipped tools go under `src/enclave/tools/` (exposed via `enclave tools`).
+- CI/runner-only code (never installed on clients, e.g. certificate generation,
+  test-env provisioning): a workspace member under `src/`. Add it to the root
+  `[tool.uv.workspace] members`, give it its own `pyproject.toml` (with its own
+  dependencies and `[project.scripts]`), and exclude its path from the tarball.
+  The root project must **not** declare a dependency or `[tool.uv.sources]` entry on
+  a member — a workspace-source reference there makes the client `uv tool install .`
+  fail once the member's source is excluded from the tarball.
+
+**CLIs.** Click-based, one console script per package: `enclave = enclave.cli:cli`
+(root), `enclave-ci = enclave_ci.cli:cli` (member). Each is a top-level group with
+subcommands/subgroups (e.g. `enclave reconcile`, `enclave tools`,
+`enclave-ci cert-gen`). The `enclave` entry points call `configure_logging()` from
+`src/enclave/utils.py`. A member does not depend on `enclave`, so it must not import
+that helper; it handles its own logging (add a member-local helper if one is needed).
+
+**Dependencies.** Pin exact versions with `==` for every runtime dependency,
+including the `hatchling` build backend in each `[build-system] requires`. Member
+dependencies live in the member's own `pyproject.toml`, not in a root group.
+
+**Style & types.** Strict mypy — every function needs type annotations. ruff with an
+88-char line limit, comprehensive linting and import sorting. Use the custom
+exception hierarchy with descriptive messages.
+
+**Tests.** A single test tree in `src/tests/` covers every package, including the
+members (member tests import the member package, e.g.
+`from enclave_ci.cert_gen.main import ...`). Shared helpers/fixtures live there
+(`cert_helpers.py`, `fixtures.py`, `conftest.py`) and are imported as `tests.*`. Test
+files need unique names across the tree (there is one `tests` package), so name a
+member's tests distinctly (e.g. `test_enclave_ci_cli.py`, not a second `test_cli.py`).
+The suite runs with `uv run --all-packages` so member packages and their
+dependencies are importable.
+
+**Checks** (run before opening a PR; all use `--all-packages` where needed):
+`make python-unit-test` (pytest + coverage, see `fail_under` in `pyproject.toml`),
+`make python-types-test` (mypy), `make python-linter-test` (ruff), `make
+python-format` (auto-format).
 
 ### Ansible (`playbooks/`)
 - Phase-based structure: numbered playbooks orchestrate reusable tasks from `playbooks/tasks/`

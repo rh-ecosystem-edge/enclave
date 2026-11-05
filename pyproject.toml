@@ -26,7 +26,6 @@ dependencies = [
 
 [project.scripts]
 enclave = "enclave.cli:cli"
-enclave-cert-gen = "enclave.cert_gen.main:cli"
 
 [dependency-groups]
 dev = [
@@ -39,19 +38,18 @@ dev = [
     "ruff ==0.16.10",
     "yamllint ==1.38.0",
 ]
-cert-gen = [
-    "certbot ==5.8.0",
-    "certbot-dns-hetzner ==4.0.0",
-]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling ==1.33.0"]
 build-backend = "hatchling.build"
 
 [tool.uv]
 constraint-dependencies = [
     "google-auth >=2.56.2"
 ]
+
+[tool.uv.workspace]
+members = ["src/enclave_ci"]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
@@ -65,7 +63,7 @@ only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.ya
 
 [tool.ruff]
 line-length = 88
-src = ["src"]
+src = ["src", "src/enclave_ci"]
 extend-exclude = [
     ".local",
     ".cache",
@@ -140,7 +138,7 @@ combine-as-imports = true
 
 [tool.mypy]
 files = ["src"]
-mypy_path = "src"
+mypy_path = ["src", "src/enclave_ci"]
 enable_error_code = ["truthy-bool", "redundant-expr"]
 no_implicit_optional = true
 check_untyped_defs = true
@@ -166,4 +164,4 @@ fail_under = 90
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "src/enclave_ci"]
