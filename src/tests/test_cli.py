@@ -260,11 +260,11 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
     dry_run = True
     allow_not_recommended = False
     result = CliRunner().invoke(
-        cli, ["mgmt-cluster-version", "--version", "4.20.21", "--dry-run"], env=_KC
+        cli, ["mgmt-cluster-version", "--version", "4.20.32", "--dry-run"], env=_KC
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.21", dry_run, 180, 60, allow_not_recommended
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
@@ -276,7 +276,6 @@ def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) ->
     assert result.exit_code != 0
     assert "Version '4.99.0'" in result.output
     assert "not in defaults/platforms.yaml" in result.output
-    assert "4.20.21" in result.output
     assert "4.20.32" in result.output
     mock_reconcile.assert_not_called()
 
@@ -362,7 +361,7 @@ def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> No
         [
             "mgmt-cluster-version",
             "--version",
-            "4.20.21",
+            "4.20.32",
             "--allow-not-recommended",
             "--dry-run",
         ],
@@ -370,7 +369,7 @@ def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> No
     )
     assert result.exit_code == 0, result.output
     mock_reconcile.assert_called_once_with(
-        "4.20.21", dry_run, 180, 60, allow_not_recommended
+        "4.20.32", dry_run, 180, 60, allow_not_recommended
     )
 
 
