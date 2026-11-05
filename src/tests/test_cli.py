@@ -37,6 +37,7 @@ def test_mgmt_cluster_version_help() -> None:
     assert "--use-defaults" in result.output
     assert "--timeout-minutes" in result.output
     assert "--sleep-interval" in result.output
+    assert "--platforms-vars-file" in result.output
 
 
 def test_log_level_option() -> None:
@@ -277,7 +278,7 @@ def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) ->
     )
     assert result.exit_code != 0
     assert "Version '4.99.0'" in result.output
-    assert "not in defaults/platforms.yaml" in result.output
+    assert "not in the effective openshift_versions list" in result.output
     assert "4.20.21" in result.output
     assert "4.20.32" in result.output
     mock_reconcile.assert_not_called()
@@ -301,7 +302,7 @@ def test_mgmt_cluster_version_unknown_version_rejected_even_with_allow_not_recom
     )
     assert result.exit_code != 0
     assert "Version '4.99.0'" in result.output
-    assert "not in defaults/platforms.yaml" in result.output
+    assert "not in the effective openshift_versions list" in result.output
     mock_reconcile.assert_not_called()
 
 
@@ -364,6 +365,42 @@ def test_mgmt_cluster_version_uses_config_platforms_override(
     mock_reconcile.assert_not_called()
 
 
+def test_mgmt_cluster_version_uses_platforms_vars_file_option(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    fallback_file = tmp_path / "config-platforms.yaml"
+    fallback_file.write_text(
+        "openshift_versions:\n  - version: 4.20.32\n    default: true\n",
+        encoding="utf-8",
+    )
+    override_file = tmp_path / "ansible-platforms.yaml"
+    override_file.write_text(
+        "openshift_versions:\n  - version: 4.22.1\n    default: true\n",
+        encoding="utf-8",
+    )
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=fallback_file)
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "mgmt-cluster-version",
+            "--platforms-vars-file",
+            str(override_file),
+            "--use-defaults",
+            "--dry-run",
+        ],
+        env=_KC,
+    )
+
+    assert result.exit_code == 0, result.output
+    dry_run = True
+    allow_not_recommended = False
+    mock_reconcile.assert_called_once_with(
+        "4.22.1", dry_run, 180, 60, allow_not_recommended
+    )
+
+
 def test_config_path_uses_enclave_checkout_from_another_working_directory(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
@@ -403,8 +440,29 @@ def test_mgmt_cluster_version_rejects_invalid_config_version(
 
     assert result.exit_code != 0
     assert "openshift_versions[0].version" in result.output
-    assert "Invalid version" in result.output
+    assert "platforms schema version format" in result.output
     assert "ValueError" not in result.output
+    mock_reconcile.assert_not_called()
+
+
+def test_mgmt_cluster_version_rejects_empty_prerelease_suffix(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    config_file = tmp_path / "platforms.yaml"
+    config_file.write_text(
+        "openshift_versions:\n  - version: 4.20.1-\n    default: true\n",
+        encoding="utf-8",
+    )
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=config_file)
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
+
+    result = CliRunner().invoke(
+        cli, ["mgmt-cluster-version", "--latest", "--dry-run"], env=_KC
+    )
+
+    assert result.exit_code != 0
+    assert "openshift_versions[0].version" in result.output
+    assert "platforms schema version format" in result.output
     mock_reconcile.assert_not_called()
 
 

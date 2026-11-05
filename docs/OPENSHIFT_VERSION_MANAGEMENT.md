@@ -169,7 +169,7 @@ During a fresh disconnected deployment:
 
 The ACM `ClusterImageSet` resources and mirrored release images are based on the effective `openshift_versions` list. On a fresh disconnected install, Enclave narrows that list to the default version, so only that version is mirrored and configured for ACM.
 
-To mirror the full configured list after installation, run `bash sync.sh` from the Enclave checkout. The script runs the relevant phases with `fresh=false`, mirrors the configured releases, and reconciles ACM `ClusterImageSet` resources. Do not add `fresh` to `config/global.yaml`; that file's schema does not allow it. Removing or changing versions in the config takes effect in ACM only when the sync runs again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
+To mirror the full configured list after installation in a disconnected deployment, run `bash sync.sh` from the Enclave checkout. The script runs the relevant phases with `fresh=false`, mirrors the configured releases, and reconciles ACM `ClusterImageSet` resources. Do not add `fresh` to `config/global.yaml`; that file's schema does not allow it. Removing or changing versions in the config takes effect in ACM only when the sync runs again; it does not change versions already running on managed clusters. A version in a `ClusterImageSet` is available as an install choice; it does not guarantee an upgrade path from an existing cluster version.
 
 ### Cluster Upgrades
 

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from typing import cast
 
@@ -17,6 +18,8 @@ from enclave.utils import (
     configure_logging,
     semver_key,
 )
+
+OPENSHIFT_VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
 
 
 def _enclave_checkout_root() -> Path | None:
@@ -76,6 +79,11 @@ def _validate_openshift_versions(
             raise click.ClickException(
                 f"{source_file} openshift_versions[{index}] requires a non-empty 'version'"
             )
+        if OPENSHIFT_VERSION_PATTERN.fullmatch(version) is None:
+            raise click.ClickException(
+                f"{source_file} openshift_versions[{index}].version must match "
+                "the platforms schema version format"
+            )
         try:
             parse_version(version, f"{source_file} openshift_versions[{index}].version")
         except InvalidVersionError as exc:
@@ -94,7 +102,9 @@ def _validate_openshift_versions(
     return version_entries
 
 
-def load_openshift_versions() -> list[dict[str, object]]:
+def load_openshift_versions(
+    platforms_vars_file: Path | None = None,
+) -> list[dict[str, object]]:
     """Load default OpenShift versions and apply an optional config override."""
     defaults_file = defaults_path("platforms.yaml")
     try:
@@ -115,7 +125,7 @@ def load_openshift_versions() -> list[dict[str, object]]:
         platforms.get("openshift_versions"), defaults_file
     )
 
-    config_file = config_path("platforms.yaml")
+    config_file = platforms_vars_file or config_path("platforms.yaml")
     if config_file.exists():
         try:
             with config_file.open(encoding="utf-8") as fh:
@@ -291,6 +301,12 @@ def operator_versions(
     default=False,
     help="Allow upgrade to not-recommended versions",
 )
+@click.option(
+    "--platforms-vars-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Load OpenShift version overrides from this platforms config file",
+)
 def mgmt_cluster_version(
     version: str | None,
     use_defaults: bool,
@@ -299,6 +315,7 @@ def mgmt_cluster_version(
     timeout_minutes: int,
     sleep_interval: int,
     allow_not_recommended: bool,
+    platforms_vars_file: Path | None,
 ) -> None:
     """Reconcile the management cluster to a selected configured version."""
     if sum([version is not None, use_defaults, use_latest]) > 1:
@@ -311,7 +328,7 @@ def mgmt_cluster_version(
             "One of --version, --use-defaults, or --latest must be provided"
         )
 
-    openshift_versions = load_openshift_versions()
+    openshift_versions = load_openshift_versions(platforms_vars_file)
 
     if use_defaults:
         default_entry = next(
@@ -334,8 +351,8 @@ def mgmt_cluster_version(
         allowed_versions = {str(v["version"]) for v in openshift_versions}
         if resolved_version not in allowed_versions:
             raise click.UsageError(
-                f"Version '{resolved_version}' is not in defaults/platforms.yaml's "
-                "effective version list. "
+                f"Version '{resolved_version}' is not in the effective "
+                "openshift_versions list. "
                 f"Allowed: {', '.join(sorted(allowed_versions))}"
             )
 
