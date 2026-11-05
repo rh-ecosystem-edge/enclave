@@ -138,8 +138,23 @@ changes. `E2E Connected` does not run on PRs — it runs nightly and on manual d
    - **storage-plugin**: connected supports lvms/vast-csi; disconnected also supports odf (default: lvms)
    - **cert-type** (disconnected only): TLS certificate type for ingress/API/Ironic certs; empty = self-signed,
      `zerossl-ecdsa` = real certificate via ZeroSSL DNS-01 challenge (default: empty)
+   - **additional-sno-vm** (disconnected only): Add an SNO managed cluster on an additional VM,
+     installed via assisted-service and imported into ACM (default: false). Runs on the larger
+     `enclave-large-odf-aws` runner and adds about an hour.
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
+
+**SNO managed cluster** (`additional-sno-vm`): besides manual dispatch, it is enabled in the
+weekly ODF run (`e2e-odf-schedule.yml`) and on disconnected PRs that change the SNO CI scripts
+(`ci/deployment/deploy_sno.sh`, `ci/verification/verify_sno*.sh`), `ci/infrastructure/vm_infra.py`,
+`ci/infrastructure/generate_enclave_vars.sh`, discovery (`plugins/node-management/**`,
+`playbooks/07-configure-discovery.yaml`) or the update service policy
+(`operators/cincinnati-operator/**`). After the bootstrap phases the job deploys the SNO on the
+discovered VM and imports it into ACM (`deploy-sno`), then checks its health (`verify-sno`) and
+that the hub update service policy set its `ClusterVersion.spec.upstream`
+(`verify-sno-update-service`). Once the SNO is deployed, each check runs even if an earlier one
+failed. Diagnostics are under `managed_sno/` in the artifacts bundle. See
+[docs/design/sno-managed-cluster-ci.md](../../docs/design/sno-managed-cluster-ci.md).
 
 **Note on real certificates** (`cert-type` set): The workflow calls `make -f Makefile.ci generate-ironic-cert`
 before deployment to obtain a real Ironic TLS certificate via a DNS-01 challenge against
