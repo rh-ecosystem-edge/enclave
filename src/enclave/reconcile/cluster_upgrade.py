@@ -1,3 +1,5 @@
+"""OpenShift management cluster version upgrade."""
+
 import json
 import logging
 import math
@@ -25,6 +27,7 @@ class InvalidVersionError(ClusterUpgradeError):
     """Raised when a version string does not conform to semantic versioning."""
 
     def __init__(self, version: str, reason: str) -> None:
+        """Record the offending version and why it is invalid."""
         self.version = version
         self.reason = reason
         super().__init__(f"Invalid version '{version}': {reason}")
@@ -34,6 +37,7 @@ class VersionDowngradeError(ClusterUpgradeError):
     """Raised when attempting to downgrade to an older version."""
 
     def __init__(self, current: str, desired: str) -> None:
+        """Record the current and desired versions."""
         self.current_version = current
         self.desired_version = desired
         super().__init__(
@@ -46,6 +50,7 @@ class UpdateGraphUnavailableError(ClusterUpgradeError):
     """Raised when the cluster's update graph is not available."""
 
     def __init__(self) -> None:
+        """Build the fixed update-graph-unavailable message."""
         super().__init__(
             "Cluster update graph is unavailable (availableUpdates is null). "
             "The cluster may need to sync with the update service."
@@ -56,6 +61,7 @@ class VersionNotAvailableError(ClusterUpgradeError):
     """Raised when the desired version is not in available updates."""
 
     def __init__(self, desired: str, available: list[str]) -> None:
+        """Record the desired version and the versions available for upgrade."""
         self.desired_version = desired
         self.available_versions = available
         super().__init__(
@@ -68,6 +74,7 @@ class ClusterOperatorsNotReadyError(ClusterUpgradeError):
     """Raised when cluster operators are not ready for upgrade."""
 
     def __init__(self, issues: list[str]) -> None:
+        """Record the cluster operator issues blocking the upgrade."""
         self.issues = issues
         joined = "\n".join(f"  - {issue}" for issue in issues)
         super().__init__(

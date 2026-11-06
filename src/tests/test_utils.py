@@ -1,3 +1,5 @@
+"""Unit tests for enclave.utils."""
+
 import os
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock

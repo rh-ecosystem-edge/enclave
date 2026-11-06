@@ -1,3 +1,5 @@
+"""Click commands for ``enclave tools``."""
+
 import logging
 import sys
 from pathlib import Path

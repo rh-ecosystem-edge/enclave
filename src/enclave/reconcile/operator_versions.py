@@ -1,3 +1,5 @@
+"""Operator subscription channel and InstallPlan reconciliation."""
+
 import json
 import logging
 import re

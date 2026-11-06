@@ -416,6 +416,7 @@ def test_collect_node_image_digests_forwards_args(
 
 
 def test_kubeconfig_missing_fails(mocker: MockerFixture) -> None:
+    """A missing kubeconfig makes a cluster command fail."""
     mocker.patch("enclave.utils.Path.exists", return_value=False)
     result = CliRunner().invoke(
         cli,

@@ -1,3 +1,5 @@
+"""Unit tests for enclave.reconcile.cluster_upgrade."""
+
 from unittest.mock import MagicMock
 
 import pytest

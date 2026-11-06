@@ -1,3 +1,5 @@
+"""Shared pytest fixtures."""
+
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -80,6 +82,8 @@ def module_leaf_pem(
 
 @pytest.fixture
 def oc_result() -> OcResultFactory:
+    """Return a factory that builds fake ``oc`` CompletedProcess results."""
+
     def _make(
         stdout: str = "", returncode: int = 0, stderr: str = ""
     ) -> CompletedProcess[str]:
