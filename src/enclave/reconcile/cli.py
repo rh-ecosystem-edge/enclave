@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import click
 import yaml
@@ -22,6 +22,17 @@ from enclave.utils import (
 )
 
 OPENSHIFT_VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
+PLUGIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+class OperatorEntry(NamedTuple):
+    """Validated operator definition passed to the operator reconciler."""
+
+    name: str
+    version: str
+    namespace: str
+    csv_names: list[str]
+    channel: str | None
 
 
 def _enclave_checkout_root() -> Path | None:
@@ -36,19 +47,27 @@ def _enclave_checkout_root() -> Path | None:
     return None
 
 
-def defaults_path(filename: str) -> Path:
-    """Resolve a defaults file from the active checkout or installed package."""
+def package_data_path(*parts: str) -> Path:
+    """Resolve a data file from the active checkout or the installed package.
+
+    Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/<parts>.
+    Editable: src/enclave/reconcile/cli.py → src/enclave/ has no data, so fall back
+    to repo_root/<parts>.
+    """
     checkout = _enclave_checkout_root()
     if checkout is not None:
-        return checkout / "defaults" / filename
+        return checkout.joinpath(*parts)
 
-    # Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/ → enclave/defaults/
-    # Editable:  src/enclave/reconcile/cli.py → src/enclave/ (no defaults/) → repo_root/defaults/
     enclave_pkg = Path(__file__).resolve().parent.parent
-    path = enclave_pkg / "defaults" / filename
+    path = enclave_pkg.joinpath(*parts)
     if not path.exists():
-        path = enclave_pkg.parent.parent / "defaults" / filename
+        path = enclave_pkg.parent.parent.joinpath(*parts)
     return path
+
+
+def defaults_path(filename: str) -> Path:
+    """Resolve a defaults file from the active checkout or installed package."""
+    return package_data_path("defaults", filename)
 
 
 def config_path(filename: str) -> Path:
@@ -149,6 +168,93 @@ def load_openshift_versions(
     return openshift_versions
 
 
+def _validate_operator_entries(operators: object, source: str) -> list[OperatorEntry]:
+    """Validate every operator entry before any of them is reconciled."""
+    if not isinstance(operators, list) or not operators:
+        raise click.ClickException(f"{source} defines no operators")
+
+    validated: list[OperatorEntry] = []
+    for idx, op in enumerate(operators):
+        if not isinstance(op, dict):
+            raise click.ClickException(
+                f"{source}: operator entry {idx} is not a mapping"
+            )
+        for field in ("name", "version", "namespace"):
+            value = op.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise click.ClickException(
+                    f"{source}: operator entry {idx} has invalid or missing "
+                    f"'{field}': {value!r}"
+                )
+        channel = op.get("channel")
+        if channel is not None and (
+            not isinstance(channel, str) or not channel.strip()
+        ):
+            raise click.ClickException(
+                f"{source}: operator entry {idx} has invalid 'channel': {channel!r}"
+            )
+        csv_names = op.get("csvNames")
+        if csv_names is not None and (
+            not isinstance(csv_names, list)
+            or not all(isinstance(n, str) and n.strip() for n in csv_names)
+        ):
+            raise click.ClickException(
+                f"{source}: operator entry {idx} has invalid 'csvNames': must be "
+                "a list of non-blank strings"
+            )
+        validated.append(
+            OperatorEntry(
+                op["name"],
+                op["version"],
+                op["namespace"],
+                csv_names or [op["name"]],
+                channel,
+            )
+        )
+    return validated
+
+
+def _reconcile_operator_entries(entries: list[OperatorEntry], dry_run: bool) -> None:
+    """Reconcile each operator entry in order."""
+    for entry in entries:
+        operator_versions_reconcile(
+            entry.version,
+            entry.namespace,
+            entry.csv_names,
+            dry_run,
+            channel=entry.channel,
+            subscription_name=entry.name,
+        )
+
+
+def _load_plugin_operators(plugin_name: str) -> list[OperatorEntry]:
+    """Load and validate the operators of plugins/<plugin_name>/plugin.yaml."""
+    if not PLUGIN_NAME_RE.fullmatch(plugin_name):
+        raise click.UsageError(
+            f"Invalid plugin name {plugin_name!r}: must match {PLUGIN_NAME_RE.pattern}"
+        )
+
+    plugin_file = package_data_path("plugins", plugin_name, "plugin.yaml")
+    try:
+        with plugin_file.open(encoding="utf-8") as fh:
+            descriptor = yaml.safe_load(fh)
+    except FileNotFoundError as exc:
+        raise click.ClickException(f"Plugin {plugin_name!r} not found") from exc
+    except yaml.YAMLError as exc:
+        raise click.ClickException(f"Failed to parse {plugin_file}") from exc
+
+    if not isinstance(descriptor, dict):
+        raise click.ClickException(f"{plugin_file} must be a mapping")
+    if descriptor.get("installOperators") is False:
+        raise click.ClickException(
+            f"Plugin {plugin_name!r} has installOperators set to false"
+        )
+
+    return _validate_operator_entries(
+        descriptor.get("operators"), f"Plugin {plugin_name!r}"
+    )
+
+
 @click.group(cls=KubeconfigGroup)
 @click.option(
     "--log-level",
@@ -234,17 +340,24 @@ def operator_versions(
     except (yaml.YAMLError, KeyError) as exc:
         raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
 
-    for op in operators:
-        op_name: str = op["name"]
-        op_csv_names: list[str] = op.get("csvNames") or [op_name]
-        operator_versions_reconcile(
-            op["version"],
-            op["namespace"],
-            op_csv_names,
-            dry_run,
-            channel=op.get("channel"),
-            subscription_name=op_name,
-        )
+    _reconcile_operator_entries(
+        _validate_operator_entries(operators, str(defaults_file)), dry_run
+    )
+
+
+@cli.command(no_args_is_help=True)
+@click.option(
+    "--plugin",
+    "plugins",
+    multiple=True,
+    required=True,
+    help="Plugin name under plugins/; repeat to reconcile several plugins",
+)
+@click.option("--dry-run/--no-dry-run", default=False)
+def plugin_operator_versions(plugins: tuple[str, ...], dry_run: bool) -> None:
+    """Reconcile operator versions defined in plugins/<name>/plugin.yaml."""
+    entries = [entry for plugin in plugins for entry in _load_plugin_operators(plugin)]
+    _reconcile_operator_entries(entries, dry_run)
 
 
 @cli.command(no_args_is_help=True)
