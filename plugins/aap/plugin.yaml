@@ -5,9 +5,10 @@ order: 103
 
 operators:
   - name: ansible-automation-platform-operator
-    version: 2.6.0-0.1793352771
+    # Pre-Controller-4.7.17 build: newer ones reject OSAC's instance-group pod specs (osac-installer pins the same)
+    version: 2.6.0-0.1787258256
     channel: stable-2.6-cluster-scoped
-    init_version: 2.6.0-0.1793352771
+    init_version: 2.6.0-0.1787258256
     namespace: ansible-aap
     global: true
     csvNames:
