@@ -78,7 +78,7 @@ Scripts for creating VMs, networks, and infrastructure components.
 
 | Script | Purpose |
 |--------|---------|
-| `create_environment.sh` | Orchestrate `make -f Makefile.ci environment`: vm_infra.py create + pull secret + GPU + verify + sushy |
+| `create_environment.sh` | Orchestrate `make -f Makefile.ci environment`: `enclave-ci environment create` + pull secret + GPU + verify + sushy |
 | `provision_landing_zone.sh` | Populate and boot the Landing Zone VM defined by vm_infra.py |
 | `verify_networks.sh` | Validate libvirt networks are configured correctly |
 | `start_sushy_tools.sh` | Start Redfish BMC emulator (sushy-tools) for cluster VMs |
