@@ -1,0 +1,68 @@
+---
+# Select enabled plugins that define operators and do not set
+# installOperators: false, and build the --plugin arguments for
+# `enclave reconcile plugin-operator-versions`.
+#
+# For the moment this task only selects foundation plugins since addon
+# plugins deployed on day 2 are not added to enabled_plugins and we don't
+# have a good way to know if their new contents have been properly mirrored
+# before running this task.
+#
+# Required variables:
+#   plugin_operators_caller: label of the caller, shown in the debug output
+#
+# Sets facts:
+#   plugin_operator_names: list of plugin names
+#   plugin_operator_versions_argv: ['--plugin=<name>', ...]
+
+- name: Validate plugin_operators_caller is provided
+  ansible.builtin.assert:
+    that:
+      - plugin_operators_caller is defined
+      - plugin_operators_caller | length > 0
+    fail_msg: "plugin_operators_caller must be provided"
+
+- name: Find plugin descriptors for operator upgrades
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_upgrade_plugin_find
+
+- name: Read plugin descriptors for operator upgrades
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_upgrade_plugin_find.files | map(attribute='path') | list }}"
+  register: r_upgrade_plugin_slurp
+  loop_control:
+    loop_var: plugin_path
+
+- name: Build list of foundation plugins with operators on the management cluster
+  vars:
+    _upgrade_plugins: >-
+      {{ r_upgrade_plugin_slurp.results
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('name', 'in', enabled_plugins)
+         | selectattr('operators', 'defined')
+         | list }}
+  ansible.builtin.set_fact:
+    plugin_operator_names: >-
+      {{ ((_upgrade_plugins | selectattr('installOperators', 'undefined') | list)
+          + (_upgrade_plugins | selectattr('installOperators', 'defined')
+             | selectattr('installOperators') | list))
+         | map(attribute='name')
+         | sort
+         | list }}
+
+- name: Build plugin-operator-versions arguments
+  ansible.builtin.set_fact:
+    plugin_operator_versions_argv: >-
+      {{ plugin_operator_names | map('regex_replace', '^', '--plugin=') | list }}
+
+- name: "{{ plugin_operators_caller }} | Display plugins to reconcile operator versions for"
+  ansible.builtin.debug:
+    msg: "[{{ plugin_operators_caller }}] Plugins to reconcile operator versions for: {{ plugin_operator_names }}"
