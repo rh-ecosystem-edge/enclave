@@ -1,3 +1,5 @@
+"""Unit tests for the ``enclave reconcile`` CLI."""
+
 import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
@@ -8,6 +10,7 @@ _KC = {"KUBECONFIG": "/fake/kubeconfig"}
 
 
 def test_cli_help() -> None:
+    """Top-level help shows the reconcile CLI without tools commands."""
     result = CliRunner().invoke(cli, ["--help"])
     assert result.exit_code == 0
     assert "Reconcile CLI" in result.output
@@ -16,6 +19,7 @@ def test_cli_help() -> None:
 
 
 def test_operator_versions_help() -> None:
+    """operator-versions help lists its options."""
     result = CliRunner().invoke(cli, ["operator-versions", "--help"], env=_KC)
     assert result.exit_code == 0
     assert "--name" in result.output
@@ -29,6 +33,7 @@ def test_operator_versions_help() -> None:
 
 
 def test_mgmt_cluster_version_help() -> None:
+    """mgmt-cluster-version help lists its options."""
     result = CliRunner().invoke(cli, ["mgmt-cluster-version", "--help"], env=_KC)
     assert result.exit_code == 0
     assert "--version" in result.output
@@ -38,16 +43,19 @@ def test_mgmt_cluster_version_help() -> None:
 
 
 def test_log_level_option() -> None:
+    """A valid --log-level is accepted."""
     result = CliRunner().invoke(cli, ["--log-level", "DEBUG", "--help"])
     assert result.exit_code == 0
 
 
 def test_invalid_log_level() -> None:
+    """An invalid --log-level is rejected."""
     result = CliRunner().invoke(cli, ["--log-level", "INVALID"])
     assert result.exit_code != 0
 
 
 def test_operator_versions_csv_name_defaults_to_name(mocker: MockerFixture) -> None:
+    """The CSV name defaults to the operator name."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     dry_run = True
     result = CliRunner().invoke(
@@ -71,6 +79,7 @@ def test_operator_versions_csv_name_defaults_to_name(mocker: MockerFixture) -> N
 
 
 def test_operator_versions_multiple_csv_names(mocker: MockerFixture) -> None:
+    """Repeated --csv-name options are all passed through."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     dry_run = True
     result = CliRunner().invoke(
@@ -170,6 +179,7 @@ def test_operator_versions_passes_channel_only_to_reconcile(
 
 
 def test_operator_versions_channel_only_requires_channel() -> None:
+    """--channel-only without --channel is rejected."""
     result = CliRunner().invoke(
         cli,
         [
@@ -213,6 +223,7 @@ def test_use_defaults_calls_reconcile_per_operator(mocker: MockerFixture) -> Non
 
 
 def test_use_defaults_passes_channel_only(mocker: MockerFixture) -> None:
+    """--use-defaults forwards --channel-only."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     result = CliRunner().invoke(
         cli,
@@ -226,6 +237,7 @@ def test_use_defaults_passes_channel_only(mocker: MockerFixture) -> None:
 
 
 def test_use_defaults_mutual_exclusive_name() -> None:
+    """--use-defaults and --name are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["operator-versions", "--use-defaults", "--name", "foo"], env=_KC
     )
@@ -234,6 +246,7 @@ def test_use_defaults_mutual_exclusive_name() -> None:
 
 
 def test_use_defaults_mutual_exclusive_version() -> None:
+    """--use-defaults and --version are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["operator-versions", "--use-defaults", "--version", "1.0.0"], env=_KC
     )
@@ -242,6 +255,7 @@ def test_use_defaults_mutual_exclusive_version() -> None:
 
 
 def test_use_defaults_mutual_exclusive_csv_name() -> None:
+    """--use-defaults and --csv-name are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["operator-versions", "--use-defaults", "--csv-name", "foo"], env=_KC
     )
@@ -250,12 +264,14 @@ def test_use_defaults_mutual_exclusive_csv_name() -> None:
 
 
 def test_operator_versions_missing_required_without_defaults() -> None:
+    """Without --use-defaults the explicit options are required."""
     result = CliRunner().invoke(cli, ["operator-versions", "--name", "foo"], env=_KC)
     assert result.exit_code != 0
     assert "Missing option" in result.output
 
 
 def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
+    """An explicit --version is passed to the upgrade."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = False
@@ -269,6 +285,7 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
 
 
 def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) -> None:
+    """A version not in the bundled defaults is rejected."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.99.0", "--dry-run"], env=_KC
@@ -304,6 +321,7 @@ def test_mgmt_cluster_version_unknown_version_rejected_even_with_allow_not_recom
 
 
 def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
+    """--use-defaults upgrades to the default version."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = False
@@ -317,6 +335,7 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
 
 
 def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
+    """--use-defaults and --version are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--use-defaults", "--version", "4.20.8"], env=_KC
     )
@@ -325,6 +344,7 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
 
 
 def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
+    """--latest upgrades to the newest bundled version."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = False
@@ -338,6 +358,7 @@ def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
 
 
 def test_mgmt_cluster_version_latest_mutual_exclusive_version() -> None:
+    """--latest and --version are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--latest", "--version", "4.20.21"], env=_KC
     )
@@ -346,6 +367,7 @@ def test_mgmt_cluster_version_latest_mutual_exclusive_version() -> None:
 
 
 def test_mgmt_cluster_version_latest_mutual_exclusive_use_defaults() -> None:
+    """--latest and --use-defaults are mutually exclusive."""
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--latest", "--use-defaults"], env=_KC
     )
@@ -354,6 +376,7 @@ def test_mgmt_cluster_version_latest_mutual_exclusive_use_defaults() -> None:
 
 
 def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> None:
+    """--allow-not-recommended is passed to the upgrade."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = True
@@ -375,6 +398,7 @@ def test_mgmt_cluster_version_allow_not_recommended(mocker: MockerFixture) -> No
 
 
 def test_mgmt_cluster_version_no_args_shows_help() -> None:
+    """mgmt-cluster-version with no arguments shows help."""
     result = CliRunner().invoke(cli, ["mgmt-cluster-version"])
     assert result.exit_code == 2
     assert "--version" in result.output
@@ -382,12 +406,14 @@ def test_mgmt_cluster_version_no_args_shows_help() -> None:
 
 
 def test_reconcile_no_args_shows_help() -> None:
+    """The reconcile group with no arguments shows help."""
     result = CliRunner().invoke(cli, [])
     assert result.exit_code == 2
     assert "Reconcile CLI" in result.output
 
 
 def test_kubeconfig_missing_fails(mocker: MockerFixture) -> None:
+    """A missing kubeconfig makes a cluster command fail."""
     mocker.patch("enclave.utils.Path.exists", return_value=False)
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.14"], env={"KUBECONFIG": ""}

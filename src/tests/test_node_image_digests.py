@@ -1,3 +1,5 @@
+"""Unit tests for enclave.tools.node_image_digests."""
+
 import json
 import subprocess
 from pathlib import Path
@@ -24,17 +26,20 @@ _REF = f"{_REGISTRY}/{_IMAGE}@{_DIGEST}"
 
 
 def test_normalize_digest_ref_lowercases_sha() -> None:
+    """Uppercase sha256 digests are lowercased."""
     upper = f"{_REGISTRY}/{_IMAGE}@sha256:{'A' * 64}"
     assert normalize_digest_ref(upper) == _REF
 
 
 def test_normalize_digest_ref_rejects_invalid() -> None:
+    """Empty, placeholder and tag-only references are rejected."""
     assert normalize_digest_ref("") is None
     assert normalize_digest_ref("<none>") is None
     assert normalize_digest_ref("registry.example.com/app:latest") is None
 
 
 def test_normalize_digest_ref_allows_multi_segment_path() -> None:
+    """Image paths with several segments are accepted."""
     deep_ref = f"{_REGISTRY}/org/sub-org/image@{_DIGEST}"
     assert normalize_digest_ref(deep_ref) == deep_ref
 
@@ -42,6 +47,7 @@ def test_normalize_digest_ref_allows_multi_segment_path() -> None:
 def test_normalize_digest_ref_logs_unsupported_name(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """An unsupported image name is logged and rejected."""
     caplog.set_level("DEBUG")
     invalid_name_ref = f"{_REGISTRY}/org//image@{_DIGEST}"
     assert normalize_digest_ref(invalid_name_ref) is None
@@ -49,25 +55,30 @@ def test_normalize_digest_ref_logs_unsupported_name(
 
 
 def test_parse_exclude_contains_defaults() -> None:
+    """No value falls back to the default exclude list."""
     assert parse_exclude_contains(None) == list(DEFAULT_PINNED_IMAGE_EXCLUDE_CONTAINS)
     assert parse_exclude_contains("") == list(DEFAULT_PINNED_IMAGE_EXCLUDE_CONTAINS)
 
 
 def test_parse_exclude_contains_rejects_invalid_json() -> None:
+    """Invalid JSON for --exclude-contains raises ValueError."""
     with pytest.raises(ValueError, match="invalid --exclude-contains JSON"):
         parse_exclude_contains("not-json")
 
 
 def test_parse_exclude_contains_rejects_non_array() -> None:
+    """A JSON value that is not an array raises TypeError."""
     with pytest.raises(TypeError, match="must be a JSON array"):
         parse_exclude_contains('{"foo": "bar"}')
 
 
 def test_parse_exclude_contains_custom() -> None:
+    """A custom JSON array is returned as-is."""
     assert parse_exclude_contains('["foo/"]') == ["foo/"]
 
 
 def test_extract_digest_refs_from_crictl_output() -> None:
+    """Digest refs are extracted from crictl JSON output."""
     payload = [
         {
             "repoDigests": [
@@ -84,6 +95,7 @@ def test_extract_digest_refs_from_crictl_output() -> None:
 
 
 def test_extract_digest_refs_applies_exclude_contains() -> None:
+    """Refs matching an exclude substring are dropped."""
     payload = [{"repoDigests": [_REF]}]
     refs = extract_digest_refs_from_crictl_output(
         json.dumps(payload),
@@ -116,6 +128,7 @@ def test_extract_digest_refs_applies_exclude_contains() -> None:
 
 
 def test_extract_digest_refs_dict_wrapper() -> None:
+    """crictl output wrapped in an images object is handled."""
     payload = {"images": [{"repoDigests": [_REF]}]}
     refs = extract_digest_refs_from_crictl_output(
         json.dumps(payload), exclude_contains=[]
@@ -124,6 +137,7 @@ def test_extract_digest_refs_dict_wrapper() -> None:
 
 
 def test_run_oc_debug_crictl_images_timeout(mocker: MockerFixture) -> None:
+    """An oc debug timeout raises TimeoutError."""
     mocker.patch(
         "enclave.tools.node_image_digests.subprocess.run",
         side_effect=subprocess.TimeoutExpired(
@@ -135,6 +149,7 @@ def test_run_oc_debug_crictl_images_timeout(mocker: MockerFixture) -> None:
 
 
 def test_collect_node_image_digests_calls_oc(mocker: MockerFixture) -> None:
+    """Digests are collected through oc debug on the node."""
     mock_run = mocker.patch(
         "enclave.tools.node_image_digests.run_oc_debug_crictl_images",
         return_value=json.dumps([{"repoDigests": [_REF]}]),
@@ -147,6 +162,7 @@ def test_collect_node_image_digests_calls_oc(mocker: MockerFixture) -> None:
 def test_reconcile_emits_refs(
     mocker: MockerFixture, capsys: pytest.CaptureFixture
 ) -> None:
+    """Collected refs are printed to stdout."""
     mocker.patch(
         "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[_REF], raw_output="raw"),
@@ -158,6 +174,7 @@ def test_reconcile_emits_refs(
 def test_reconcile_emits_raw_on_empty_refs(
     mocker: MockerFixture, capsys: pytest.CaptureFixture
 ) -> None:
+    """With no refs, the raw crictl output goes to stderr."""
     mocker.patch(
         "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[], raw_output="crictl failed"),
@@ -174,6 +191,7 @@ def test_reconcile_writes_raw_output_file_on_empty_refs(
     caplog: pytest.LogCaptureFixture,
     tmp_path: Path,
 ) -> None:
+    """With no refs and an output file, the raw output is saved there."""
     mocker.patch(
         "enclave.tools.node_image_digests.collect_node_image_digests",
         return_value=MagicMock(refs=[], raw_output="crictl failed"),

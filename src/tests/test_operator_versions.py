@@ -1,3 +1,5 @@
+"""Unit tests for enclave.reconcile.operator_versions."""
+
 import json
 
 import pytest

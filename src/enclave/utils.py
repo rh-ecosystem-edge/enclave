@@ -1,3 +1,5 @@
+"""Shared helpers for the enclave package (logging, kubeconfig, oc, versions)."""
+
 import logging
 import os
 import re
@@ -36,7 +38,7 @@ def configure_logging(log_level: str, log_format: str = "full") -> None:
 
 
 class KubeconfigNotFoundError(RuntimeError):
-    pass
+    """Raised when neither KUBECONFIG nor the fallback kubeconfig is available."""
 
 
 def setup_kubeconfig() -> None:
@@ -63,7 +65,13 @@ def setup_kubeconfig() -> None:
 
 
 class KubeconfigGroup(click.Group):
+    """Click group that ensures a kubeconfig is set before running a subcommand."""
+
     def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        """Parse args, then set up the kubeconfig unless help or completion is shown.
+
+        Subcommands with a truthy ``no_kubeconfig`` attribute skip the check.
+        """
         # Read the subcommand name from the raw args list before super() consumes it.
         # The group itself has no positional options, so the first non-flag token is
         # always the subcommand name (help flags cause early exit inside super()).

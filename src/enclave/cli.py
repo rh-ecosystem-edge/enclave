@@ -1,3 +1,5 @@
+"""Unified ``enclave`` CLI entry point."""
+
 import click
 
 from enclave.reconcile.cli import cli as reconcile_cli

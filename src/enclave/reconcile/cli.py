@@ -1,3 +1,5 @@
+"""Click commands for ``enclave reconcile``."""
+
 from pathlib import Path
 from typing import cast
 
@@ -18,6 +20,7 @@ from enclave.utils import (
 
 
 def defaults_path(filename: str) -> Path:
+    """Return the path of a bundled defaults file, for installed and editable layouts."""
     # Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/ → enclave/defaults/
     # Editable:  src/enclave/reconcile/cli.py → src/enclave/ (no defaults/) → repo_root/defaults/
     enclave_pkg = Path(__file__).resolve().parent.parent
@@ -210,6 +213,7 @@ def mgmt_cluster_version(
     sleep_interval: int,
     allow_not_recommended: bool,
 ) -> None:
+    """Upgrade the management cluster to an explicit, default, or latest version."""
     if sum([version is not None, use_defaults, use_latest]) > 1:
         raise click.UsageError(
             "--version, --use-defaults, and --latest are mutually exclusive"

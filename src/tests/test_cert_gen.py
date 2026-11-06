@@ -110,17 +110,24 @@ def _make_result(
 
 
 class TestWriteHetznerIni:
+    """Tests for write_hetzner_ini."""
+
     def test_writes_token(self, tmp_path: Path) -> None:
+        """The Hetzner API token is written in certbot ini format."""
         ini = write_hetzner_ini(tmp_path, "mytoken")
         assert ini.read_text(encoding="utf-8") == "dns_hetzner_api_token = mytoken\n"
 
     def test_permissions(self, tmp_path: Path) -> None:
+        """The ini file is readable only by its owner."""
         ini = write_hetzner_ini(tmp_path, "tok")
         assert oct(ini.stat().st_mode)[-3:] == "600"
 
 
 class TestExtractRootCa:
+    """Tests for extract_root_ca."""
+
     def test_finds_root_in_chain(self, tmp_path: Path) -> None:
+        """The self-signed root is found in a full chain."""
         root_pem, root_cert, root_key = generate_ca(tmp_path, "Root CA")
         inter_pem, inter_cert, inter_key = generate_intermediate_ca(
             tmp_path, "Intermediate CA", root_cert, root_key
@@ -137,6 +144,7 @@ class TestExtractRootCa:
         assert cert.subject == cert.issuer
 
     def test_root_last_or_middle(self, tmp_path: Path) -> None:
+        """The root is found regardless of its position in the chain."""
         root_pem, root_cert, root_key = generate_ca(tmp_path, "Root CA")
         inter_pem, _, _ = generate_intermediate_ca(
             tmp_path, "Intermediate CA", root_cert, root_key
@@ -150,6 +158,7 @@ class TestExtractRootCa:
         assert cert.subject == cert.issuer
 
     def test_raises_when_no_root_and_no_aia(self, tmp_path: Path) -> None:
+        """Missing root with no AIA issuer URL raises."""
         _, root_cert, root_key = generate_ca(tmp_path, "Root CA")
         inter_pem, inter_cert, inter_key = generate_intermediate_ca(
             tmp_path, "Intermediate CA", root_cert, root_key
@@ -162,6 +171,7 @@ class TestExtractRootCa:
             extract_root_ca(chain_path)
 
     def test_aia_walk_finds_root(self, tmp_path: Path) -> None:
+        """The root is fetched by walking AIA issuer URLs."""
         root_pem, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
 
         aia_url = "http://test.example.com/root.crt"
@@ -186,6 +196,7 @@ class TestExtractRootCa:
         assert cert.subject == cert.issuer
 
     def test_aia_walk_exhausted_after_five_hops(self, tmp_path: Path) -> None:
+        """The AIA walk gives up after five hops without a root."""
         _, root_cert_path, root_key_path = generate_ca(tmp_path, "Root CA")
         aia_url = "http://test.example.com/inter.crt"
         inter_pem = _generate_intermediate_with_aia(
@@ -212,13 +223,17 @@ class TestExtractRootCa:
 
 
 class TestFetchCert:
+    """Tests for _fetch_cert."""
+
     def test_invalid_scheme_raises(self) -> None:
+        """A non-HTTP(S) AIA URL scheme is rejected."""
         with pytest.raises(
             RootCaExtractionError, match="Unsupported AIA issuer URL scheme"
         ):
             _fetch_cert("ftp://example.com/cert.crt")
 
     def test_request_exception_raises(self) -> None:
+        """A request failure raises RootCaExtractionError."""
         with (
             patch(
                 "enclave_ci.cert_gen.main.requests.get",
@@ -229,6 +244,7 @@ class TestFetchCert:
             _fetch_cert("http://example.com/cert.crt")
 
     def test_unparsable_body_raises(self) -> None:
+        """A response body that is not a certificate raises."""
         mock_resp = MagicMock()
         mock_resp.__enter__ = lambda s: s
         mock_resp.__exit__ = MagicMock(return_value=False)
@@ -241,7 +257,10 @@ class TestFetchCert:
 
 
 class TestLoadCredentials:
+    """Tests for _load_credentials."""
+
     def test_missing_token_raises(self) -> None:
+        """A missing Hetzner token raises."""
         with (
             patch.dict(
                 "os.environ", {"HETZNER_API_TOKEN": "", "ACME_EMAIL": "a@b.com"}
@@ -251,6 +270,7 @@ class TestLoadCredentials:
             _load_credentials("le-rsa")
 
     def test_zerossl_missing_eab_raises(self) -> None:
+        """ZeroSSL types without EAB credentials raise."""
         env = {
             "HETZNER_API_TOKEN": "tok",
             "ACME_EMAIL": "a@b.com",
@@ -264,6 +284,7 @@ class TestLoadCredentials:
             _load_credentials("zerossl-rsa")
 
     def test_le_returns_empty_eab(self) -> None:
+        """Let's Encrypt types return empty EAB credentials."""
         env = {"HETZNER_API_TOKEN": "tok", "ACME_EMAIL": "a@b.com"}
         with patch.dict("os.environ", env, clear=True):
             result = _load_credentials("le-rsa")
@@ -276,7 +297,10 @@ PEM_ROOT = "ROOT\n"
 
 
 class TestRenderIngressApiYaml:
+    """Tests for render_ingress_api_yaml."""
+
     def test_all_four_ssl_keys_present(self) -> None:
+        """All four API/ingress certificate keys are rendered."""
         out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY)
         assert "sslAPICertificateKey: |" in out
         assert "sslAPICertificateFullChain: |" in out
@@ -285,33 +309,43 @@ class TestRenderIngressApiYaml:
         assert "sslCACertificate" not in out
 
     def test_with_root_ca(self) -> None:
+        """A root CA adds the sslCACertificate key."""
         out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY, root_ca=PEM_ROOT)
         assert "sslCACertificate: |" in out
         assert "  ROOT" in out
 
     def test_values_indented(self) -> None:
+        """Multi-line values are indented as YAML block scalars."""
         out = render_ingress_api_yaml("line1\nline2\n", PEM_KEY)
         assert "  line1\n  line2" in out
 
     def test_api_and_ingress_share_cert(self) -> None:
+        """API and ingress entries share the same chain and key."""
         out = render_ingress_api_yaml(PEM_CHAIN, PEM_KEY)
         assert out.count("CHAIN") == 2
         assert out.count("KEY") == 2
 
 
 class TestRenderIronicYaml:
+    """Tests for render_ironic_yaml."""
+
     def test_ironic_keys_present(self) -> None:
+        """Both ironic certificate keys are rendered."""
         out = render_ironic_yaml(PEM_CHAIN, PEM_KEY)
         assert "ironicHTTPSCertificate: |" in out
         assert "ironicHTTPSKey: |" in out
 
     def test_values_indented(self) -> None:
+        """Multi-line values are indented as YAML block scalars."""
         out = render_ironic_yaml("line1\nline2\n", PEM_KEY)
         assert "  line1\n  line2" in out
 
 
 class TestIssueCert:
+    """Tests for issue_cert."""
+
     def test_success(self, tmp_path: Path) -> None:
+        """A successful certbot run issues the certificate."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with patch("subprocess.run", return_value=_make_result(0)):
@@ -329,6 +363,7 @@ class TestIssueCert:
             )
 
     def test_ecdsa_uses_elliptic_curve_flag(self, tmp_path: Path) -> None:
+        """ECDSA cert types pass --elliptic-curve to certbot."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with patch("subprocess.run", return_value=_make_result(0)) as mock_run:
@@ -350,6 +385,7 @@ class TestIssueCert:
         assert "--rsa-key-size" not in args
 
     def test_preferred_chain_included(self, tmp_path: Path) -> None:
+        """A preferred chain is passed to certbot."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with patch("subprocess.run", return_value=_make_result(0)) as mock_run:
@@ -370,6 +406,7 @@ class TestIssueCert:
         assert "ISRG Root X2" in args
 
     def test_eab_credentials_included(self, tmp_path: Path) -> None:
+        """EAB credentials are passed to certbot."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with patch("subprocess.run", return_value=_make_result(0)) as mock_run:
@@ -401,6 +438,7 @@ class TestIssueCert:
         assert oct(eab_ini.stat().st_mode)[-3:] == "600"
 
     def test_rate_limit_error(self, tmp_path: Path) -> None:
+        """A CA rate-limit failure raises a rate-limit error."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with (
@@ -426,6 +464,7 @@ class TestIssueCert:
             )
 
     def test_generic_error(self, tmp_path: Path) -> None:
+        """Any other certbot failure raises a generic issuance error."""
         ini = tmp_path / "h.ini"
         ini.write_text("", encoding="utf-8")
         with (
@@ -465,6 +504,8 @@ def _make_issue_cert_side_effect(san: str) -> object:
 
 
 class TestCliIngressApi:
+    """Tests for the ingress-api command."""
+
     def _env(self) -> dict[str, str]:
         return {
             "HETZNER_API_TOKEN": "tok",
@@ -472,6 +513,7 @@ class TestCliIngressApi:
         }
 
     def test_missing_hetzner_token(self) -> None:
+        """A missing Hetzner token fails the command."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -483,6 +525,7 @@ class TestCliIngressApi:
         assert "HETZNER_API_TOKEN" in result.output
 
     def test_missing_acme_email(self) -> None:
+        """A missing ACME email fails the command."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -494,6 +537,7 @@ class TestCliIngressApi:
         assert "ACME_EMAIL" in result.output
 
     def test_zerossl_missing_eab(self) -> None:
+        """ZeroSSL without EAB credentials fails the command."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -505,6 +549,7 @@ class TestCliIngressApi:
         assert "ZEROSSL_EAB_KID" in result.output
 
     def test_success_le_rsa(self) -> None:
+        """A Let's Encrypt RSA run prints the ingress/API YAML."""
         runner = CliRunner()
         san = "api.smoke.nodns.in"
         with patch(
@@ -522,6 +567,7 @@ class TestCliIngressApi:
         assert "sslIngressCertificateFullChain: |" in result.output
 
     def test_issue_cert_failure(self) -> None:
+        """A certificate issuance failure fails the command."""
         runner = CliRunner()
         with patch(
             "enclave_ci.cert_gen.main.issue_cert",
@@ -538,6 +584,8 @@ class TestCliIngressApi:
 
 
 class TestCliIronic:
+    """Tests for the ironic command."""
+
     def _env(self) -> dict[str, str]:
         return {
             "HETZNER_API_TOKEN": "tok",
@@ -545,6 +593,7 @@ class TestCliIronic:
         }
 
     def test_missing_hetzner_token(self) -> None:
+        """A missing Hetzner token fails the command."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -556,6 +605,7 @@ class TestCliIronic:
         assert "HETZNER_API_TOKEN" in result.output
 
     def test_zerossl_missing_eab(self) -> None:
+        """ZeroSSL without EAB credentials fails the command."""
         runner = CliRunner()
         result = runner.invoke(
             cli,
@@ -567,6 +617,7 @@ class TestCliIronic:
         assert "ZEROSSL_EAB_KID" in result.output
 
     def test_success_le_rsa(self) -> None:
+        """A Let's Encrypt RSA run prints the ironic YAML."""
         runner = CliRunner()
         san = "ironic.smoke.nodns.in"
         with patch(
