@@ -22,10 +22,10 @@ include Makefile
         validate-migrations validate-python validate-osac-values \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
-        deploy-cluster-write-migration-tasks deploy-cluster-plugins deploy-spoke \
+        deploy-cluster-write-migration-tasks deploy-cluster-plugins \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph \
-        verify clean verify-cluster verify-spoke osac-smoke \
+        verify clean verify-cluster osac-smoke \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
 	generate-ironic-cert clean-infra reap-stale-vms start-stopped-runners \
@@ -76,7 +76,6 @@ help:
 	@echo ""
 	@echo "CI Verification targets:"
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
-	@echo "  make -f Makefile.ci verify-spoke                     - Verify the SNO spoke cluster deployment"
 	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
 	@echo ""
 	@echo "CI Helper targets:"
@@ -104,7 +103,6 @@ help:
 	@echo "  make -f Makefile.ci deploy-cluster-day2              - Day-2 operations"
 	@echo "  make -f Makefile.ci deploy-cluster-discovery              - Configure hardware discovery"
 	@echo "  make -f Makefile.ci deploy-cluster-write-migration-tasks  - Seed migration control file"
-	@echo "  make -f Makefile.ci deploy-spoke                          - Provision the SNO spoke cluster"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -234,9 +232,6 @@ deploy-cluster-discovery:
 
 deploy-cluster-write-migration-tasks:
 	@./ci/deployment/deploy_bootstrap_step.sh write-migration-tasks
-
-deploy-spoke:
-	@./ci/deployment/provision_spoke.sh
 
 deploy-plugin:
 	@./ci/deployment/deploy_plugin.sh $(PLUGIN)
@@ -443,9 +438,6 @@ clean: clean-infra
 # Verification targets
 verify-cluster:
 	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_cluster.sh
-
-verify-spoke:
-	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_spoke.sh
 
 # OSAC CLI post-install smoke test (connected environments only). Exercises the
 # fulfillment API end-to-end through its route via the osac CLI on the LZ.
