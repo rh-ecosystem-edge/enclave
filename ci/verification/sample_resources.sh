@@ -11,6 +11,8 @@
 #   host          - runner/hypervisor: memory, swap, load, io, qemu processes
 #   landing-zone  - the LZ VM via SSH (best-effort, short timeout)
 #   cluster       - the guest OpenShift API via SSH->oc on the LZ (call latency)
+#   managed-sno   - the additional SNO VM (libvirt state) and, once installed,
+#                   its OpenShift API via SSH->oc on the LZ (call latency)
 #
 # Every remote probe is wrapped in `timeout`; a hang is recorded as a TIMEOUT
 # marker (which is itself the signal we are hunting) instead of stalling the
@@ -136,6 +138,51 @@ sample_cluster() {
     fi
 }
 
+# Sample the additional SNO VM: its libvirt state and, once the SNO kubeconfig
+# exists on the LZ, the SNO API latency. The VM identity comes from the
+# cluster-env.sh named in <out_dir>/sno-cluster-env (written by the workflow
+# only for SNO runs); nothing is logged until then.
+sample_managed_sno() {
+    local out="$1" lz="$2" env_file="$3" vm sno start end dur rc data remote
+    [ -f "$env_file" ] || return
+    read -r vm sno < <(
+        # shellcheck disable=SC1090
+        source "$(cat "$env_file")" 2>/dev/null
+        [ "${ENCLAVE_SNO_VM_ENABLED:-false}" = "true" ] \
+            && echo "${ENCLAVE_SNO_VM_NAME:-} ${ENCLAVE_SNO_VM_CLUSTER_NAME:-}"
+    )
+    [ -z "${vm:-}" ] && return
+    {
+        echo "===== MANAGED SNO $(ts) (vm=${vm}) ====="
+        echo "--- domstate ---"
+        sudo -n virsh domstate "$vm" --reason 2>&1
+        echo "--- domstats (cpu/balloon) ---"
+        sudo -n virsh domstats "$vm" --cpu-total --balloon 2>&1 | grep -E 'cpu.time|balloon.(current|rss)'
+    } >> "$out"
+    if [ -z "$lz" ]; then
+        { echo "  (no LZ IP resolved yet)"; echo; } >> "$out"
+        return
+    fi
+    remote="export PATH=${LZ_OC_BIN}:\$PATH; export KUBECONFIG=/home/cloud-user/sessions/1/${sno}-kubeconfig;"
+    remote+='if [ ! -f "$KUBECONFIG" ]; then echo "(SNO kubeconfig not present yet)"; exit 0; fi;'
+    remote+='echo "--- readyz latency ---"; { time oc get --raw /readyz; echo; } 2>&1;'
+    remote+='echo "--- nodes ---"; oc get nodes --no-headers 2>&1;'
+    remote+='echo "--- clusteroperators not Available=True ---"; oc get co --no-headers 2>&1 | awk "\$3!=\"True\"{print \$1,\$3,\$4,\$5}"'
+    start=$(date +%s)
+    # shellcheck disable=SC2086 # SSH_OPTS must word-split into separate flags
+    if data=$(timeout "$OC_PROBE_TIMEOUT" ssh $SSH_OPTS "${LZ_USER}@${lz}" "$remote" 2>&1); then
+        end=$(date +%s); dur=$((end - start))
+        { echo "  oc_probe_seconds=${dur}"; echo "$data"; echo; } >> "$out"
+    else
+        rc=$?; end=$(date +%s); dur=$((end - start))
+        if [ "$rc" -eq 124 ]; then
+            { echo "  *** OC PROBE TIMEOUT after ${dur}s (SNO API/SSH unresponsive) ***"; echo; } >> "$out"
+        else
+            { echo "  *** OC PROBE FAILED rc=${rc} after ${dur}s ***"; echo "$data"; echo; } >> "$out"
+        fi
+    fi
+}
+
 # The sampling loop. Runs detached in the background until stop() drops the
 # stop-flag. Re-resolves the LZ IP each iteration so it works even if the
 # sampler is started before the LZ IP is available.
@@ -144,6 +191,7 @@ run_loop() {
     local host_log="${out_dir}/host.log"
     local lz_log="${out_dir}/landing-zone.log"
     local cluster_log="${out_dir}/cluster.log"
+    local managed_sno_log="${out_dir}/managed-sno.log"
     local stop_flag="${out_dir}/sampler.stop"
     local lz_ip waited
 
@@ -156,6 +204,7 @@ run_loop() {
         sample_host "$host_log"
         sample_lz "$lz_log" "$lz_ip"
         sample_cluster "$cluster_log" "$lz_ip"
+        sample_managed_sno "$managed_sno_log" "$lz_ip" "${out_dir}/sno-cluster-env"
         # Interruptible sleep so stop() is responsive within ~1s.
         waited=0
         while [ "$waited" -lt "$interval" ] && [ ! -f "$stop_flag" ]; do
@@ -195,10 +244,10 @@ stop() {
     touch "${out_dir}/sampler.stop"
 
     # Grace period must exceed one full sampling iteration so the loop can flush
-    # its logs and remove its PID file before we force-kill. The longest single
-    # probe is the cluster oc probe (OC_PROBE_TIMEOUT, default 25s), plus SSH and
+    # its logs and remove its PID file before we force-kill. An iteration runs the
+    # LZ SSH probe and two oc probes (cluster, managed SNO) back to back, plus
     # local collection; wait a bit past that.
-    local grace=$((OC_PROBE_TIMEOUT + SSH_PROBE_TIMEOUT + 5))
+    local grace=$((2 * OC_PROBE_TIMEOUT + SSH_PROBE_TIMEOUT + 5))
     n=0
     while kill -0 "$pid" 2>/dev/null && [ "$n" -lt "$grace" ]; do
         sleep 1
@@ -210,7 +259,7 @@ stop() {
     fi
     echo "resource sampler stopped"
 
-    for f in host landing-zone cluster; do
+    for f in host landing-zone cluster managed-sno; do
         if [ -f "${out_dir}/${f}.log" ]; then
             echo "  ${f}.log: $(wc -l < "${out_dir}/${f}.log") lines, $(grep -c 'TIMEOUT' "${out_dir}/${f}.log" 2>/dev/null || true) TIMEOUT markers"
         fi
