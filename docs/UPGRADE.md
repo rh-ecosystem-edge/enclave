@@ -53,15 +53,19 @@ Each Enclave tarball release includes:
     Subscription channels and waits for their target InstallPlans to appear, but leaves
     the plans unapproved for the upgrade phase. Automatic-approval Subscriptions are
     skipped because changing their channel would immediately install the new version.
+    The same task then runs `enclave reconcile plugin-operator-versions --channel-only
+    --plugin=<name>` for every enabled foundation plugin (e.g. `lvms`, `odf`, `vast-csi`)
+    that installs operators on the management cluster. Operators of addon plugins are
+    not upgraded automatically yet.
 
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults`, `enclave reconcile operator-versions --use-defaults` and `enclave reconcile plugin-operator-versions --plugin=<name>` for the same foundation plugins:
 
     ```sh
     ./upgrade.sh
     ```
 
     **Metal3 Upgrade Phase**: Upgrades Ironic and Baremetal Operator in persistent mode (`metal3_persistent: true`) to match the management cluster OpenShift version. For intermediate version requirements, use the migration system.
-8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
+8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades (including plugin operators). To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
 
     ```sh
     ansible-playbook playbooks/upgrade.yaml -e workingDir=<your global.yaml workingDir variable> -e upgrade_mgmt_cluster=false -e upgrade_operators=false
@@ -70,6 +74,7 @@ Each Enclave tarball release includes:
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile operator-versions --use-defaults
+    enclave reconcile plugin-operator-versions --plugin=<storage plugin, e.g. lvms>
     ```
 
 ---

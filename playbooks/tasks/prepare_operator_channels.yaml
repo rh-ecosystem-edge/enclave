@@ -9,3 +9,16 @@
       - --channel-only
   register: r_operator_channel_preparation
   changed_when: "'[UPDATE]' in r_operator_channel_preparation.stderr"
+
+- name: Discover plugin operators to prepare channels for
+  ansible.builtin.include_tasks:
+    file: upgrade/discover-plugin-operators.yaml
+  vars:
+    plugin_operators_caller: prepare-operator-channels
+
+- name: Prepare plugin operator subscription channels
+  ansible.builtin.command:
+    argv: "{{ ['enclave', 'reconcile', 'plugin-operator-versions', '--channel-only'] + plugin_operator_versions_argv }}"
+  register: r_plugin_operator_channel_preparation
+  changed_when: "'[UPDATE]' in r_plugin_operator_channel_preparation.stderr"
+  when: plugin_operator_names | length > 0
