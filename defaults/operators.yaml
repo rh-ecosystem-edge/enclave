@@ -61,7 +61,7 @@ operators:
     global: true
 
   - name: cluster-logging
-    version: 6.6.1
+    version: 6.6.2
     channel: stable-6.6
     init_version: 6.6.1
     namespace: openshift-logging
