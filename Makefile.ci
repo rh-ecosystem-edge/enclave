@@ -355,7 +355,7 @@ clean-infra:
 
 # Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs
 reap-stale-vms:
-	@sudo -E python3 ./ci/infrastructure/vm_infra.py reap
+	@./ci/cleanup/reap_stale_vms.sh
 
 # Start any self-hosted runner services on this host that are stopped
 start-stopped-runners:

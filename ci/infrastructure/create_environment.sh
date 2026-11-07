@@ -15,6 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 ENCLAVE_DIR="$(cd -- "${SCRIPT_DIR}/../.." &>/dev/null && pwd)"
 source "${ENCLAVE_DIR}/ci/lib/output.sh"
+source "${ENCLAVE_DIR}/ci/lib/common.sh"
 
 echo "=========================================="
 echo "Creating Enclave test environment"
@@ -28,8 +29,9 @@ info "Step 2: Creating infrastructure (name, networks, pool, VMs) via vm_infra.p
 # libvirt resource is created. Capture it without aborting on failure so the generated
 # identity is still recorded (and the cluster can always be torn down) even if a later
 # create step fails.
+enclave_ci="$(enclave_ci_environment_bin)"
 set +e
-cluster_env="$(sudo -E python3 "${ENCLAVE_DIR}/ci/infrastructure/vm_infra.py" create)"
+cluster_env="$(sudo -E "${enclave_ci}" environment create)"
 create_rc=$?
 set -e
 if [ -n "$cluster_env" ]; then

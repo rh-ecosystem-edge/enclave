@@ -15,6 +15,7 @@
 #   detect_enclave_dir                - Set ENCLAVE_DIR to repository root
 #   ensure_working_dir                - Ensure WORKING_DIR is set (auto-construct if needed)
 #   get_cluster_name                  - Get cluster name (ENCLAVE_CLUSTER_NAME with fallback)
+#   enclave_ci_environment_bin        - Print path to an enclave-ci that can import libvirt
 
 # Detect the directory containing the calling script
 # Sets: SCRIPT_DIR
@@ -67,3 +68,22 @@ ensure_working_dir() {
 get_cluster_name() {
     echo "${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 }
+
+# Print the path of an enclave-ci executable whose venv is built on the host python3
+# with system site-packages, so `import libvirt` resolves to the python3-libvirt RPM
+# instead of compiling libvirt-python. Run it as the unprivileged user (the venv lives
+# in the repo checkout); the printed path can then be executed under sudo.
+# Requires: ENCLAVE_DIR, uv, /usr/bin/python3 with python3-libvirt
+# Example: sudo -E "$(enclave_ci_environment_bin)" environment create
+enclave_ci_environment_bin() {
+    local venv="${ENCLAVE_DIR}/.venv-enclave-ci"
+    # Explicit `|| return 1`: errexit does not apply inside $(...) or if-conditions.
+    if [ ! -x "${venv}/bin/python" ]; then
+        uv venv --quiet --python /usr/bin/python3 --system-site-packages "${venv}" >&2 \
+            || return 1
+    fi
+    UV_PROJECT_ENVIRONMENT="${venv}" uv sync --quiet --frozen --package enclave-ci \
+        --directory "${ENCLAVE_DIR}" >&2 || return 1
+    echo "${venv}/bin/enclave-ci"
+}
+
