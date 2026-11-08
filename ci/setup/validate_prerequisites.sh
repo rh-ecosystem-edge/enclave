@@ -69,11 +69,7 @@ if python3 -c "import libvirt" 2>/dev/null; then
 else
     error "python3-libvirt not found (install: sudo dnf install python3-libvirt)"
 fi
-if python3 -c "import jinja2" 2>/dev/null; then
-    success "python3-jinja2 is available"
-else
-    error "python3-jinja2 not found (install: sudo dnf install python3-jinja2)"
-fi
+check_command "uv" "https://docs.astral.sh/uv/"
 echo ""
 
 # 2. Check required commands

@@ -1,6 +1,7 @@
 # VM Infrastructure
 
-`ci/infrastructure/vm_infra.py` owns the libvirt networks and KVM VMs used
+`src/enclave_ci/enclave_ci/environment/vm_infra.py` (run as `enclave-ci environment`)
+owns the libvirt networks and KVM VMs used
 by Enclave CI e2e runs, replacing the previous dependency on
 [dev-scripts](https://github.com/openshift-metal3/dev-scripts) and
 [metal3-dev-env](https://github.com/metal3-io/metal3-dev-env).
@@ -145,8 +146,9 @@ consumed by every downstream script via `load_cluster_env` in `ci/lib/config.sh`
 
 Because `create` also *generates* the cluster name (when `ENCLAVE_CLUSTER_NAME` is
 unset) and derives `WORKING_DIR`, the stdout echo lets the caller capture the chosen
-identity before it can locate the file on disk — `eval "$(sudo -E python3
-vm_infra.py create)"` locally, or append it to `$GITHUB_ENV` in CI.
+identity before it can locate the file on disk — `eval "$(sudo -E
+.venv-enclave-ci/bin/enclave-ci environment create)"` locally, or append it to
+`$GITHUB_ENV` in CI.
 
 `cluster-env.sh` carries the full infrastructure contract: cluster name and base
 domain, deployment mode, `WORKING_DIR`, pool path, bridges, CIDRs, gateways, the BMC
@@ -210,8 +212,8 @@ sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 
 ### XML templates
 
-Network and domain XML definitions live in `ci/infrastructure/templates/`
-as Jinja2 templates (Jinja2 3.1+ is present as a system RPM on RHEL 9):
+Network and domain XML definitions live in
+`src/enclave_ci/enclave_ci/environment/templates/` as Jinja2 templates:
 
 | Template | Used for |
 |---|---|
@@ -219,24 +221,38 @@ as Jinja2 templates (Jinja2 3.1+ is present as a system RPM on RHEL 9):
 | `network-cluster.xml.j2` | Cluster network (isolated or NAT) and LZ uplink |
 | `domain.xml.j2` | VM domain definition (q35, UEFI, virtio) |
 
+### Python environment
+
+The libvirt bindings are not a declared dependency of `enclave-ci`: they come from the
+host's `python3-libvirt` RPM, so nothing is compiled (no gcc or libvirt-devel needed).
+`enclave_ci_environment_bin` in `ci/lib/common.sh` builds a dedicated venv,
+`.venv-enclave-ci/`, on `/usr/bin/python3` with `--system-site-packages`, syncs the
+`enclave-ci` package into it as the unprivileged user, and prints the path of its
+`enclave-ci` executable, which is then run under `sudo`. The host python3 must therefore
+be 3.12 (CentOS Stream 10) with `python3-libvirt` installed, and `uv` must be on `PATH`.
+
 ### Usage
 
 ```bash
+# Build/refresh the venv as the unprivileged user and print the executable path
+source ci/lib/common.sh && ENCLAVE_DIR="$PWD" enclave_ci_environment_bin
+ENCLAVE_CI=.venv-enclave-ci/bin/enclave-ci
+
 # Create infrastructure (requires root for libvirt and bridge.conf access)
-sudo python3 ci/infrastructure/vm_infra.py create
+sudo -E "$ENCLAVE_CI" environment create
 
 # Destroy infrastructure
-sudo python3 ci/infrastructure/vm_infra.py destroy
+sudo -E "$ENCLAVE_CI" environment destroy
 
 # Verbose output
-sudo python3 ci/infrastructure/vm_infra.py create -v
+sudo -E "$ENCLAVE_CI" environment -v create
 
 # Dry-run: print the subnet create would select (creating nothing)
-sudo python3 ci/infrastructure/vm_infra.py create --print-subnet
+sudo -E "$ENCLAVE_CI" environment create --print-subnet
 
 # Reap: tear down ALL CI clusters older than a threshold (cross-run GC)
-sudo REAP_AGE_HOURS=12 python3 ci/infrastructure/vm_infra.py reap
-sudo python3 ci/infrastructure/vm_infra.py reap --age-hours 12
+sudo REAP_AGE_HOURS=12 "$ENCLAVE_CI" environment reap
+sudo "$ENCLAVE_CI" environment reap --age-hours 12
 ```
 
 `--print-subnet` runs the same locked selection logic as `create` and prints

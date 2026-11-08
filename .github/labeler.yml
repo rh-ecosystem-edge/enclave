@@ -23,6 +23,7 @@ infrastructure:
       - 'ci/infrastructure/**/*'
       - 'ci/setup/**/*'
       - 'ci/cleanup/**/*'
+      - 'src/enclave_ci/enclave_ci/environment/**/*'
       - 'playbooks/tasks/create_*.yaml'
       - 'playbooks/tasks/configure_*.yaml'
       - 'playbooks/tasks/provision_*.yaml'

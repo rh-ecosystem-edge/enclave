@@ -571,6 +571,7 @@ dependencies = [
     { name = "certbot-dns-hetzner" },
     { name = "click" },
     { name = "cryptography" },
+    { name = "jinja2" },
     { name = "pyyaml" },
     { name = "requests" },
 ]
@@ -581,6 +582,7 @@ requires-dist = [
     { name = "certbot-dns-hetzner", specifier = "==4.0.0" },
     { name = "click", specifier = "==8.5.0" },
     { name = "cryptography", specifier = "==50.0.2" },
+    { name = "jinja2", specifier = "==3.1.6" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "requests", specifier = "==2.34.2" },
 ]
