@@ -826,12 +826,12 @@ def test_reconcile_replaces_plus_in_version(mocker: MockerFixture) -> None:
     mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
     dry_run = False
     reconcile(
-        "4.20.0+202602261925", "metallb-system", ["metallb-operator"], dry_run=dry_run
+        "4.21.0+202610241344", "metallb-system", ["metallb-operator"], dry_run=dry_run
     )
     mock_approve.assert_called_once_with(
         dry_run,
         "metallb-system",
-        {"metallb-operator": "4.20.0-202602261925"},
+        {"metallb-operator": "4.21.0-202610241344"},
     )
 
 

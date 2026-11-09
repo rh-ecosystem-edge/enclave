@@ -5,9 +5,9 @@ order: 100
 
 operators:
   - name: nfd
-    version: 4.20.0-202602261925
+    version: 4.21.0-202610241344
     channel: stable
-    init_version: 4.20.0-202602261925
+    init_version: 4.21.0-202610241344
   - name: limitador-operator
     version: 1.4.2
     channel: stable
