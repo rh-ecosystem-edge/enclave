@@ -25,6 +25,21 @@
     - name: Run metal3 upgrade tasks
       ansible.builtin.include_tasks: tasks/upgrade/metal3-components.yaml
 
+    - name: Upgrade operator versions
+      ansible.builtin.command:
+        argv:
+          - enclave
+          - reconcile
+          - operator-versions
+          - --use-defaults
+      register: r_operator_versions_upgrade
+      when: upgrade_operators | default(true) | bool
+
+    - name: Print operator versions upgrade output
+      ansible.builtin.debug:
+        var: r_operator_versions_upgrade.stderr_lines
+      when: upgrade_operators | default(true) | bool
+
     - name: Build management cluster upgrade arguments
       ansible.builtin.set_fact:
         mgmt_cluster_upgrade_argv: >-
@@ -44,18 +59,3 @@
       ansible.builtin.debug:
         var: r_mgmt_cluster_upgrade.stderr_lines
       when: upgrade_mgmt_cluster | default(true) | bool
-
-    - name: Upgrade operator versions
-      ansible.builtin.command:
-        argv:
-          - enclave
-          - reconcile
-          - operator-versions
-          - --use-defaults
-      register: r_operator_versions_upgrade
-      when: upgrade_operators | default(true) | bool
-
-    - name: Print operator versions upgrade output
-      ansible.builtin.debug:
-        var: r_operator_versions_upgrade.stderr_lines
-      when: upgrade_operators | default(true) | bool

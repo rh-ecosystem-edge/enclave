@@ -132,7 +132,3 @@ step_done
 echo "Restart catalog pods .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags restart-catalog-pods
 step_done
-
-echo "Prepare operator channels .." | tee -a "${log}"
-    ANSIBLE_LOG_PATH="${log}" ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags prepare-operator-channels
-step_done
