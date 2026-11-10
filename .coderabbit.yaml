@@ -89,8 +89,10 @@ reviews:
       instructions: |
         Container security (prodsec-skills):
         - Base image: UBI minimal or distroless from catalog.redhat.com
-        - Red Hat images: use floating tags (Red Hat manages updates);
-          non-RH images: pin by digest
+        - Red Hat images: floating tag, or digest pin kept current by
+          automated updates (Renovate/Konflux MintMaker); non-RH images:
+          pin by digest
+        - Do not flag automated digest bumps of a pinned base image
         - Multi-stage builds; no build tools in final image
         - USER non-root; never run as root
         - COPY specific files, not entire context
@@ -98,6 +100,15 @@ reviews:
         - Read-only rootfs where possible
         - No package manager cache in final layer
         - HEALTHCHECK defined
+
+    - path: ".github/workflows/Dockerfile.ci"
+      instructions: |
+        CI runner image (build/test tooling for workflow jobs, not a
+        shipped product or long-running service):
+        - Build tools in the image are expected; single stage is fine
+        - Running as root and no HEALTHCHECK are acceptable
+        - Still flag: secrets in ENV/ARG/COPY, unpinned non-RH images,
+          unverified downloads
 
     # ── Kubernetes & OpenShift ───────────────────────────────────
     # Skills: scc-security, operator-security, helm-chart-security,
