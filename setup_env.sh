@@ -3,6 +3,8 @@
 set -e
 
 # Install prerequisites
+# podman is held at 5.x: with podman 6 rootless commands fail because the run
+# root resolves to /run/containers/storage, which is not writable by the user.
 dnf install -y \
     bind-utils \
     curl \
@@ -14,7 +16,7 @@ dnf install -y \
     make \
     nmstate \
     openssl \
-    podman \
+    'podman-5.*' \
     python3 \
     rsync \
     skopeo \
