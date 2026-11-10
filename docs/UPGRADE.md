@@ -48,17 +48,21 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
-    During sync, the Day 2 `prepare-operator-channels` task runs `enclave reconcile
-    operator-versions --use-defaults --channel-only`. This updates Manual-approval
-    Subscription channels and waits for their target InstallPlans to appear, but leaves
-    the plans unapproved for the upgrade phase. Automatic-approval Subscriptions are
-    skipped because changing their channel would immediately install the new version.
+    Sync does not prepare operator Subscription channels.
 
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), prepare operator channels, then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, operator channel preparation, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
 
     ```sh
     ./upgrade.sh
     ```
+
+    After Metal3 upgrades and before management cluster reconciliation, operator channel
+    preparation runs `enclave reconcile operator-versions --use-defaults --channel-only`.
+    This updates Manual-approval Subscription channels and waits for their target
+    InstallPlans to appear, but leaves the plans unapproved until operator reconciliation.
+    Automatic-approval Subscriptions are skipped because changing their channel would
+    immediately install the new version. Channel preparation runs only during upgrade
+    and is skipped when `upgrade_operators=false`.
 
     **Metal3 Upgrade Phase**: Upgrades Ironic and Baremetal Operator in persistent mode (`metal3_persistent: true`) to match the management cluster OpenShift version. For intermediate version requirements, use the migration system.
 8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
