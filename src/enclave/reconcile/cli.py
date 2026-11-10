@@ -90,15 +90,6 @@ def cli(log_level: str) -> None:
     ),
 )
 @click.option("--dry-run/--no-dry-run", default=False)
-@click.option(
-    "--channel-only",
-    is_flag=True,
-    default=False,
-    help=(
-        "Update Subscription channels and wait for target InstallPlans without "
-        "approving them"
-    ),
-)
 def operator_versions(
     name: str,
     version: str,
@@ -107,7 +98,6 @@ def operator_versions(
     csv_names: tuple[str, ...],
     use_defaults: bool,
     dry_run: bool,
-    channel_only: bool,
 ) -> None:
     """Reconcile operator versions using explicit options or bundled defaults."""
     if use_defaults and any([name, version, namespace, channel, csv_names]):
@@ -125,8 +115,6 @@ def operator_versions(
         if missing:
             raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
         if channel is None:
-            if channel_only:
-                raise click.UsageError("--channel-only requires --channel")
             operator_versions_reconcile(
                 version, namespace, list(csv_names) or [name], dry_run
             )
@@ -138,7 +126,6 @@ def operator_versions(
                 dry_run,
                 channel=channel,
                 subscription_name=name,
-                channel_only=channel_only,
             )
         return
 
@@ -164,7 +151,6 @@ def operator_versions(
             dry_run,
             channel=op.get("channel"),
             subscription_name=op_name,
-            channel_only=channel_only,
         )
 
 
