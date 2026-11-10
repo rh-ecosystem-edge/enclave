@@ -240,8 +240,8 @@ validation pass quay_hostname "$quayHostname_dns points to $mirror_ip and Landin
 validation_section pull_secret
 # Check that pull secret works
 ps_image_check=quay.io/openshift-release-dev/ocp-v4.0-art-dev:latest
-if ! podman manifest inspect --authfile <(getValue .pullSecret) $ps_image_check > /dev/null 2>&1; then
-    validation fail pull_secret "Could not download an image using the pull secret"
+if ! ps_err=$(podman manifest inspect --authfile <(getValue .pullSecret) "$ps_image_check" 2>&1 >/dev/null); then
+    validation fail pull_secret "Could not download an image using the pull secret" "$(tail -n3 <<<"$ps_err")"
 fi
 validation pass pull_secret "Pull secret validated"
 
