@@ -25,14 +25,6 @@
     - name: Run metal3 upgrade tasks
       ansible.builtin.include_tasks: tasks/upgrade/metal3-components.yaml
 
-    - name: Prepare operator subscription channels
-      ansible.builtin.include_tasks:
-        file: tasks/prepare_operator_channels.yaml
-        apply:
-          environment:
-            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-      when: upgrade_operators | default(true) | bool
-
     - name: Build management cluster upgrade arguments
       ansible.builtin.set_fact:
         mgmt_cluster_upgrade_argv: >-
