@@ -18,12 +18,12 @@ Upgrading to a new Enclave release follows this sequence:
 1. **Deploy new Enclave tarball** - Extract new release to Landing Zone, preserving your `config/*.yaml` customizations
 2. **Sync/Mirror new content** - Run sync process to download and mirror new OpenShift and operator images to local registry (disconnected mode)
 3. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball (includes Metal3 stack)
-4. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
-5. **Upgrade operators** - Update operators to the versions specified in the new tarball
+4. **Upgrade operators** - Update operators to the versions specified in the new tarball
+5. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
 
 **Key Principle**: Each Enclave tarball is a versioned release with a pre-defined set of component versions. Upgrades move from one tarball release to another.
 
-**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then cluster, then operators.
+**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then operators, then cluster.
 
 ---
 
@@ -48,7 +48,7 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade the management cluster and operators to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile operator-versions --use-defaults`:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade operators and the management cluster to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile operator-versions --use-defaults` and `enclave reconcile mgmt-cluster-version --use-defaults`:
 
     ```sh
     ./upgrade.sh
@@ -62,8 +62,8 @@ Each Enclave tarball release includes:
 
     WORKING_DIR=<your global.yaml workingDir variable>
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
-    enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile operator-versions --use-defaults
+    enclave reconcile mgmt-cluster-version --use-defaults
     ```
 
 ---
