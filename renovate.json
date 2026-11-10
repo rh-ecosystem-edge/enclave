@@ -104,7 +104,7 @@
     {
       "description": "Konflux references (Tekton task bundles in .tekton/): automerge digest and patch",
       "matchFileNames": [".tekton/**"],
-      "matchUpdateTypes": ["digest", "patch"],
+      "matchUpdateTypes": ["digest", "patch", "minor"],
       "automerge": true
     },
     {
