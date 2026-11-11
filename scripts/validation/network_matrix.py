@@ -107,9 +107,9 @@ def node_addresses(config: dict[str, Any]) -> list[Node]:
                 and parsed not in {network.network_address, network.broadcast_address}
             ):
                 usable.add(str(parsed))
+        address_owners.update(usable)
         if host.get("ipAddress"):
             usable &= {host["ipAddress"]}
-        address_owners.update(usable)
         reason = (
             "address_missing" if not candidates or not usable else "address_ambiguous"
         )
