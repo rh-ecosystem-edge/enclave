@@ -223,10 +223,13 @@ def _retry_install_plan_poll(
 
 def _get_install_plans(
     namespace: str,
-    wait_for_csvs: set[str] | None,
-    deadline: float,
+    deadline: float | None,
 ) -> list[dict[str, Any]]:
-    """Fetch InstallPlans, retrying transient failures when waiting for targets."""
+    """Fetch InstallPlans in a namespace.
+
+    When deadline is set, failed or timed-out queries are retried until it is
+    reached; otherwise they raise immediately.
+    """
     while True:
         try:
             result = run_oc_command([
@@ -239,7 +242,7 @@ def _get_install_plans(
                 "json",
             ])
         except TimeoutError as exc:
-            if wait_for_csvs is None:
+            if deadline is None:
                 raise
             _retry_install_plan_poll(
                 deadline,
@@ -254,7 +257,7 @@ def _get_install_plans(
                 f"oc get installplan failed (exit {result.returncode})",
                 result.stderr or "",
             )
-            if wait_for_csvs is None:
+            if deadline is None:
                 raise RuntimeError(
                     f"oc get installplan in {namespace} failed "
                     f"(exit {result.returncode})"
@@ -268,57 +271,25 @@ def _get_install_plans(
             continue
 
         try:
-            install_plans = json.loads(result.stdout)["items"]
+            return json.loads(result.stdout)["items"]
         except (json.JSONDecodeError, KeyError) as exc:
             raise RuntimeError(
                 f"oc get installplan in {namespace} returned unexpected output"
             ) from exc
 
-        if wait_for_csvs is not None:
-            plan_csv_names = {
-                csv_name
-                for install_plan in install_plans
-                for csv_name in install_plan["spec"]["clusterServiceVersionNames"]
-            }
-            if not wait_for_csvs.issubset(plan_csv_names):
-                _retry_install_plan_poll(
-                    deadline,
-                    "Waiting for InstallPlans containing target CSVs "
-                    f"{sorted(wait_for_csvs)} in namespace {namespace}",
-                    f"No InstallPlan containing target CSVs "
-                    f"{sorted(wait_for_csvs)} appeared in namespace "
-                    f"{namespace} within 30 minutes",
-                )
-                continue
-        return install_plans
 
-
-def approve_install_plans(
+def _approve_pending_plans(
     dry_run: bool,
     namespace: str,
+    install_plans: list[dict[str, Any]],
     approved_op_version_map: dict[str, str],
-    *,
-    wait_for_csvs: set[str] | None = None,
-) -> None:
-    """Approve pending InstallPlans whose CSV versions are within the approved range.
+) -> set[str]:
+    """Approve RequiresApproval plans whose CSVs are within the approved range.
 
-    Fetches all InstallPlans in the namespace and iterates over those in
-    RequiresApproval phase. Each plan is approved only if all its CSVs are
-    known (present in approved_op_version_map) and their versions do not
-    exceed the desired version. Plans in other phases or with unmanaged /
-    too-new CSVs are skipped with an info log.
-
-    When wait_for_csvs is set, retries failed or timed-out queries until
-    InstallPlans contain all of those CSV names or the 30-minute deadline is
-    reached. This is used after changing a Subscription channel, which can take
-    OLM time to resolve into a plan.
-
-    Raises RuntimeError on oc command failures or unexpected API output, and
-    TimeoutError if a channel change does not produce the target InstallPlans.
+    Plans in other phases or with unmanaged / too-new CSVs are skipped with an
+    info log. Returns the CSV names of the plans approved by this call.
     """
-    deadline = time.monotonic() + 30 * 60
-    install_plans = _get_install_plans(namespace, wait_for_csvs, deadline)
-
+    approved_csvs: set[str] = set()
     for install_plan in install_plans:
         install_plan_name = install_plan["metadata"]["name"]
         install_plan_status_phase = install_plan["status"]["phase"]
@@ -338,6 +309,76 @@ def approve_install_plans(
             _approve_plan(
                 dry_run, namespace, install_plan_name, csv_op_name, csv_version
             )
+            approved_csvs.update(install_plan_spec_csv_names)
+    return approved_csvs
+
+
+def approve_install_plans(
+    dry_run: bool,
+    namespace: str,
+    approved_op_version_map: dict[str, str],
+) -> None:
+    """Approve pending InstallPlans whose CSV versions are within the approved range.
+
+    Fetches all InstallPlans in the namespace once and approves those in
+    RequiresApproval phase whose CSVs are all known (present in
+    approved_op_version_map) and do not exceed the desired version.
+
+    Raises RuntimeError on oc command failures or unexpected API output.
+    """
+    install_plans = _get_install_plans(namespace, None)
+    _approve_pending_plans(dry_run, namespace, install_plans, approved_op_version_map)
+
+
+def _approve_upgrade_path(
+    namespace: str,
+    approved_op_version_map: dict[str, str],
+    target_csvs: set[str],
+) -> None:
+    """Approve InstallPlans along the upgrade path until the targets are approved.
+
+    OLM may only reach the target CSVs through intermediate versions (for
+    example, a channel head whose skipRange does not cover the installed CSV),
+    offering one InstallPlan per hop. Each poll approves the pending plans that
+    are within the approved range, then stops once every target CSV belongs to
+    an approved plan. The 30-minute deadline restarts whenever a plan is
+    approved. Failed or timed-out queries are retried until the deadline.
+
+    Raises TimeoutError if no approvable progress is made within the deadline.
+    """
+    deadline = time.monotonic() + 30 * 60
+    while True:
+        install_plans = _get_install_plans(namespace, deadline)
+        approved_now = _approve_pending_plans(
+            dry_run=False,
+            namespace=namespace,
+            install_plans=install_plans,
+            approved_op_version_map=approved_op_version_map,
+        )
+        approved_csvs = approved_now | {
+            csv_name
+            for install_plan in install_plans
+            if install_plan["spec"].get("approved")
+            for csv_name in install_plan["spec"]["clusterServiceVersionNames"]
+        }
+        if target_csvs.issubset(approved_csvs):
+            return
+        if approved_now:
+            logger.info(
+                "Approved intermediate CSVs %s on the upgrade path to %s in "
+                "namespace %s.",
+                sorted(approved_now),
+                sorted(target_csvs),
+                namespace,
+            )
+            deadline = time.monotonic() + 30 * 60
+        _retry_install_plan_poll(
+            deadline,
+            "Waiting for InstallPlans on the upgrade path to target CSVs "
+            f"{sorted(target_csvs)} in namespace {namespace}",
+            f"No InstallPlan containing target CSVs {sorted(target_csvs)} "
+            f"appeared in namespace {namespace} within 30 minutes",
+        )
 
 
 def reconcile(
@@ -352,18 +393,20 @@ def reconcile(
 
     Normalises the version string ('+' → '-') to match the format OLM uses
     in CSV names. When a channel is provided, updates the Subscription before
-    approving InstallPlans. After a channel change, waits for InstallPlans with
-    the desired CSVs if the target CSV is not already installed. For each CSV,
+    approving InstallPlans. Unless the Subscription already reports the target
+    CSV, approves InstallPlans along the upgrade path until the target CSVs are
+    approved; this also resumes a previous run that changed the channel. For
+    each CSV,
     waits up to 30 minutes (polling every 10 s) for its phase to become
     Succeeded. The writes and CSV wait are skipped in dry-run mode.
     """
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
-    wait_for_csvs: set[str] | None = None
+    upgrade_path_targets: set[str] | None = None
     if channel is not None:
         name = subscription_name or (csv_names[0] if csv_names else "")
         if not name:
             raise ValueError("A Subscription name is required when a channel is set")
-        channel_changed, current_csv = _update_subscription_channel(
+        _, current_csv = _update_subscription_channel(
             dry_run,
             namespace,
             name,
@@ -373,14 +416,12 @@ def reconcile(
             f"{csv_name}.v{csv_version}"
             for csv_name, csv_version in op_version_map.items()
         }
-        if channel_changed and not dry_run and current_csv not in target_csvs:
-            wait_for_csvs = target_csvs
-    if wait_for_csvs is None:
+        if not dry_run and current_csv not in target_csvs:
+            upgrade_path_targets = target_csvs
+    if upgrade_path_targets is None:
         approve_install_plans(dry_run, namespace, op_version_map)
     else:
-        approve_install_plans(
-            dry_run, namespace, op_version_map, wait_for_csvs=wait_for_csvs
-        )
+        _approve_upgrade_path(namespace, op_version_map, upgrade_path_targets)
     for csv_name, csv_version in op_version_map.items():
         if not dry_run:
             logger.info(
