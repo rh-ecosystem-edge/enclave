@@ -48,7 +48,10 @@ grouped as `applicable`, `deferred`, and `excluded`. `address_missing` and
 Three deferred preinstall service rows do not block the gate; applicable NOT TESTED
 rows still do. The rendezvous uses the standard SSH implementation through a private
 display wrapper, preserving its existing SSH options while hiding verbose connection
-traces. Sensitive tasks also use `no_log`; do not enable Ansible debugger callbacks.
+traces. Sensitive module actions also suppress controller-side module argument and
+environment traces, including internal debug and separately configured log verbosity;
+their builtin action, connection, and result semantics are preserved. Sensitive tasks
+also use `no_log`; do not enable Ansible debugger callbacks.
 
 ### Private input collection and replay (both stages)
 

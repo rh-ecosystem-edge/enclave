@@ -48,6 +48,7 @@ class Connection(ssh.Connection):
     """Keep SSH options and trust behavior unchanged, protecting its diagnostics."""
 
     transport = "private_ssh"
+    private_diagnostics = staticmethod(private_display)
 
     def exec_command(
         self, cmd: str, in_data: bytes | None = None, sudoable: bool = True

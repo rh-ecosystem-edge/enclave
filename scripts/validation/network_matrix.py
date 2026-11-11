@@ -254,8 +254,12 @@ class Probe:
     def accessible(self, node: Node) -> bool:
         """Establish whether the node can originate commands at all."""
         result = self.command(node, "true")
-        if result is not None and result.returncode != 0:
-            self.reason_code = "ssh_unavailable"
+        if result is None or result.returncode != 0:
+            self.reason_code = (
+                "ssh_unavailable"
+                if result is not None and result.returncode == SSH_FAILURE
+                else "command_unavailable"
+            )
         return result is not None and result.returncode == 0
 
     def destination_address(
@@ -299,6 +303,7 @@ class Probe:
         )
         states = []
         owners = 0
+        failure_reason = "command_unavailable"
         for node in nodes if nodes is not None else [None]:
             result = (
                 self.run(["bash", "-c", command], 5, deadline)
@@ -306,7 +311,8 @@ class Probe:
                 else self.command(node, command, deadline)
             )
             if result is None or result.returncode != 0:
-                self.reason_code = "command_unavailable"
+                if result is not None and result.returncode == SSH_FAILURE:
+                    failure_reason = "ssh_unavailable"
                 states.append(None)
                 continue
             state = relevant_listener(result.stdout, destination, port)
@@ -314,7 +320,7 @@ class Probe:
             owners += owned is not None and destination in owned
             states.append(state)
         if None in states:
-            self.reason_code = "command_unavailable"
+            self.reason_code = failure_reason
             return None
         if owners != 1:
             self.reason_code = "ownership_unknown"

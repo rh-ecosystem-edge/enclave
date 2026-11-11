@@ -1,7 +1,9 @@
 ---
 - name: Query installed nodes for post-install topology
-  kubernetes.core.k8s_info:
-    kind: Node
+  private_action:
+    module: kubernetes.core.k8s_info
+    arguments:
+      kind: Node
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_network_nodes
@@ -28,14 +30,16 @@
   no_log: true
 
 - name: Capture requested private network input without SSH credentials
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
-      - --capture-input
-    stdin: >-
-      {{ {'input': _network_validation_input | from_json,
-          'directory': network_validation_capture_dir} | to_json }}
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+        - --capture-input
+      stdin: >-
+        {{ {'input': _network_validation_input | from_json,
+            'directory': network_validation_capture_dir} | to_json }}
   when: network_validation_capture_dir is defined
   register: r_network_capture
   changed_when: r_network_capture.rc == 0
@@ -44,28 +48,32 @@
 
 - name: Require fresh protected diagnostic input when requested
   ansible.builtin.assert:
-    that: r_network_capture.rc | default(0) == 0
+    that: network_validation_capture_dir is not defined or r_network_capture.rc | default(2) == 0
     quiet: true
     fail_msg: "Private network input capture failed; no existing input may be reused."
 
 - name: Collect directed node-origin network validation matrix
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
-    stdin: "{{ _network_validation_input }}"
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+      stdin: "{{ _network_validation_input }}"
   register: r_network_matrix
   changed_when: false
   failed_when: false
   no_log: true
 
 - name: Parse protected results into a topology-free summary
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
-      - --summary
-    stdin: "{{ r_network_matrix.stdout | default('') }}"
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+        - --summary
+      stdin: "{{ r_network_matrix.stdout | default('') }}"
   register: r_network_summary
   changed_when: false
   failed_when: false

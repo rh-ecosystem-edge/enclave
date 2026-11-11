@@ -7,8 +7,10 @@
   no_log: true
 
 - name: Inspect candidate rendezvous SSH identity
-  ansible.builtin.stat:
-    path: "{{ _rendezvous_key_candidate }}"
+  private_action:
+    module: ansible.builtin.stat
+    arguments:
+      path: "{{ _rendezvous_key_candidate }}"
   register: r_rendezvous_key
   when: _rendezvous_key_candidate | length > 0
   no_log: true
@@ -46,8 +48,10 @@
       connectivity. Installation gate remains closed; no firewall cause is inferred.
 
 - name: Read Assisted Service env file from rendezvous node
-  ansible.builtin.slurp:
-    src: /etc/assisted/rendezvous-host.env
+  private_action:
+    module: ansible.builtin.slurp
+    arguments:
+      src: /etc/assisted/rendezvous-host.env
   delegate_to: rendezvous
   register: r_rendezvous_env
   retries: 30
@@ -62,7 +66,7 @@
 
 - name: Fail if auth token not found
   ansible.builtin.fail:
-    msg: "USER_AUTH_TOKEN not found in /etc/assisted/rendezvous-host.env on rendezvous node"
+    msg: "Assisted Service authentication is unavailable; installation gate remains closed."
   when: _assisted_token_match | length == 0
 
 - name: Set auth token fact
@@ -71,12 +75,14 @@
   no_log: true
 
 - name: Wait for Assisted Service cluster to be registered
-  ansible.builtin.uri:
-    url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2/clusters"
-    method: GET
-    headers:
-      Authorization: "{{ _assisted_auth_token }}"
-    status_code: [200]
+  private_action:
+    module: ansible.builtin.uri
+    arguments:
+      url: "http://{{ rendezvousIP }}:8090/api/assisted-install/v2/clusters"
+      method: GET
+      headers:
+        Authorization: "{{ _assisted_auth_token }}"
+      status_code: [200]
   register: r_assisted_clusters
   retries: 60
   delay: 5
@@ -94,14 +100,16 @@
 
 - name: Display initial cluster status
   ansible.builtin.debug:
-    msg: "Assisted Service cluster status: {{ r_assisted_clusters.json[0].status }}"
+    msg: "Assisted Service cluster registration is available."
 
 - name: Wait for all hosts to be ready
-  ansible.builtin.uri:
-    url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
-    method: GET
-    headers:
-      Authorization: "{{ assisted_auth_token }}"
+  private_action:
+    module: ansible.builtin.uri
+    arguments:
+      url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
+      method: GET
+      headers:
+        Authorization: "{{ assisted_auth_token }}"
   register: r_assisted_hosts
   retries: 60
   delay: 5
@@ -177,10 +185,12 @@
   when: _pre_install_plugin_paths | default([]) | length > 0
 
 - name: Release installation gate on rendezvous node
-  ansible.builtin.file:
-    path: /var/tmp/proceed-with-installation
-    state: touch
-    mode: "0644"
+  private_action:
+    module: ansible.builtin.file
+    arguments:
+      path: /var/tmp/proceed-with-installation
+      state: touch
+      mode: "0644"
   delegate_to: rendezvous
   retries: 3
   delay: 5

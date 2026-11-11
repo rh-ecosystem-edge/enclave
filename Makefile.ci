@@ -243,8 +243,8 @@ validate:
 
 .PHONY: validate-network-script
 validate-network-script:
-	@ruff check scripts/validation/network_matrix.py playbooks/connection_plugins
-	@ruff format --check scripts/validation/network_matrix.py playbooks/connection_plugins
+	@ruff check scripts/validation/network_matrix.py playbooks/connection_plugins playbooks/action_plugins
+	@ruff format --check scripts/validation/network_matrix.py playbooks/connection_plugins playbooks/action_plugins
 
 validate-shell:
 	@./ci/verification/validate.sh shell
