@@ -1345,7 +1345,9 @@ These are used to configure the network interface on each discovered node.
 
 ## OpenShift Version Management
 
-`defaults/platforms.yaml` defines the OpenShift versions tested with this enclave release. To manage the available list independently, set `openshift_versions` in the optional `config/platforms.yaml`. That list replaces the default list. If the field is omitted, the defaults remain in effect. Ansible upgrade playbooks can also read `allow_not_recommended_upgrades` from this file.
+`defaults/platforms.yaml` defines the OpenShift versions tested with this Enclave release. To manage the available list independently, set `openshift_versions` in the optional `config/platforms.yaml`. That list replaces the default list. If the field is omitted, the defaults remain in effect. Ansible upgrade playbooks can also read `allow_not_recommended_upgrades` from this file.
+
+Use the override for z-stream additions or removals within minor versions already present in `defaults/platforms.yaml`. It only changes which OpenShift versions are selectable; it does not update operator catalogs or core/plugin operator versions. Do not use it alone to introduce a new minor version. See [OpenShift Version Management](OPENSHIFT_VERSION_MANAGEMENT.md) for scope and compatibility details.
 
 ### `config/platforms.yaml` (Optional Override)
 
@@ -1354,10 +1356,10 @@ Use a non-empty version list and mark exactly one version as the default:
 ```yaml
 ---
 openshift_versions:
-  - version: 4.20.21
   - version: 4.20.32
+  - version: 4.20.35  # z-stream in a tested minor line
+  - version: 4.21.32
     default: true
-  - version: 4.20.35
 ```
 
 The default version is used for the management cluster. On a fresh install, Enclave narrows the effective list to that version. For disconnected installs, only that release is mirrored and configured as an ACM install choice. In disconnected deployments, non-default versions become managed-cluster choices after `bash sync.sh` mirrors the configured list and reconciles ACM `ClusterImageSet` resources. The `enclave reconcile mgmt-cluster-version` command accepts versions from the effective list, then checks OpenShift's available update graph.

@@ -28,18 +28,18 @@ The override mechanism shifts version management responsibility to consumers whi
 - **Defines**: Tested y-stream release range
 - **Updates**: With each Enclave release based on validation and testing
 
-The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes tested versions in `defaults/platforms.yaml`. Every version in that list is part of the Enclave-tested baseline. The current defaults list 4.20.21 and 4.20.32, with 4.20.32 marked as the default; the examples below assume that baseline unless stated otherwise. The `default: true` marker selects the default for a fresh management cluster installation and for `--use-defaults`; other listed versions remain available as explicit choices.
+The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes tested versions in `defaults/platforms.yaml`. Every version in that list is part of the Enclave-tested baseline. The current defaults list 4.20.32 and 4.21.32, with 4.21.32 marked as the default; the examples below assume that baseline unless stated otherwise. The `default: true` marker selects the default for a fresh management cluster installation and for `--use-defaults`; other listed versions remain available as explicit choices.
 
 **Example** `defaults/platforms.yaml`:
 ```yaml
 ---
 openshift_versions:
-  - version: 4.20.21
   - version: 4.20.32
+  - version: 4.21.32
     default: true
 ```
 
-This signals that the listed versions have been tested with this Enclave release, with 4.20.32 selected as the default.
+This signals that the listed versions have been tested with this Enclave release, with 4.21.32 selected as the default.
 
 ### Consumer Responsibility
 
@@ -53,10 +53,10 @@ Consumers can set `openshift_versions` in `config/platforms.yaml` to replace the
 ```yaml
 ---
 openshift_versions:
-  - version: 4.20.21
   - version: 4.20.32
-    default: true
   - version: 4.20.35  # CVE z-stream added urgently
+  - version: 4.21.32
+    default: true
 ```
 
 This allows the consumer to add version 4.20.35 for a critical CVE fix without waiting for an enclave release.
@@ -75,6 +75,8 @@ Both files use the same `openshift_versions` field. The optional config file is 
 ### Validation and Scope
 
 The same `openshift_versions` list is used by management-cluster version selection and ACM managed-cluster image-set configuration. Its `default: true` entry selects the management-cluster default; every listed version is an allowed explicit choice. The list does not configure versions for downstream products such as OpenShift AI or OpenShift Virtualization.
+
+**Supported override scope**: Use `config/platforms.yaml` to add or remove z-streams within a minor version already present in this release's `defaults/platforms.yaml`. The override changes the selectable OpenShift version list only; it does not update the operator catalog versions, core operator versions, or plugin operator versions. Introducing a new minor version may require matching catalog and operator updates and additional compatibility validation. Listing that minor version in the override alone does not make it supported. The schema and CLI do not enforce this boundary, so a cross-minor version can still be listed and selected even though Enclave does not support that as an override. Use an Enclave release that includes the target minor in its tested defaults and compatible catalog/operator set.
 
 Ansible validates the config structure against `schemas/platforms.yaml` and requires exactly one `default: true` entry. The Python CLI checks the version-list structure and the single default before selecting a version. Neither path checks whether a version is present in the OpenShift update graph, whether an upgrade path exists from a particular cluster, or whether an overridden version is compatible with the Enclave stack or downstream products. The override only makes a version selectable in Enclave; the management-cluster upgrade command still checks OpenShift's available updates. `allow_not_recommended_upgrades` separately permits versions reported as conditional updates. Enclave does not monitor the update graph or automate these consumer checks.
 
@@ -137,29 +139,29 @@ cp config/platforms.example.yaml config/platforms.yaml
 ```yaml
 ---
 openshift_versions:
-  - version: 4.20.21
   - version: 4.20.32
+  - version: 4.20.35  # CVE fix; same minor as the tested 4.20 release
+  - version: 4.21.32
     default: true
-  - version: 4.20.35  # CVE fix
 ```
 
 **Result**: Version 4.20.35 is immediately available for cluster upgrades via `enclave reconcile mgmt-cluster-version --version 4.20.35`.
 
 ### 2. Remove Deprecated Version
 
-**Scenario**: Red Hat removes 4.20.21 from the upgrade graph. Enclave's `defaults/platforms.yaml` still lists it because the next release hasn't happened yet.
+**Scenario**: Red Hat removes 4.20.32 from the upgrade graph. Enclave's `defaults/platforms.yaml` still lists it because the next release hasn't happened yet.
 
 **Action**: Create `config/platforms.yaml` with only the valid versions:
 
 ```yaml
 ---
 openshift_versions:
-  - version: 4.20.32
-    default: true
   - version: 4.20.35
+  - version: 4.21.32
+    default: true
 ```
 
-**Result**: Version 4.20.21 is no longer offered, preventing invalid upgrade attempts.
+**Result**: Version 4.20.32 is no longer offered, preventing invalid upgrade attempts.
 
 ## Constraints and Responsibilities
 
