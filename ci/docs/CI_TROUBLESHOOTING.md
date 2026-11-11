@@ -86,7 +86,7 @@ artifacts/
     ├── events.txt              All events + Warning-only events (FailedScheduling, etc.)
     ├── pods.txt                All pods + Pending/Failed/not-Running selectors
     ├── <ns>_<pod>.log          Problem-pod logs (all containers, --previous, describe)
-    ├── plugin-diagnostics/     Per-enabled-plugin namespace state
+    ├── plugin-diagnostics/     Per-plugin namespace state (events w/ node names redacted; ODF: StorageCluster/CephCluster state/phase/message/conditions, CSI CRs (ClientProfile phase/message), NooBaa phase/conditions + backingstores + PVCs, configmaps + ceph-csi-config keys/sizes, ctrlplugin configmap mounts, operator + csi-rbdplugin + noobaa-operator logs, secret names)
     └── quay-diagnostics-*/     Quay (see below)
         ├── quayregistry.yaml   QuayRegistry CR — .status.conditions is the operator's own diagnosis
         ├── overview.txt        pods, deployments, HPA, events, PVCs, secret NAMES (never values)
@@ -108,7 +108,7 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 | `ProgressDeadlineExceeded`, rollout never completes | `cluster/events.txt` (`FailedScheduling`, `Insufficient memory/cpu`), `cluster/pods.txt` (Pending pod), the Pending pod's `*_describe.txt` |
 | Quay unhealthy / crashloop | `cluster/quay-diagnostics-*/quayregistry.yaml` (`.status.conditions`), then `overview.txt`, per-pod `*.log` and `*_previous.log`, `health-instance.txt` |
 | Operator/ClusterOperator degraded | `cluster/cluster-status.txt` (degraded CO list), then the operator pod logs under `cluster/` |
-| PVC unbound / storage | `cluster/quay-diagnostics-*/overview.txt` (PVCs), `cluster/events.txt`, `libvirt/` storage |
+| PVC unbound / storage | `cluster/events.txt` (ProvisioningFailed), `cluster/plugin-diagnostics/openshift-storage.txt` (events with node names redacted, StorageCluster/CephCluster state/phase/message/conditions, CSI CRs (ClientProfile phase/message), NooBaa phase/conditions, backingstores, PVCs, ceph-csi-config keys/sizes, ctrlplugin configmap volumes/mounts, rook/ceph-csi/ocs-operator/csi-rbdplugin/noobaa-operator logs, secret names), `cluster/quay-diagnostics-*/overview.txt` (PVCs), `libvirt/` storage |
 | Mirroring / disconnected image pull | `landing-zone/pipeline-logs/` (`oc-mirror*`, `mirroring_errors_*`) |
 | Install never reaches a cluster (no `cluster/` dir) | `landing-zone/.openshift_install.log`, `landing-zone/pipeline-logs/`, `landing-zone/serial-console.log` |
 | Plugin deploys wrong values / misconfiguration (e.g. a service enabled/disabled unexpectedly, bad hostname) | `landing-zone/config/` (input config, incl. `config/plugins/<plugin>.yaml`), `landing-zone/helm-values/` (what was actually rendered and applied) |
