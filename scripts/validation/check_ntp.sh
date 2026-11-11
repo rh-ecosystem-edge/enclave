@@ -6,7 +6,7 @@ report() {
 }
 
 sources=$(cat)
-if ! jq -se 'length == 1 and (.[0] | (. == null) or (type == "array" and all(.[]; type == "string" and test("\\A[A-Za-z0-9][A-Za-z0-9.:-]*\\z"))))' <<< "$sources" >/dev/null; then
+if ! jq -se 'length == 1 and (.[0] | (. == null) or (type == "array" and all(.[]; type == "string" and test("\\A([A-Za-z0-9][A-Za-z0-9.:-]*|::[A-Fa-f0-9:.]*)\\z"))))' <<< "$sources" >/dev/null 2>&1; then
     report config FAIL 'Expected server hostnames or IP addresses, without options or whitespace'
     exit 1
 fi
@@ -20,11 +20,13 @@ if ! command -v chronyd >/dev/null; then
     exit 2
 fi
 failed=0
+index=0
 for server in "${servers[@]}"; do
+    index=$((index + 1))
     if timeout 15s chronyd -Q -t 10 -u "$(id -un)" "server $server iburst" >/dev/null 2>&1; then
-        report "$server" PASS 'Usable NTP response from Landing Zone; not a node-path test'
+        report "source_$index" PASS 'Usable NTP response from Landing Zone; not a node-path test'
     else
-        report "$server" FAIL 'No usable NTP response in bounded Landing Zone query; check DNS, UDP/123 and source synchronization'
+        report "source_$index" FAIL 'No usable NTP response in bounded Landing Zone query; check DNS, UDP/123 and source synchronization'
         failed=1
     fi
 done

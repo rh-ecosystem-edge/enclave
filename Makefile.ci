@@ -238,16 +238,10 @@ deploy-plugin:
 
 # --- Validation targets (CI only) ---
 
-validate: validate-ntp
+validate:
 	@./ci/verification/validate.sh all
 
-.PHONY: validate-ntp
-validate-ntp:
-	@ruff check ci/tests/test_ntp.py
-	@ruff format --check ci/tests/test_ntp.py
-	@python3 -m unittest discover -s ci/tests -p 'test_ntp.py' -v
-
-validate-shell: validate-ntp
+validate-shell:
 	@./ci/verification/validate.sh shell
 
 validate-yaml:

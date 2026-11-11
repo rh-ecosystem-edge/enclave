@@ -14,7 +14,7 @@ cloud_infra_vars=config/cloud_infra.yaml
 
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $vars_rendered \
-        | jq -r $1
+        | jq "${2:--r}" "$1"
 }
 toYaml(){
     python -c 'import sys, yaml, json; print(yaml.dump(json.load(sys.stdin), default_flow_style=False))'
@@ -238,7 +238,7 @@ validation pass quay_hostname "$quayHostname_dns points to $mirror_ip and Landin
 
 ## Configured NTP sources (Landing Zone vantage only)
 validation_section ntp
-if ntp_result=$(getValue .defaultNtpServers | bash ./scripts/validation/check_ntp.sh); then
+if ntp_result=$(getValue .defaultNtpServers -c | bash ./scripts/validation/check_ntp.sh); then
     printf '%s\n' "$ntp_result" | pr -T -o 8
 else
     printf '%s\n' "$ntp_result" | pr -T -o 8

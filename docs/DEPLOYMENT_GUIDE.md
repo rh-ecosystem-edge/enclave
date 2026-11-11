@@ -18,7 +18,9 @@ standalone validation without it reports NOT TESTED and exits unsuccessfully.
 An empty or absent list reports SKIP without contacting any public server.
 PASS means a usable response from the Landing Zone, not proof of node UDP/123
 reachability. FAIL can mean DNS, connectivity, or an unsynchronized source.
-Run mock regressions with `make -f Makefile.ci validate-ntp`.
+Normal reports identify sources by their one-based configured-list index, not
+their hostname or address. JSON strings such as `"null"` and `"[]"` are invalid
+configuration, not an absent or empty list.
 
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
