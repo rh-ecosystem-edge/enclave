@@ -4,6 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 from ansible import constants
+from ansible.errors import AnsibleError
 from ansible.plugins.connection import ssh
 from ansible.utils.display import Display
 
@@ -38,6 +39,10 @@ def private_display() -> Generator[None, None, None]:
         constants.DEFAULT_DEBUG = False
         display.warning = transport_warning
         yield
+    except AnsibleError as error:
+        raise type(error)("Private operation failed.", show_content=False) from None
+    except OSError as error:
+        raise type(error)(error.errno, "Private operation failed.") from None
     finally:
         display.verbosity, display.log_verbosity = verbosity, log_verbosity
         constants.DEFAULT_DEBUG = debug
@@ -49,6 +54,11 @@ class Connection(ssh.Connection):
 
     transport = "private_ssh"
     private_diagnostics = staticmethod(private_display)
+
+    def update_vars(self, variables: dict[str, object]) -> None:
+        """Preserve connection facts without controller-side value traces."""
+        with private_display():
+            super().update_vars(variables)
 
     def exec_command(
         self, cmd: str, in_data: bytes | None = None, sudoable: bool = True

@@ -272,7 +272,11 @@ class Probe:
             result = self.run(["getent", "ahosts", address], 5, deadline)
             if result is None or result.returncode != 0:
                 return None
-            answers = {line.split()[0] for line in result.stdout.splitlines() if line}
+            answers = {
+                fields[0]
+                for line in result.stdout.splitlines()
+                if (fields := line.split())
+            }
             if len(answers) != 1:
                 return None
             destination = ipaddress.ip_address(answers.pop())
