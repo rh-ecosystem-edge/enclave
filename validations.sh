@@ -199,20 +199,31 @@ if grep -q 127.0.0.53 /etc/resolv.conf; then
     # systemd-resolved in use, get DNS list from systemd
     if systemctl is-active --quiet systemd-resolved; then
         lz_dns="$(resolvectl status | awk '/Current DNS Server:/ {print $NF}')"
+        lz_dns_source="resolvectl status Current DNS Server entries"
     else
-        validation fail default_dns "Landing Zone DNS could not be determined. It points to 127.0.0.53 but systemd-resolved is inactive"
+        message="config/global.yaml defaultDNS: $default_dns
+/etc/resolv.conf contains 127.0.0.53 (local stub), but systemd-resolved is inactive; upstream Landing Zone DNS addresses could not be determined.
+Requirement: defaultDNS in config/global.yaml must match one of the detected Landing Zone DNS addresses.
+Restore the intended Landing Zone DNS configuration (including systemd-resolved if the stub is intended), then rerun ./sync.sh."
+        validation fail default_dns "Landing Zone DNS could not be determined" "$message"
     fi
 else
     # DNS should be in /etc/resolv.conf
     lz_dns="$(awk '/^nameserver/ {print $2}' /etc/resolv.conf)"
+    lz_dns_source="/etc/resolv.conf nameserver entries"
 fi
 
+message="config/global.yaml defaultDNS: $default_dns
+Detected Landing Zone DNS addresses from $lz_dns_source:
+${lz_dns:-<none detected>}"
 if ! echo "$lz_dns" | grep -qx $default_dns; then
-    message="defaultDNS: $default_dns
-Landing Zone DNS: $lz_dns"
-    validation fail default_dns "Landing Zone DNS does not point to defaultDNS" "$message"
+    message="$message
+If the detected Landing Zone DNS is intended for this deployment, update defaultDNS in config/global.yaml to one of the detected addresses.
+If defaultDNS is the intended deployment DNS, correct the Landing Zone host's DNS configuration so a detected address matches defaultDNS.
+After correcting the intended configuration, rerun ./sync.sh."
+    validation fail default_dns "defaultDNS in config/global.yaml must match one of the detected Landing Zone DNS addresses" "$message"
 fi
-validation pass default_dns "Landing Zone DNS points to defaultDNS $default_dns"
+validation pass default_dns "Landing Zone DNS points to defaultDNS $default_dns" "$message"
 
 # Validate that defaultDNS is reachable and responding
 # Test by resolving a well-known domain through the defaultDNS server
