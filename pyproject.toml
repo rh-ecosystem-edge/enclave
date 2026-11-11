@@ -115,12 +115,6 @@ ignore = [
 preview = true
 
 [tool.ruff.lint.per-file-ignores]
-"ci/tests/**" = [
-    "INP001", # standalone infrastructure harnesses are not importable packages
-    "PLR2004", # literal expected values keep fixture assertions readable
-    "S101", # assert is idiomatic in regression tests
-    "PLR6301", # unittest discovers methods even when they do not use self
-]
 "src/tests/**" = [
     "PLR2004", # magic values in test assertions are readable without named constants
     "S101",    # assert is idiomatic in pytest
