@@ -108,6 +108,10 @@ echo "Validating Config .. " | tee -a ${log}
     bash ./validations.sh --skip-check-leftovers 2>&1 | tee -a "${log}"
 step_done
 
+echo "Refreshing control binaries .." | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/01-prepare.yaml -e fresh=false --tags download-control-binaries
+step_done
+
 echo "Configure MultiClusterHub .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags acm-mch
 step_done
