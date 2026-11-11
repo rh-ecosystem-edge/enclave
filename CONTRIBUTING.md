@@ -56,7 +56,7 @@ make -f Makefile.ci validate
 
 - Write clear, descriptive commit messages
 - Reference Jira tickets (e.g., `OSAC-123: Fix authentication bug`)
-- If AI assisted the commit, include: `Assisted-by: Claude Code <noreply@anthropic.com>`
+- If AI assisted the commit, include an `Assisted-by: <Agent name> <agent contact email>` trailer identifying the agent used
 
 ## Issue Tracking
 

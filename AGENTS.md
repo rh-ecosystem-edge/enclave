@@ -222,7 +222,7 @@ sudo apt install gh          # Debian/Ubuntu
 gh auth login  # Initial authentication
 gh pr create --title "OSAC-123: Add feature" --body "..."
 gh pr view 432
-gh pr comment 432 --body "✨ **Claude Code**: Fixed in abc1234"
+gh pr comment 432 --body "✨ **<Agent name>**: Fixed in abc1234"
 ```
 
 The CLI enables automation and improves AI agent integration with PR workflows.
@@ -248,12 +248,12 @@ When creating issues, use component `Enclave` and project `OSAC`.
 ## Git commits
 
 - If AI assisted the commit, include an `Assisted-by: <tool>` trailer.
-- Recommended format: `Assisted-by: Claude Code <noreply@anthropic.com>`
+- Recommended format: `Assisted-by: <Agent name> <agent contact email>`
 
 ## PR review responses
 
 When responding to PR review comments, clearly identify that the response is from an AI agent:
-- Prefix responses with `✨ **Claude Code**:` to indicate the agent is responding
+- Prefix responses with `✨ **<Agent name>**:` (e.g. the name of the AI tool used) to indicate the agent is responding
 - Include the commit hash that addresses the comment
 - Keep responses concise and factual
 
