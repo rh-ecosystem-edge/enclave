@@ -276,6 +276,33 @@ def test_upgrade_path_returns_when_target_plan_already_approved(
     mock_sleep.assert_not_called()
 
 
+def test_upgrade_path_ignores_approved_plan_still_requiring_approval(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Do not re-approve or restart the deadline for an already-approved plan."""
+    stuck = _plan(
+        "ip-hop",
+        "RequiresApproval",
+        ["openshift-gitops-operator.v1.22.0"],
+        approved=True,
+    )
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=_plans(stuck)),
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1.0, 1800.0],
+    )
+
+    with pytest.raises(TimeoutError, match="No InstallPlan containing target CSVs"):
+        _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+    assert mock_run.call_count == 2
+    assert all(call.args[0][1] != "patch" for call in mock_run.call_args_list)
+
+
 def test_upgrade_path_does_not_approve_newer_than_target(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:

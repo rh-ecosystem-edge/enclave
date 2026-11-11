@@ -286,8 +286,9 @@ def _approve_pending_plans(
 ) -> set[str]:
     """Approve RequiresApproval plans whose CSVs are within the approved range.
 
-    Plans in other phases or with unmanaged / too-new CSVs are skipped with an
-    info log. Returns the CSV names of the plans approved by this call.
+    Plans in other phases, plans already approved, or plans with unmanaged /
+    too-new CSVs are skipped with an info log. Returns the CSV names of the
+    plans approved by this call.
     """
     approved_csvs: set[str] = set()
     for install_plan in install_plans:
@@ -299,6 +300,13 @@ def _approve_pending_plans(
                 "Install plan %s is in phase %s with csvNames %s",
                 install_plan_name,
                 install_plan_status_phase,
+                install_plan_spec_csv_names,
+            )
+            continue
+        if install_plan["spec"].get("approved"):
+            logger.info(
+                "Install plan %s is already approved with csvNames %s",
+                install_plan_name,
                 install_plan_spec_csv_names,
             )
             continue
