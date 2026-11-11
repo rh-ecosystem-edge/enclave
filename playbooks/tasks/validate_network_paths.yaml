@@ -1,0 +1,46 @@
+---
+- name: Query installed nodes for post-install topology
+  kubernetes.core.k8s_info:
+    kind: Node
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_network_nodes
+  failed_when: false
+  when: network_validation_stage == 'postinstall'
+  no_log: true
+
+- name: Collect directed node-origin network validation matrix
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+    stdin: >-
+      {{ {'stage': network_validation_stage,
+          'hosts': agent_hosts,
+          'inventory': (discovered_hosts | default([])) if network_validation_stage == 'preinstall'
+                       else (r_network_nodes.resources | default([])),
+          'machine_network': machineNetwork,
+          'disconnected': disconnected | default(true) | bool,
+          'mirror': quayHostname,
+          'api_vip': apiVIP,
+          'ingress_vip': ingressVIP,
+          'ssh_key': ansible_ssh_private_key_file | default(ansible_private_key_file | default('')),
+          'ssh_public_key_path': sshPubPath | default(''),
+          'ssh_user': 'core',
+          'ssh_args': ansible_ssh_common_args | default('')} | to_json }}
+  register: r_network_matrix
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Report directed network matrix without credentials or host inventory
+  ansible.builtin.debug:
+    msg: "{{ r_network_matrix.stdout | from_json }}"
+
+- name: Require complete applicable node-origin network validation
+  ansible.builtin.assert:
+    that: r_network_matrix.rc == 0
+    fail_msg: >-
+      Network validation failed or is NOT TESTED. Check the directed matrix for
+      unavailable SSH identities, missing addresses, listener readiness, or connectivity.
+      No firewall cause is inferred. Pre-install failures leave the installation gate closed.

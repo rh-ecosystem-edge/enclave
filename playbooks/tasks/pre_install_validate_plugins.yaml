@@ -1,11 +1,25 @@
 ---
+- name: Select explicit or existing conventional rendezvous SSH identity
+  ansible.builtin.set_fact:
+    _rendezvous_key_candidate: >-
+      {{ ansible_ssh_private_key_file | default(ansible_private_key_file | default(
+         sshPubPath[:-4] if sshPubPath.endswith('.pub') else '')) }}
+
+- name: Inspect candidate rendezvous SSH identity
+  ansible.builtin.stat:
+    path: "{{ _rendezvous_key_candidate }}"
+  register: r_rendezvous_key
+  when: _rendezvous_key_candidate | length > 0
+
 - name: Add rendezvous node to inventory
   ansible.builtin.add_host:
     name: rendezvous
     ansible_host: "{{ rendezvousIP }}"
     ansible_user: core
-    ansible_ssh_private_key_file: "{{ sshPubPath | replace('.pub', '') }}"
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10"
+    ansible_ssh_private_key_file: >-
+      {{ r_rendezvous_key.stat.path if r_rendezvous_key.stat.exists | default(false) else omit }}
+    ansible_ssh_common_args: >-
+      {{ ansible_ssh_common_args | default('-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10') }}
 
 # Nodes were just booted via Ironic and may not have SSH ready yet.
 # delegate_to connection failures (UNREACHABLE) are fatal and bypass
@@ -16,6 +30,15 @@
     timeout: 600
     sleep: 10
   delegate_to: rendezvous
+  register: r_rendezvous_connection
+  ignore_errors: true
+
+- name: Require rendezvous access before discovery and gate operations
+  ansible.builtin.assert:
+    that: r_rendezvous_connection is succeeded
+    fail_msg: >-
+      NOT TESTED - rendezvous SSH access is unavailable; check SSH identity and
+      connectivity. Installation gate remains closed; no firewall cause is inferred.
 
 - name: Read Assisted Service env file from rendezvous node
   ansible.builtin.slurp:
@@ -91,6 +114,11 @@
 - name: Set discovered hosts fact
   ansible.builtin.set_fact:
     discovered_hosts: "{{ r_assisted_hosts.json }}"
+
+- name: Validate applicable pre-install node network paths before releasing gate
+  ansible.builtin.include_tasks: validate_network_paths.yaml
+  vars:
+    network_validation_stage: preinstall
 
 - name: Find plugins with tasks/pre-install-validate.yaml
   ansible.builtin.find:

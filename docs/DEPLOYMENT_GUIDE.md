@@ -1,5 +1,38 @@
 # Enclave Lab Deployment Guide
 
+## Directional node network validation
+
+Phase 3 checks TCP paths **from each node**, not just from the Landing Zone.
+Before releasing the installation gate, disconnected installations require
+node-to-`quayHostname:8443` connectivity. Connected installations skip that mirror;
+the optional Landing Zone HTTP/80 service is not made a node requirement.
+API, etcd, and ingress paths are explicitly NOT TESTED until after installation.
+
+After install-complete, checks cover each node to API VIP/6443 and ingress
+VIP/80,443, plus each control-plane node to every other peer on 2379 and 2380.
+The supported topology is the existing three control-plane nodes. Addresses come
+from matched Assisted host inventory before install and Kubernetes InternalIP
+after install, restricted to `machineNetwork`; ambiguous mapping is NOT TESTED.
+The helper uses the controller's SSH client as `core`, with BatchMode, bounded
+connection/command timeouts, standard `ansible_ssh_common_args` and explicit
+`ansible_ssh_private_key_file` (or `ansible_private_key_file`) when provided.
+An existing private counterpart of `sshPubPath` is used otherwise; if none
+exists, normal SSH default identities/ssh-agent are tried. Public key content
+does not manufacture a private key. Establish trusted host keys/SSH access
+before validation; no keys or arbitrary test listeners are created.
+
+The directed matrix reports PASS for successful node-origin TCP connections,
+FAIL for failed connectivity with listener evidence, and NOT TESTED when SSH,
+addresses, or destination listener readiness cannot be established. Listener
+inspection is read-only; a connection failure is not proof of a firewall fault.
+Applicable FAIL/NOT TESTED results exit unsuccessfully; pre-install results
+prevent automatic gate release. Deferred pre-install services do not fail that
+stage. Post-install checks may need rerunning when ingress services become
+ready. No firewall rules or service state are modified. This is a TCP path
+check, not application health, TLS authentication, or certification of all
+OpenShift network requirements. Run fixtures with
+`make -f Makefile.ci validate-network`.
+
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
 ## Table of Contents
