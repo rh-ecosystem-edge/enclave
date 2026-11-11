@@ -222,9 +222,16 @@ if [[ "$lz_dns_display" != "$lz_dns" ]]; then
 Authentication hostname suffixes are omitted from this display. Validation compares the original resolver entries, including suffixes; a displayed address alone may not match defaultDNS."
 fi
 if ! echo "$lz_dns" | grep -qx $default_dns; then
-    message="$message
+    if [[ "$lz_dns_display" != "$lz_dns" ]]; then
+        message="$message
+If the detected Landing Zone DNS is intended for this deployment, set defaultDNS in config/global.yaml only to a supported IPv4 address that appears as an original entry without an authentication hostname suffix.
+If a suffix prevents a match, inspect $lz_dns_source and determine a supported matching configuration for the intended deployment DNS that preserves required DNS authentication; do not select an address solely from the redacted display."
+    else
+        message="$message
 If the detected Landing Zone DNS is intended for this deployment, update defaultDNS in config/global.yaml to one of the detected addresses.
-If defaultDNS is the intended deployment DNS, correct the Landing Zone host's DNS configuration so a detected address matches defaultDNS.
+If defaultDNS is the intended deployment DNS, correct the Landing Zone host's DNS configuration so a detected address matches defaultDNS."
+    fi
+    message="$message
 After correcting the intended configuration, rerun ./sync.sh."
     validation fail default_dns "defaultDNS in config/global.yaml must match one of the detected Landing Zone DNS addresses" "$message"
 fi

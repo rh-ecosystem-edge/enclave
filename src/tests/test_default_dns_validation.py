@@ -165,12 +165,15 @@ def test_default_dns_inactive_stub(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("matches", [False, True], ids=["mismatch", "match"])
-def test_default_dns_sync_console_and_log(tmp_path: Path, matches: bool) -> None:
+@pytest.mark.parametrize("resolved", [False, True], ids=["resolv-conf", "resolved"])
+def test_default_dns_sync_console_and_log(
+    tmp_path: Path, matches: bool, resolved: bool
+) -> None:
     """Preserve validation output and failure through the sync.sh tee consumer."""
     result = _run_dns_validation(
         tmp_path,
-        "nameserver 192.0.2.53\n",
-        "",
+        "nameserver 127.0.0.53\n" if resolved else "nameserver 192.0.2.53\n",
+        "Current DNS Server: 192.0.2.53\n",
         "192.0.2.53" if matches else "203.0.113.53",
         through_tee=True,
     )
@@ -179,28 +182,38 @@ def test_default_dns_sync_console_and_log(tmp_path: Path, matches: bool) -> None
     record = yaml.safe_load(result.stdout)["validations"]["dns"][0]
     assert record["status"] == ("PASS" if matches else "FAIL")
     assert "config/global.yaml defaultDNS:" in record["message"]
-    assert "/etc/resolv.conf nameserver entries" in record["message"]
+    source = (
+        "resolvectl status Current DNS Server entries"
+        if resolved
+        else "/etc/resolv.conf nameserver entries"
+    )
+    assert source in record["message"]
     if not matches:
+        assert "update defaultDNS in config/global.yaml" in record["message"]
+        assert "If defaultDNS is the intended deployment DNS" in record["message"]
         assert "rerun ./sync.sh" in record["message"]
 
 
 @pytest.mark.parametrize("resolved", [False, True], ids=["resolv-conf", "resolved"])
 @pytest.mark.parametrize("default_dns", ["198.51.100.53", "203.0.113.53", "192.0.2.53"])
+@pytest.mark.parametrize("suffix_only", [False, True], ids=["mixed", "suffix-only"])
 def test_default_dns_redacts_authentication_hostname(
-    tmp_path: Path, resolved: bool, default_dns: str
+    tmp_path: Path, resolved: bool, default_dns: str, suffix_only: bool
 ) -> None:
-    """Redact display suffixes without making a suffixed raw entry match."""
+    """Keep suffix diagnostics private and guide choices using original entries."""
+    entries = ["192.0.2.53#resolver.example"]
+    if not suffix_only:
+        entries.append("198.51.100.53")
     result = _run_dns_validation(
         tmp_path,
         "nameserver 127.0.0.53\n"
         if resolved
-        else "nameserver 192.0.2.53#resolver.example\nnameserver 198.51.100.53\n",
-        "Current DNS Server: 192.0.2.53#resolver.example\n"
-        "Current DNS Server: 198.51.100.53\n",
+        else "".join(f"nameserver {entry}\n" for entry in entries),
+        "".join(f"Current DNS Server: {entry}\n" for entry in entries),
         default_dns,
         through_tee=True,
     )
-    matches = default_dns == "198.51.100.53"
+    matches = default_dns in entries
     assert result.returncode == (0 if matches else 1), result.stderr
     log = (tmp_path / "validation.log").read_text(encoding="utf-8")
     assert result.stdout == log
@@ -217,11 +230,20 @@ def test_default_dns_redacts_authentication_hostname(
         else "/etc/resolv.conf nameserver entries"
     )
     assert f"Detected Landing Zone DNS addresses from {source}:" in message
-    assert "\n192.0.2.53\n198.51.100.53\n" in message
+    assert "\n192.0.2.53\n" in message
+    if not suffix_only:
+        assert "\n192.0.2.53\n198.51.100.53\n" in message
     assert "Authentication hostname suffixes are omitted from this display" in message
     assert "Validation compares the original resolver entries, including suffixes" in (
         message
     )
     assert "a displayed address alone may not match defaultDNS" in message
     if not matches:
+        assert "to one of the detected addresses" not in message
+        assert "only to a supported IPv4 address" in message
+        assert "original entry without an authentication hostname suffix" in message
+        assert f"If a suffix prevents a match, inspect {source}" in message
+        assert "supported matching configuration" in message
+        assert "preserves required DNS authentication" in message
+        assert "do not select an address solely from the redacted display" in message
         assert "rerun ./sync.sh" in message
