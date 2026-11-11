@@ -13,7 +13,6 @@ If the check fails, select a writable, executable `TMPDIR` approved by your
 administrator. Do not assume `/var/tmp` is executable. Privileged setup uses the
 environment allowed by sudo, which may differ from the invoking user's TMPDIR;
 ask the administrator how to select an approved directory in that context.
-Run mock regressions with `make -f Makefile.ci validate-tmp-exec`.
 
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
