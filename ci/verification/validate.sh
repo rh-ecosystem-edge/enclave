@@ -269,6 +269,22 @@ validate_python() {
 
     local failed=0
 
+    echo "Running network script ruff check..."
+    if ruff check scripts/validation/network_matrix.py playbooks/connection_plugins; then
+        print_success "network script ruff check passed"
+    else
+        print_error "network script ruff check failed"
+        failed=1
+    fi
+
+    echo "Running network script ruff format check..."
+    if ruff format --check scripts/validation/network_matrix.py playbooks/connection_plugins; then
+        print_success "network script ruff format check passed"
+    else
+        print_error "network script ruff format check failed"
+        failed=1
+    fi
+
     echo "Running ruff check..."
     if ruff check src/; then
         print_success "ruff check passed"

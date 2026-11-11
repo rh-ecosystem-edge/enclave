@@ -9,12 +9,9 @@
   when: network_validation_stage == 'postinstall'
   no_log: true
 
-- name: Collect directed node-origin network validation matrix
-  ansible.builtin.command:
-    argv:
-      - "{{ ansible_playbook_python }}"
-      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
-    stdin: >-
+- name: Prepare protected stage-specific network input
+  ansible.builtin.set_fact:
+    _network_validation_input: >-
       {{ {'stage': network_validation_stage,
           'hosts': agent_hosts,
           'inventory': (discovered_hosts | default([])) if network_validation_stage == 'preinstall'
@@ -28,6 +25,35 @@
           'ssh_public_key_path': sshPubPath | default(''),
           'ssh_user': 'core',
           'ssh_args': ansible_ssh_common_args | default('')} | to_json }}
+  no_log: true
+
+- name: Capture requested private network input without SSH credentials
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+      - --capture-input
+    stdin: >-
+      {{ {'input': _network_validation_input | from_json,
+          'directory': network_validation_capture_dir} | to_json }}
+  when: network_validation_capture_dir is defined
+  register: r_network_capture
+  changed_when: r_network_capture.rc == 0
+  failed_when: false
+  no_log: true
+
+- name: Require fresh protected diagnostic input when requested
+  ansible.builtin.assert:
+    that: r_network_capture.rc | default(0) == 0
+    quiet: true
+    fail_msg: "Private network input capture failed; no existing input may be reused."
+
+- name: Collect directed node-origin network validation matrix
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+    stdin: "{{ _network_validation_input }}"
   register: r_network_matrix
   changed_when: false
   failed_when: false

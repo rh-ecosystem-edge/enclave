@@ -4,22 +4,26 @@
     _rendezvous_key_candidate: >-
       {{ ansible_ssh_private_key_file | default(ansible_private_key_file | default(
          sshPubPath[:-4] if sshPubPath.endswith('.pub') else '')) }}
+  no_log: true
 
 - name: Inspect candidate rendezvous SSH identity
   ansible.builtin.stat:
     path: "{{ _rendezvous_key_candidate }}"
   register: r_rendezvous_key
   when: _rendezvous_key_candidate | length > 0
+  no_log: true
 
 - name: Add rendezvous node to inventory
   ansible.builtin.add_host:
     name: rendezvous
+    ansible_connection: private_ssh
     ansible_host: "{{ rendezvousIP }}"
     ansible_user: core
     ansible_ssh_private_key_file: >-
       {{ r_rendezvous_key.stat.path if r_rendezvous_key.stat.exists | default(false) else omit }}
     ansible_ssh_common_args: >-
       {{ ansible_ssh_common_args | default('-o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10') }}
+  no_log: true
 
 # Nodes were just booted via Ironic and may not have SSH ready yet.
 # delegate_to connection failures (UNREACHABLE) are fatal and bypass
@@ -32,6 +36,7 @@
   delegate_to: rendezvous
   register: r_rendezvous_connection
   ignore_errors: true
+  no_log: true
 
 - name: Require rendezvous access before discovery and gate operations
   ansible.builtin.assert:
@@ -114,6 +119,7 @@
 - name: Set discovered hosts fact
   ansible.builtin.set_fact:
     discovered_hosts: "{{ r_assisted_hosts.json }}"
+  no_log: true
 
 - name: Validate applicable pre-install node network paths before releasing gate
   ansible.builtin.include_tasks: validate_network_paths.yaml
@@ -180,6 +186,7 @@
   delay: 5
   register: r_gate_release
   until: r_gate_release is success
+  no_log: true
 
 - name: Display gate release status
   ansible.builtin.debug:

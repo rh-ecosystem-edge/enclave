@@ -38,10 +38,123 @@ same-family wildcard and unambiguous ownership; unrelated, loopback or wrong-fam
 service readiness. Missing or ambiguous destination ownership is NOT TESTED,
 not a confirmed listener gap eligible for readiness retries.
 Successful connections need no listener inspection.
-Normal Ansible output contains status counts only. For operator-directed diagnostics,
-run `python3 scripts/validation/network_matrix.py` with the same topology JSON on
-standard input and redirect output into a protected file (`umask 077`); this explicit
-matrix includes topology and should not be copied into public logs.
+Normal Ansible output contains only fixed status and allowlisted reason-code counts,
+grouped as `applicable`, `deferred`, and `excluded`. `address_missing` and
+`address_ambiguous` describe source/destination selection; `ssh_unavailable` and
+`command_unavailable` describe access/prerequisites; `destination_unresolved`,
+`ownership_unknown`, and `listener_unready` describe destination evidence.
+`connected` and `path_failed` describe tested paths, not firewall attribution.
+`input_invalid` and `unknown` never expose arbitrary input or exception text.
+Three deferred preinstall service rows do not block the gate; applicable NOT TESTED
+rows still do. The rendezvous uses the standard SSH implementation through a private
+display wrapper, preserving its existing SSH options while hiding verbose connection
+traces. Sensitive tasks also use `no_log`; do not enable Ansible debugger callbacks.
+
+### Private input collection and replay (both stages)
+
+Collection is opt-in and runs in the shared network task before the probe, so a
+failed matrix still leaves its diagnostic input available. On the **controller**, as
+the same account that runs Ansible, create a private parent outside the checkout,
+working directory, and every CI artifact collection path:
+
+```bash
+umask 077
+mkdir -m 700 /private/operator-network-inputs
+```
+
+Use an existing private parent location accessible to that account (replace the
+example absolute path). In an operator-only vars file, add:
+
+```yaml
+network_validation_capture_dir: "/private/operator-network-inputs/{{ network_validation_stage }}"
+```
+
+Supply that vars file to the **same deployment invocation** using `-e @/private/operator-vars.yaml`.
+The `pre_install_validate_plugins.yaml` caller captures configured `agent_hosts` and
+the actual Assisted Service `discovered_hosts` inventory at **preinstall**. The
+`wait_for_deployment.yaml` caller captures the same configured hosts and the queried
+Kubernetes Node InternalIP inventory at **postinstall**. Each stage also captures
+the exact machine network, disconnected flag, mirror, API VIP, and ingress VIP.
+Only fields consumed by address selection are retained from host/inventory objects;
+tokens, kubeconfigs, private keys and SSH arguments are not captured.
+
+Each capture must create a **new** stage directory (0700) containing `input.json`
+(0600), owned by the controller account. The existing parent must be owned by that
+account and exactly 0700. Symlink components, relative/traversing paths, existing
+files/directories and ambiguous destinations are refused. A failed capture stops
+the play with a fixed error; an old file must never be treated as fresh input.
+For another attempt, use a new private parent, or remove the previous capture
+after investigating it. No capture location or input is printed or automatically
+added to diagnostics. Never configure a location under a checkout/CI archive tree.
+
+Replay on the same controller with the same SSH agent, known-hosts configuration,
+DNS context, and Python used by the deployment. From the repository root, run the
+following interactively, **not in CI**. Enter the stage directory captured in this
+attempt and the original effective `ansible_ssh_common_args`,
+`ansible_ssh_private_key_file` (or `ansible_private_key_file`) and `sshPubPath` values
+when prompted; leave unset values blank. These are hidden prompts because arguments
+or identity paths may themselves be sensitive. SSH user remains `core`, as in the
+playbook. Do not introduce new SSH trust overrides. Output is created exclusively
+as `matrix.json` inside that private stage directory; existing output is refused.
+
+```bash
+python3 - <<'PY'
+import getpass
+import json
+import os
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+os.umask(0o077)
+directory_fd = None
+try:
+    directory = Path(getpass.getpass("Fresh stage capture directory: "))
+    if not directory.is_absolute() or ".." in directory.parts:
+        raise ValueError
+    directory_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    for component in directory.parts[1:]:
+        child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=directory_fd)
+        os.close(directory_fd)
+        directory_fd = child
+    info = os.fstat(directory_fd)
+    if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError
+    descriptor = os.open("input.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    with os.fdopen(descriptor) as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError
+        config = json.load(source)
+    for field in ("ssh_args", "ssh_key", "ssh_public_key_path"):
+        config[field] = getpass.getpass(field + " (original effective value, or blank): ")
+    config["ssh_user"] = "core"
+    descriptor = os.open("matrix.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=directory_fd)
+    with os.fdopen(descriptor, "wb") as output:
+        result = subprocess.run(
+            [sys.executable, "scripts/validation/network_matrix.py"],
+            input=json.dumps(config).encode(), stdout=output,
+            stderr=subprocess.DEVNULL, check=False,
+        )
+    print("Private matrix recorded; exit status:", result.returncode)
+except (OSError, ValueError, TypeError, KeyError):
+    print("Private replay refused or failed; no input or path logged.")
+    sys.exit(2)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+PY
+```
+
+Inspect `input.json` and `matrix.json` only in a private operator session. Both are
+topology-bearing diagnostic data, not normal logs or public attachments. Remove both
+files, then their stage directories and the private parent when no longer needed;
+remove the opt-in setting before returning to routine deployment. Never upload them
+with CI diagnostics. Collection/replay is instrumentation, not a proven fix for an
+observed live network failure.
 No firewall rules or service state are modified. This is a TCP path
 check, not application health, TLS authentication, or certification of all
 OpenShift network requirements. Production-script lint and formatting remain part

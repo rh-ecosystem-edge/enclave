@@ -238,15 +238,15 @@ deploy-plugin:
 
 # --- Validation targets (CI only) ---
 
-validate: validate-network-script
+validate:
 	@./ci/verification/validate.sh all
 
 .PHONY: validate-network-script
 validate-network-script:
-	@ruff check scripts/validation/network_matrix.py
-	@ruff format --check scripts/validation/network_matrix.py
+	@ruff check scripts/validation/network_matrix.py playbooks/connection_plugins
+	@ruff format --check scripts/validation/network_matrix.py playbooks/connection_plugins
 
-validate-shell: validate-network-script
+validate-shell:
 	@./ci/verification/validate.sh shell
 
 validate-yaml:
