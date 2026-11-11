@@ -25,7 +25,7 @@ class ActionModule(ActionBase):
             builtin.set_options(var_options=variables)
             arguments = builtin.get_option("ssh_common_args")
         result.update({
-            "ansible_facts": {"_network_ssh_args": arguments},
+            "ssh_common_args": arguments,
             "_ansible_no_log": True,
             "changed": False,
         })

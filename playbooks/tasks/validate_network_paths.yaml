@@ -13,6 +13,7 @@
 
 - name: Resolve matrix-scoped SSH common arguments privately
   network_probe_context:
+  register: r_network_probe_context
   no_log: true
 
 - name: Prepare protected stage-specific network input
@@ -30,7 +31,7 @@
           'ssh_key': ansible_ssh_private_key_file | default(ansible_private_key_file | default('')),
           'ssh_public_key_path': sshPubPath | default(''),
           'ssh_user': 'core',
-          'ssh_args': _network_ssh_args} | to_json }}
+          'ssh_args': r_network_probe_context.ssh_common_args} | to_json }}
   no_log: true
 
 - name: Capture requested private network input without SSH credentials

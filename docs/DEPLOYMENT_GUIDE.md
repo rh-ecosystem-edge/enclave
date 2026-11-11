@@ -124,16 +124,25 @@ the dynamically added `rendezvous` host's fallback options:
    only deliberately requested values in that private terminal, not topology:
 
    ```text
-   p task_vars['network_validation_stage']
-   p task_vars['ansible_playbook_python']
-   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_args']
-   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_key']
-   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_public_key_path']
+   network_input = __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])
+   network_values = [task_vars['network_validation_stage'], task_vars['ansible_playbook_python'], network_input['ssh_args'], network_input['ssh_key'], network_input['ssh_public_key_path']]
+   assert all(isinstance(value, str) and all(character.isprintable() for character in value) for value in network_values), 'Private replay refused: non-printable value; stop'
+   print(network_values[0])
+   print(network_values[1])
+   print(network_values[2])
+   print(network_values[3])
+   print(network_values[4])
    c
    ```
 
    Keep the interpreter and three **resolved** values privately for that stage;
-   do not paste their Python repr quotes into the prompts. An empty resolved
+   enter the printed values exactly, including literal quotes and backslashes.
+   Do not strip quotes, evaluate Python representations, or substitute defaults.
+   These are Python `print(...)` commands supported by the task debugger, not its
+   `p`/`pprint` representation formatter. Long values may visually wrap in the
+   terminal; visual wrapping is not an embedded newline. If the assertion or any
+   command fails, stop before printing or replaying; newline/control-containing
+   values are not supported by this single-line private procedure. An empty resolved
    string means `empty`, not an invitation to substitute rendezvous defaults.
    `ssh_args` uses builtin SSH precedence: matrix-scoped
    `ansible_ssh_common_args` (even explicitly empty), then CLI `--ssh-common-args`
@@ -142,6 +151,9 @@ the dynamically added `rendezvous` host's fallback options:
    `ansible_ssh_private_key_file`, else `ansible_private_key_file`, else empty;
    public-key path is `sshPubPath`, else empty. All are evaluated in the original
    matrix task, after the actual `common/load-vars.yaml` defaults/config loading.
+   The resolver returns a protected registered result, not an `ansible_facts`
+   value; it works with either fact-injection policy and does not cache SSH options.
+   The prepared input uses builtin noncacheable `set_fact`; do not add `cacheable`.
    `Makefile` uses `AP=ansible-playbook` and `AP_FLAGS`; `setup_ansible.sh` installs
    that executable via `uv tool install . --with-executables-from ansible-core`.
    Neither PATH `python3` nor a guessed uv/venv location proves its interpreter.
@@ -203,6 +215,8 @@ try:
         elif mode == "value":
             config[field] = getpass.getpass(field + " (exact original resolved value): ")
         elif mode != "unset":
+            raise ValueError
+        if not all(character.isprintable() for character in config.get(field, "")):
             raise ValueError
     config["ssh_user"] = "core"
     descriptor = os.open("matrix.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
