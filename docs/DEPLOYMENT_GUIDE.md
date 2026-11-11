@@ -92,29 +92,88 @@ files/directories and ambiguous destinations are refused. A failed capture stops
 the play with a fixed error; an old file must never be treated as fresh input.
 For another attempt, use a new private parent, or remove the previous capture
 after investigating it. No capture location or input is printed or automatically
-added to diagnostics. Never configure a location under a checkout/CI archive tree.
+added to diagnostics. Capture refuses destinations inside this checkout (including
+`ci/logs`, `ci/diagnostics` and `artifacts`) or the deployment's `workingDir`,
+including paths resolving into those trees. Use a separate private parent outside
+all checkout, working, and custom archive/upload trees. A custom collector must
+never include that parent; the tool cannot discover arbitrary external upload roots.
 
 Replay on the same controller with the same SSH agent, known-hosts configuration,
-DNS context, and Python used by the deployment. From the repository root, run the
-following interactively, **not in CI**. Enter the stage directory captured in this
-attempt and the original effective `ansible_ssh_common_args`,
-`ansible_ssh_private_key_file` (or `ansible_private_key_file`) and `sshPubPath` values
-when prompted; leave unset values blank. These are hidden prompts because arguments
-or identity paths may themselves be sensitive. SSH user remains `core`, as in the
-playbook. Do not introduce new SSH trust overrides. Output is created exclusively
-as `matrix.json` inside that private stage directory; existing output is refused.
+DNS context and deployment interpreter. Obtain the **matrix task's** values, not
+the dynamically added `rendezvous` host's fallback options:
+
+1. Before this diagnostic deployment attempt, temporarily add `debugger: always`
+   alongside `no_log: true` to **Prepare protected stage-specific network input**
+   in `playbooks/tasks/validate_network_paths.yaml`. Do not commit this operator
+   edit. This is shared by preinstall and postinstall in `03-deploy.yaml`, through
+   `pre_install_validate_plugins.yaml` and `wait_for_deployment.yaml` respectively.
+2. In an unrecorded, private interactive terminal, repeat the original deployment
+   invocation, including its original inventory, extra-vars, tags, SSH CLI flags,
+   environment and `ANSIBLE_CONFIG`, plus the capture vars file above. Retain
+   original task/play/host variables and config files. Disable shell tracing and
+   terminal/session recording. For this operator session only, set
+   `ANSIBLE_ENABLE_TASK_DEBUGGER=true`, `ANSIBLE_LOG_PATH=/dev/null`,
+   `ANSIBLE_CALLBACKS_ENABLED=ansible.builtin.default`,
+   `ANSIBLE_STDOUT_CALLBACK=ansible.builtin.default`,
+   `ANSIBLE_DEBUG=false`, `ANSIBLE_VERBOSITY=0`; omit verbosity CLI flags. Do not
+   redirect this private debugger transcript to routine deployment/CI logs.
+3. At each stage's debugger stop, use these exact debugger commands (tested with
+   ansible-core 2.21.5, whose debugger exposes `result.utr`). They expose
+   only deliberately requested values in that private terminal, not topology:
+
+   ```text
+   p task_vars['network_validation_stage']
+   p task_vars['ansible_playbook_python']
+   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_args']
+   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_key']
+   p __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])['ssh_public_key_path']
+   c
+   ```
+
+   Keep the interpreter and three **resolved** values privately for that stage;
+   do not paste their Python repr quotes into the prompts. An empty resolved
+   string means `empty`, not an invitation to substitute rendezvous defaults.
+   `ssh_args` uses builtin SSH precedence: matrix-scoped
+   `ansible_ssh_common_args` (even explicitly empty), then CLI `--ssh-common-args`
+   (even empty), environment `ANSIBLE_SSH_COMMON_ARGS`, active config
+   `[ssh_connection] ssh_common_args`, then empty default. Key selection here is
+   `ansible_ssh_private_key_file`, else `ansible_private_key_file`, else empty;
+   public-key path is `sshPubPath`, else empty. All are evaluated in the original
+   matrix task, after the actual `common/load-vars.yaml` defaults/config loading.
+   `Makefile` uses `AP=ansible-playbook` and `AP_FLAGS`; `setup_ansible.sh` installs
+   that executable via `uv tool install . --with-executables-from ansible-core`.
+   Neither PATH `python3` nor a guessed uv/venv location proves its interpreter.
+4. Continue to create the fresh capture at each stage, then remove only the
+   temporary `debugger: always` edit and restore logging settings before routine
+   deployment. No SSH options, identity paths or credentials are added to
+   `input.json`. If the original invocation/settings cannot be reproduced, stop:
+   a replay with guessed settings is not equivalent evidence.
+
+From the repository root, run the following interactively, **not in CI**, once
+for each captured stage. Supply the exact interpreter obtained above and that
+stage's resolved values. Hidden `unset`/`empty`/`value` prompts distinguish omission
+from an explicit empty string; for the resolved strings above use `empty` or
+`value`. SSH user remains `core`. Do not introduce SSH trust overrides. Output is
+created exclusively as `matrix.json` inside that private stage directory;
+existing output is refused.
 
 ```bash
-python3 - <<'PY'
+set +x
+IFS= read -r -s -p 'Original controller interpreter: ' network_python </dev/tty || { printf 'Private replay refused.\n'; exit 2; }
+printf '\n' >/dev/tty
+test -x "$network_python" || { printf 'Private replay refused.\n'; unset network_python; exit 2; }
+"$network_python" - 2>/dev/null <<'PY'
 import getpass
 import json
 import os
 import stat
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 os.umask(0o077)
+warnings.simplefilter("error", getpass.GetPassWarning)
 directory_fd = None
 try:
     directory = Path(getpass.getpass("Fresh stage capture directory: "))
@@ -136,7 +195,13 @@ try:
             raise ValueError
         config = json.load(source)
     for field in ("ssh_args", "ssh_key", "ssh_public_key_path"):
-        config[field] = getpass.getpass(field + " (original effective value, or blank): ")
+        mode = getpass.getpass(field + " (unset/empty/value): ")
+        if mode == "empty":
+            config[field] = ""
+        elif mode == "value":
+            config[field] = getpass.getpass(field + " (exact original resolved value): ")
+        elif mode != "unset":
+            raise ValueError
     config["ssh_user"] = "core"
     descriptor = os.open("matrix.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                          0o600, dir_fd=directory_fd)
@@ -147,13 +212,17 @@ try:
             stderr=subprocess.DEVNULL, check=False,
         )
     print("Private matrix recorded; exit status:", result.returncode)
-except (OSError, ValueError, TypeError, KeyError):
+    sys.exit(result.returncode)
+except (OSError, ValueError, TypeError, KeyError, EOFError, KeyboardInterrupt, getpass.GetPassWarning):
     print("Private replay refused or failed; no input or path logged.")
     sys.exit(2)
 finally:
     if directory_fd is not None:
         os.close(directory_fd)
 PY
+network_replay_rc=$?
+unset network_python
+(exit "$network_replay_rc")
 ```
 
 Inspect `input.json` and `matrix.json` only in a private operator session. Both are

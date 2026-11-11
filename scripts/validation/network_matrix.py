@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -84,7 +85,7 @@ def node_addresses(config: dict[str, Any]) -> list[Node]:
     """Choose usable machine-network addresses without guessing ambiguous hosts."""
     network = ipaddress.ip_network(config["machine_network"])
     nodes = []
-    used = set()
+    address_owners: Counter[str] = Counter()
     for host in config["hosts"]:
         macs = {host.get("macAddress", "").lower()} | {
             interface["macAddress"].lower()
@@ -108,16 +109,16 @@ def node_addresses(config: dict[str, Any]) -> list[Node]:
                 usable.add(str(parsed))
         if host.get("ipAddress"):
             usable &= {host["ipAddress"]}
+        address_owners.update(usable)
         reason = (
             "address_missing" if not candidates or not usable else "address_ambiguous"
         )
         address = next(iter(usable)) if candidates == 1 and len(usable) == 1 else None
-        if address in used:
-            address = None
-            reason = "address_ambiguous"
-        if address:
-            used.add(address)
         nodes.append({"name": host["name"], "address": address, "reason_code": reason})
+    for node in nodes:
+        if node["address"] and address_owners[node["address"]] > 1:
+            node["address"] = None
+            node["reason_code"] = "address_ambiguous"
     return nodes
 
 
@@ -580,6 +581,15 @@ def capture_input(request: dict[str, Any]) -> int:
     payload = json.dumps(captured).encode()
     destination = Path(request["directory"])
     if not destination.is_absolute() or ".." in destination.parts:
+        raise ValueError("invalid destination")
+    try:
+        excluded = [Path(__file__).resolve().parents[2]]
+        if request.get("working_directory"):
+            excluded.append(Path(request["working_directory"]).resolve())
+        archived = any(destination.resolve().is_relative_to(root) for root in excluded)
+    except RuntimeError:
+        raise ValueError("invalid destination") from None
+    if archived:
         raise ValueError("invalid destination")
     directory = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
     try:

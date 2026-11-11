@@ -190,6 +190,8 @@
     arguments:
       path: /var/tmp/proceed-with-installation
       state: touch
+      access_time: preserve
+      modification_time: preserve
       mode: "0644"
   delegate_to: rendezvous
   retries: 3

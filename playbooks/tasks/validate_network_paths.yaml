@@ -11,6 +11,10 @@
   when: network_validation_stage == 'postinstall'
   no_log: true
 
+- name: Resolve matrix-scoped SSH common arguments privately
+  network_probe_context:
+  no_log: true
+
 - name: Prepare protected stage-specific network input
   ansible.builtin.set_fact:
     _network_validation_input: >-
@@ -26,7 +30,7 @@
           'ssh_key': ansible_ssh_private_key_file | default(ansible_private_key_file | default('')),
           'ssh_public_key_path': sshPubPath | default(''),
           'ssh_user': 'core',
-          'ssh_args': ansible_ssh_common_args | default('')} | to_json }}
+          'ssh_args': _network_ssh_args} | to_json }}
   no_log: true
 
 - name: Capture requested private network input without SSH credentials
@@ -39,7 +43,8 @@
         - --capture-input
       stdin: >-
         {{ {'input': _network_validation_input | from_json,
-            'directory': network_validation_capture_dir} | to_json }}
+            'directory': network_validation_capture_dir,
+            'working_directory': workingDir} | to_json }}
   when: network_validation_capture_dir is defined
   register: r_network_capture
   changed_when: r_network_capture.rc == 0

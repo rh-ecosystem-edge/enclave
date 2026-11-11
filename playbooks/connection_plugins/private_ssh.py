@@ -4,7 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 
 from ansible import constants
-from ansible.errors import AnsibleError
+from ansible.errors import AnsibleError, AnsiblePluginError
 from ansible.plugins.connection import ssh
 from ansible.utils.display import Display
 
@@ -39,6 +39,8 @@ def private_display() -> Generator[None, None, None]:
         constants.DEFAULT_DEBUG = False
         display.warning = transport_warning
         yield
+    except AnsiblePluginError as error:
+        raise type(error)("Private operation failed.") from None
     except AnsibleError as error:
         raise type(error)("Private operation failed.", show_content=False) from None
     except OSError as error:
