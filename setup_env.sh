@@ -2,6 +2,8 @@
 
 set -e
 
+bash "$(dirname -- "${BASH_SOURCE[0]}")/scripts/validation/check_tmp_exec.sh"
+
 # Install prerequisites
 # podman is held at 5.x: with podman 6 rootless commands fail because the run
 # root resolves to /run/containers/storage, which is not writable by the user.

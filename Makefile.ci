@@ -238,10 +238,14 @@ deploy-plugin:
 
 # --- Validation targets (CI only) ---
 
-validate:
+validate: validate-tmp-exec
 	@./ci/verification/validate.sh all
 
-validate-shell:
+.PHONY: validate-tmp-exec
+validate-tmp-exec:
+	@python3 -m unittest discover -s ci/tests -p 'test_tmp_exec.py' -v
+
+validate-shell: validate-tmp-exec
 	@./ci/verification/validate.sh shell
 
 validate-yaml:

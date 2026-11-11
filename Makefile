@@ -76,6 +76,7 @@ help:
 setup: setup-env setup-ansible
 
 setup-env:
+	@bash ./scripts/validation/check_tmp_exec.sh
 	@sudo bash ./setup_env.sh
 
 setup-ansible:
