@@ -6,6 +6,7 @@ import pytest
 from pytest_mock import MockerFixture
 
 from enclave.reconcile.operator_versions import (
+    _approve_upgrade_path,
     _update_subscription_channel,
     approve_install_plans,
     reconcile,
@@ -15,13 +16,20 @@ from tests.fixtures import Fixtures, OcResultFactory
 fxt = Fixtures("operator_versions")
 
 
-def _plan(name: str, phase: str, csv_names: list[str]) -> dict:
-    """Build a minimal InstallPlan dict with the fields approve_install_plans reads."""
+def _plan(
+    name: str, phase: str, csv_names: list[str], *, approved: bool = False
+) -> dict:
+    """Build a minimal InstallPlan dict with the fields the approval code reads."""
     return {
         "metadata": {"name": name},
         "status": {"phase": phase},
-        "spec": {"clusterServiceVersionNames": csv_names},
+        "spec": {"clusterServiceVersionNames": csv_names, "approved": approved},
     }
+
+
+def _plans(*plans: dict) -> str:
+    """Serialize InstallPlans as `oc get installplan -o json` output."""
+    return json.dumps({"items": list(plans)})
 
 
 # ---------------------------------------------------------------------------
@@ -171,45 +179,138 @@ def test_approve_patch_failure_raises(
         approve_install_plans(dry_run, "quay-enterprise", {"quay-operator": "3.15.3"})
 
 
-def test_approve_wait_retries_retrieval_failures_and_timeouts(
+# ---------------------------------------------------------------------------
+# _approve_upgrade_path
+# ---------------------------------------------------------------------------
+
+_GITOPS_NS = "openshift-gitops-operator"
+_GITOPS_MAP = {"openshift-gitops-operator": "1.22.3"}
+_GITOPS_TARGET = {"openshift-gitops-operator.v1.22.3"}
+
+
+def test_upgrade_path_retries_retrieval_failures_and_timeouts(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
-    """Retry failed and timed-out InstallPlan queries until the target appears."""
-    target_csv = "quay-operator.v3.15.3"
-    plan = _plan("ip-abc", "Complete", [target_csv])
+    """Retry failed and timed-out InstallPlan queries until the target is approved."""
+    target_plan = _plan(
+        "ip-abc", "RequiresApproval", ["openshift-gitops-operator.v1.22.3"]
+    )
     mock_run = mocker.patch(
         "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=[
             TimeoutError("oc timed out"),
             oc_result(stdout="", returncode=1, stderr="connection refused"),
-            oc_result(stdout=json.dumps({"items": []})),
-            oc_result(stdout=json.dumps({"items": [plan]})),
+            oc_result(stdout=_plans()),
+            oc_result(stdout=_plans(target_plan)),
+            oc_result(stdout="patched"),
         ],
     )
     mock_sleep = mocker.patch("enclave.reconcile.operator_versions.time.sleep")
-    mocker.patch(
-        "enclave.reconcile.operator_versions.time.monotonic",
-        side_effect=[0.0, 1.0, 2.0, 3.0],
-    )
+    mocker.patch("enclave.reconcile.operator_versions.time.monotonic", return_value=0.0)
 
-    approve_install_plans(
-        dry_run=False,
-        namespace="quay-enterprise",
-        approved_op_version_map={"quay-operator": "3.15.3"},
-        wait_for_csvs={target_csv},
-    )
+    _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
 
-    assert mock_run.call_count == 4
+    assert mock_run.call_count == 5
+    assert mock_run.call_args.args[0][:4] == [
+        "oc",
+        "patch",
+        "installplan.operators.coreos.com",
+        "ip-abc",
+    ]
     assert mock_sleep.call_count == 3
 
 
-def test_approve_wait_times_out_without_target_plan(
+def test_upgrade_path_approves_intermediate_hop_then_target(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
-    """Raise after the InstallPlan deadline if the target CSV never appears."""
-    mocker.patch(
+    """Approve the intermediate plan OLM offers first, then the target plan."""
+    installed = _plan(
+        "ip-old", "Complete", ["openshift-gitops-operator.v1.19.7"], approved=True
+    )
+    hop = _plan("ip-hop", "RequiresApproval", ["openshift-gitops-operator.v1.22.0"])
+    hop_installing = _plan(
+        "ip-hop", "Installing", ["openshift-gitops-operator.v1.22.0"], approved=True
+    )
+    target = _plan(
+        "ip-target", "RequiresApproval", ["openshift-gitops-operator.v1.22.3"]
+    )
+    mock_run = mocker.patch(
         "enclave.reconcile.operator_versions.run_oc_command",
-        return_value=oc_result(stdout='{"items": []}'),
+        side_effect=[
+            oc_result(stdout=_plans(installed, hop)),
+            oc_result(stdout="patched"),
+            oc_result(stdout=_plans(installed, hop_installing)),
+            oc_result(stdout=_plans(installed, hop_installing, target)),
+            oc_result(stdout="patched"),
+        ],
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+    mocker.patch("enclave.reconcile.operator_versions.time.monotonic", return_value=0.0)
+
+    _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+    patched = [
+        call.args[0][3]
+        for call in mock_run.call_args_list
+        if call.args[0][1] == "patch"
+    ]
+    assert patched == ["ip-hop", "ip-target"]
+
+
+def test_upgrade_path_returns_when_target_plan_already_approved(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Stop without approving anything when the target plan is already approved."""
+    target = _plan(
+        "ip-target", "Installing", ["openshift-gitops-operator.v1.22.3"], approved=True
+    )
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=_plans(target)),
+    )
+    mock_sleep = mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+
+    _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+    mock_run.assert_called_once()
+    mock_sleep.assert_not_called()
+
+
+def test_upgrade_path_ignores_approved_plan_still_requiring_approval(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Do not re-approve or restart the deadline for an already-approved plan."""
+    stuck = _plan(
+        "ip-hop",
+        "RequiresApproval",
+        ["openshift-gitops-operator.v1.22.0"],
+        approved=True,
+    )
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=_plans(stuck)),
+    )
+    mocker.patch("enclave.reconcile.operator_versions.time.sleep")
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1.0, 1800.0],
+    )
+
+    with pytest.raises(TimeoutError, match="No InstallPlan containing target CSVs"):
+        _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+    assert mock_run.call_count == 2
+    assert all(call.args[0][1] != "patch" for call in mock_run.call_args_list)
+
+
+def test_upgrade_path_does_not_approve_newer_than_target(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Never approve a plan beyond the target version and time out instead."""
+    newer = _plan("ip-newer", "RequiresApproval", ["openshift-gitops-operator.v1.23.0"])
+    mock_run = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=_plans(newer)),
     )
     mocker.patch(
         "enclave.reconcile.operator_versions.time.monotonic",
@@ -217,18 +318,32 @@ def test_approve_wait_times_out_without_target_plan(
     )
 
     with pytest.raises(TimeoutError, match="No InstallPlan containing target CSVs"):
-        approve_install_plans(
-            dry_run=False,
-            namespace="quay-enterprise",
-            approved_op_version_map={"quay-operator": "3.15.3"},
-            wait_for_csvs={"quay-operator.v3.15.3"},
-        )
+        _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+    assert all(call.args[0][1] != "patch" for call in mock_run.call_args_list)
 
 
-def test_approve_wait_times_out_after_retrieval_timeout(
+def test_upgrade_path_times_out_without_target_plan(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Raise after the deadline if no plan on the upgrade path appears."""
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=_plans()),
+    )
+    mocker.patch(
+        "enclave.reconcile.operator_versions.time.monotonic",
+        side_effect=[0.0, 1800.0],
+    )
+
+    with pytest.raises(TimeoutError, match="No InstallPlan containing target CSVs"):
+        _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
+
+
+def test_upgrade_path_times_out_after_retrieval_timeout(
     mocker: MockerFixture,
 ) -> None:
-    """Stop retrying InstallPlan retrieval after the shared deadline."""
+    """Stop retrying InstallPlan retrieval after the deadline."""
     mock_run = mocker.patch(
         "enclave.reconcile.operator_versions.run_oc_command",
         side_effect=TimeoutError("oc timed out"),
@@ -240,12 +355,7 @@ def test_approve_wait_times_out_after_retrieval_timeout(
     mocker.patch("enclave.reconcile.operator_versions.time.sleep")
 
     with pytest.raises(TimeoutError, match=r"oc get installplan.*timed out"):
-        approve_install_plans(
-            dry_run=False,
-            namespace="quay-enterprise",
-            approved_op_version_map={"quay-operator": "3.15.3"},
-            wait_for_csvs={"quay-operator.v3.15.3"},
-        )
+        _approve_upgrade_path(_GITOPS_NS, _GITOPS_MAP, _GITOPS_TARGET)
 
     mock_run.assert_called_once()
 
@@ -448,10 +558,10 @@ def test_reconcile_calls_approve_and_wait(mocker: MockerFixture) -> None:
     )
 
 
-def test_reconcile_waits_for_install_plan_after_channel_change(
+def test_reconcile_follows_upgrade_path_after_channel_change(
     mocker: MockerFixture, oc_result: OcResultFactory
 ) -> None:
-    """Wait for a target InstallPlan when a channel change needs an upgrade."""
+    """Approve along the upgrade path when a channel change needs an upgrade."""
     subscription = {
         "spec": {"channel": "stable-3.14"},
         "status": {"currentCSV": "quay-operator.v3.14.2"},
@@ -462,6 +572,9 @@ def test_reconcile_waits_for_install_plan_after_channel_change(
             oc_result(stdout=json.dumps(subscription)),
             oc_result(stdout="patched"),
         ],
+    )
+    mock_path = mocker.patch(
+        "enclave.reconcile.operator_versions._approve_upgrade_path"
     )
     mock_approve = mocker.patch(
         "enclave.reconcile.operator_versions.approve_install_plans"
@@ -478,11 +591,44 @@ def test_reconcile_waits_for_install_plan_after_channel_change(
         subscription_name="quay-operator",
     )
 
-    mock_approve.assert_called_once_with(
-        dry_run,
+    mock_path.assert_called_once_with(
         "quay-enterprise",
         {"quay-operator": "3.15.3"},
-        wait_for_csvs={"quay-operator.v3.15.3"},
+        {"quay-operator.v3.15.3"},
+    )
+    mock_approve.assert_not_called()
+
+
+def test_reconcile_follows_upgrade_path_when_channel_already_set(
+    mocker: MockerFixture, oc_result: OcResultFactory
+) -> None:
+    """Resume the upgrade path when an earlier run already changed the channel."""
+    subscription = {
+        "spec": {"channel": "gitops-1.22"},
+        "status": {"currentCSV": "openshift-gitops-operator.v1.22.0"},
+    }
+    mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(stdout=json.dumps(subscription)),
+    )
+    mock_path = mocker.patch(
+        "enclave.reconcile.operator_versions._approve_upgrade_path"
+    )
+    mocker.patch("enclave.reconcile.operator_versions.wait_for_resource_status")
+
+    reconcile(
+        "1.22.3",
+        "openshift-gitops-operator",
+        ["openshift-gitops-operator"],
+        dry_run=False,
+        channel="gitops-1.22",
+        subscription_name="openshift-gitops-operator",
+    )
+
+    mock_path.assert_called_once_with(
+        "openshift-gitops-operator",
+        {"openshift-gitops-operator": "1.22.3"},
+        {"openshift-gitops-operator.v1.22.3"},
     )
 
 
