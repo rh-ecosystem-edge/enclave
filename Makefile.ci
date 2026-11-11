@@ -243,6 +243,8 @@ validate: validate-ntp
 
 .PHONY: validate-ntp
 validate-ntp:
+	@ruff check ci/tests/test_ntp.py
+	@ruff format --check ci/tests/test_ntp.py
 	@python3 -m unittest discover -s ci/tests -p 'test_ntp.py' -v
 
 validate-shell: validate-ntp

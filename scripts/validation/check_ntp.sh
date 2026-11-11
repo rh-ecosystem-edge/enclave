@@ -6,7 +6,7 @@ report() {
 }
 
 sources=$(cat)
-if ! jq -e '(. == null) or (type == "array" and all(.[]; type == "string" and test("\\A[A-Za-z0-9][A-Za-z0-9.:-]*\\z")))' <<< "$sources" >/dev/null; then
+if ! jq -se 'length == 1 and (.[0] | (. == null) or (type == "array" and all(.[]; type == "string" and test("\\A[A-Za-z0-9][A-Za-z0-9.:-]*\\z"))))' <<< "$sources" >/dev/null; then
     report config FAIL 'Expected server hostnames or IP addresses, without options or whitespace'
     exit 1
 fi
