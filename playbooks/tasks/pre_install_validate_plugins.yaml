@@ -106,7 +106,7 @@
   private_action:
     module: ansible.builtin.uri
     arguments:
-      url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts"
+      url: "{{ assisted_service_url }}/clusters/{{ assisted_cluster_id }}/hosts?with-inventory=true"
       method: GET
       headers:
         Authorization: "{{ assisted_auth_token }}"
