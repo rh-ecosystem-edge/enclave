@@ -175,6 +175,7 @@ step_done
 # --- Step functions ---
 
 step_setup() {
+    bash ./scripts/validation/check_tmp_exec.sh
     echo 'Runtime Host:' | tee -a ${log}
     cat /etc/redhat-release | tee -a ${log}
     echo ' - '

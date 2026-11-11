@@ -90,6 +90,7 @@ success "Enclave Lab copied to Landing Zone"
 # Step 4: Install additional dependencies
 info "Step 4: Installing additional dependencies on Landing Zone..."
 
+ssh_exec "bash '$LZ_ENCLAVE_DIR/scripts/validation/check_tmp_exec.sh'"
 ssh_exec "sudo $LZ_ENCLAVE_DIR/setup_env.sh"
 ssh_exec "$LZ_ENCLAVE_DIR/setup_ansible.sh"
 
