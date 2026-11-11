@@ -258,8 +258,13 @@ def test_mgmt_cluster_version_with_version(mocker: MockerFixture) -> None:
     )
 
 
-def test_mgmt_cluster_version_unknown_version_rejected(mocker: MockerFixture) -> None:
-    """A version not in the bundled defaults is rejected."""
+def test_mgmt_cluster_version_unknown_version_rejected(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    """Reject versions outside the bundled defaults."""
+    mocker.patch(
+        "enclave.reconcile.cli.config_path", return_value=tmp_path / "missing.yaml"
+    )
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     result = CliRunner().invoke(
         cli, ["mgmt-cluster-version", "--version", "4.99.0", "--dry-run"], env=_KC
@@ -294,8 +299,13 @@ def test_mgmt_cluster_version_unknown_version_rejected_even_with_allow_not_recom
     mock_reconcile.assert_not_called()
 
 
-def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
-    """--use-defaults upgrades to the default version."""
+def test_mgmt_cluster_version_use_defaults(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    """--use-defaults selects the bundled default without an override."""
+    mocker.patch(
+        "enclave.reconcile.cli.config_path", return_value=tmp_path / "missing.yaml"
+    )
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = False
@@ -311,6 +321,7 @@ def test_mgmt_cluster_version_use_defaults(mocker: MockerFixture) -> None:
 def test_mgmt_cluster_version_uses_config_platforms_override(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """The config version list replaces defaults for CLI selection."""
     config_file = tmp_path / "platforms.yaml"
     config_file.write_text(
         "openshift_versions:\n"
@@ -357,6 +368,7 @@ def test_mgmt_cluster_version_uses_config_platforms_override(
 def test_mgmt_cluster_version_uses_platforms_vars_file_option(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """An explicit platforms file takes precedence over checkout config."""
     fallback_file = tmp_path / "config-platforms.yaml"
     fallback_file.write_text(
         "openshift_versions:\n  - version: 4.20.32\n    default: true\n",
@@ -393,6 +405,7 @@ def test_mgmt_cluster_version_uses_platforms_vars_file_option(
 def test_config_path_uses_enclave_checkout_from_another_working_directory(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """Config resolves from the Enclave checkout when run elsewhere."""
     checkout = tmp_path / "enclave"
     (checkout / "defaults").mkdir(parents=True)
     (checkout / "defaults/platforms.yaml").touch()
@@ -415,6 +428,7 @@ def test_config_path_uses_enclave_checkout_from_another_working_directory(
 def test_mgmt_cluster_version_rejects_invalid_config_version(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """Invalid version strings are rejected before reconciliation."""
     config_file = tmp_path / "platforms.yaml"
     config_file.write_text(
         "openshift_versions:\n  - version: 4.20.x\n    default: true\n",
@@ -437,6 +451,7 @@ def test_mgmt_cluster_version_rejects_invalid_config_version(
 def test_mgmt_cluster_version_rejects_empty_prerelease_suffix(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """An empty prerelease suffix is rejected by the platforms format."""
     config_file = tmp_path / "platforms.yaml"
     config_file.write_text(
         "openshift_versions:\n  - version: 4.20.1-\n    default: true\n",
@@ -458,6 +473,7 @@ def test_mgmt_cluster_version_rejects_empty_prerelease_suffix(
 def test_mgmt_cluster_version_hides_yaml_parse_contents(
     mocker: MockerFixture, tmp_path: Path
 ) -> None:
+    """YAML parsing errors do not reveal the invalid configuration contents."""
     config_file = tmp_path / "platforms.yaml"
     config_file.write_text(
         "openshift_versions:\n  - version: 'secret-token\n", encoding="utf-8"
@@ -482,8 +498,13 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
     assert "mutually exclusive" in result.output
 
 
-def test_mgmt_cluster_version_latest(mocker: MockerFixture) -> None:
-    """--latest upgrades to the newest bundled version."""
+def test_mgmt_cluster_version_latest(
+    mocker: MockerFixture, tmp_path: Path
+) -> None:
+    """--latest selects the highest version from bundled defaults."""
+    mocker.patch(
+        "enclave.reconcile.cli.config_path", return_value=tmp_path / "missing.yaml"
+    )
     mock_reconcile = mocker.patch("enclave.reconcile.cli.cluster_upgrade_reconcile")
     dry_run = True
     allow_not_recommended = False
