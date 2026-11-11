@@ -51,7 +51,11 @@ display wrapper, preserving its existing SSH options while hiding verbose connec
 traces. Sensitive module actions also suppress controller-side module argument and
 environment traces, including internal debug and separately configured log verbosity;
 their builtin action, connection, and result semantics are preserved. Sensitive tasks
-also use `no_log`; do not enable Ansible debugger callbacks.
+also use `no_log`. The playbook-local `local` connection adapter inherits the builtin
+local transport and suppresses only connection-fact DEBUG traces, which otherwise
+expose configured SSH identity aliases before actions run. Explicitly selecting
+`ansible.builtin.local` bypasses that adapter; use the normal `local` selection.
+Do not enable Ansible debugger callbacks.
 
 ### Private input collection and replay (both stages)
 
