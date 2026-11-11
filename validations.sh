@@ -236,6 +236,15 @@ if ! ip -o a | awk '{print $4}' | cut -d/ -f1 | grep -qx $mirror_ip; then
 fi
 validation pass quay_hostname "$quayHostname_dns points to $mirror_ip and Landing Zone has that IP"
 
+## Configured NTP sources (Landing Zone vantage only)
+validation_section ntp
+if ntp_result=$(getValue .defaultNtpServers | bash ./scripts/validation/check_ntp.sh); then
+    printf '%s\n' "$ntp_result" | pr -T -o 8
+else
+    printf '%s\n' "$ntp_result" | pr -T -o 8
+    exit 1
+fi
+
 ## Pull Secret
 validation_section pull_secret
 # Check that pull secret works
