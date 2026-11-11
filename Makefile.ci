@@ -243,6 +243,8 @@ validate: validate-tmp-exec
 
 .PHONY: validate-tmp-exec
 validate-tmp-exec:
+	@ruff check ci/tests/test_tmp_exec.py
+	@ruff format --check ci/tests/test_tmp_exec.py
 	@python3 -m unittest discover -s ci/tests -p 'test_tmp_exec.py' -v
 
 validate-shell: validate-tmp-exec
