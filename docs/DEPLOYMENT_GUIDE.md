@@ -55,7 +55,9 @@ also use `no_log`. The playbook-local `local` connection adapter inherits the bu
 local transport and suppresses only connection-fact DEBUG traces, which otherwise
 expose configured SSH identity aliases before actions run. Explicitly selecting
 `ansible.builtin.local` bypasses that adapter; use the normal `local` selection.
-Do not enable Ansible debugger callbacks.
+Do not enable Ansible debuggers or debugger callbacks in routine automation or CI.
+The explicit operator-only task-debugger procedure below is a private, temporary
+exception; never record its transcript in normal logs or leave it enabled.
 
 ### Private input collection and replay (both stages)
 
