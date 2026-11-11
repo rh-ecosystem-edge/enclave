@@ -281,7 +281,7 @@ class Probe:
             owned = snapshot_addresses(result.stdout)
             owners += owned is not None and destination in owned
             states.append(state)
-        if None in states or owners > 1:
+        if None in states or owners != 1:
             return None
         return any(state is True for state in states)
 

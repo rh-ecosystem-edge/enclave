@@ -35,7 +35,9 @@ post-install listeners are retried; input, SSH and proven path failures are not
 retried as readiness. Persistent absence remains NOT TESTED and fails validation.
 Listener evidence requires destination address ownership and a matching bind or
 same-family wildcard and unambiguous ownership; unrelated, loopback or wrong-family bindings do not prove
-service readiness. Successful connections need no listener inspection.
+service readiness. Missing or ambiguous destination ownership is NOT TESTED,
+not a confirmed listener gap eligible for readiness retries.
+Successful connections need no listener inspection.
 Normal Ansible output contains status counts only. For operator-directed diagnostics,
 run `python3 scripts/validation/network_matrix.py` with the same topology JSON on
 standard input and redirect output into a protected file (`umask 077`); this explicit
