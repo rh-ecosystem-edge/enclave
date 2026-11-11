@@ -18,7 +18,18 @@
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_osus_guard
   changed_when: false
-  failed_when: false
+  # Only a missing UpdateService (or its CRD) means there is nothing to guard; any other
+  # error is retried, then fails, instead of silently skipping the guard.
+  vars:
+    _osus_absent: >-
+      {{ 'notfound' in (r_osus_guard.stderr | default('') | lower | replace(' ', ''))
+         or "doesn't have a resource type" in (r_osus_guard.stderr | default('') | lower) }}
+  failed_when:
+    - r_osus_guard.rc != 0
+    - not (_osus_absent | bool)
+  retries: 5
+  delay: 10
+  until: r_osus_guard.rc == 0 or (_osus_absent | bool)
 
 - name: Set UpdateService guard facts
   vars:
