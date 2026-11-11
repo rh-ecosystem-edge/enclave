@@ -33,14 +33,32 @@
   failed_when: false
   no_log: true
 
-- name: Report directed network matrix without credentials or host inventory
+- name: Parse protected results into a topology-free summary
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+      - --summary
+    stdin: "{{ r_network_matrix.stdout | default('') }}"
+  register: r_network_summary
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Report network validation status counts without topology
   ansible.builtin.debug:
-    msg: "{{ r_network_matrix.stdout | from_json }}"
+    msg: >-
+      {{ r_network_summary.stdout if r_network_summary.rc | default(2) == 0
+         else 'Network result unavailable or invalid; no topology logged.' }}
 
 - name: Require complete applicable node-origin network validation
   ansible.builtin.assert:
-    that: r_network_matrix.rc == 0
+    that:
+      - r_network_summary.rc | default(2) == 0
+      - r_network_matrix.rc | default(2) == 0
+    quiet: true
     fail_msg: >-
-      Network validation failed or is NOT TESTED. Check the directed matrix for
-      unavailable SSH identities, missing addresses, listener readiness, or connectivity.
+      Network validation failed or is NOT TESTED, or its result could not be parsed.
+      Check SSH access, configuration, destination ownership, listener readiness and connectivity.
+      An operator can collect the full matrix separately into a protected file.
       No firewall cause is inferred. Pre-install failures leave the installation gate closed.

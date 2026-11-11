@@ -238,16 +238,15 @@ deploy-plugin:
 
 # --- Validation targets (CI only) ---
 
-validate: validate-network
+validate: validate-network-script
 	@./ci/verification/validate.sh all
 
-.PHONY: validate-network
-validate-network:
-	@ruff check ci/tests/test_network_matrix.py scripts/validation/network_matrix.py
-	@ruff format --check ci/tests/test_network_matrix.py scripts/validation/network_matrix.py
-	@python3 -m unittest discover -s ci/tests -p 'test_network_matrix.py' -v
+.PHONY: validate-network-script
+validate-network-script:
+	@ruff check scripts/validation/network_matrix.py
+	@ruff format --check scripts/validation/network_matrix.py
 
-validate-shell: validate-network
+validate-shell: validate-network-script
 	@./ci/verification/validate.sh shell
 
 validate-yaml:

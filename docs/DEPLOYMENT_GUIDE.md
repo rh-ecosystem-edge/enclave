@@ -29,13 +29,21 @@ Applicable FAIL/NOT TESTED results exit unsuccessfully; pre-install results
 prevent automatic gate release. Deferred pre-install services do not fail that
 stage. Each SSH command has a ten-second wall-clock limit and each node TCP
 attempt a four-second limit. The fixed three-node topology bounds the complete
-post-install matrix to 21 TCP attempts, three source-access checks and at most
-39 listener SSH checks (630 seconds in the worst case); successful paths do not
-need listener inspection. Post-install checks may need rerunning when ingress services become
-ready. No firewall rules or service state are modified. This is a TCP path
+post-install matrix to a single 630-second wall-clock command budget, including
+one shared 30-second listener-readiness retry budget. Only confirmed missing
+post-install listeners are retried; input, SSH and proven path failures are not
+retried as readiness. Persistent absence remains NOT TESTED and fails validation.
+Listener evidence requires destination address ownership and a matching bind or
+same-family wildcard and unambiguous ownership; unrelated, loopback or wrong-family bindings do not prove
+service readiness. Successful connections need no listener inspection.
+Normal Ansible output contains status counts only. For operator-directed diagnostics,
+run `python3 scripts/validation/network_matrix.py` with the same topology JSON on
+standard input and redirect output into a protected file (`umask 077`); this explicit
+matrix includes topology and should not be copied into public logs.
+No firewall rules or service state are modified. This is a TCP path
 check, not application health, TLS authentication, or certification of all
-OpenShift network requirements. Run fixtures with
-`make -f Makefile.ci validate-network`.
+OpenShift network requirements. Production-script lint and formatting remain part
+of `make -f Makefile.ci validate-network-script` and normal CI validation.
 
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 

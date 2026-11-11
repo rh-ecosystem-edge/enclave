@@ -1,14 +1,20 @@
 """Read-only node-origin connectivity checks; JSON input and directed JSON results."""
 
+# ruff: file-ignore[implicit-namespace-package]
+
 import ipaddress
 import json
 import shlex
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, TypedDict
 
 CONTROL_PLANE_COUNT = 3
+MATRIX_TIMEOUT = 630
+READINESS_TIMEOUT = 30
+SS_MIN_FIELDS = 4
 
 
 class Node(TypedDict):
@@ -117,6 +123,50 @@ def endpoints(
     return targets
 
 
+def snapshot_addresses(
+    snapshot: str,
+) -> set[ipaddress.IPv4Address | ipaddress.IPv6Address] | None:
+    """Extract interface ownership only from complete command snapshots."""
+    addresses, separator, _listeners = snapshot.partition("\nENCLAVE_LISTENERS\n")
+    if not separator:
+        return None
+    return {
+        ipaddress.ip_interface(fields[index + 1]).ip
+        for line in addresses.splitlines()
+        if (fields := line.split())
+        for index, field in enumerate(fields[:-1])
+        if field in {"inet", "inet6"}
+    }
+
+
+def relevant_listener(
+    snapshot: str, destination: ipaddress.IPv4Address | ipaddress.IPv6Address, port: int
+) -> bool | None:
+    """Interpret only destination-owned, address-family-specific listener evidence."""
+    owned = snapshot_addresses(snapshot)
+    if owned is None:
+        return None
+    if destination not in owned:
+        return False
+    ready = False
+    for line in snapshot.partition("\nENCLAVE_LISTENERS\n")[2].splitlines():
+        fields = line.split()
+        if len(fields) < SS_MIN_FIELDS or fields[0] != "LISTEN":
+            return None
+        binding, _, bound_port = fields[3].rpartition(":")
+        if bound_port != str(port):
+            return None
+        binding = binding.strip("[]")
+        if binding == "*":
+            ready = True
+        else:
+            bound = ipaddress.ip_address(binding)
+            ready |= bound.version == destination.version and (
+                bound == destination or bound.is_unspecified
+            )
+    return ready
+
+
 class Probe:
     """Perform bounded read-only SSH commands from the actual source nodes."""
 
@@ -141,51 +191,114 @@ class Probe:
         if key:
             self.ssh += ["-i", key]
         self.user = config.get("ssh_user", "core")
+        self.deadline = time.monotonic() + MATRIX_TIMEOUT
+        self.readiness_deadline: float | None = None
 
-    def command(
-        self, node: Node, command: str
+    def run(
+        self, arguments: list[str], timeout: int, deadline: float | None = None
     ) -> subprocess.CompletedProcess[str] | None:
-        """Bound the entire SSH process, including connection setup."""
-        if not node["address"]:
+        """Keep every command within the same overall matrix deadline."""
+        remaining = min(self.deadline, deadline or self.deadline) - time.monotonic()
+        if remaining <= 0:
             return None
         try:
             return subprocess.run(
-                [*self.ssh, f"{self.user}@{node['address']}", command],
+                arguments,
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
-                timeout=10,
+                timeout=min(timeout, remaining),
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
+
+    def command(
+        self, node: Node, command: str, deadline: float | None = None
+    ) -> subprocess.CompletedProcess[str] | None:
+        """Bound the entire SSH process, including connection setup."""
+        if not node["address"]:
+            return None
+        return self.run(
+            [*self.ssh, f"{self.user}@{node['address']}", command], 10, deadline
+        )
 
     def accessible(self, node: Node) -> bool:
         """Establish whether the node can originate commands at all."""
         result = self.command(node, "true")
         return result is not None and result.returncode == 0
 
-    def listening(self, nodes: list[Node] | None, port: int) -> bool:
-        """Read listener state without creating services or changing policy."""
-        command = f"ss -H -ltn '( sport = :{port} )'"
-        if nodes is None:
-            try:
-                result = subprocess.run(
-                    ["ss", "-H", "-ltn", f"( sport = :{port} )"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    check=False,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                return False
-            return result.returncode == 0 and bool(result.stdout.strip())
-        return any(
-            result is not None
-            and result.returncode == 0
-            and bool(result.stdout.strip())
-            for result in (self.command(node, command) for node in nodes)
+    def destination_address(
+        self, address: str, deadline: float | None
+    ) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+        """Require one usable destination address, never guess among DNS answers."""
+        try:
+            destination = ipaddress.ip_address(address)
+        except ValueError:
+            result = self.run(["getent", "ahosts", address], 5, deadline)
+            if result is None or result.returncode != 0:
+                return None
+            answers = {line.split()[0] for line in result.stdout.splitlines() if line}
+            if len(answers) != 1:
+                return None
+            destination = ipaddress.ip_address(answers.pop())
+        if (
+            destination.is_loopback
+            or destination.is_unspecified
+            or destination.is_multicast
+        ):
+            return None
+        return destination
+
+    def listening(
+        self,
+        nodes: list[Node] | None,
+        address: str,
+        port: int,
+        deadline: float | None = None,
+    ) -> bool | None:
+        """Require owned destination IP and an exact or same-family wildcard bind."""
+        destination = self.destination_address(address, deadline)
+        if destination is None:
+            return None
+        family = "-4" if isinstance(destination, ipaddress.IPv4Address) else "-6"
+        command = (
+            f"ip -o {family} address show && printf '\\nENCLAVE_LISTENERS\\n' && "
+            f"ss -H {family} -ltn '( sport = :{port} )'"
         )
+        states = []
+        owners = 0
+        for node in nodes if nodes is not None else [None]:
+            result = (
+                self.run(["bash", "-c", command], 5, deadline)
+                if node is None
+                else self.command(node, command, deadline)
+            )
+            if result is None or result.returncode != 0:
+                states.append(None)
+                continue
+            state = relevant_listener(result.stdout, destination, port)
+            owned = snapshot_addresses(result.stdout)
+            owners += owned is not None and destination in owned
+            states.append(state)
+        if None in states or owners > 1:
+            return None
+        return any(state is True for state in states)
+
+    def wait_listening(
+        self, nodes: list[Node] | None, address: str, port: int
+    ) -> bool | None:
+        """Spend at most one shared readiness budget, only after known absence."""
+        if self.readiness_deadline is None:
+            self.readiness_deadline = min(
+                self.deadline, time.monotonic() + READINESS_TIMEOUT
+            )
+        while (remaining := self.readiness_deadline - time.monotonic()) > 0:
+            time.sleep(min(2, remaining))
+            state = self.listening(nodes, address, port, self.readiness_deadline)
+            if state is not False:
+                return state
+        return False
 
     def connect(self, source: Node, address: str, port: int) -> bool | None:
         """Connect from the node, distinguishing missing access from TCP failure."""
@@ -200,6 +313,37 @@ class Probe:
         if result is None or result.returncode in {126, 127, 255}:
             return None
         return result.returncode == 0
+
+    def path_status(
+        self,
+        source: Node,
+        address: str,
+        port: int,
+        destinations: list[Node] | None,
+        stage: str,
+    ) -> tuple[str, str]:
+        """Retry only missing postinstall listeners, never an established path fault."""
+        connected = self.connect(source, address, port)
+        ready = None
+        if connected is False:
+            ready = self.listening(destinations, address, port)
+            if ready is False and stage == "postinstall":
+                ready = self.wait_listening(destinations, address, port)
+                if ready is True:
+                    connected = self.connect(source, address, port)
+        if connected is True:
+            return "PASS", "node-origin TCP connection succeeded"
+        if connected is None:
+            return "NOT TESTED", "node command unavailable or SSH access lost"
+        if ready is not True:
+            return (
+                "NOT TESTED",
+                "destination ownership or relevant listener readiness not established",
+            )
+        return (
+            "FAIL",
+            "node-origin connectivity failed to a listening service; not proof of a firewall fault",
+        )
 
 
 def validate(
@@ -256,24 +400,9 @@ def validate(
                     "missing unambiguous address or usable SSH access",
                 )
             else:
-                connected = probe.connect(source, address, port)
-                if connected is True:
-                    status, reason = "PASS", "node-origin TCP connection succeeded"
-                elif connected is None:
-                    status, reason = (
-                        "NOT TESTED",
-                        "node command unavailable or SSH access lost",
-                    )
-                elif not probe.listening(destinations, port):
-                    status, reason = (
-                        "NOT TESTED",
-                        "destination listener readiness not established",
-                    )
-                else:
-                    status, reason = (
-                        "FAIL",
-                        "node-origin connectivity failed to a listening service; not proof of a firewall fault",
-                    )
+                status, reason = probe.path_status(
+                    source, address, port, destinations, config["stage"]
+                )
             row.update(status=status, reason=reason)
             results.append(row)
             incomplete |= status == "NOT TESTED"
@@ -284,8 +413,31 @@ def validate(
     }, 1 if failed else 2 if incomplete else 0
 
 
+def summarize() -> int:
+    """Parse protected command output without echoing topology or parser errors."""
+    counts = dict.fromkeys(("PASS", "FAIL", "SKIP", "NOT TESTED"), 0)
+    status = 2
+    try:
+        rows = json.load(sys.stdin)["results"]
+        if isinstance(rows, list) and rows:
+            for row in rows:
+                counts[row["status"]] += 1
+            status = 0
+    except (ValueError, KeyError, TypeError):
+        pass
+    summary = (
+        {"result_format": "valid", "counts": counts}
+        if status == 0
+        else {"result_format": "invalid"}
+    )
+    sys.stdout.write(json.dumps(summary) + "\n")
+    return status
+
+
 def main() -> int:
     """Emit a sanitized JSON result even when topology cannot be evaluated."""
+    if sys.argv[1:] == ["--summary"]:
+        return summarize()
     try:
         result, status = validate(json.load(sys.stdin))
     except (ValueError, KeyError, TypeError, AttributeError, OSError):
