@@ -1,5 +1,7 @@
 """Exercise native temporary execution and the real setup entry points."""
 
+# ruff: file-ignore[implicit-namespace-package, assert]
+
 import os
 import subprocess
 import tempfile
@@ -67,15 +69,28 @@ class TemporaryExecutionTest(unittest.TestCase):
         assert str(link) in result.stdout
         assert list(target.iterdir()) == []
 
-    def test_unwritable_temp_path_fails_without_leaving_artifacts(self) -> None:
-        """Reject directories whose permissions prevent creation."""
+    def test_temp_path_uses_effective_permissions_and_leaves_no_artifacts(self) -> None:
+        """Match actual creation permissions and clean up in either case."""
         target = self.directory / "read only"
         target.mkdir(mode=0o500)
         self.addCleanup(target.chmod, 0o700)
+        permission_probe = target / "permission probe"
+        try:
+            permission_probe.mkdir()
+        except PermissionError:
+            creation_allowed = False
+        else:
+            permission_probe.rmdir()
+            creation_allowed = True
         self.environment["TMPDIR"] = str(target)
         result = self.run_probe()
-        assert result.returncode != 0
-        assert "cannot create" in result.stderr
+        if creation_allowed:
+            assert result.returncode == 0, result.stderr
+            assert "PASS temporary native execution" in result.stdout
+        else:
+            assert result.returncode != 0
+            assert "cannot create" in result.stderr
+            assert "PASS" not in result.stdout
         assert list(target.iterdir()) == []
 
     def test_ci_remote_probe_quotes_path_as_one_argument(self) -> None:
