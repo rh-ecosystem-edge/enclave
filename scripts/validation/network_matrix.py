@@ -1,52 +1,70 @@
-#!/usr/bin/env python3
 """Read-only node-origin connectivity checks; JSON input and directed JSON results."""
 
 import ipaddress
 import json
-from pathlib import Path
 import shlex
 import subprocess
 import sys
+from pathlib import Path
+from typing import Any, TypedDict
+
+CONTROL_PLANE_COUNT = 3
 
 
-def node_addresses(config):
+class Node(TypedDict):
+    """A configured node and its unambiguously discovered address."""
+
+    name: str
+    address: str | None
+
+
+def discovered_addresses(
+    config: dict[str, Any], host: dict[str, Any], macs: set[str]
+) -> tuple[int, list[str]]:
+    """Match configured identities against stage-specific discovered inventory."""
+    candidates = 0
+    addresses = []
+    for discovered in config["inventory"]:
+        if config["stage"] == "postinstall":
+            if discovered["metadata"]["name"] == host["name"]:
+                candidates += 1
+                addresses = [
+                    entry["address"]
+                    for entry in discovered["status"]["addresses"]
+                    if entry["type"] == "InternalIP"
+                ]
+        else:
+            inventory = json.loads(discovered.get("inventory") or "{}")
+            interfaces = inventory.get("interfaces", [])
+            discovered_macs = {
+                interface.get("mac_address", "").lower() for interface in interfaces
+            }
+            if (
+                discovered.get("requested_hostname") == host["name"]
+                or inventory.get("hostname") == host["name"]
+                or bool(macs & discovered_macs)
+            ):
+                candidates += 1
+                addresses = [
+                    address
+                    for interface in interfaces
+                    for address in interface.get("ipv4_addresses", [])
+                ]
+    return candidates, addresses
+
+
+def node_addresses(config: dict[str, Any]) -> list[Node]:
+    """Choose usable machine-network addresses without guessing ambiguous hosts."""
     network = ipaddress.ip_network(config["machine_network"])
     nodes = []
     used = set()
     for host in config["hosts"]:
-        candidates = []
-        addresses = []
         macs = {host.get("macAddress", "").lower()} | {
             interface["macAddress"].lower()
             for interface in host.get("mapInterfaces", [])
         }
         macs.discard("")
-        for discovered in config["inventory"]:
-            if config["stage"] == "postinstall":
-                if discovered["metadata"]["name"] == host["name"]:
-                    candidates.append(discovered)
-                    addresses = [
-                        entry["address"]
-                        for entry in discovered["status"]["addresses"]
-                        if entry["type"] == "InternalIP"
-                    ]
-            else:
-                inventory = json.loads(discovered.get("inventory") or "{}")
-                interfaces = inventory.get("interfaces", [])
-                discovered_macs = {
-                    interface.get("mac_address", "").lower() for interface in interfaces
-                }
-                if (
-                    discovered.get("requested_hostname") == host["name"]
-                    or inventory.get("hostname") == host["name"]
-                    or bool(macs & discovered_macs)
-                ):
-                    candidates.append(discovered)
-                    addresses = [
-                        address
-                        for interface in interfaces
-                        for address in interface.get("ipv4_addresses", [])
-                    ]
+        candidates, addresses = discovered_addresses(config, host, macs)
         usable = set()
         for address in addresses:
             try:
@@ -57,13 +75,13 @@ def node_addresses(config):
                 parsed in network
                 and not parsed.is_loopback
                 and not parsed.is_unspecified
+                and not parsed.is_multicast
+                and parsed not in {network.network_address, network.broadcast_address}
             ):
                 usable.add(str(parsed))
         if host.get("ipAddress"):
             usable &= {host["ipAddress"]}
-        address = (
-            next(iter(usable)) if len(candidates) == 1 and len(usable) == 1 else None
-        )
+        address = next(iter(usable)) if candidates == 1 and len(usable) == 1 else None
         if address in used:
             address = None
         if address:
@@ -72,7 +90,10 @@ def node_addresses(config):
     return nodes
 
 
-def endpoints(config, nodes):
+def endpoints(
+    config: dict[str, Any], nodes: list[Node]
+) -> list[tuple[str, str | None, int, list[Node] | None, list[Node]]]:
+    """Enumerate only the services applicable to this deployment stage."""
     if config["stage"] == "preinstall":
         if config["disconnected"]:
             return [("mirror", config["mirror"], 8443, None, nodes)]
@@ -83,19 +104,24 @@ def endpoints(config, nodes):
         ("ingress", config["ingress_vip"], 443, nodes, nodes),
     ]
     for destination in nodes:
-        for port in (2379, 2380):
-            targets.append((
+        targets.extend(
+            (
                 "etcd",
                 destination["address"],
                 port,
                 [destination],
                 [source for source in nodes if source["name"] != destination["name"]],
-            ))
+            )
+            for port in (2379, 2380)
+        )
     return targets
 
 
 class Probe:
-    def __init__(self, config):
+    """Perform bounded read-only SSH commands from the actual source nodes."""
+
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Honor explicit identities or existing conventional private counterparts."""
         self.ssh = [
             "ssh",
             "-o",
@@ -116,12 +142,15 @@ class Probe:
             self.ssh += ["-i", key]
         self.user = config.get("ssh_user", "core")
 
-    def command(self, node, command):
+    def command(
+        self, node: Node, command: str
+    ) -> subprocess.CompletedProcess[str] | None:
+        """Bound the entire SSH process, including connection setup."""
         if not node["address"]:
             return None
         try:
             return subprocess.run(
-                self.ssh + [f"{self.user}@{node['address']}", command],
+                [*self.ssh, f"{self.user}@{node['address']}", command],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
@@ -131,11 +160,13 @@ class Probe:
         except (OSError, subprocess.TimeoutExpired):
             return None
 
-    def accessible(self, node):
+    def accessible(self, node: Node) -> bool:
+        """Establish whether the node can originate commands at all."""
         result = self.command(node, "true")
         return result is not None and result.returncode == 0
 
-    def listening(self, nodes, port):
+    def listening(self, nodes: list[Node] | None, port: int) -> bool:
+        """Read listener state without creating services or changing policy."""
         command = f"ss -H -ltn '( sport = :{port} )'"
         if nodes is None:
             try:
@@ -156,7 +187,8 @@ class Probe:
             for result in (self.command(node, command) for node in nodes)
         )
 
-    def connect(self, source, address, port):
+    def connect(self, source: Node, address: str, port: int) -> bool | None:
+        """Connect from the node, distinguishing missing access from TCP failure."""
         command = (
             "timeout 4 bash -c "
             + shlex.quote('exec 3<>"/dev/tcp/$1/$2"')
@@ -165,25 +197,36 @@ class Probe:
             + f" {port}"
         )
         result = self.command(source, command)
-        if result is None or result.returncode in (126, 127, 255):
+        if result is None or result.returncode in {126, 127, 255}:
             return None
         return result.returncode == 0
 
 
-def validate(config, probe=None):
-    if config["stage"] not in ("preinstall", "postinstall"):
-        raise ValueError("unknown validation stage")
+def validate(
+    config: dict[str, Any], probe: Probe | None = None
+) -> tuple[dict[str, Any], int]:
+    """Collect the whole directed matrix; incomplete applicable paths fail closed."""
+    if (
+        config["stage"] not in {"preinstall", "postinstall"}
+        or len(config["hosts"]) != CONTROL_PLANE_COUNT
+        or len({host["name"] for host in config["hosts"]}) != CONTROL_PLANE_COUNT
+    ):
+        raise ValueError(
+            "expected a known stage and three distinct control-plane hosts"
+        )
     nodes = node_addresses(config)
     probe = probe or Probe(config)
     access = {node["name"]: probe.accessible(node) for node in nodes}
     results = []
     if config["stage"] == "preinstall":
-        for service in ("api:6443", "etcd:2379,2380", "ingress:80,443"):
-            results.append({
+        results.extend(
+            {
                 "status": "NOT TESTED",
                 "service": service,
                 "reason": "deferred until postinstall listeners exist",
-            })
+            }
+            for service in ("api:6443", "etcd:2379,2380", "ingress:80,443")
+        )
         results.append({
             "status": "SKIP",
             "service": "landing-zone:80",
@@ -241,10 +284,11 @@ def validate(config, probe=None):
     }, 1 if failed else 2 if incomplete else 0
 
 
-def main():
+def main() -> int:
+    """Emit a sanitized JSON result even when topology cannot be evaluated."""
     try:
         result, status = validate(json.load(sys.stdin))
-    except (ValueError, KeyError, TypeError, OSError):
+    except (ValueError, KeyError, TypeError, AttributeError, OSError):
         result, status = (
             {
                 "results": [
@@ -256,7 +300,7 @@ def main():
             },
             2,
         )
-    print(json.dumps(result, indent=2))
+    sys.stdout.write(json.dumps(result) + "\n")
     return status
 
 

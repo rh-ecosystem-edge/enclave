@@ -243,6 +243,8 @@ validate: validate-network
 
 .PHONY: validate-network
 validate-network:
+	@ruff check ci/tests/test_network_matrix.py scripts/validation/network_matrix.py
+	@ruff format --check ci/tests/test_network_matrix.py scripts/validation/network_matrix.py
 	@python3 -m unittest discover -s ci/tests -p 'test_network_matrix.py' -v
 
 validate-shell: validate-network

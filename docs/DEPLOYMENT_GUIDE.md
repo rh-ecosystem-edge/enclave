@@ -27,7 +27,11 @@ addresses, or destination listener readiness cannot be established. Listener
 inspection is read-only; a connection failure is not proof of a firewall fault.
 Applicable FAIL/NOT TESTED results exit unsuccessfully; pre-install results
 prevent automatic gate release. Deferred pre-install services do not fail that
-stage. Post-install checks may need rerunning when ingress services become
+stage. Each SSH command has a ten-second wall-clock limit and each node TCP
+attempt a four-second limit. The fixed three-node topology bounds the complete
+post-install matrix to 21 TCP attempts, three source-access checks and at most
+39 listener SSH checks (630 seconds in the worst case); successful paths do not
+need listener inspection. Post-install checks may need rerunning when ingress services become
 ready. No firewall rules or service state are modified. This is a TCP path
 check, not application health, TLS authentication, or certification of all
 OpenShift network requirements. Run fixtures with
