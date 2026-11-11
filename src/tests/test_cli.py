@@ -498,9 +498,7 @@ def test_mgmt_cluster_version_use_defaults_mutual_exclusive_version() -> None:
     assert "mutually exclusive" in result.output
 
 
-def test_mgmt_cluster_version_latest(
-    mocker: MockerFixture, tmp_path: Path
-) -> None:
+def test_mgmt_cluster_version_latest(mocker: MockerFixture, tmp_path: Path) -> None:
     """--latest selects the highest version from bundled defaults."""
     mocker.patch(
         "enclave.reconcile.cli.config_path", return_value=tmp_path / "missing.yaml"
