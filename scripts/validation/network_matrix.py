@@ -56,11 +56,11 @@ def discovered_addresses(
         if config["stage"] == "postinstall":
             if discovered["metadata"]["name"] == host["name"]:
                 candidates += 1
-                addresses = [
+                addresses.extend(
                     entry["address"]
                     for entry in discovered["status"]["addresses"]
                     if entry["type"] == "InternalIP"
-                ]
+                )
         else:
             inventory = json.loads(discovered.get("inventory") or "{}")
             interfaces = inventory.get("interfaces", [])
@@ -73,11 +73,11 @@ def discovered_addresses(
                 or bool(macs & discovered_macs)
             ):
                 candidates += 1
-                addresses = [
+                addresses.extend(
                     address
                     for interface in interfaces
                     for address in interface.get("ipv4_addresses", [])
-                ]
+                )
     return candidates, addresses
 
 
