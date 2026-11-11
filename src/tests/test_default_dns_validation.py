@@ -17,6 +17,7 @@ def _run_dns_validation(
     active: bool = True,
     through_tee: bool = False,
 ) -> subprocess.CompletedProcess[str]:
+    """Run the real DNS block and emitter with fixture inputs and optional tee."""
     script = (Path(__file__).resolve().parents[2] / "validations.sh").read_text(
         encoding="utf-8"
     )
@@ -109,6 +110,7 @@ def test_default_dns_match_and_mismatch(
     )
     assert f"Detected Landing Zone DNS addresses from {source}:\n" in message
     assert "192.0.2.53\n198.51.100.53\n" in message
+    assert "Authentication hostname suffixes are omitted" not in message
     if not matches:
         assert (
             "must match one of the detected Landing Zone DNS addresses"
@@ -180,3 +182,46 @@ def test_default_dns_sync_console_and_log(tmp_path: Path, matches: bool) -> None
     assert "/etc/resolv.conf nameserver entries" in record["message"]
     if not matches:
         assert "rerun ./sync.sh" in record["message"]
+
+
+@pytest.mark.parametrize("resolved", [False, True], ids=["resolv-conf", "resolved"])
+@pytest.mark.parametrize("default_dns", ["198.51.100.53", "203.0.113.53", "192.0.2.53"])
+def test_default_dns_redacts_authentication_hostname(
+    tmp_path: Path, resolved: bool, default_dns: str
+) -> None:
+    """Redact display suffixes without making a suffixed raw entry match."""
+    result = _run_dns_validation(
+        tmp_path,
+        "nameserver 127.0.0.53\n"
+        if resolved
+        else "nameserver 192.0.2.53#resolver.example\nnameserver 198.51.100.53\n",
+        "Current DNS Server: 192.0.2.53#resolver.example\n"
+        "Current DNS Server: 198.51.100.53\n",
+        default_dns,
+        through_tee=True,
+    )
+    matches = default_dns == "198.51.100.53"
+    assert result.returncode == (0 if matches else 1), result.stderr
+    log = (tmp_path / "validation.log").read_text(encoding="utf-8")
+    assert result.stdout == log
+    assert "resolver.example" not in result.stdout
+    assert "#" not in result.stdout
+    record = yaml.safe_load(result.stdout)["validations"]["dns"][0]
+    assert record["status"] == ("PASS" if matches else "FAIL")
+    message = record["message"]
+    assert "resolver.example" not in message
+    assert f"config/global.yaml defaultDNS: {default_dns}" in message
+    source = (
+        "resolvectl status Current DNS Server entries"
+        if resolved
+        else "/etc/resolv.conf nameserver entries"
+    )
+    assert f"Detected Landing Zone DNS addresses from {source}:" in message
+    assert "\n192.0.2.53\n198.51.100.53\n" in message
+    assert "Authentication hostname suffixes are omitted from this display" in message
+    assert "Validation compares the original resolver entries, including suffixes" in (
+        message
+    )
+    assert "a displayed address alone may not match defaultDNS" in message
+    if not matches:
+        assert "rerun ./sync.sh" in message

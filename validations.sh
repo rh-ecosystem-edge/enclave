@@ -213,9 +213,14 @@ else
     lz_dns_source="/etc/resolv.conf nameserver entries"
 fi
 
+lz_dns_display="$(printf '%s\n' "$lz_dns" | sed 's/#.*//')"
 message="config/global.yaml defaultDNS: $default_dns
 Detected Landing Zone DNS addresses from $lz_dns_source:
-${lz_dns:-<none detected>}"
+${lz_dns_display:-<none detected>}"
+if [[ "$lz_dns_display" != "$lz_dns" ]]; then
+    message="$message
+Authentication hostname suffixes are omitted from this display. Validation compares the original resolver entries, including suffixes; a displayed address alone may not match defaultDNS."
+fi
 if ! echo "$lz_dns" | grep -qx $default_dns; then
     message="$message
 If the detected Landing Zone DNS is intended for this deployment, update defaultDNS in config/global.yaml to one of the detected addresses.
