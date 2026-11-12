@@ -1,7 +1,8 @@
 ---
-- name: Set UpdateService replicas
+- name: Set UpdateService replicas and graph URL
   ansible.builtin.set_fact:
     updateservice_replicas: 3
+    updateservice_graph_url: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
 
 # UpdateService requires image.config additionalTrustedCA with updateservice-registry
 # before graph-builder can scrape the mirrored release repository over TLS.
@@ -68,6 +69,26 @@
     and r_update_service_deployment.resources[0].status.availableReplicas | default(0) == updateservice_replicas
   failed_when: false
 
+# A disconnected management cluster can't reach api.openshift.com, so its CVO
+# retrieves the update graph from the local UpdateService instead.
+- name: Point the management cluster ClusterVersion at the local UpdateService
+  when: disconnected | default(true) | bool
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  kubernetes.core.k8s:
+    state: patched
+    api_version: config.openshift.io/v1
+    kind: ClusterVersion
+    name: version
+    merge_type: merge
+    definition:
+      spec:
+        upstream: "{{ updateservice_graph_url }}"
+  register: r_mgmt_clusterversion_upstream
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_mgmt_clusterversion_upstream is success
+
 - name: Create ACM Policy for Update Service
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
@@ -105,7 +126,7 @@
                   metadata:
                     name: version
                   spec:
-                    upstream: "https://service-route-openshift-update-service.apps.{{ clusterName }}.{{ baseDomain }}/api/upgrades_info/v1/graph"
+                    upstream: "{{ updateservice_graph_url }}"
   register: r_acm_policy_update_service
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
