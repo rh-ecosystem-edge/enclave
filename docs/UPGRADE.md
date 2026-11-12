@@ -55,6 +55,8 @@ Each Enclave tarball release includes:
     ```
 
     **Metal3 Upgrade Phase**: Upgrades Ironic and Baremetal Operator in persistent mode (`metal3_persistent: true`) to match the management cluster OpenShift version. For intermediate version requirements, use the migration system.
+
+    **Management Cluster Upgrade Phase**: For a minor version upgrade (for example 4.20 → 4.21), `enclave reconcile mgmt-cluster-version` first checks that ClusterVersion doesn't report `Upgradeable=False`. Administrator acknowledgments in the `admin-acks` ConfigMap must be given beforehand. It then switches the update channel to the target minor, keeping the current prefix (`stable-4.20` → `stable-4.21`); the channel must be offered for the current release. With `--dry-run`, the channel switch is only logged, and whether the target version is offered isn't checked until the channel is actually switched. If the target version isn't offered, the error shows the cluster's update upstream, channel and `RetrievedUpdates` status.
 8. **(Optional) Run cluster/operator upgrades separately** - By default `upgrade.yaml` performs both the management cluster and operator upgrades. To skip either step (e.g. to control upgrade timing independently) pass `upgrade_mgmt_cluster=false` and/or `upgrade_operators=false`, then run the corresponding command manually when ready:
 
     ```sh
