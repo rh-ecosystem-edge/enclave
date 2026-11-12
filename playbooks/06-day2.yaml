@@ -4,6 +4,7 @@
 #
 # Performs:
 # - Clair configuration for disconnected Quay (disconnected only)
+# - Release image Sigstore signature check and 4.21 Sigstore admin gate ack (disconnected only)
 #
 # Usage:
 #   ansible-playbook playbooks/06-day2.yaml [-e disconnected=false]
@@ -75,6 +76,25 @@
               environment:
                 KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
           tags: quay-disconnected
+
+        - name: Check release image Sigstore signatures and acknowledge the 4.21 gate
+          when: disconnected | default(true) | bool
+          ansible.builtin.command:
+            argv:
+              - enclave
+              - reconcile
+              - release-signatures
+          environment:
+            KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+          register: r_release_signatures
+          changed_when: "'Acknowledged admin gate' in r_release_signatures.stderr"
+          tags: release-signatures
+
+        - name: Print release signatures check output
+          when: disconnected | default(true) | bool
+          ansible.builtin.debug:
+            var: r_release_signatures.stderr_lines
+          tags: release-signatures
 
         - name: Restart catalog source pods to pick up new operator versions
           when: disconnected | default(true) | bool
