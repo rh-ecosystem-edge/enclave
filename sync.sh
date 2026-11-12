@@ -124,6 +124,10 @@ echo "Quay disconnected .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags quay-disconnected
 step_done
 
+echo "Checking release signatures .." | tee -a ${log}
+    ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags release-signatures
+step_done
+
 echo "MCE AgentServiceConfig .." | tee -a ${log}
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/01-prepare.yaml -e fresh=false --tags download-content
     ANSIBLE_LOG_PATH=${log} ansible-playbook playbooks/06-day2.yaml -e fresh=false --tags mce-asc

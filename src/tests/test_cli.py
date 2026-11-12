@@ -7,6 +7,8 @@ from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
 from enclave.reconcile.cli import cli, config_path, defaults_path
+from enclave.reconcile.release_signatures import ReleaseSignaturesQueryError
+from enclave.utils import KubeconfigNotFoundError
 
 _KC = {"KUBECONFIG": "/fake/kubeconfig"}
 
@@ -578,3 +580,47 @@ def test_kubeconfig_missing_fails(mocker: MockerFixture) -> None:
     )
     assert result.exit_code != 0
     assert "KUBECONFIG" in result.output
+
+
+def test_release_signatures_runs_reconcile(mocker: MockerFixture) -> None:
+    """release-signatures runs the reconcile, passing --dry-run through."""
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.release_signatures_reconcile")
+    result = CliRunner().invoke(cli, ["release-signatures", "--dry-run"], env=_KC)
+    assert result.exit_code == 0, result.output
+    dry_run = True
+    mock_reconcile.assert_called_once_with(dry_run)
+
+
+def test_release_signatures_without_args_sets_up_kubeconfig(
+    mocker: MockerFixture,
+) -> None:
+    """With no arguments, the command still sets up the kubeconfig and runs."""
+    mock_setup = mocker.patch("enclave.reconcile.cli.setup_kubeconfig")
+    mock_reconcile = mocker.patch("enclave.reconcile.cli.release_signatures_reconcile")
+    result = CliRunner().invoke(cli, ["release-signatures"], env=_KC)
+    assert result.exit_code == 0, result.output
+    mock_setup.assert_called_once()
+    dry_run = False
+    mock_reconcile.assert_called_once_with(dry_run)
+
+
+def test_release_signatures_error_is_reported(mocker: MockerFixture) -> None:
+    """A ReleaseSignaturesError becomes a CLI error with its message."""
+    mocker.patch(
+        "enclave.reconcile.cli.release_signatures_reconcile",
+        side_effect=ReleaseSignaturesQueryError("skopeo list-tags failed"),
+    )
+    result = CliRunner().invoke(cli, ["release-signatures"], env=_KC)
+    assert result.exit_code != 0
+    assert "skopeo list-tags failed" in result.output
+
+
+def test_release_signatures_missing_kubeconfig(mocker: MockerFixture) -> None:
+    """A missing kubeconfig is reported as a CLI error."""
+    mocker.patch(
+        "enclave.reconcile.cli.setup_kubeconfig",
+        side_effect=KubeconfigNotFoundError("KUBECONFIG is not set"),
+    )
+    result = CliRunner().invoke(cli, ["release-signatures"])
+    assert result.exit_code != 0
+    assert "KUBECONFIG is not set" in result.output
