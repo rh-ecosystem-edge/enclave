@@ -14,11 +14,17 @@ from enclave.reconcile.cluster_upgrade import (
     reconcile as cluster_upgrade_reconcile,
 )
 from enclave.reconcile.operator_versions import reconcile as operator_versions_reconcile
+from enclave.reconcile.release_signatures import (
+    ReleaseSignaturesError,
+    reconcile as release_signatures_reconcile,
+)
 from enclave.utils import (
     LOG_LEVELS,
     KubeconfigGroup,
+    KubeconfigNotFoundError,
     configure_logging,
     semver_key,
+    setup_kubeconfig,
 )
 
 OPENSHIFT_VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
@@ -353,6 +359,28 @@ def mgmt_cluster_version(
             allow_not_recommended,
         )
     except (ClusterUpgradeError, RuntimeError, TimeoutError) as e:
+        raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.option("--dry-run/--no-dry-run", default=False)
+def release_signatures(dry_run: bool) -> None:
+    """Check release Sigstore signatures in the mirrors and ack the 4.21 Sigstore gate.
+
+    Every release image tag at 4.20 or later in each ImageDigestMirrorSet mirror of
+    quay.io/openshift-release-dev/ocp-release must have its sha256-<digest>.sig tag.
+    When all are present and the cluster defines the ack-4.20-sigstore-in-4.21 admin
+    gate, the gate is acknowledged. With --dry-run, nothing on the cluster is changed.
+    """
+    # The group only sets up the kubeconfig when the subcommand has arguments.
+    try:
+        setup_kubeconfig()
+    except KubeconfigNotFoundError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    try:
+        release_signatures_reconcile(dry_run)
+    except (ReleaseSignaturesError, TimeoutError) as e:
         raise click.ClickException(str(e)) from e
 
 

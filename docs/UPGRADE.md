@@ -48,6 +48,8 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
+    After mirroring, the sync runs `enclave reconcile release-signatures`. It checks that every OpenShift release image tag at 4.20 or later in each release mirror (the `quay.io/openshift-release-dev/ocp-release` mirrors in the cluster's ImageDigestMirrorSets) has its Sigstore signature tag (`sha256-<digest>.sig`). OpenShift 4.21 and later need these to verify release images pulled from a mirror. If any signature is missing, the sync fails and lists the affected images. When all are present and the cluster defines the `ack-4.20-sigstore-in-4.21` admin gate (OpenShift 4.20), the gate is acknowledged in the `admin-acks` ConfigMap, which allows the update to 4.21.
+
 7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade operators and the management cluster to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile operator-versions --use-defaults` and `enclave reconcile mgmt-cluster-version --use-defaults`:
 
     ```sh
