@@ -4,3 +4,20 @@ quayHostname: "mirror.{{ baseDomain }}"
 
 # Quay CA certificate path (uses workingDir from user config/global.yaml)
 quayCAPath: "{{ workingDir }}/data/quay-rootCA/rootCA.pem"
+
+# PostgreSQL backend migration (KCS 7140667)
+# mirror-registry 2.0.x only ships a SQLite backend, which performs poorly under
+# concurrent mirroring. These values drive the migration to a PostgreSQL backend.
+quayPgVolume: "pg-storage"
+quayPgSecretName: "quay-pg-pass"
+quayPgImage: "registry.redhat.io/rhel9/postgresql-16:9.7"
+quayPgUser: "{{ quayUser }}"
+quayPgPassword: "{{ quayPassword }}"
+quayPgDatabase: "quay"
+quayPgMaxConnections: 500
+quayWorkerCountWeb: 4
+quayWorkerCountRegistry: 8
+quayWorkerCountSecscan: 2
+quayDbConnArgs:
+  max_connections: 5
+  stale_timeout: 120
