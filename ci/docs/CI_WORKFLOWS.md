@@ -118,10 +118,11 @@ still force-merge via admin bypass when they know a failure is unrelated.
 3. Provision Landing Zone
 4. Install Enclave Lab
 5. Deploy cluster through all phases (1-7)
-6. Verify cluster health
-7. Collect artifacts and diagnostics
-8. Cleanup infrastructure
-9. Slack notification (nightly/manual)
+6. Verify cluster health (see Cluster Verification)
+7. Deploy the day-2 plugins in `enabled-plugins` (each runs its own `post-validate`, if it has one)
+8. Collect artifacts and diagnostics
+9. Cleanup infrastructure
+10. Slack notification (nightly/manual)
 
 ### How to Use
 
@@ -155,12 +156,16 @@ Real-cert runs require the additional repository secrets listed in the Runner Se
 
 ### Cluster Verification
 
-The workflow checks:
-- Nodes are ready
-- Cluster operators are available
-- No degraded operators
+Right after bootstrap, `verify-cluster` checks the following once and fails listing
+whatever does not hold, each with its condition reason and message (or the registry's
+`/health/instance` body, or the SSH error when the Landing Zone does not answer):
 - Kubeconfig is accessible
-- Mirror registry status (disconnected mode only)
+- ClusterVersion is Available, and not Progressing or Failing
+- Nodes are Ready
+- Cluster operators are Available and not Degraded
+- MachineConfigPools are Updated, and not Updating or Degraded
+- Hub Quay is Available and its `/health/instance` answers 200
+- Landing Zone mirror registry (`quayHostname`, default `mirror.<baseDomain>`) `/health/instance` answers 200 (disconnected mode only)
 
 ---
 

@@ -165,9 +165,14 @@ make -f Makefile.ci verify-cluster
 **Checks:**
 - Landing Zone IP is reachable
 - Kubeconfig exists
+- ClusterVersion is Available, and not Progressing or Failing
 - Nodes are Ready
-- Cluster operators are healthy (not degraded)
-- Cluster version
+- Cluster operators are Available and not Degraded
+- MachineConfigPools are Updated, and not Updating or Degraded
+- Hub Quay (QuayRegistry `quay-enterprise/registry`) is Available and `/health/instance` answers 200
+- Disconnected only: the Landing Zone mirror registry (`quayHostname`, default `mirror.<baseDomain>`) `/health/instance` answers 200
+
+It also prints the nodes, cluster operators, MachineConfigPools and cluster version.
 
 **Output:** Both terminal (with colors) and GitHub Actions summary format
 
@@ -319,7 +324,7 @@ ssh cloud-user@$LZ_IP "journalctl -xef"
 
 ### Degraded Cluster Operators
 
-**Symptom**: `verify-cluster` reports degraded operators
+**Symptom**: `verify-cluster` reports `co/<name>: Degraded=True` or `Available=False`
 
 **Debug**:
 ```bash
