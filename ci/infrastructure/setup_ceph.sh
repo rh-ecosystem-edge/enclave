@@ -78,17 +78,18 @@ detect_host_ip() {
 wait_for_ceph_health() {
     local max_attempts="${1:-60}"
     local interval="${2:-10}"
-    info "Waiting for Ceph cluster to become healthy..."
+    local acceptable="${3:-HEALTH_OK|HEALTH_WARN}"
+    info "Waiting for Ceph cluster to report $acceptable..."
     for i in $(seq 1 "$max_attempts"); do
         health=$(cephadm shell -- ceph health 2>/dev/null || echo "UNKNOWN")
-        if echo "$health" | grep -qE "HEALTH_OK|HEALTH_WARN"; then
+        if echo "$health" | grep -qE "$acceptable"; then
             success "Ceph health: $health"
             return 0
         fi
         echo "  Attempt $i/$max_attempts: $health"
         sleep "$interval"
     done
-    warn "Ceph did not reach HEALTH_OK/HEALTH_WARN within $((max_attempts * interval))s"
+    warn "Ceph did not report $acceptable within $((max_attempts * interval))s"
     warn "Current health: $(cephadm shell -- ceph health 2>/dev/null || echo 'UNKNOWN')"
     return 1
 }
@@ -367,6 +368,10 @@ info "Step 6: Configuring single-node replication..."
 cephadm shell -- ceph config set global osd_pool_default_size 1
 cephadm shell -- ceph config set global osd_pool_default_min_size 1
 cephadm shell -- ceph config set global mon_allow_pool_size_one true
+# ODF 4.21 maps any non-HEALTH_OK external Ceph to a negative StorageCluster
+# condition that blocks Available. Replica-less single-node pools are
+# intentional here, so silence the resulting warning.
+cephadm shell -- ceph config set global mon_warn_on_pool_no_redundancy false
 success "Single-node replication configured"
 
 # Step 7: Deploy RadosGW
@@ -495,28 +500,54 @@ print(','.join(addrs))
 ")
     ADMIN_KEY=$(cephadm shell -- ceph auth get-key client.admin 2>/dev/null)
 
-    # Create dedicated CSI users for RBD (rook uses admin creds to manage them,
-    # but the auth entries must exist in Ceph for the CSI pods to authenticate)
-    cephadm shell -- ceph auth get-or-create client.csi-rbd-node \
+    # Create dedicated CSI users for RBD. ODF sets
+    # CephCluster.spec.csi.skipUserCreation=true, so Rook does not create these
+    # users nor the rook-csi-* Secrets for an external cluster; both must come
+    # from here.
+    # get-or-create fails when the user already exists with different
+    # capabilities. Do NOT overwrite them: `ceph auth caps` replaces all of the
+    # user's capabilities and could cut off access to another pool, so stop with
+    # an actionable error instead.
+    if ! cephadm shell -- ceph auth get-or-create client.csi-rbd-node \
         mon 'profile rbd' \
-        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1 || true
+        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1; then
+        error "client.csi-rbd-node exists with different capabilities; refusing to overwrite them"
+        error "Expected: mon 'profile rbd' osd 'profile rbd pool=${RBD_POOL}'"
+        exit 1
+    fi
 
-    cephadm shell -- ceph auth get-or-create client.csi-rbd-provisioner \
+    if ! cephadm shell -- ceph auth get-or-create client.csi-rbd-provisioner \
         mon 'profile rbd' \
         mgr 'allow rw' \
-        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1 || true
+        osd "profile rbd pool=${RBD_POOL}" >/dev/null 2>&1; then
+        error "client.csi-rbd-provisioner exists with different capabilities; refusing to overwrite them"
+        error "Expected: mon 'profile rbd' mgr 'allow rw' osd 'profile rbd pool=${RBD_POOL}'"
+        exit 1
+    fi
+
+    CSI_RBD_NODE_KEY=$(cephadm shell -- ceph auth get-key client.csi-rbd-node 2>/dev/null || true)
+    CSI_RBD_PROVISIONER_KEY=$(cephadm shell -- ceph auth get-key client.csi-rbd-provisioner 2>/dev/null || true)
+    if [ -z "$CSI_RBD_NODE_KEY" ] || [ -z "$CSI_RBD_PROVISIONER_KEY" ]; then
+        error "Could not read the CSI RBD cephx keys (client.csi-rbd-node / client.csi-rbd-provisioner)"
+        exit 1
+    fi
 
     # Get RGW keys
     RGW_ACCESS_KEY="$S3_ACCESS_KEY"
     RGW_SECRET_KEY="$S3_SECRET_KEY"
 
-    # Note: rook-csi-rbd-node and rook-csi-rbd-provisioner are NOT included here.
-    # Rook creates these secrets itself using the admin credentials. Including them
-    # causes a type conflict: ODF creates them as Opaque, rook expects kubernetes.io/rook.
+    # rook-csi-rbd-node and rook-csi-rbd-provisioner MUST be part of the external
+    # config. ocs-operator creates these annotated Secrets from this JSON (Rook
+    # skips them because skipUserCreation is true); without them every PVC on the
+    # external RBD StorageClass fails with
+    # `secrets "rook-csi-rbd-provisioner" not found` and the StorageCluster never
+    # becomes Available. ceph-csi expects userID without the "client." prefix.
     ODF_EXTERNAL_CONFIG=$(
         FSID="$FSID" \
         MON_HOSTS="$MON_HOSTS" \
         ADMIN_KEY="$ADMIN_KEY" \
+        CSI_RBD_NODE_KEY="$CSI_RBD_NODE_KEY" \
+        CSI_RBD_PROVISIONER_KEY="$CSI_RBD_PROVISIONER_KEY" \
         CEPH_HOST_IP="$CEPH_HOST_IP" \
         RGW_PORT="$RGW_PORT" \
         RBD_POOL="$RBD_POOL" \
@@ -529,6 +560,8 @@ data = [
     {'name': 'rook-ceph-mon-endpoints', 'kind': 'ConfigMap', 'data': {'data': e['FSID']+'='+e['MON_HOSTS'], 'maxMonId': '0', 'mapping': '{}'}},
     {'name': 'rook-ceph-mon', 'kind': 'Secret', 'data': {'admin-secret': 'admin-secret', 'fsid': e['FSID'], 'mon-secret': 'mon-secret'}},
     {'name': 'rook-ceph-operator-creds', 'kind': 'Secret', 'data': {'userID': 'client.admin', 'userKey': e['ADMIN_KEY']}},
+    {'name': 'rook-csi-rbd-provisioner', 'kind': 'Secret', 'data': {'userID': 'csi-rbd-provisioner', 'userKey': e['CSI_RBD_PROVISIONER_KEY']}},
+    {'name': 'rook-csi-rbd-node', 'kind': 'Secret', 'data': {'userID': 'csi-rbd-node', 'userKey': e['CSI_RBD_NODE_KEY']}},
     {'name': 'monitoring-endpoint', 'kind': 'CephCluster', 'data': {'MonitoringEndpoint': e['CEPH_HOST_IP'], 'MonitoringPort': '9283'}},
     {'name': 'ceph-rbd', 'kind': 'StorageClass', 'data': {'pool': e['RBD_POOL']}},
     {'name': 'ceph-rgw', 'kind': 'StorageClass', 'data': {'endpoint': e['CEPH_HOST_IP']+':'+e['RGW_PORT'], 'poolPrefix': 'default'}},
@@ -537,6 +570,15 @@ data = [
 print(json.dumps(data))
 ")
 fi
+
+# Fail fast if the generated config cannot satisfy the external RBD CSI drivers.
+for csi_secret in rook-csi-rbd-provisioner rook-csi-rbd-node; do
+    if ! printf '%s' "$ODF_EXTERNAL_CONFIG" | grep -q "\"$csi_secret\""; then
+        error "odfExternalConfig is missing the required secret ${csi_secret}"
+        exit 1
+    fi
+done
+
 success "odfExternalConfig exported"
 
 # Step 11: Configure firewall
@@ -590,8 +632,17 @@ else
     success "Firewall rules configured - Ceph ports restricted to internal networks"
 fi
 
-# Step 12: Wait for cluster to stabilize
-wait_for_ceph_health 30 10
+# Step 12: Wait for cluster to stabilize with HEALTH_OK.
+# ODF 4.21 maps any non-HEALTH_OK external Ceph health to a negative
+# StorageCluster condition that blocks Available, so surface the real cause
+# here instead of failing later with a misleading "NooBaa initializing".
+# Poll rather than reading once: transient warnings (e.g. PG_AVAILABILITY
+# after the RBD pool/RGW creation) clear on their own.
+if ! wait_for_ceph_health 30 10 "HEALTH_OK"; then
+    error "External Ceph did not reach HEALTH_OK; ODF requires HEALTH_OK"
+    cephadm shell -- ceph health detail || true
+    exit 1
+fi
 
 # Step 13: Write config files for CI consumption
 CEPH_CONFIG_DIR="${CEPH_CONFIG_DIR:-}"

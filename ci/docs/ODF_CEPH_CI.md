@@ -109,6 +109,27 @@ permanent crashloop that looks like a Quay/app bug. Reads still work
 (`select 1` returns in milliseconds); only **writes** freeze. If ODF Quay is
 crashlooping during the operators/mirror phase, check Ceph health first.
 
+### ODF 4.21 requires `HEALTH_OK`
+
+ODF 4.21's ocs-operator maps any external Ceph health other than `HEALTH_OK` to an
+`Upgradeable=False` condition, and that negative condition prevents the StorageCluster
+from ever reaching `Available` (the wait then times out even though NooBaa is ready).
+Single-node CI Ceph runs replica-less pools on purpose (`osd_pool_default_size=1`),
+which would report `POOL_NO_REDUNDANCY`/`HEALTH_WARN`. `setup_ceph.sh` therefore
+disables `mon_warn_on_pool_no_redundancy` so the external cluster reports `HEALTH_OK`;
+do not re-enable it for the single-node CI cluster. As a guard for any other warning
+(monitor disk, recent crash, ...), the script's final check polls for `HEALTH_OK` for up
+to 5 minutes and prints `ceph health detail` if it never arrives, so the run fails fast
+with the real cause instead of waiting for the StorageCluster timeout. The poll matters:
+transient warnings such as `PG_AVAILABILITY` right after the RBD pool/RGW creation clear
+on their own.
+
+Warnings that only appear later (e.g. `MON_DISK_LOW` as the mirror fills the Landing
+Zone) cannot be caught at setup time. They surface in the ODF diagnostics
+(`StorageCluster` Upgradeable message and `CephCluster` health) and in the ODF plugin
+failure message, which queries the CephCluster and prints its state, health and health
+details.
+
 ### Landing Zone disk sizing
 
 The LZ disk is sized by `vm_infra.py` (via `LANDINGZONE_DISK`), which creates the LZ
@@ -163,6 +184,27 @@ Creates StorageCluster CR with externalStorage.enable: true
 ```
 
 No GitHub secrets needed. Config is generated and consumed within the same CI run.
+
+### External-mode CSI credentials
+
+ODF creates the external CephCluster with `spec.csi.skipUserCreation: true`, so Rook
+does **not** create the `rook-csi-rbd-*` Secrets (or their cephx users) for it;
+ocs-operator creates those Secrets from the entries in `odfExternalConfig` instead.
+The generated JSON must therefore contain:
+
+- `rook-csi-rbd-provisioner` — `{userID: csi-rbd-provisioner, userKey: ...}`
+- `rook-csi-rbd-node` — `{userID: csi-rbd-node, userKey: ...}`
+
+`setup_ceph.sh` creates the matching `client.csi-rbd-*` cephx users and, when the
+official `ceph-external-cluster-details-exporter.py` is unavailable, includes both
+entries in the manually generated JSON.
+
+If they are missing, every PVC on `ocs-external-storagecluster-ceph-rbd` stays
+Pending with `failed to provision volume ... error getting secret
+"rook-csi-rbd-provisioner" in namespace openshift-storage: secrets
+"rook-csi-rbd-provisioner" not found`, and the StorageCluster never reaches
+`Available`, which fails "Bootstrap: Operators" after the 10-minute
+`Wait for StorageCluster to be available` timeout.
 
 ## CI Workflow Integration
 

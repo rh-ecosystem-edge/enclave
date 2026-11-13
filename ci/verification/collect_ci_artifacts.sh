@@ -886,52 +886,135 @@ collect_cluster_quay_diagnostics() {
     fi
 }
 
+# Collect namespace-scoped state for enabled plugins and for the selected
+# storage plugin, so failures such as unbound ODF PVCs are diagnosable.
 collect_cluster_plugin_diagnostics() {
     local lz_ip="$1"
 
-    if [ -z "${ENABLED_PLUGINS:-}" ]; then
-        return
-    fi
-
-    info "Collecting plugin namespace diagnostics..."
-    mkdir -p "${OUTPUT_DIR}/cluster/plugin-diagnostics"
-
     # Map plugins to their namespaces (deduplicated)
     local namespaces=()
-    IFS=',' read -ra plugins <<< "$ENABLED_PLUGINS"
-    for plugin in "${plugins[@]}"; do
-        plugin="${plugin// /}"
-        case "$plugin" in
-            osac) namespaces+=("osac" "osac-kafka") ;;
-            aap) namespaces+=("osac") ;;
-            rhbk) namespaces+=("keycloak") ;;
-            trust-manager) namespaces+=("cert-manager") ;;
-            cnv) namespaces+=("openshift-cnv") ;;
-        esac
-    done
+    # STORAGE_PLUGIN selects ODF independently of ENABLED_PLUGINS.
+    if [ "${STORAGE_PLUGIN:-}" = "odf" ]; then
+        namespaces+=("openshift-storage")
+    fi
+    if [ -n "${ENABLED_PLUGINS:-}" ]; then
+        local plugins=()
+        IFS=',' read -ra plugins <<< "$ENABLED_PLUGINS"
+        for plugin in "${plugins[@]}"; do
+            plugin="${plugin// /}"
+            case "$plugin" in
+                osac) namespaces+=("osac" "osac-kafka") ;;
+                aap) namespaces+=("osac") ;;
+                rhbk) namespaces+=("keycloak") ;;
+                trust-manager) namespaces+=("cert-manager") ;;
+                cnv) namespaces+=("openshift-cnv") ;;
+                odf) namespaces+=("openshift-storage") ;;
+            esac
+        done
+    fi
 
     # Deduplicate
     if [ ${#namespaces[@]} -eq 0 ]; then
         return
     fi
+    info "Collecting plugin namespace diagnostics..."
+    mkdir -p "${OUTPUT_DIR}/cluster/plugin-diagnostics"
     local unique_ns
     unique_ns=$(printf '%s\n' "${namespaces[@]}" | sort -u)
 
     for ns in $unique_ns; do
         info "Collecting diagnostics for namespace: $ns"
-        ssh_lz "$lz_ip" "
+        LZ_CMD_TIMEOUT=600 ssh_lz "$lz_ip" "
             export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig
             export PATH=/home/cloud-user/sessions/1/bin:\$PATH
             oc() { command oc --request-timeout=30s \"\$@\"; }
 
+            # Node names are redacted from free-form output (events, logs) so
+            # internal hostnames do not land in uploaded CI artifacts.
+            nodes=\$(oc get nodes -o jsonpath='{range .items[*]}{.metadata.name}{\"\\n\"}{end}' 2>/dev/null | paste -sd'|' -)
+            redact_nodes() {
+                if [ -n \"\$nodes\" ]; then
+                    sed -E \"s/(\$nodes)/<node>/g\"
+                else
+                    cat
+                fi
+            }
+
+            # Avoid -o wide / describe here: node hostnames must not land in
+            # uploaded CI artifacts. Conditions carry the useful ODF state.
             echo '=== Deployments ==='
-            oc get deployments -n $ns -o wide 2>&1
+            oc get deployments -n $ns 2>&1
             echo ''
             echo '=== Pods ==='
-            oc get pods -n $ns -o wide 2>&1
+            oc get pods -n $ns 2>&1
             echo ''
             echo '=== Events ==='
-            oc get events -n $ns --sort-by='.lastTimestamp' 2>&1
+            oc get events -n $ns --sort-by='.lastTimestamp' 2>&1 | redact_nodes
+            echo ''
+            echo '=== StorageClusters ==='
+            oc get storageclusters -n $ns 2>&1
+            echo ''
+            echo '=== StorageCluster Conditions ==='
+            oc get storageclusters -n $ns -o jsonpath='{range .items[*]}{\"Name: \"}{.metadata.name}{\"\\n\"}{range .status.conditions[*]}{\"  \"}{.type}{\"=\"}{.status}{\" \"}{.reason}{\": \"}{.message}{\"\\n\"}{end}{end}' 2>&1
+            echo ''
+            echo '=== Secret Names (no data) ==='
+            oc get secrets -n $ns 2>&1
+
+            if [ \"$ns\" = openshift-storage ]; then
+                echo ''
+                echo '=== CephClusters ==='
+                oc get cephclusters -n $ns 2>&1
+                echo ''
+                echo '=== CephCluster State/Message/Conditions ==='
+                oc get cephclusters -n $ns -o jsonpath='{range .items[*]}{\"Name: \"}{.metadata.name}{\"\\n\"}{\"  State: \"}{.status.state}{\"\\n\"}{\"  Phase: \"}{.status.phase}{\"\\n\"}{\"  Message: \"}{.status.message}{\"\\n\"}{range .status.conditions[*]}{\"  \"}{.type}{\"=\"}{.status}{\" \"}{.reason}{\": \"}{.message}{\"\\n\"}{end}{end}' 2>&1
+                echo ''
+                echo '=== Ceph CSI CRs ==='
+                oc get cephconnections.csi.ceph.io -n $ns 2>&1
+                oc get clientprofiles.csi.ceph.io -n $ns 2>&1
+                echo ''
+                echo '=== ClientProfile Phase/Message ==='
+                oc get clientprofiles.csi.ceph.io -n $ns -o jsonpath='{range .items[*]}{\"Name: \"}{.metadata.name}{\"\\n\"}{\"  Phase: \"}{.status.phase}{\"\\n\"}{\"  Message: \"}{.status.message}{\"\\n\"}{end}' 2>&1
+                echo ''
+                echo '=== NooBaa CRs ==='
+                oc get noobaas.noobaa.io -n $ns 2>&1
+                echo ''
+                echo '=== NooBaa Phase/Conditions ==='
+                oc get noobaas.noobaa.io -n $ns -o jsonpath='{range .items[*]}{\"Name: \"}{.metadata.name}{\"\\n\"}{\"  Phase: \"}{.status.phase}{\"\\n\"}{range .status.conditions[*]}{\"  \"}{.type}{\"=\"}{.status}{\" \"}{.reason}{\": \"}{.message}{\"\\n\"}{end}{end}' 2>&1
+                echo ''
+                echo '=== BackingStores ==='
+                oc get backingstores.noobaa.io -n $ns 2>&1
+                echo ''
+                echo '=== PVCs ==='
+                oc get pvc -n $ns 2>&1
+                echo ''
+                echo '=== noobaa-operator logs (tail 100) ==='
+                oc logs -n $ns deploy/noobaa-operator --tail=100 2>&1 | redact_nodes
+                echo ''
+                echo '=== ConfigMaps ==='
+                oc get configmaps -n $ns 2>&1
+                echo ''
+                echo '=== ceph-csi-config keys ==='
+                oc get configmap ceph-csi-config -n $ns -o json 2>&1 | jq -r '.data | keys[]' 2>&1
+                echo ''
+                echo '=== ceph-csi-config key sizes ==='
+                oc get configmap ceph-csi-config -n $ns -o json 2>&1 | jq -r '.data | to_entries[] | .key + \": \" + (.value | length | tostring) + \" bytes\"' 2>&1
+                echo ''
+                echo '=== ctrlplugin configmap volumes/mounts ==='
+                oc get deploy openshift-storage.rbd.csi.ceph.com-ctrlplugin -n $ns -o json 2>&1 | jq -r '.spec.template.spec.volumes[] | select(.configMap) | .name + \" -> configmap/\" + .configMap.name' 2>&1
+                oc get deploy openshift-storage.rbd.csi.ceph.com-ctrlplugin -n $ns -o json 2>&1 | jq -r '.spec.template.spec.containers[] | .name + \": \" + ([.volumeMounts[]? | select(.name==\"ceph-csi-config\") | .mountPath] | join(\",\"))' 2>&1
+                echo ''
+                echo '=== rook-ceph-operator logs (tail 200) ==='
+                oc logs -n $ns deploy/rook-ceph-operator --tail=200 2>&1 | redact_nodes
+                echo ''
+                echo '=== ceph-csi-controller-manager logs (tail 200) ==='
+                oc logs -n $ns deploy/ceph-csi-controller-manager --tail=200 2>&1 | redact_nodes
+                echo ''
+                echo '=== csi-rbdplugin logs (tail 100) ==='
+                oc logs -n $ns deploy/openshift-storage.rbd.csi.ceph.com-ctrlplugin -c csi-rbdplugin --tail=100 2>&1 | redact_nodes
+                echo ''
+                echo '=== ocs-operator logs (tail 100) ==='
+                oc logs -n $ns deploy/ocs-operator --tail=100 2>&1 | redact_nodes
+            fi
         " > "${OUTPUT_DIR}/cluster/plugin-diagnostics/${ns}.txt" 2>&1 || warn "Could not collect diagnostics for namespace $ns"
     done
 }

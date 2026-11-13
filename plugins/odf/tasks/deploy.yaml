@@ -61,6 +61,14 @@
       register: r_storage_cluster_info
 
   rescue:
+    - name: Gather CephCluster health for the failure message
+      kubernetes.core.k8s_info:
+        api_version: ceph.rook.io/v1
+        kind: CephCluster
+        namespace: openshift-storage
+      register: r_cephcluster_info
+      failed_when: false
+
     - name: External ODF storage failed to initialize
       ansible.builtin.fail:
         msg: |
@@ -71,7 +79,20 @@
 
           Check external Ceph cluster health and verify the connection details in config/plugins/odf.yaml.
 
+          CephCluster health:
+          {% for cephcluster in r_cephcluster_info.resources | default([]) -%}
+          {% set status = cephcluster.get('status', {}) or {} -%}
+          {% set ceph = status.get('ceph', {}) or {} -%}
+          {{ cephcluster.get('metadata', {}).get('name', 'unknown') }}: {{ ceph.get('health', 'unknown') }} (state: {{ status.get('state', 'unknown') }})
+          {% for key, detail in (ceph.get('details', {}) or {}).items() -%}
+          - {{ key }}: {{ detail.get('message', '') }}
+          {% endfor -%}
+          {% else -%}
+          (no CephCluster found)
+          {% endfor %}
+
           Diagnostics:
             oc describe storagecluster ocs-external-storagecluster -n openshift-storage
             oc get pods -n openshift-storage
+            oc get secrets -n openshift-storage | grep rook-csi
             oc logs -n openshift-storage <failing-pod>
