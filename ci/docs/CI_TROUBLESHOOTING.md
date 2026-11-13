@@ -93,7 +93,29 @@ artifacts/
         ├── <pod>_describe.txt  Per-pod describe
         ├── <pod>.log           Per-pod logs, all containers, 2000-line tail (+ _previous.log)
         └── health-instance.txt /health/instance body naming the failing subsystem
+└── managed_sno/                Only when the SNO managed cluster is enabled (additional-sno-vm)
+    ├── logs/                   deploy_sno / verify_sno / verify_sno_update_service step logs
+    ├── state/                  Every run (level: deployment)
+    │   ├── hub/                AgentClusterInstall, ClusterDeployment, Agents, BareMetalHosts,
+    │   │                       InfraEnv, ManagedCluster, add-ons (JSON with status;
+    │   │                       assisted-service signed URLs replaced),
+    │   │                       policy-compliance.txt (policies replicated to the SNO)
+    │   └── sno/                ClusterVersion and ClusterOperators (YAML), nodes, pods
+    └── failure/                On failure only (level: full)
+        ├── hub/                install-events.txt and install-logs.tar (assisted-service),
+        │                       agent-validations.txt, events, logs/ (assisted-service,
+        │                       assisted-image-service, import controller, policy propagator)
+        ├── lz/                 ironic / baremetal-operator container logs
+        ├── vm/                 SNO VM domstate and screenshot.ppm (its screen at collection)
+        ├── sno-host/           Over SSH to core@<SNO IP>: status.txt (cmdline, failed units,
+        │                       containers, network, registries.conf), agent.log, journal.log
+        │                       (assisted-service tokens and signed URLs scrubbed)
+        └── sno/                problem-pods/ (describe, logs, --previous), events, klusterlet
+                                and add-on pod logs, ConfigurationPolicies
 ```
+
+The in-flight sampler also writes `inflight/managed-sno.log` (SNO VM state and SNO API
+latency) on SNO runs, once infrastructure is created.
 
 Security note: `vars.yaml` (pull secrets, Quay admin password) is intentionally **not**
 collected. Secrets appear by name only. The `config/` and `helm-values/` files are passed
@@ -111,6 +133,10 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 | PVC unbound / storage | `cluster/events.txt` (ProvisioningFailed), `cluster/plugin-diagnostics/openshift-storage.txt` (events with node names redacted, StorageCluster/CephCluster state/phase/message/conditions, CSI CRs (ClientProfile phase/message), NooBaa phase/conditions, backingstores, PVCs, ceph-csi-config keys/sizes, ctrlplugin configmap volumes/mounts, rook/ceph-csi/ocs-operator/csi-rbdplugin/noobaa-operator logs, secret names), `cluster/quay-diagnostics-*/overview.txt` (PVCs), `libvirt/` storage |
 | Mirroring / disconnected image pull | `landing-zone/pipeline-logs/` (`oc-mirror*`, `mirroring_errors_*`) |
 | Install never reaches a cluster (no `cluster/` dir) | `landing-zone/.openshift_install.log`, `landing-zone/pipeline-logs/`, `landing-zone/serial-console.log` |
+| SNO agent never discovered (`not discovered, even after a reboot`) | `managed_sno/failure/vm/screenshot.ppm` (where the boot stopped), `managed_sno/failure/sno-host/agent.log` and `journal.log`, `failure/hub/logs/assisted-image-service.log`, `failure/lz/ironic.log` (virtual media insert / power on) |
+| SNO deploy fails with `hub not ready for the SNO install` | the `mcp-busy=… registry=… assisted-service=…` line in `managed_sno/logs/deploy_sno_*.log` shows which part was not ready (a pool still rolling out, the mirror registry not answering `/v2/`, assisted-service down), followed by `oc get mcp`, nodes, Quay pods and assisted-service |
+| SNO managed cluster never installs / never joins ACM | `managed_sno/logs/deploy_sno_*.log`, then `managed_sno/failure/hub/install-events.txt`, `agent-validations.txt`, `managed_sno/state/hub/managedcluster.json` (conditions) and `failure/hub/logs/import-controller.log` |
+| Update service patch missing on the SNO | `managed_sno/state/hub/policy-compliance.txt`, `managed_sno/state/sno/clusterversion.yaml` (`spec.upstream`; its `managedFields` entry names who set it), `managed_sno/failure/sno/configurationpolicies.yaml` |
 | Plugin deploys wrong values / misconfiguration (e.g. a service enabled/disabled unexpectedly, bad hostname) | `landing-zone/config/` (input config, incl. `config/plugins/<plugin>.yaml`), `landing-zone/helm-values/` (what was actually rendered and applied) |
 
 Worked example: an LVMS Quay rollout hang (OSAC-4957) showed only

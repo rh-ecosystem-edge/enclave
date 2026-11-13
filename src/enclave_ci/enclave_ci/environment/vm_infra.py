@@ -49,6 +49,19 @@ SUBNET_LOCK = "/run/lock/enclave-subnet.lock"
 MIN_SUBNET = 2
 MAX_SUBNET = 254
 
+# Static cluster-network lease offsets within 192.168.N.0/24: masters at .{20+i},
+# the additional SNO VM at .30. The gap (10) bounds how many masters can coexist
+# with the SNO VM before their leases would collide; from_env enforces it.
+MASTER_IP_OFFSET = 20
+SNO_VM_IP_OFFSET = 30
+# SNO VM sizing: a single node runs its own control plane plus workloads, and in
+# disconnected mode pulls every image from the hub mirror onto its root disk, so
+# master-class CPU/RAM, a larger root disk and an extra data disk.
+SNO_VM_DEFAULT_MEMORY_MB = 32768
+SNO_VM_DEFAULT_VCPU = 16
+SNO_VM_DEFAULT_DISK_GB = 200
+SNO_VM_DEFAULT_EXTRA_DISK_GB = 200
+
 # Cluster-name prefixes. `eci`/`ecd` (e2e connected/disconnected) and `nc`/`nd`
 # (nightly) are the sanctioned set; CI selects the right one via
 # ENCLAVE_CLUSTER_PREFIX, defaulting to `eci`. This is the single source of the
@@ -63,8 +76,32 @@ _PREFIX_ALT = "|".join(CLUSTER_PREFIXES)
 # <app>.apps.<cluster>.<base_domain>, which must stay within the 253-char DNS limit, so
 # cap the configured zone well below that to leave room for the generated prefixes.
 _MAX_BASE_DOMAIN_LEN = 200
+# RFC 1035 total DNS name limit (textual representation).
+_MAX_DNS_NAME_LEN = 253
 # A single RFC 1035 label: 1-63 chars, alphanumeric, internal hyphens only.
 _DNS_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+
+
+def _check_sno_vm_names(cluster_name: str, base_domain: str) -> None:
+    """Exit unless the derived SNO cluster name and FQDNs are valid DNS names.
+
+    The SNO cluster name is "<cluster>-sno" and must be a single DNS label. Generated
+    cluster names are short by construction, so only an explicitly supplied name can
+    overflow. api-int is the longest record emitted, so it bounds the FQDN length.
+    """
+    sno_label = f"{cluster_name}-sno"
+    if not _DNS_LABEL_RE.fullmatch(sno_label):
+        sys.exit(
+            f"ERROR: derived SNO cluster name {sno_label!r} is not a valid "
+            f"DNS label (<= 63 chars); shorten ENCLAVE_CLUSTER_NAME"
+        )
+    longest_sno_fqdn = f"api-int.{sno_label}.{base_domain or f'{cluster_name}.lab'}"
+    if len(longest_sno_fqdn) > _MAX_DNS_NAME_LEN:
+        sys.exit(
+            f"ERROR: derived SNO DNS name {longest_sno_fqdn!r} exceeds the "
+            f"{_MAX_DNS_NAME_LEN}-char DNS limit; shorten ENCLAVE_CLUSTER_NAME "
+            f"or ENCLAVE_BASE_DOMAIN"
+        )
 
 
 def _is_valid_base_domain(domain: str) -> bool:
@@ -79,7 +116,7 @@ def _is_valid_base_domain(domain: str) -> bool:
 
 @dataclass
 class VMSpec:
-    """Hardware sizing for one VM class (LZ or master)."""
+    """Hardware sizing for one VM class (LZ, master, or SNO VM)."""
 
     memory_mb: int
     vcpu: int
@@ -97,6 +134,10 @@ class Config:
     master: VMSpec
     lz: VMSpec
     storage_plugin: str
+    # Optional additional VM sized and wired for a single-node OpenShift install,
+    # exposed through the same sushy-tools BMC as the masters.
+    additional_sno_vm: bool = False
+    sno_vm: VMSpec | None = None
     # Working dir. None until finalized: on `create` with a generated name it is
     # derived from base_working_dir once the name is known (see finalize_working_dir).
     working_dir: Path | None = None
@@ -113,7 +154,7 @@ class Config:
     subnet_id: int | None = None
 
     @classmethod
-    def from_env(cls, *, generate_name: bool = False) -> Config:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] — pre-existing structure, left unrefactored
+    def from_env(cls, *, generate_name: bool = False) -> Config:  # ruff: ignore[complex-structure, too-many-branches, too-many-locals, too-many-statements] — pre-existing structure, left unrefactored
         """Build Config from environment variables; exits with an error on any missing required var.
 
         generate_name=True (create) makes ENCLAVE_CLUSTER_NAME optional — when unset,
@@ -130,6 +171,15 @@ class Config:
                 return int(raw)
             except ValueError:
                 sys.exit(f"ERROR: {name} must be an integer, got {raw!r}")
+
+        def optbool(name: str, default: bool) -> bool:
+            """Return env var as bool (true/false), falling back to default if unset."""
+            raw = os.environ.get(name, "").strip().lower()
+            if not raw:
+                return default
+            if raw not in {"true", "false"}:
+                sys.exit(f"ERROR: {name} must be 'true' or 'false', got {raw!r}")
+            return raw == "true"
 
         def validate(name: str, value: str, pattern: str) -> str:
             """Reject values that don't match an allow-list regex; exits on mismatch."""
@@ -214,6 +264,27 @@ class Config:
             # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
             default_lz_mem = 16384
 
+        num_masters = optint("ENCLAVE_NUM_MASTERS", 3)
+        additional_sno_vm = optbool("ENCLAVE_ADDITIONAL_SNO_VM", default=False)
+        # Masters lease .{20..20+num_masters-1}; the SNO VM leases .30. Reject a
+        # master count that would push a master onto the SNO VM's address.
+        if additional_sno_vm and MASTER_IP_OFFSET + num_masters > SNO_VM_IP_OFFSET:
+            sys.exit(
+                f"ERROR: ENCLAVE_NUM_MASTERS={num_masters} is too large to add the SNO VM; "
+                f"master leases would overlap its address "
+                f"(max {SNO_VM_IP_OFFSET - MASTER_IP_OFFSET} masters with an SNO VM)"
+            )
+
+        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
+        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap. Read
+        # it before the cluster name so the SNO name check below can use it.
+        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
+        if base_domain and not _is_valid_base_domain(base_domain):
+            sys.exit(
+                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
+                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
+            )
+
         # Cluster name: required for destroy; optional for create, where it is
         # generated under the subnet lock when absent. An explicitly supplied name
         # is always honored (re-create / destroy of a known cluster).
@@ -227,20 +298,14 @@ class Config:
         else:
             sys.exit("ERROR: ENCLAVE_CLUSTER_NAME environment variable is required")
 
+        if additional_sno_vm and cluster_name:
+            _check_sno_vm_names(cluster_name, base_domain)
+
         prefix = os.environ.get("ENCLAVE_CLUSTER_PREFIX", DEFAULT_CLUSTER_PREFIX)
         if prefix not in CLUSTER_PREFIXES:
             sys.exit(
                 f"ERROR: ENCLAVE_CLUSTER_PREFIX={prefix!r} must be one of "
                 f"{', '.join(CLUSTER_PREFIXES)}"
-            )
-
-        # Base domain ends up in cluster-env.sh (sourced/eval'd downstream) and in
-        # DNS/cloud-init; allow-list it to valid DNS labels within a length cap.
-        base_domain = os.environ.get("ENCLAVE_BASE_DOMAIN", "")
-        if base_domain and not _is_valid_base_domain(base_domain):
-            sys.exit(
-                f"ERROR: ENCLAVE_BASE_DOMAIN={base_domain!r} is not a valid domain name "
-                f"(RFC 1035 labels, each 1-63 chars, total <= {_MAX_BASE_DOMAIN_LEN})"
             )
 
         def check_xml_safe(label: str, value: str) -> None:
@@ -287,7 +352,7 @@ class Config:
         return cls(
             cluster_name=cluster_name,
             deployment_mode=deployment_mode,
-            num_masters=optint("ENCLAVE_NUM_MASTERS", 3),
+            num_masters=num_masters,
             master=VMSpec(
                 memory_mb=optint("MASTER_MEMORY", default_master_mem),
                 vcpu=optint("MASTER_VCPU", default_master_vcpu),
@@ -301,6 +366,13 @@ class Config:
                 extra_disk_gb=0,
             ),
             storage_plugin=storage_plugin,
+            additional_sno_vm=additional_sno_vm,
+            sno_vm=VMSpec(
+                memory_mb=optint("SNO_VM_MEMORY", SNO_VM_DEFAULT_MEMORY_MB),
+                vcpu=optint("SNO_VM_VCPU", SNO_VM_DEFAULT_VCPU),
+                disk_gb=optint("SNO_VM_DISK", SNO_VM_DEFAULT_DISK_GB),
+                extra_disk_gb=optint("SNO_VM_EXTRA_DISK", SNO_VM_DEFAULT_EXTRA_DISK_GB),
+            ),
             working_dir=working_dir,
             base_working_dir=base_working_dir,
             prefix=prefix,
@@ -419,7 +491,22 @@ class Config:
         networkConfig (see templates/agent-config.yaml.j2); the matching static
         DHCP lease reserves it so no dynamic client can claim it.
         """
-        return f"192.168.{self._subnet}.{20 + i}"
+        return f"192.168.{self._subnet}.{MASTER_IP_OFFSET + i}"
+
+    @property
+    def sno_vm_cluster_ip(self) -> str:
+        """SNO VM static IP on the cluster bridge (192.168.N.30).
+
+        Sits in the cluster subnet above the masters (.20+) and is reserved by a
+        matching static DHCP lease so no dynamic client can claim it. from_env
+        rejects master counts large enough to push a master lease onto it.
+        """
+        return f"192.168.{self._subnet}.{SNO_VM_IP_OFFSET}"
+
+    @property
+    def sno_vm_cluster_name(self) -> str:
+        """OpenShift cluster name for the SNO VM ({cluster}-sno); FQDNs sit under base_domain."""
+        return f"{self.cluster_name}-sno"
 
     @property
     def rendezvous_ip(self) -> str:
@@ -459,6 +546,25 @@ class Config:
             f"address=/mirror.{b}/{self.lz_cluster_ip}",
             f"address=/api.{c}.{b}/{self.api_vip}",
             f"address=/apps.{c}.{b}/{self.ingress_vip}",
+            *self.sno_vm_dns_addresses,
+        ]
+
+    @property
+    def sno_vm_dns_addresses(self) -> list[str]:
+        """dnsmasq `address=` records for the SNO VM, or [] when it is not created.
+
+        A single node serves both the API and ingress, so api, api-int and the
+        *.apps wildcard of the SNO cluster all resolve to its IP.
+        """
+        if not self.additional_sno_vm:
+            return []
+        b = self.base_domain
+        s = self.sno_vm_cluster_name
+        ip = self.sno_vm_cluster_ip
+        return [
+            f"address=/api.{s}.{b}/{ip}",
+            f"address=/api-int.{s}.{b}/{ip}",
+            f"address=/apps.{s}.{b}/{ip}",
         ]
 
     @property
@@ -489,6 +595,15 @@ class Config:
     def master_vm_name(self, i: int) -> str:
         """Matches dev-scripts naming convention so downstream scripts need no changes."""
         return f"{self.cluster_name}_master_{i}"
+
+    @property
+    def sno_vm_name(self) -> str:
+        """SNO VM domain name ({cluster}_sno).
+
+        Shares the cluster_name prefix so destroy()/reap() tear it down with the
+        rest of the cluster.
+        """
+        return f"{self.cluster_name}_sno"
 
     @property
     def all_bridges(self) -> list[str]:
@@ -550,6 +665,9 @@ def generate_macs(cfg: Config) -> dict[str, dict[str, str]]:
     }
     for i in range(cfg.num_masters):
         name = cfg.master_vm_name(i)
+        macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
+    if cfg.additional_sno_vm:
+        name = cfg.sno_vm_name
         macs[name] = {nic: assign(name, nic) for nic in ("bmc", "cluster")}
     return macs
 
@@ -937,6 +1055,22 @@ def _cluster_env_lines(cfg: Config, macs: dict[str, dict[str, str]]) -> list[str
             (f"ENCLAVE_MASTER_{i}_CLUSTER_IP", cfg.master_cluster_ip(i)),
             (f"ENCLAVE_MASTER_{i}_UUID", vm_uuid(cfg.cluster_name, name)),
         ]
+    # Additional SNO VM. ENABLED is always emitted so downstream can branch on it;
+    # identity follows only when the VM is created. It reuses ENCLAVE_BMC_ENDPOINT
+    # and ENCLAVE_BASE_DOMAIN (already emitted).
+    pairs.append((
+        "ENCLAVE_SNO_VM_ENABLED",
+        "true" if cfg.additional_sno_vm else "false",
+    ))
+    if cfg.additional_sno_vm:
+        name = cfg.sno_vm_name
+        pairs += [
+            ("ENCLAVE_SNO_VM_NAME", name),
+            ("ENCLAVE_SNO_VM_CLUSTER_NAME", cfg.sno_vm_cluster_name),
+            ("ENCLAVE_SNO_VM_CLUSTER_MAC", macs[name]["cluster"]),
+            ("ENCLAVE_SNO_VM_CLUSTER_IP", cfg.sno_vm_cluster_ip),
+            ("ENCLAVE_SNO_VM_UUID", vm_uuid(cfg.cluster_name, name)),
+        ]
     return [f"export {key}={shlex.quote(value)}" for key, value in pairs]
 
 
@@ -984,6 +1118,12 @@ def _create_networks(
         }
         for i in range(cfg.num_masters)
     ]
+    if cfg.additional_sno_vm:
+        cluster_hosts.append({
+            "mac": macs[cfg.sno_vm_name]["cluster"],
+            "name": "sno",
+            "ip": cfg.sno_vm_cluster_ip,
+        })
     cluster_net_kwargs: dict[str, object] = {
         "name": cfg.cluster_bridge,
         "forward_mode": "none" if cfg.deployment_mode == "disconnected" else "nat",
@@ -1124,12 +1264,47 @@ def create(cfg: Config) -> None:
             name,
         )
 
+    # Additional SNO VM. Same shape as a master — empty cdrom, cdrom-first boot — so
+    # an ISO can be mounted as Redfish virtual media via the shared sushy-tools BMC.
+    if cfg.additional_sno_vm and cfg.sno_vm is not None:
+        name = cfg.sno_vm_name
+        vol = f"{name}.qcow2"
+        extra_path = cfg.pool_dir / f"{name}-extra.img"
+        _create_volume(conn, cfg, vol, cfg.sno_vm.disk_gb)
+        if cfg.sno_vm.extra_disk_gb > 0 and not extra_path.exists():
+            _create_sparse_file(extra_path, cfg.sno_vm.extra_disk_gb)
+        sno_vm_nics = [
+            {"mac": macs[name]["bmc"], "network": cfg.bmc_bridge},
+            {"mac": macs[name]["cluster"], "network": cfg.cluster_bridge},
+        ]
+        _define_domain(
+            conn,
+            render(
+                "domain.xml.j2",
+                name=name,
+                uuid=vm_uuid(cfg.cluster_name, name),
+                memory_kb=cfg.sno_vm.memory_mb * 1024,
+                vcpu=cfg.sno_vm.vcpu,
+                pool_path=str(cfg.pool_dir),
+                vol_name=vol,
+                nics=sno_vm_nics,
+                extra_disk_path=str(extra_path) if cfg.sno_vm.extra_disk_gb > 0 else "",
+                cdrom_path="",
+                boot_order=["cdrom", "hd"],
+            ),
+            name,
+        )
+
     LOG.info("=== Infrastructure created for cluster: %s ===", cfg.cluster_name)
     LOG.info("  BMC bridge:     %s  (%s)", cfg.bmc_bridge, cfg.bmc_gateway)
     LOG.info("  Cluster bridge: %s  (%s)", cfg.cluster_bridge, cfg.cluster_gateway)
     if cfg.uplink_bridge:
         LOG.info("  Uplink bridge:  %s  (%s)", cfg.uplink_bridge, cfg.uplink_gateway)
-    LOG.info("  VMs: 1 LZ + %d masters (all defined, not started)", cfg.num_masters)
+    LOG.info(
+        "  VMs: 1 LZ + %d masters%s (all defined, not started)",
+        cfg.num_masters,
+        " + 1 SNO VM" if cfg.additional_sno_vm else "",
+    )
 
 
 # ─── Destroy ──────────────────────────────────────────────────────────────────
@@ -1226,9 +1401,11 @@ def destroy(cfg: Config) -> None:  # ruff: ignore[complex-structure, too-many-br
 
 # CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
 # 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is
-# the dev-scripts VM naming convention (landingzone_0 / master_N).
+# the dev-scripts VM naming convention (landingzone_0 / master_N) plus the
+# additional SNO VM (sno), which must be matched so a cluster left with only that
+# VM is still discovered and reaped rather than leaking on a shared host.
 _CI_DOMAIN_RE = re.compile(
-    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+)$"
+    rf"^((?:{_PREFIX_ALT})-(?:[0-9a-f]{{8}}|\d{{8}}))_(?:landingzone_0|master_\d+|sno)$"
 )
 # A CI storage pool: the exact cluster token, optionally followed by a numeric
 # suffix (virt-install appends "-1", "-2", … when it auto-creates a pool for the

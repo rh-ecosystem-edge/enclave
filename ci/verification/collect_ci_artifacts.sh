@@ -358,6 +358,14 @@ scp_lz() {
     timeout -k 10 "${LZ_CMD_TIMEOUT:-300}" scp "${LZ_SSH_OPTS[@]}" "$@"
 }
 
+# ssh_lz_script <lz_ip> <remote-env> -- runs the script read from stdin on the LZ
+# (bash -s), with the same deadline as ssh_lz. For multi-line remote scripts that
+# would be unreadable as an escaped string.
+ssh_lz_script() {
+    local lz_ip="$1" remote_env="$2"
+    timeout -k 10 "${LZ_CMD_TIMEOUT:-120}" ssh "${LZ_SSH_OPTS[@]}" cloud-user@"$lz_ip" "${remote_env} bash -s"
+}
+
 #####################################
 # LANDING ZONE COLLECTION FUNCTIONS
 #####################################
@@ -1020,6 +1028,194 @@ collect_cluster_plugin_diagnostics() {
 }
 
 #####################################
+# MANAGED SNO COLLECTION FUNCTIONS
+#####################################
+# Diagnostics for the SNO managed cluster on the additional SNO VM, under
+# managed_sno/. State is collected on every run so green and red runs can be
+# compared; logs and deeper detail only on failure. The SNO admin kubeconfig is
+# used on the LZ only and never copied into the bundle.
+
+managed_sno_enabled() {
+    [ "${ENCLAVE_SNO_VM_ENABLED:-false}" = "true" ] && [ -n "${ENCLAVE_SNO_VM_CLUSTER_NAME:-}" ]
+}
+
+# fetch_managed_sno_dir <lz_ip> <remote_dir_name> <local_subdir>
+fetch_managed_sno_dir() {
+    local lz_ip="$1" name="$2" dest="${OUTPUT_DIR}/managed_sno/$3"
+    mkdir -p "$dest"
+    if scp_lz cloud-user@"$lz_ip":"/tmp/${name}.tar.gz" "$dest/" 2>/dev/null; then
+        (cd "$dest" && tar xzf "${name}.tar.gz" --strip-components=1 && rm "${name}.tar.gz") \
+            || warn "Failed to extract ${name}"
+    else
+        warn "Could not download ${name}"
+    fi
+    ssh_lz "$lz_ip" "rm -rf /tmp/${name} /tmp/${name}.tar.gz" >/dev/null 2>&1 || true
+}
+
+collect_managed_sno_logs() {
+    # Step logs written by the SNO CI scripts in the runner workspace.
+    mkdir -p "${OUTPUT_DIR}/managed_sno/logs"
+    shopt -s nullglob
+    local f
+    for f in deploy_sno_*.log verify_sno_*.log; do
+        cp "$f" "${OUTPUT_DIR}/managed_sno/logs/" || true
+    done
+    shopt -u nullglob
+}
+
+collect_managed_sno_state() {
+    local lz_ip="$1"
+    local name="managed-sno-state-${TIMESTAMP}"
+
+    info "Collecting managed SNO state (hub and SNO)..."
+    LZ_CMD_TIMEOUT=600 ssh_lz_script "$lz_ip" "SNO=${ENCLAVE_SNO_VM_CLUSTER_NAME} OUT=/tmp/${name}" <<'REMOTE' \
+        || warn "Could not collect managed SNO state"
+set -uo pipefail
+export PATH="/home/cloud-user/sessions/1/bin:${PATH}"
+HUB="/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig"
+SNO_KC="/home/cloud-user/sessions/1/${SNO}-kubeconfig"
+hub() { oc --kubeconfig "$HUB" --request-timeout=30s "$@"; }
+sno() { oc --kubeconfig "$SNO_KC" --request-timeout=30s "$@"; }
+# Assisted-service signed URLs (install events/logs, ISO, initrd, discovery
+# ignition) carry access tokens; replace them in the dumps.
+hubj() { hub "$@" -o json | jq 'walk(if type == "string" and test("api_key=|/byapikey/") then "REDACTED-signed-url" else . end)'; }
+mkdir -p "$OUT/hub" "$OUT/sno"
+
+# Hub: every resource involved in discovery, install and import, with status.
+hubj -n "$SNO" get agentclusterinstall "$SNO" > "$OUT/hub/agentclusterinstall.json" 2>&1
+hubj -n "$SNO" get clusterdeployment "$SNO" > "$OUT/hub/clusterdeployment.json" 2>&1
+hubj -n infraenv get agent > "$OUT/hub/agents.json" 2>&1
+hubj -n infraenv get bmh > "$OUT/hub/baremetalhosts.json" 2>&1
+hubj -n infraenv get infraenv > "$OUT/hub/infraenvs.json" 2>&1
+hubj get managedcluster "$SNO" > "$OUT/hub/managedcluster.json" 2>&1
+hubj -n "$SNO" get managedclusteraddons > "$OUT/hub/managedclusteraddons.json" 2>&1
+hubj -n "$SNO" get klusterletaddonconfig "$SNO" > "$OUT/hub/klusterletaddonconfig.json" 2>&1
+{
+    echo "=== Policies replicated to ${SNO} ==="
+    hub -n "$SNO" get policy -o wide
+    echo ""
+    echo "=== Per-template compliance ==="
+    hub -n "$SNO" get policy -o json | jq -r '.items[] | .metadata.name as $p
+        | (.status.details // [])[] | "\($p) / \(.templateMeta.name): \(.compliant // "?") - \(.history[0].message // "")"'
+} > "$OUT/hub/policy-compliance.txt" 2>&1
+
+# SNO: cluster state, only once the install has produced a kubeconfig.
+if [ -f "$SNO_KC" ]; then
+    sno get clusterversion version --show-managed-fields -o yaml > "$OUT/sno/clusterversion.yaml" 2>&1
+    sno get clusteroperators -o yaml > "$OUT/sno/clusteroperators.yaml" 2>&1
+    {
+        echo "=== Cluster operators ==="; sno get clusteroperators
+        echo ""; echo "=== Nodes ==="; sno get nodes -o wide
+        echo ""; echo "=== Pods ==="; sno get pods -A -o wide
+    } > "$OUT/sno/status.txt" 2>&1
+else
+    echo "SNO kubeconfig not found (install did not complete)" > "$OUT/sno/README.txt"
+fi
+
+tar czf "${OUT}.tar.gz" -C /tmp "$(basename "$OUT")"
+REMOTE
+    fetch_managed_sno_dir "$lz_ip" "$name" "state"
+}
+
+collect_managed_sno_failure() {
+    local lz_ip="$1"
+    local name="managed-sno-failure-${TIMESTAMP}"
+
+    info "Collecting managed SNO failure diagnostics..."
+    # Runner: what the SNO VM shows on its screen (e.g. a boot stuck before the agent).
+    local vm_dir="${OUTPUT_DIR}/managed_sno/failure/vm"
+    mkdir -p "$vm_dir"
+    if [ -n "${ENCLAVE_SNO_VM_NAME:-}" ]; then
+        timeout 30 sudo -n virsh domstate "$ENCLAVE_SNO_VM_NAME" --reason > "$vm_dir/domstate.txt" 2>&1 || true
+        if timeout 30 sudo -n virsh screenshot "$ENCLAVE_SNO_VM_NAME" "$vm_dir/screenshot.ppm" >/dev/null 2>&1; then
+            sudo -n chown "$(id -u):$(id -g)" "$vm_dir/screenshot.ppm" 2>/dev/null || true
+        else
+            warn "Could not take a screenshot of ${ENCLAVE_SNO_VM_NAME}"
+        fi
+    fi
+
+    LZ_CMD_TIMEOUT=900 ssh_lz_script "$lz_ip" "SNO=${ENCLAVE_SNO_VM_CLUSTER_NAME} SNO_IP=${ENCLAVE_SNO_VM_CLUSTER_IP:-} OUT=/tmp/${name}" <<'REMOTE' \
+        || warn "Could not collect managed SNO failure diagnostics"
+set -uo pipefail
+export PATH="/home/cloud-user/sessions/1/bin:${PATH}"
+HUB="/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig"
+SNO_KC="/home/cloud-user/sessions/1/${SNO}-kubeconfig"
+hub() { oc --kubeconfig "$HUB" --request-timeout=30s "$@"; }
+sno() { oc --kubeconfig "$SNO_KC" --request-timeout=30s "$@"; }
+mkdir -p "$OUT/hub/logs" "$OUT/sno/problem-pods" "$OUT/lz" "$OUT/sno-host"
+
+# Hub: assisted-service install events and logs bundle (served by assisted-service).
+EVENTS_URL=$(hub -n "$SNO" get agentclusterinstall "$SNO" -o jsonpath='{.status.debugInfo.eventsURL}' 2>/dev/null)
+LOGS_URL=$(hub -n "$SNO" get agentclusterinstall "$SNO" -o jsonpath='{.status.debugInfo.logsURL}' 2>/dev/null)
+[ -n "$EVENTS_URL" ] && curl -sk --max-time 60 "$EVENTS_URL" \
+    | jq -r '.[] | "\(.event_time) \(.severity) \(.message)"' > "$OUT/hub/install-events.txt" 2>&1
+[ -n "$LOGS_URL" ] && curl -sk --max-time 300 -o "$OUT/hub/install-logs.tar" "$LOGS_URL"
+
+# Hub: Agent validations and events in both namespaces.
+hub -n infraenv get agent -o json | jq -r '.items[] | .metadata.name as $a
+    | (.status.validationsInfo // {} | to_entries[] | .value[] | "\($a) \(.id): \(.status) - \(.message)")' \
+    > "$OUT/hub/agent-validations.txt" 2>&1
+for ns in infraenv "$SNO"; do
+    hub -n "$ns" get events --sort-by=.lastTimestamp > "$OUT/hub/events-${ns}.txt" 2>&1
+done
+
+# Hub: controllers involved in install, import and policy delivery.
+hub -n multicluster-engine logs deploy/assisted-service --all-containers --tail=3000 > "$OUT/hub/logs/assisted-service.log" 2>&1
+hub -n multicluster-engine logs deploy/managedcluster-import-controller-v2 --tail=2000 > "$OUT/hub/logs/import-controller.log" 2>&1
+hub -n open-cluster-management logs deploy/grc-policy-propagator --all-containers --tail=2000 > "$OUT/hub/logs/policy-propagator.log" 2>&1
+hub -n multicluster-engine logs statefulset/assisted-image-service --all-containers --tail=3000 > "$OUT/hub/logs/assisted-image-service.log" 2>&1
+
+# SNO host over SSH (the InfraEnv/install key): works from discovery onwards, before
+# any kubeconfig exists, so a host that never registers still shows why.
+if [ -n "$SNO_IP" ]; then
+    HOST_SSH=(ssh -i /home/cloud-user/sessions/1/.ssh/id_rsa -o StrictHostKeyChecking=no
+        -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 -o BatchMode=yes "core@${SNO_IP}")
+    timeout 60 "${HOST_SSH[@]}" 'set -x; cat /proc/cmdline; uptime; systemctl --failed --no-pager;
+        sudo podman ps -a; ip -br addr; cat /etc/resolv.conf; cat /etc/containers/registries.conf' \
+        > "$OUT/sno-host/status.txt" 2>&1
+    timeout 120 "${HOST_SSH[@]}" 'sudo journalctl -b --no-pager -u agent.service' \
+        > "$OUT/sno-host/agent.log" 2>&1
+    timeout 120 "${HOST_SSH[@]}" 'sudo journalctl -b --no-pager | tail -5000' \
+        > "$OUT/sno-host/journal.log" 2>&1
+    # Assisted-service URLs and the agent token carry credentials; scrub them.
+    sed -i -E 's#(api_key=)[^&"[:space:]]+#\1REDACTED#g; s#(/byapikey/)[^/"[:space:]]+#\1REDACTED#g;
+        s#(PULL_SECRET_TOKEN=)[^"[:space:]]+#\1REDACTED#g; s#([Bb]earer )[^"[:space:]]+#\1REDACTED#g' \
+        "$OUT"/sno-host/*
+fi
+
+# Landing Zone: Ironic and the BareMetal Operator run as quadlet containers.
+for c in ironic baremetal-operator; do
+    sudo podman logs --tail 3000 "$c" > "$OUT/lz/${c}.log" 2>&1
+done
+
+# SNO: problem pods (describe + logs incl. --previous), events, ACM agents.
+if [ -f "$SNO_KC" ]; then
+    sno get pods -A -o json | jq -r '.items[]
+        | select(.status.phase != "Running" and .status.phase != "Succeeded"
+                 or any((.status.containerStatuses // [])[]; .state.waiting != null or .restartCount >= 3))
+        | "\(.metadata.namespace)/\(.metadata.name)"' | head -40 | while read -r pod; do
+        ns=${pod%/*}; n=${pod#*/}
+        sno -n "$ns" describe pod "$n" > "$OUT/sno/problem-pods/${ns}_${n}_describe.txt" 2>&1
+        sno -n "$ns" logs "$n" --all-containers --prefix --tail=1000 > "$OUT/sno/problem-pods/${ns}_${n}.log" 2>&1
+        sno -n "$ns" logs "$n" --all-containers --prefix --tail=1000 --previous > "$OUT/sno/problem-pods/${ns}_${n}_previous.log" 2>&1
+    done
+    sno get events -A --sort-by=.lastTimestamp > "$OUT/sno/events.txt" 2>&1
+    for ns in open-cluster-management-agent open-cluster-management-agent-addon; do
+        mkdir -p "$OUT/sno/$ns"
+        sno -n "$ns" get pods -o wide > "$OUT/sno/$ns/pods.txt" 2>&1
+        for p in $(sno -n "$ns" get pods -o name 2>/dev/null); do
+            sno -n "$ns" logs "$p" --all-containers --prefix --tail=2000 > "$OUT/sno/$ns/${p#pod/}.log" 2>&1
+        done
+    done
+    sno get configurationpolicy -A -o yaml > "$OUT/sno/configurationpolicies.yaml" 2>&1
+fi
+
+tar czf "${OUT}.tar.gz" -C /tmp "$(basename "$OUT")"
+REMOTE
+    fetch_managed_sno_dir "$lz_ip" "$name" "failure"
+}
+
+#####################################
 # COLLECTION LEVEL ORCHESTRATION
 #####################################
 
@@ -1113,6 +1309,11 @@ collect_deployment() {
     collect_lz_services "$lz_ip"
     collect_lz_registry "$lz_ip"
 
+    if managed_sno_enabled; then
+        collect_managed_sno_logs
+        collect_managed_sno_state "$lz_ip"
+    fi
+
     info "✓ Deployment collection complete"
 }
 
@@ -1144,6 +1345,10 @@ collect_full() {
     collect_cluster_problem_pod_logs "$lz_ip"
     collect_cluster_quay_diagnostics "$lz_ip"
     collect_cluster_plugin_diagnostics "$lz_ip"
+
+    if managed_sno_enabled; then
+        collect_managed_sno_failure "$lz_ip"
+    fi
 
     info "✓ Full collection complete"
 }

@@ -22,10 +22,10 @@ include Makefile
         validate-migrations validate-python validate-osac-values \
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
-        deploy-cluster-write-migration-tasks deploy-cluster-plugins \
+        deploy-cluster-write-migration-tasks deploy-cluster-plugins deploy-sno \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph \
-        verify clean verify-cluster osac-smoke \
+        verify clean verify-cluster verify-sno verify-sno-update-service osac-smoke \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
 	generate-ironic-cert clean-infra reap-stale-vms start-stopped-runners \
@@ -76,6 +76,8 @@ help:
 	@echo ""
 	@echo "CI Verification targets:"
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
+	@echo "  make -f Makefile.ci verify-sno                       - Verify the SNO managed cluster and its ACM import"
+	@echo "  make -f Makefile.ci verify-sno-update-service        - Verify the update service policy patched the SNO"
 	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
 	@echo ""
 	@echo "CI Helper targets:"
@@ -103,6 +105,7 @@ help:
 	@echo "  make -f Makefile.ci deploy-cluster-day2              - Day-2 operations"
 	@echo "  make -f Makefile.ci deploy-cluster-discovery              - Configure hardware discovery"
 	@echo "  make -f Makefile.ci deploy-cluster-write-migration-tasks  - Seed migration control file"
+	@echo "  make -f Makefile.ci deploy-sno                            - Deploy the SNO managed cluster and import it into ACM"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -232,6 +235,9 @@ deploy-cluster-discovery:
 
 deploy-cluster-write-migration-tasks:
 	@./ci/deployment/deploy_bootstrap_step.sh write-migration-tasks
+
+deploy-sno:
+	@./ci/deployment/deploy_sno.sh
 
 deploy-plugin:
 	@./ci/deployment/deploy_plugin.sh $(PLUGIN)
@@ -438,6 +444,12 @@ clean: clean-infra
 # Verification targets
 verify-cluster:
 	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_cluster.sh
+
+verify-sno:
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_sno.sh
+
+verify-sno-update-service:
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_sno_update_service.sh
 
 # OSAC CLI post-install smoke test (connected environments only). Exercises the
 # fulfillment API end-to-end through its route via the osac CLI on the LZ.

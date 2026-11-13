@@ -1,6 +1,7 @@
 name: Check if E2E is needed
 description: >-
-  Decide whether an E2E run should proceed and which storage plugin to use.
+  Decide whether an E2E run should proceed, which storage plugin to use, and
+  whether to add the SNO managed cluster.
   Shared by the e2e-connected and e2e-disconnected workflows via the single-mode
   reusable workflow, so the paths-filter and decision logic live in one place.
 
@@ -16,6 +17,10 @@ inputs:
     description: 'Run regardless of changed files (set for schedule/dispatch/merge_group/callers)'
     required: false
     default: 'false'
+  additional-sno-vm:
+    description: 'Explicitly add the SNO managed cluster (true = always; false = auto-decide from changed files)'
+    required: false
+    default: 'false'
 
 outputs:
   should_run:
@@ -24,6 +29,9 @@ outputs:
   storage_plugins:
     description: 'JSON array with the single storage plugin for the job matrix'
     value: ${{ steps.decision.outputs.storage_plugins }}
+  additional_sno_vm:
+    description: 'Whether to add the SNO managed cluster (true/false)'
+    value: ${{ steps.decision.outputs.additional_sno_vm }}
 
 runs:
   using: composite
@@ -73,6 +81,17 @@ runs:
           odf:
             - 'plugins/odf/**'
             - 'ci/infrastructure/setup_ceph*'
+          # The SNO job is the only one that discovers a real host and checks the
+          # update service policy on a managed cluster, so discovery changes
+          # (node-management plugin, phase 07 until it moves) and that policy trigger it too.
+          sno:
+            - 'ci/deployment/deploy_sno.sh'
+            - 'ci/verification/verify_sno*.sh'
+            - 'src/enclave_ci/enclave_ci/environment/vm_infra.py'
+            - 'ci/infrastructure/generate_enclave_vars.sh'
+            - 'plugins/node-management/**'
+            - 'playbooks/07-configure-discovery.yaml'
+            - 'operators/cincinnati-operator/**'
 
     # ci/** changes, each excluding its own documentation
     # (ci/docs/**). Uses the "every" quantifier so a file
@@ -97,10 +116,12 @@ runs:
       env:
         MODE: ${{ inputs.mode }}
         INPUT_PLUGIN: ${{ inputs.storage-plugin }}
+        INPUT_SNO: ${{ inputs.additional-sno-vm }}
         FORCE_RUN: ${{ inputs.force-run }}
         FILTER_E2E: ${{ steps.filter.outputs.e2e }}
         FILTER_CI: ${{ steps.filter_ci.outputs.ci }}
         FILTER_ODF: ${{ steps.filter.outputs.odf }}
+        FILTER_SNO: ${{ steps.filter.outputs.sno }}
       run: |
         # should_run: force-run always runs; otherwise run when E2E-relevant
         # files or ci scripts changed. storage_plugins is a single-element JSON
@@ -130,10 +151,25 @@ runs:
           PLUGIN="lvms"
         fi
 
+        # SNO managed cluster: explicit input wins; else disconnected adds it when
+        # SNO-relevant files changed (PR path only). The SNO path is
+        # disconnected-only (assisted-service is only configured there).
+        if [ "$INPUT_SNO" = "true" ]; then
+          SNO=true
+        elif [ "$MODE" = "disconnected" ] && [ "$FORCE_RUN" != "true" ] && [ "$FILTER_SNO" = "true" ]; then
+          SNO=true
+        else
+          SNO=false
+        fi
+        if [ "$MODE" = "connected" ]; then
+          SNO=false
+        fi
+
         echo "should_run=${SHOULD_RUN}" >> "$GITHUB_OUTPUT"
         echo "storage_plugins=[\"${PLUGIN}\"]" >> "$GITHUB_OUTPUT"
+        echo "additional_sno_vm=${SNO}" >> "$GITHUB_OUTPUT"
 
-        echo "E2E decision (${MODE}): should_run=${SHOULD_RUN} (${REASON}), storage plugin=${PLUGIN}" \
+        echo "E2E decision (${MODE}): should_run=${SHOULD_RUN} (${REASON}), storage plugin=${PLUGIN}, SNO managed cluster=${SNO}" \
           | tee -a "$GITHUB_STEP_SUMMARY"
         if [ "$SHOULD_RUN" = "false" ]; then
           echo "To run E2E anyway, use manual workflow_dispatch" | tee -a "$GITHUB_STEP_SUMMARY"
