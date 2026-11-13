@@ -114,6 +114,7 @@
           --log-level {{ ocMirrorLogLevel }} \
           --authfile {{ pullSecretPath }} \
           --ignore-release-signature \
+          --remove-signatures=false \
           --src-tls-verify=false \
           --dest-tls-verify=false \
           -c {{ workingDir }}/config/imagesetconfiguration.yaml \
