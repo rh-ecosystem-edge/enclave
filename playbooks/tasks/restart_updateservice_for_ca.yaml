@@ -1,0 +1,27 @@
+---
+# Restart the UpdateService so it reloads the registry CA, only when
+# trust_quay_registry_ca_for_image_config.yaml changed the CA. A needless restart right
+# before a MachineConfig rollout can leave its only ready replica on a draining node,
+# where its PodDisruptionBudget blocks the drain; callers that roll out (the Quay mirror
+# step, plugin mirroring) defer this until the rollout has settled. NotFound
+# (UpdateService not created yet) is fine.
+- name: Restart UpdateService deployment to reload registry CA trust
+  when: >-
+    (r_quay_ca_configmap | default({}) is changed)
+    or (r_quay_ca_existing_configmap | default({}) is changed)
+    or (r_quay_ca_image_config | default({}) is changed)
+  ansible.builtin.command:
+    argv:
+      - "{{ workingDir }}/bin/oc"
+      - rollout
+      - restart
+      - deployment/service
+      - -n
+      - openshift-update-service
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_updateservice_rollout_restart
+  changed_when: r_updateservice_rollout_restart.rc == 0
+  failed_when:
+    - r_updateservice_rollout_restart.rc != 0
+    - '"not found" not in r_updateservice_rollout_restart.stderr | lower'

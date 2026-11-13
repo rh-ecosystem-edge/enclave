@@ -3,7 +3,8 @@
 # Routes signed by the ingress router CA use router-ca; externally signed routes
 # (for example ZeroSSL) use the intermediate/root CAs fetched from the live chain.
 # OSUS graph-builder reads updateservice-registry from the image.config additionalTrustedCA
-# ConfigMap; nodes use the registry hostname key.
+# ConfigMap; nodes use the registry hostname key. Restarts the UpdateService when the CA
+# changed, unless the caller defers it (quay_ca_defer_updateservice_restart).
 
 - name: Set Quay registry hostname for image trust
   ansible.builtin.set_fact:
@@ -55,6 +56,7 @@
       data: "{{ quay_registry_ca_configmap_data }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_configmap
 
 - name: Add Quay registry CA to existing additionalTrustedCA ConfigMap
   when:
@@ -71,6 +73,7 @@
       data: "{{ quay_registry_ca_configmap_data }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_existing_configmap
 
 - name: Patch image config to reference Quay registry CA ConfigMap
   when:
@@ -89,18 +92,10 @@
           name: "{{ quayRegistryCAConfigmapName }}"
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_image_config
 
+# Callers that trigger a MachineConfig rollout set quay_ca_defer_updateservice_restart and
+# include restart_updateservice_for_ca.yaml after the rollout has settled.
 - name: Restart UpdateService deployment to reload registry CA trust
-  ansible.builtin.command:
-    argv:
-      - "{{ workingDir }}/bin/oc"
-      - rollout
-      - restart
-      - deployment/service
-      - -n
-      - openshift-update-service
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_updateservice_rollout_restart
-  changed_when: r_updateservice_rollout_restart.rc == 0
-  failed_when: false
+  ansible.builtin.include_tasks: restart_updateservice_for_ca.yaml
+  when: not (quay_ca_defer_updateservice_restart | default(false) | bool)

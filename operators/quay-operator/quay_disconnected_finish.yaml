@@ -1,6 +1,8 @@
 ---
-# Quay disconnected finish: wait for oc-mirror, apply IDMS/ITMS and registry CA trust,
-# then optionally generate/apply master PinnedImageSet (post-mirror so prefetch trusts Quay).
+# Quay disconnected finish: wait for oc-mirror, apply IDMS/ITMS and registry CA trust
+# (waiting for the MCO rollout, with the UpdateService on one replica on LVMS, then
+# restarting it if the CA changed), then optionally generate/apply master PinnedImageSet
+# (post-mirror so prefetch trusts Quay).
 # PinnedImageSet is skipped when mirror_dry_run or quayPinnedImageSetEnabled is false.
 
 - name: Wait for async oc-mirror to quay
