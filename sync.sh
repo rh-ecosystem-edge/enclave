@@ -99,6 +99,7 @@ echo "Checking cluster session .. " | tee -a ${log}
 step_done
 
 echo "Configuring environment .. "  | tee -a ${log}
+    bash ./scripts/validation/check_tmp_exec.sh
     sudo bash -e ./setup_env.sh 2>&1 | tee -a ${log}
     bash -e ./setup_ansible.sh 2>&1 | tee -a ${log}
 step_done
