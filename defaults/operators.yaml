@@ -16,7 +16,7 @@ operators:
     connected_auto: true
 
   - name: advanced-cluster-management
-    version: 2.17.3
+    version: 2.17.4
     channel: release-2.17
     init_version: 2.17.3
     namespace: open-cluster-management
