@@ -14,7 +14,7 @@ cloud_infra_vars=config/cloud_infra.yaml
 
 getValue(){
     python -c 'import sys, yaml, json; print(json.dumps(yaml.safe_load(sys.stdin)))' < $vars_rendered \
-        | jq -r $1
+        | jq "${2:--r}" "$1"
 }
 toYaml(){
     python -c 'import sys, yaml, json; print(yaml.dump(json.load(sys.stdin), default_flow_style=False))'
@@ -235,6 +235,15 @@ if ! ip -o a | awk '{print $4}' | cut -d/ -f1 | grep -qx $mirror_ip; then
     validation fail quay_hostname "$quayHostname_dns is not pointing to an IP address of the Landing Zone" "$quayHostname_dns points to $mirror_ip"
 fi
 validation pass quay_hostname "$quayHostname_dns points to $mirror_ip and Landing Zone has that IP"
+
+## Configured NTP sources (Landing Zone vantage only)
+validation_section ntp
+if ntp_result=$(getValue .defaultNtpServers -c | bash ./scripts/validation/check_ntp.sh); then
+    printf '%s\n' "$ntp_result" | pr -T -o 8
+else
+    printf '%s\n' "$ntp_result" | pr -T -o 8
+    exit 1
+fi
 
 ## Pull Secret
 validation_section pull_secret

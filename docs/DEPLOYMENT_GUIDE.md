@@ -1,5 +1,27 @@
 # Enclave Lab Deployment Guide
 
+## Configured NTP response validation
+
+`defaultNtpServers` is queried source by source from the Landing Zone during
+configuration validation. Each query uses only one `server` command-line
+directive, so chronyd does not read the host's normal configuration or query
+fallback pools. Only hostnames and IP addresses are accepted, not chrony options.
+Queries use `chronyd -Q -t 10 -u <invoking-user>` with a 15-second outer limit.
+The explicit user avoids a distribution-specific daemon-user privilege switch.
+
+[chronyd's official manual](https://chrony-project.org/doc/4.6.1/chronyd.html)
+documents that command-line directives replace configuration-file loading,
+`-Q` measures without correcting the clock or opening server ports (non-root
+operation is supported), and `-t` returns failure on timeout. No service is
+restarted and no clock is changed. Setup installs the `chrony` prerequisite;
+standalone validation without it reports NOT TESTED and exits unsuccessfully.
+An empty or absent list reports SKIP without contacting any public server.
+PASS means a usable response from the Landing Zone, not proof of node UDP/123
+reachability. FAIL can mean DNS, connectivity, or an unsynchronized source.
+Normal reports identify sources by their one-based configured-list index, not
+their hostname or address. JSON strings such as `"null"` and `"[]"` are invalid
+configuration, not an absent or empty list.
+
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
 ## Table of Contents
