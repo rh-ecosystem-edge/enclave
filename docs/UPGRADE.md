@@ -44,6 +44,12 @@ Each Enclave tarball release includes:
 5. **Validate configuration** - Ensure your configs are compatible with new release
 6. **Sync content** - Run sync process to mirror new versions (disconnected mode)
 
+    Before running `./sync.sh`, ensure `defaultDNS` in `config/global.yaml` matches
+    one of the detected Landing Zone DNS addresses (`/etc/resolv.conf` nameserver
+    entries, or `resolvectl status` **Current DNS Server** entries when using the
+    active systemd-resolved stub). Align the configuration with the intended
+    deployment DNS before proceeding.
+
     ```sh
     ./sync.sh
     ```
