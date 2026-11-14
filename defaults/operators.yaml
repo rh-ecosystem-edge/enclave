@@ -83,7 +83,7 @@ operators:
       - cert-manager-operator
 
   - name: cluster-observability-operator
-    version: 1.5.4
+    version: 1.5.5
     channel: stable
     init_version: 1.5.3
     namespace: openshift-cluster-observability-operator
