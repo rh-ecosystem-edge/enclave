@@ -1,5 +1,257 @@
 # Enclave Lab Deployment Guide
 
+## Directional node network validation
+
+Phase 3 checks TCP paths **from each node**, not just from the Landing Zone.
+Before releasing the installation gate, disconnected installations require
+node-to-`quayHostname:8443` connectivity. Connected installations skip that mirror;
+the optional Landing Zone HTTP/80 service is not made a node requirement.
+API, etcd, and ingress paths are explicitly NOT TESTED until after installation.
+
+After install-complete, checks cover each node to API VIP/6443 and ingress
+VIP/80,443, plus each control-plane node to every other peer on 2379 and 2380.
+The supported topology is the existing three control-plane nodes. Addresses come
+from matched Assisted host inventory before install and Kubernetes InternalIP
+after install, restricted to `machineNetwork`; ambiguous mapping is NOT TESTED.
+The helper uses the controller's SSH client as `core`, with BatchMode, bounded
+connection/command timeouts, standard `ansible_ssh_common_args` and explicit
+`ansible_ssh_private_key_file` (or `ansible_private_key_file`) when provided.
+An existing private counterpart of `sshPubPath` is used otherwise; if none
+exists, normal SSH default identities/ssh-agent are tried. Public key content
+does not manufacture a private key. Establish trusted host keys/SSH access
+before validation; no keys or arbitrary test listeners are created.
+
+The directed matrix reports PASS for successful node-origin TCP connections,
+FAIL for failed connectivity with listener evidence, and NOT TESTED when SSH,
+addresses, or destination listener readiness cannot be established. Listener
+inspection is read-only; a connection failure is not proof of a firewall fault.
+Applicable FAIL/NOT TESTED results exit unsuccessfully; pre-install results
+prevent automatic gate release. Deferred pre-install services do not fail that
+stage. Each SSH command has a ten-second wall-clock limit and each node TCP
+attempt a four-second limit. The fixed three-node topology bounds the complete
+post-install matrix to a single 630-second wall-clock command budget, including
+one shared 30-second listener-readiness retry budget. Only confirmed missing
+post-install listeners are retried; input, SSH and proven path failures are not
+retried as readiness. Persistent absence remains NOT TESTED and fails validation.
+Listener evidence requires destination address ownership and a matching bind or
+same-family wildcard and unambiguous ownership; unrelated, loopback or wrong-family bindings do not prove
+service readiness. Missing or ambiguous destination ownership is NOT TESTED,
+not a confirmed listener gap eligible for readiness retries.
+Successful connections need no listener inspection.
+Normal Ansible output contains only fixed status and allowlisted reason-code counts,
+grouped as `applicable`, `deferred`, and `excluded`. `address_missing` and
+`address_ambiguous` describe source/destination selection; `ssh_unavailable` and
+`command_unavailable` describe access/prerequisites; `destination_unresolved`,
+`ownership_unknown`, and `listener_unready` describe destination evidence.
+`connected` and `path_failed` describe tested paths, not firewall attribution.
+`input_invalid` and `unknown` never expose arbitrary input or exception text.
+Three deferred preinstall service rows do not block the gate; applicable NOT TESTED
+rows still do. The rendezvous uses the standard SSH implementation through a private
+display wrapper, preserving its existing SSH options while hiding verbose connection
+traces. Sensitive module actions also suppress controller-side module argument and
+environment traces, including internal debug and separately configured log verbosity;
+their builtin action, connection, and result semantics are preserved. Sensitive tasks
+also use `no_log`. The playbook-local `local` connection adapter inherits the builtin
+local transport and suppresses only connection-fact DEBUG traces, which otherwise
+expose configured SSH identity aliases before actions run. Explicitly selecting
+`ansible.builtin.local` bypasses that adapter; use the normal `local` selection.
+Do not enable Ansible debuggers or debugger callbacks in routine automation or CI.
+The explicit operator-only task-debugger procedure below is a private, temporary
+exception; never record its transcript in normal logs or leave it enabled.
+
+### Private input collection and replay (both stages)
+
+Collection is opt-in and runs in the shared network task before the probe, so a
+failed matrix still leaves its diagnostic input available. On the **controller**, as
+the same account that runs Ansible, create a private parent outside the checkout,
+working directory, and every CI artifact collection path:
+
+```bash
+umask 077
+mkdir -m 700 /private/operator-network-inputs
+```
+
+Use an existing private parent location accessible to that account (replace the
+example absolute path). In an operator-only vars file, add:
+
+```yaml
+network_validation_capture_dir: "/private/operator-network-inputs/{{ network_validation_stage }}"
+```
+
+Supply that vars file to the **same deployment invocation** using `-e @/private/operator-vars.yaml`.
+The `pre_install_validate_plugins.yaml` caller captures configured `agent_hosts` and
+the actual Assisted Service `discovered_hosts` inventory at **preinstall**. The
+`wait_for_deployment.yaml` caller captures the same configured hosts and the queried
+Kubernetes Node InternalIP inventory at **postinstall**. Each stage also captures
+the exact machine network, disconnected flag, mirror, API VIP, and ingress VIP.
+Only fields consumed by address selection are retained from host/inventory objects;
+tokens, kubeconfigs, private keys and SSH arguments are not captured.
+
+Each capture must create a **new** stage directory (0700) containing `input.json`
+(0600), owned by the controller account. The existing parent must be owned by that
+account and exactly 0700. Symlink components, relative/traversing paths, existing
+files/directories and ambiguous destinations are refused. A failed capture stops
+the play with a fixed error; an old file must never be treated as fresh input.
+For another attempt, use a new private parent, or remove the previous capture
+after investigating it. No capture location or input is printed or automatically
+added to diagnostics. Capture refuses destinations inside this checkout (including
+`ci/logs`, `ci/diagnostics` and `artifacts`) or the deployment's `workingDir`,
+including paths resolving into those trees. Use a separate private parent outside
+all checkout, working, and custom archive/upload trees. A custom collector must
+never include that parent; the tool cannot discover arbitrary external upload roots.
+
+Replay on the same controller with the same SSH agent, known-hosts configuration,
+DNS context and deployment interpreter. Obtain the **matrix task's** values, not
+the dynamically added `rendezvous` host's fallback options:
+
+1. Before this diagnostic deployment attempt, temporarily add `debugger: always`
+   alongside `no_log: true` to **Prepare protected stage-specific network input**
+   in `playbooks/tasks/validate_network_paths.yaml`. Do not commit this operator
+   edit. This is shared by preinstall and postinstall in `03-deploy.yaml`, through
+   `pre_install_validate_plugins.yaml` and `wait_for_deployment.yaml` respectively.
+2. In an unrecorded, private interactive terminal, repeat the original deployment
+   invocation, including its original inventory, extra-vars, tags, SSH CLI flags,
+   environment and `ANSIBLE_CONFIG`, plus the capture vars file above. Retain
+   original task/play/host variables and config files. Disable shell tracing and
+   terminal/session recording. For this operator session only, set
+   `ANSIBLE_ENABLE_TASK_DEBUGGER=true`, `ANSIBLE_LOG_PATH=/dev/null`,
+   `ANSIBLE_CALLBACKS_ENABLED=ansible.builtin.default`,
+   `ANSIBLE_STDOUT_CALLBACK=ansible.builtin.default`,
+   `ANSIBLE_DEBUG=false`, `ANSIBLE_VERBOSITY=0`; omit verbosity CLI flags. Do not
+   redirect this private debugger transcript to routine deployment/CI logs.
+3. At each stage's debugger stop, use these exact debugger commands (tested with
+   ansible-core 2.21.5, whose debugger exposes `result.utr`). They expose
+   only deliberately requested values in that private terminal, not topology:
+
+   ```text
+   network_input = __import__('json').loads(result.utr.as_result_dict()['ansible_facts']['_network_validation_input'])
+   network_values = [task_vars['network_validation_stage'], task_vars['ansible_playbook_python'], network_input['ssh_args'], network_input['ssh_key'], network_input['ssh_public_key_path']]
+   assert all(isinstance(value, str) and all(character.isprintable() for character in value) for value in network_values), 'Private replay refused: non-printable value; stop'
+   print(network_values[0])
+   print(network_values[1])
+   print(network_values[2])
+   print(network_values[3])
+   print(network_values[4])
+   c
+   ```
+
+   Keep the interpreter and three **resolved** values privately for that stage;
+   enter the printed values exactly, including literal quotes and backslashes.
+   Do not strip quotes, evaluate Python representations, or substitute defaults.
+   These are Python `print(...)` commands supported by the task debugger, not its
+   `p`/`pprint` representation formatter. Long values may visually wrap in the
+   terminal; visual wrapping is not an embedded newline. If the assertion or any
+   command fails, stop before printing or replaying; newline/control-containing
+   values are not supported by this single-line private procedure. An empty resolved
+   string means `empty`, not an invitation to substitute rendezvous defaults.
+   `ssh_args` uses builtin SSH precedence: matrix-scoped
+   `ansible_ssh_common_args` (even explicitly empty), then CLI `--ssh-common-args`
+   (even empty), environment `ANSIBLE_SSH_COMMON_ARGS`, active config
+   `[ssh_connection] ssh_common_args`, then empty default. Key selection here is
+   `ansible_ssh_private_key_file`, else `ansible_private_key_file`, else empty;
+   public-key path is `sshPubPath`, else empty. All are evaluated in the original
+   matrix task, after the actual `common/load-vars.yaml` defaults/config loading.
+   The resolver returns a protected registered result, not an `ansible_facts`
+   value; it works with either fact-injection policy and does not cache SSH options.
+   The prepared input uses builtin noncacheable `set_fact`; do not add `cacheable`.
+   `Makefile` uses `AP=ansible-playbook` and `AP_FLAGS`; `setup_ansible.sh` installs
+   that executable via `uv tool install . --with-executables-from ansible-core`.
+   Neither PATH `python3` nor a guessed uv/venv location proves its interpreter.
+4. Continue to create the fresh capture at each stage, then remove only the
+   temporary `debugger: always` edit and restore logging settings before routine
+   deployment. No SSH options, identity paths or credentials are added to
+   `input.json`. If the original invocation/settings cannot be reproduced, stop:
+   a replay with guessed settings is not equivalent evidence.
+
+From the repository root, run the following interactively, **not in CI**, once
+for each captured stage. Supply the exact interpreter obtained above and that
+stage's resolved values. Hidden `unset`/`empty`/`value` prompts distinguish omission
+from an explicit empty string; for the resolved strings above use `empty` or
+`value`. SSH user remains `core`. Do not introduce SSH trust overrides. Output is
+created exclusively as `matrix.json` inside that private stage directory;
+existing output is refused.
+
+```bash
+set +x
+IFS= read -r -s -p 'Original controller interpreter: ' network_python </dev/tty || { printf 'Private replay refused.\n'; exit 2; }
+printf '\n' >/dev/tty
+test -x "$network_python" || { printf 'Private replay refused.\n'; unset network_python; exit 2; }
+"$network_python" - 2>/dev/null <<'PY'
+import getpass
+import json
+import os
+import stat
+import subprocess
+import sys
+import warnings
+from pathlib import Path
+
+os.umask(0o077)
+warnings.simplefilter("error", getpass.GetPassWarning)
+directory_fd = None
+try:
+    directory = Path(getpass.getpass("Fresh stage capture directory: "))
+    if not directory.is_absolute() or ".." in directory.parts:
+        raise ValueError
+    directory_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    for component in directory.parts[1:]:
+        child = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                        dir_fd=directory_fd)
+        os.close(directory_fd)
+        directory_fd = child
+    info = os.fstat(directory_fd)
+    if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o700:
+        raise ValueError
+    descriptor = os.open("input.json", os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    with os.fdopen(descriptor) as source:
+        info = os.fstat(source.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600:
+            raise ValueError
+        config = json.load(source)
+    for field in ("ssh_args", "ssh_key", "ssh_public_key_path"):
+        mode = getpass.getpass(field + " (unset/empty/value): ")
+        if mode == "empty":
+            config[field] = ""
+        elif mode == "value":
+            config[field] = getpass.getpass(field + " (exact original resolved value): ")
+        elif mode != "unset":
+            raise ValueError
+        if not all(character.isprintable() for character in config.get(field, "")):
+            raise ValueError
+    config["ssh_user"] = "core"
+    descriptor = os.open("matrix.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=directory_fd)
+    with os.fdopen(descriptor, "wb") as output:
+        result = subprocess.run(
+            [sys.executable, "scripts/validation/network_matrix.py"],
+            input=json.dumps(config).encode(), stdout=output,
+            stderr=subprocess.DEVNULL, check=False,
+        )
+    print("Private matrix recorded; exit status:", result.returncode)
+    sys.exit(result.returncode)
+except (OSError, ValueError, TypeError, KeyError, EOFError, KeyboardInterrupt, getpass.GetPassWarning):
+    print("Private replay refused or failed; no input or path logged.")
+    sys.exit(2)
+finally:
+    if directory_fd is not None:
+        os.close(directory_fd)
+PY
+network_replay_rc=$?
+unset network_python
+(exit "$network_replay_rc")
+```
+
+Inspect `input.json` and `matrix.json` only in a private operator session. Both are
+topology-bearing diagnostic data, not normal logs or public attachments. Remove both
+files, then their stage directories and the private parent when no longer needed;
+remove the opt-in setting before returning to routine deployment. Never upload them
+with CI diagnostics. Collection/replay is instrumentation, not a proven fix for an
+observed live network failure.
+No firewall rules or service state are modified. This is a TCP path
+check, not application health, TLS authentication, or certification of all
+OpenShift network requirements. Production-script lint and formatting remain part
+of `make -f Makefile.ci validate-network-script` and normal CI validation.
+
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
 ## Table of Contents
