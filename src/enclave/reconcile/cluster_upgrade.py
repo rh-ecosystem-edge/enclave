@@ -242,6 +242,19 @@ def get_condition(
     return None
 
 
+def update_graph_unavailable(cluster_version: dict[str, Any]) -> bool:
+    """Return whether the CVO has no update graph to offer versions from.
+
+    The CVO reports availableUpdates as null both when it can't retrieve the graph and
+    when the graph offers no update in the current channel. Only the first case, where
+    RetrievedUpdates isn't True, means the graph is unavailable.
+    """
+    if get_available_versions(cluster_version) is not None:
+        return False
+    retrieved = get_condition(cluster_version, "RetrievedUpdates")
+    return retrieved is None or retrieved.get("status") != "True"
+
+
 def describe_update_source(cluster_version: dict[str, Any]) -> str:
     """Describe where the CVO looks for updates and the result of its last attempt."""
     spec = cluster_version.get("spec", {})
@@ -341,11 +354,12 @@ def offered_versions(
 ) -> list[str] | None:
     """Return availableUpdates, plus conditionalUpdates when allowed.
 
-    Returns None if the update graph is unavailable.
+    Returns None if the update graph is unavailable. A null availableUpdates with a
+    retrieved graph means no update is offered in the current channel.
     """
-    available = get_available_versions(cluster_version)
-    if available is None:
+    if update_graph_unavailable(cluster_version):
         return None
+    available = get_available_versions(cluster_version) or []
     if not allow_not_recommended:
         return available
     conditional = get_conditional_updates(cluster_version)
@@ -607,7 +621,7 @@ def reconcile(
 
     check_cluster_upgradeable(cluster_version, current_version, desired_version)
 
-    if get_available_versions(cluster_version) is None:
+    if update_graph_unavailable(cluster_version):
         raise UpdateGraphUnavailableError(describe_update_source(cluster_version))
 
     logger.debug("Checking cluster operators readiness...")

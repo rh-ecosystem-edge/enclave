@@ -34,6 +34,7 @@ from enclave.reconcile.cluster_upgrade import (
     resolve_channel,
     semver_key,
     switch_channel,
+    update_graph_unavailable,
     upgrade_cluster,
     wait_for_channel_updates,
 )
@@ -255,6 +256,34 @@ def test_get_condition_present_and_absent() -> None:
         "status": "False",
     }
     assert get_condition(cluster_version, "RetrievedUpdates") is None
+
+
+def test_update_graph_unavailable_null_and_not_retrieved() -> None:
+    """A null availableUpdates with RetrievedUpdates=False means no graph."""
+    cluster_version = _cv(
+        available=None,
+        conditions=[{"type": "RetrievedUpdates", "status": "False"}],
+    )
+    assert update_graph_unavailable(cluster_version)
+
+
+def test_update_graph_unavailable_null_without_condition() -> None:
+    """A null availableUpdates without a RetrievedUpdates condition means no graph."""
+    assert update_graph_unavailable(_cv(available=None, conditions=[]))
+
+
+def test_update_graph_available_when_retrieved_but_null() -> None:
+    """A retrieved graph with no update in the channel is not unavailable."""
+    assert not update_graph_unavailable(_cv(available=None))
+
+
+def test_update_graph_available_when_list_present() -> None:
+    """A non-null availableUpdates list is used even if the last retrieval failed."""
+    cluster_version = _cv(
+        available=["4.20.17"],
+        conditions=[{"type": "RetrievedUpdates", "status": "False"}],
+    )
+    assert not update_graph_unavailable(cluster_version)
 
 
 def test_describe_update_source_default_upstream_and_failure() -> None:
@@ -822,6 +851,44 @@ def test_reconcile_operators_not_ready_before_channel_switch(
     with pytest.raises(ClusterOperatorsNotReadyError):
         reconcile("4.21.32", dry_run=False)
     mocks["switch"].assert_not_called()
+
+
+def test_reconcile_minor_upgrade_from_channel_without_updates(
+    mocker: MockerFixture,
+) -> None:
+    """A current channel offering nothing (null, retrieved) still switches and upgrades."""
+    before = _cv(version="4.20.32", available=None)
+    after = _cv(version="4.20.32", channel="stable-4.21", available=["4.21.32"])
+    mocks = _patch_reconcile_deps(
+        mocker, current="4.20.32", cluster_versions=[before, after]
+    )
+    reconcile("4.21.32", dry_run=False)
+    mocks["switch"].assert_called_once_with("stable-4.21")
+    mocks["upgrade"].assert_called_once()
+
+
+def test_reconcile_minor_upgrade_dry_run_from_channel_without_updates(
+    mocker: MockerFixture,
+) -> None:
+    """A dry run from a channel offering nothing logs the switch without failing."""
+    before = _cv(version="4.20.32", available=None)
+    mocks = _patch_reconcile_deps(mocker, current="4.20.32", cluster_versions=[before])
+    reconcile("4.21.32", dry_run=True)
+    mocks["switch"].assert_not_called()
+    mocks["upgrade"].assert_not_called()
+
+
+def test_reconcile_z_stream_nothing_offered_reports_channel(
+    mocker: MockerFixture,
+) -> None:
+    """A z-stream with nothing offered (null, retrieved) raises VersionNotAvailableError."""
+    _patch_reconcile_deps(
+        mocker, current="4.20.32", cluster_versions=[_cv(available=None)]
+    )
+    with pytest.raises(VersionNotAvailableError) as exc_info:
+        reconcile("4.20.46", dry_run=False)
+    assert "Available versions: none" in str(exc_info.value)
+    assert "RetrievedUpdates=True" in str(exc_info.value)
 
 
 def test_reconcile_minor_upgrade_dry_run_does_not_switch(
