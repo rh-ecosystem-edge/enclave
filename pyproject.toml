@@ -52,14 +52,17 @@ constraint-dependencies = [
 members = ["src/enclave_ci"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml", "plugins"]
+exclude = ["/plugins/*/*", "!/plugins/*/plugin.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml"]
+only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml", "plugins"]
+exclude = ["/plugins/*/*", "!/plugins/*/plugin.yaml"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
 "defaults" = "enclave/defaults"
+"plugins" = "enclave/plugins"
 
 [tool.ruff]
 line-length = 88

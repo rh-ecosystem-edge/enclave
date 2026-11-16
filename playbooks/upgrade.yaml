@@ -70,3 +70,26 @@
       ansible.builtin.debug:
         var: r_mgmt_cluster_upgrade.stderr_lines
       when: upgrade_mgmt_cluster | default(true) | bool
+
+    - name: Discover plugin operators to upgrade
+      ansible.builtin.include_tasks:
+        file: tasks/upgrade/discover-plugin-operators.yaml
+      vars:
+        plugin_operators_caller: upgrade
+      when: upgrade_operators | default(true) | bool
+
+    - name: Upgrade plugin operator versions
+      ansible.builtin.command:
+        argv: "{{ ['enclave', 'reconcile', 'plugin-operator-versions'] + plugin_operator_versions_argv }}"
+      register: r_plugin_operator_versions_upgrade
+      changed_when: "'[UPDATE]' in r_plugin_operator_versions_upgrade.stderr"
+      when:
+        - upgrade_operators | default(true) | bool
+        - plugin_operator_names | length > 0
+
+    - name: Print plugin operator versions upgrade output
+      ansible.builtin.debug:
+        var: r_plugin_operator_versions_upgrade.stderr_lines
+      when:
+        - upgrade_operators | default(true) | bool
+        - plugin_operator_names | length > 0
