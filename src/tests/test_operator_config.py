@@ -6,6 +6,7 @@ import shutil
 import subprocess
 from copy import deepcopy
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
@@ -179,27 +180,13 @@ def test_plugin_upgrade_ignores_invalid_core_config(
     )
 
 
-def test_tools_and_upgrade_parity(
-    operator_files: tuple[Path, Path, Path],
+def _assert_upgrade_matches(
+    defaults: Path,
+    override: Path,
+    effective: list[dict[str, Any]],
     mocker: MockerFixture,
 ) -> None:
-    """The install/mirror resolver CLI and upgrade consume identical effective data."""
-    defaults, override, schema = operator_files
-    override.write_text("operators: [{name: first, version: 1.1.0, channel: fast}]")
-    result = CliRunner().invoke(
-        tools_cli,
-        [
-            "resolve-core-operators",
-            "--defaults-file",
-            str(defaults),
-            "--config-file",
-            str(override),
-            "--schema-file",
-            str(schema),
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    effective = yaml.safe_load(result.output)["operators"]
+    """Assert every ordered upgrade input matches previously resolved consumer data."""
     mocker.patch("enclave.reconcile.cli.defaults_path", return_value=defaults)
     mocker.patch("enclave.reconcile.cli.config_path", return_value=override)
     reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
@@ -221,6 +208,31 @@ def test_tools_and_upgrade_parity(
             "channel": operator["channel"],
             "subscription_name": operator["name"],
         }
+
+
+def test_tools_and_upgrade_parity(
+    operator_files: tuple[Path, Path, Path],
+    mocker: MockerFixture,
+) -> None:
+    """The install/mirror resolver CLI and upgrade consume identical effective data."""
+    defaults, override, schema = operator_files
+    override.write_text("operators: [{name: first, version: 1.1.0, channel: fast}]")
+    result = CliRunner().invoke(
+        tools_cli,
+        [
+            "resolve-core-operators",
+            "--defaults-file",
+            str(defaults),
+            "--config-file",
+            str(override),
+            "--schema-file",
+            str(schema),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    _assert_upgrade_matches(
+        defaults, override, yaml.safe_load(result.output)["operators"], mocker
+    )
 
 
 def test_upgrade_rejects_invalid_before_reconcile(
@@ -325,6 +337,7 @@ def test_dangling_override_symlink_fails(
 @pytest.mark.parametrize("check_mode", [False, True])
 def test_ansible_install_and_mirror_consumers(
     tmp_path: Path,
+    mocker: MockerFixture,
     content: str | None,
     valid: bool,
     check_mode: bool,
@@ -418,6 +431,9 @@ def test_ansible_install_and_mirror_consumers(
         tmp_path / "schemas/operators.yaml",
     )
     assert effective["operators"] == expected["operators"]
+    _assert_upgrade_matches(
+        tmp_path / "defaults/operators.yaml", override, effective["operators"], mocker
+    )
     assert [operator["name"] for operator in effective["seed"]] == [
         "multicluster-engine",
         "advanced-cluster-management",
