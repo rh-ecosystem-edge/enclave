@@ -1,6 +1,7 @@
 """Click commands for ``enclave tools``."""
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,10 @@ from typing import Any
 import click
 import yaml
 
+from enclave.tools.add_enabled_plugin import (
+    AddEnabledPluginError,
+    add_enabled_plugin as add_enabled_plugin_helper,
+)
 from enclave.tools.cert_utils import pem_blocks
 from enclave.tools.check_certificate_chains import (
     CertificateValidationError,
@@ -227,9 +232,41 @@ def check_root_ca(config: str) -> None:
         )
 
 
+PLUGIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+@cli.command("add-enabled-plugin")
+@click.option(
+    "--config",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to the enclave global config (config/global.yaml).",
+)
+@click.option(
+    "--plugin",
+    required=True,
+    help="Plugin name to add to the enabled_plugins list.",
+)
+def add_enabled_plugin(config: str, plugin: str) -> None:
+    """Record a plugin in enabled_plugins in the global config, preserving comments."""
+    if not PLUGIN_NAME_RE.fullmatch(plugin):
+        raise click.BadParameter(
+            f"must match {PLUGIN_NAME_RE.pattern}", param_hint="--plugin"
+        )
+    try:
+        changed = add_enabled_plugin_helper(Path(config), plugin)
+    except AddEnabledPluginError as exc:
+        raise click.ClickException(str(exc)) from exc
+    if changed:
+        click.echo(f"[UPDATE] added {plugin!r} to enabled_plugins in {config}")
+    else:
+        click.echo(f"[OK] {plugin!r} already in enabled_plugins in {config}")
+
+
 check_certificate_chains.no_kubeconfig = True  # type: ignore[attr-defined]
 get_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
 check_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
+add_enabled_plugin.no_kubeconfig = True  # type: ignore[attr-defined]
 
 if __name__ == "__main__":
     cli()

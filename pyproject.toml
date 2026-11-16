@@ -20,6 +20,7 @@ dependencies = [
     "requests-oauthlib ==2.0.0",
     "rpds-py ==2026.6.3",
     "rsa ==4.9.1",
+    "ruamel.yaml ==0.19.1",
     "requests ==2.34.2",
     "websocket-client ==1.9.2",
 ]
@@ -149,6 +150,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["yaml"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["ruamel", "ruamel.yaml"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
