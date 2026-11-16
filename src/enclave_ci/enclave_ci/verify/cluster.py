@@ -28,7 +28,6 @@ import yaml
 
 from enclave_ci.verify.common import (
     CLUSTER_HEALTHY_LINES,
-    MESSAGE_LIMIT,
     Cluster,
     CommandResult,
     Item,
@@ -142,9 +141,10 @@ def _lz_mirror_problems(lz: Runner, config_path: str) -> list[str]:
     try:
         parsed = yaml.safe_load(config.stdout) or {}
     except yaml.YAMLError as err:
-        return [
-            f"quay/lz-mirror: invalid YAML in {config_path}: {one_line(str(err), MESSAGE_LIMIT)}"
-        ]
+        # The parser's message can quote the offending line (maybe a credential).
+        mark = getattr(err, "problem_mark", None)
+        where = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        return [f"quay/lz-mirror: invalid YAML in {config_path}{where}"]
     if not isinstance(parsed, dict):
         return [f"quay/lz-mirror: {config_path} is not a YAML mapping"]
     mirror = lz_mirror_host(parsed)

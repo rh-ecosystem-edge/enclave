@@ -116,7 +116,9 @@ through the Landing Zone once the node-management plugin has discovered the VM:
 1. Creates a namespace named after the SNO cluster and copies `infraenv/pullsecret` into it.
 1. Applies, in that namespace, a ClusterDeployment and an AgentClusterInstall (SNO: one control
    plane agent, machine network = the cluster network), and the cluster-scoped ManagedCluster plus
-   a KlusterletAddonConfig.
+   a KlusterletAddonConfig. The AgentClusterInstall installs the hub's enabled capabilities minus
+   `openshift-samples` (install-config overrides): air-gapped, the Samples operator retries
+   `registry.redhat.io` for 25-60 minutes before it reports, and the install waits for it.
 1. Binds the discovered Agent, which stays in `infraenv`, to the ClusterDeployment in the SNO
    namespace (`spec.clusterDeploymentName.namespace`), approves it and sets its role to `master`.
 1. Waits for the AgentClusterInstall to report `Completed`, extracts the admin kubeconfig, then
@@ -165,16 +167,20 @@ So each check reports even when an earlier one failed, and none runs against a t
 Any failed step, including the parallel step when either task failed, fails the job, and the
 failed-step summary names the first one:
 
-1. **SNO health** (`ci/verification/verify_sno.sh`, `make -f Makefile.ci verify-sno`): with the SNO
-   kubeconfig, ClusterVersion Available, all nodes Ready, no cluster operator unavailable or
-   degraded; on the hub, the ManagedCluster is Joined and Available.
-1. **Update service patch** (`ci/verification/verify_sno_update_service.sh`,
-   `make -f Makefile.ci verify-sno-update-service`): on the hub, the replicated policy
+1. **SNO health** (`make -f Makefile.ci verify-sno`: `ci/verification/verify_sno.sh` runs
+   `enclave-ci verify sno`): with the SNO kubeconfig, the same checks as the hub verification
+   (`src/enclave_ci/enclave_ci/verify/common.py`): ClusterVersion Available and not Progressing or
+   Failing, all nodes Ready, cluster operators Available and not Degraded, MachineConfigPools
+   updated; on the hub, the ManagedCluster is Joined and Available.
+1. **Update service patch** (`make -f Makefile.ci verify-sno-update-service`:
+   `ci/verification/verify_sno_update_service.sh` runs `enclave-ci verify sno-update-service`):
+   on the hub, the replicated policy
    `<sno-namespace>/openshift-acm-policies.update-service` is Compliant; on the SNO,
    `clusterversion/version` has `spec.upstream` equal to
-   `https://service-route-openshift-update-service.apps.<hub>.<base_domain>/api/upgrades_info/v1/graph`.
-   The `RetrievedUpdates` condition is reported for information only, since fetching the graph also
-   depends on the SNO trusting the hub ingress certificate.
+   `https://service-route-openshift-update-service.apps.<hub>.<base_domain>/api/upgrades_info/v1/graph`,
+   owned by the ACM `config-policy-controller` (checked on the same read). The `RetrievedUpdates`
+   condition is reported for information only, since fetching the graph also depends on the SNO
+   trusting the hub ingress certificate.
 1. **Label the SNO:** the ManagedCluster gets
    `sovcloud.open-cluster-management.io/openshift-ai=true`, so the openshift-ai PlacementRule
    selects it. Labeling after the update service check keeps the two independent.
@@ -202,16 +208,18 @@ Callers that do not set the input are unchanged. After the bootstrap phases:
 
 **Where it runs.** Three triggers enable `additional-sno-vm`:
 
-- **PRs, by path filter.** `.github/actions/check-e2e-needed` already switches a disconnected PR
-  run to `storage-plugin=odf` when `plugins/odf/**` changes. The same mechanism adds a filter on the
-  files this job tests: `plugins/openshift-ai/**`, the SNO CI scripts (`deploy_sno.sh`,
-  `verify_sno*.sh`), the VM and discovery generation (`vm_infra.py`, `generate_enclave_vars.sh`),
-  the discovery itself (`plugins/node-management/**`, plus `playbooks/07-configure-discovery.yaml`
-  while discovery still runs there) and the update service policy it checks
-  (`operators/cincinnati-operator/**`). This job is the only one that discovers a real host or
-  exercises the update service policy on a managed cluster, so those changes are tested here.
-  When it matches, the disconnected PR run sets `additional-sno-vm=true`. It keeps the storage
-  plugin the rest of the decision picked: `lvms`, or `odf` when ODF files changed too.
+- **PRs, by path filter.** `.github/actions/check-e2e-needed` already switches a disconnected PR run
+  to `storage-plugin=odf` when `plugins/odf/**` changes. The same mechanism adds a filter on the
+  files this job tests: the SNO CI scripts (`deploy_sno.sh`,
+  `verify_sno*.sh` and the `enclave-ci verify` code they run), the VM and discovery generation
+  (`vm_infra.py`, `generate_enclave_vars.sh`), the discovery itself (`plugins/node-management/**`,
+  plus `playbooks/07-configure-discovery.yaml` while discovery still runs there) and the update
+  service policy it checks (`operators/cincinnati-operator/**`). This job is the only one that
+  discovers a real host or exercises the update service policy on a managed cluster, so those
+  changes are tested here. When it matches, the disconnected PR run sets `additional-sno-vm=true`.
+  It keeps the storage plugin the rest of the decision picked: `lvms`, or `odf` when ODF files
+  changed too. `plugins/openshift-ai/**` joins the filter with the OpenShift AI milestone, when the
+  job starts deploying the plugin.
 - **The weekly ODF run** (below), for regular coverage independent of PRs.
 - **Manual dispatch**, for an on-demand run.
 
@@ -223,11 +231,12 @@ weekly ODF run passes `additional-sno-vm=true` instead of adding a new scheduled
 - **No new runner capacity.** A weekly run is already paid for on the runner class the SNO needs.
 - **Memory fits.** ODF hub VMs take about 168 GiB (3 × 48 GiB masters, 24 GiB Landing Zone); the
   SNO adds 32 GiB, for about 200 GiB of 256 GiB.
-- **Time fits.** The ODF run takes about 3 hours; the SNO adds about an hour, within the 6 hour
-  timeout of a dispatched disconnected run.
+- **Time fits.** The ODF run takes about 3 hours; the SNO adds about an hour, and SNO runs get an
+  extra hour of timeout (7 hours for a dispatched disconnected run).
 - **Disk needs measuring.** The ODF Landing Zone already holds the mirror and the Ceph loopback OSD
   files on the runner's scratch volume; the SNO disks are thin-provisioned, but the first runs must
   confirm the headroom. If it is too tight, the SNO sizing or the scratch volume size is adjusted.
+  The first ODF + SNO run used 1.1 of 1.8 TB.
 - **Coupling.** An ODF failure before the SNO steps hides the SNO result for that week, and the
   other way round. The failed-step summary tells them apart, and PR-triggered runs use `lvms`
   unless ODF files changed, so most SNO changes are tested without ODF.

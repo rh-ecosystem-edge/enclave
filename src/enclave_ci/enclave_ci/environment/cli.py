@@ -14,11 +14,12 @@ import click
 
 DEFAULT_REAP_AGE_HOURS = 12.0
 # A cluster's define-age exceeding the longest possible job runtime is what proves
-# it is leaked rather than in-flight: the e2e jobs cap out at 600 minutes (10h) via
-# timeout-minutes, so any cluster older than that cannot belong to a running job.
+# it is leaked rather than in-flight: the e2e jobs cap out at 660 minutes (11h, the
+# scheduled run with the SNO VM) via timeout-minutes, so any cluster older than that
+# cannot belong to a running job.
 # Destructive reaps refuse thresholds below this floor (use --force to override on
 # a host you know is idle); --dry-run is always allowed for inspection.
-MIN_REAP_AGE_HOURS = 11.0
+MIN_REAP_AGE_HOURS = 12.0
 
 
 def _reap_age_from_env() -> float:

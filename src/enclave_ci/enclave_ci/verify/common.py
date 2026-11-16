@@ -8,6 +8,7 @@ over SSH with that cluster's kubeconfig, and the JSON is evaluated here.
 import json
 import shlex
 import subprocess
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -66,7 +67,7 @@ class LandingZone:
         """Run ``command`` on the Landing Zone; a timeout is reported as exit 124."""
         try:
             proc = subprocess.run(
-                ["ssh", *SSH_OPTIONS, f"{self.user}@{self.host}", command],
+                ["ssh", *SSH_OPTIONS, "--", f"{self.user}@{self.host}", command],
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -301,15 +302,46 @@ def kubeconfig_found(cluster: Cluster, report: Report) -> bool:
     return False
 
 
+def report_command(
+    cluster: Cluster, report: Report, title: str, *args: str, tail: int = 0
+) -> None:
+    """Print the output of ``oc <args>`` under ``title`` (informational, never fails).
+
+    ``tail`` keeps only the last lines (0 keeps all).
+    """
+    report.line()
+    report.line(f"### {title}")
+    result = cluster.oc(*args)
+    if result.returncode != 0:
+        report.line(f"⚠️ Could not run 'oc {' '.join(args)}': {last_error(result)}")
+        return
+    lines = result.stdout.rstrip("\n").splitlines()
+    report.line("\n".join(lines[-tail:] if tail else lines))
+
+
 def report_snapshots(
     cluster: Cluster, report: Report, snapshots: Iterable[tuple[str, str]]
 ) -> None:
     """Print ``oc get <resource>`` tables (informational, never fails)."""
     for resource, title in snapshots:
-        report.line()
-        report.line(f"### {title}")
-        table = cluster.oc("get", resource)
-        if table.returncode == 0:
-            report.line(table.stdout.rstrip("\n"))
-        else:
-            report.line(f"⚠️ Could not run 'oc get {resource}': {last_error(table)}")
+        report_command(cluster, report, title, "get", resource)
+
+
+def poll(
+    check: Callable[[], list[str]], attempts: int, delay: float, report: Report
+) -> list[str]:
+    """Run ``check`` until it finds no problems, up to ``attempts`` times.
+
+    Returns the problems of the last attempt; between attempts, reports progress.
+    """
+    problems: list[str] = []
+    for attempt in range(1, attempts + 1):
+        problems = check()
+        if not problems or attempt == attempts:
+            break
+        report.line(
+            f"  [{attempt}/{attempts}] {len(problems)} problem(s), first: "
+            f"{problems[0]} — waiting {delay:g}s"
+        )
+        time.sleep(delay)
+    return problems
