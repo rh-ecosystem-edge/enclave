@@ -272,6 +272,17 @@
     - (r_plugin_mirror is defined and r_plugin_mirror is success) or
       (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
 
+# On LVMS, keep the UpdateService's PodDisruptionBudget from deadlocking the rollout's
+# drains (see updateservice_mirror_rollout_guard.yaml); restored after the wait.
+- name: Lower the UpdateService for the mirror rollout
+  ansible.builtin.include_tasks: updateservice_mirror_rollout_guard.yaml
+  vars:
+    updateservice_guard: lower
+  when:
+    - storage_plugin | default('') == 'lvms'
+    - (r_plugin_mirror is defined and r_plugin_mirror is success) or
+      (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+
 - name: Apply LZ mirror manifests to cluster
   ansible.builtin.shell: |
     {{ workingDir }}/bin/oc apply \
@@ -313,9 +324,26 @@
 
 - name: Wait for MachineConfigPool to finish updating
   ansible.builtin.include_tasks: wait_mcp.yaml
+  when: >-
+    (r_plugin_mirror is defined and r_plugin_mirror is success)
+    or (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+    or (r_quay_ca_configmap | default({}) is changed)
+    or (r_quay_ca_existing_configmap | default({}) is changed)
+    or (r_quay_ca_image_config | default({}) is changed)
+
+- name: Restore the UpdateService after the mirror rollout
+  ansible.builtin.include_tasks: updateservice_mirror_rollout_guard.yaml
+  vars:
+    updateservice_guard: restore
+  when: storage_plugin | default('') == 'lvms'
+
+# The Quay mirror step above deferred the UpdateService restart (only done if it changed the
+# CA) until the rollout has settled.
+- name: Restart UpdateService deployment to reload registry CA trust
+  ansible.builtin.include_tasks: restart_updateservice_for_ca.yaml
   when:
-    - (r_plugin_mirror is defined and r_plugin_mirror is success) or
-      (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+    - r_plugin_mirror_quay is defined
+    - r_plugin_mirror_quay is success
 
 - name: Wait for updated CatalogSource to be ready
   kubernetes.core.k8s_info:

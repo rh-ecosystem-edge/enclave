@@ -1,0 +1,113 @@
+---
+# Keep the UpdateService (OSUS) from blocking the drains of a mirror MachineConfig rollout
+# on LVMS. Its new replicas need the hub Quay to start, the hub Quay goes down while the
+# node holding its LVMS volume drains, and its PodDisruptionBudget (minAvailable 1 when
+# replicas >= 2) then refuses to evict the last ready replica: the drain never finishes.
+# With replicas 1 the operator sets minAvailable 0, so nothing blocks the drain.
+#
+# updateservice_guard: lower    before applying mirrors; records the replica count
+#                               in an annotation, sets replicas 1, waits for the PDB
+# updateservice_guard: restore  after the rollout; puts the recorded count back and
+#                               waits until that many replicas are ready
+# The annotation survives an interrupted run, so a re-run restores the original count.
+- name: Read the UpdateService for the mirror rollout ({{ updateservice_guard }})
+  ansible.builtin.command:
+    argv: ["{{ workingDir }}/bin/oc", get, updateservice, service, -n, openshift-update-service,
+           -o, json, --request-timeout=30s]
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_osus_guard
+  changed_when: false
+  failed_when: false
+
+- name: Set UpdateService guard facts
+  vars:
+    _osus: "{{ (r_osus_guard.stdout | from_json) if r_osus_guard.rc == 0 else {} }}"
+  ansible.builtin.set_fact:
+    _osus_exists: "{{ r_osus_guard.rc == 0 }}"
+    _osus_replicas: "{{ _osus.spec.replicas | default(0) | int }}"
+    _osus_recorded: "{{ _osus.metadata.annotations['enclave.openshift.io/replicas-before-mirror-rollout'] | default('') }}"
+
+- name: Lower the UpdateService to one replica for the mirror rollout
+  when:
+    - updateservice_guard == 'lower'
+    - _osus_exists | bool
+  block:
+    - name: Record the UpdateService replica count
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", annotate, updateservice, service, -n, openshift-update-service,
+               "enclave.openshift.io/replicas-before-mirror-rollout={{ _osus_replicas }}"]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      changed_when: true
+      when:
+        - _osus_recorded | length == 0
+        - _osus_replicas | int > 1
+
+    - name: Set the UpdateService to one replica
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", patch, updateservice, service, -n, openshift-update-service,
+               --type, merge, -p, '{"spec":{"replicas":1}}']
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      changed_when: true
+      when: _osus_replicas | int > 1
+
+    - name: Wait for the UpdateService PodDisruptionBudget to allow evictions
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, pdb, service, -n, openshift-update-service,
+               -o, "jsonpath={.spec.minAvailable}", --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_osus_pdb
+      changed_when: false
+      failed_when: false
+      retries: 24
+      delay: 5
+      until: r_osus_pdb.rc != 0 or r_osus_pdb.stdout | trim == '0'
+
+- name: Restore the UpdateService replica count after the mirror rollout
+  when:
+    - updateservice_guard == 'restore'
+    - _osus_exists | bool
+    - _osus_recorded | length > 0
+  block:
+    - name: Set the UpdateService back to its recorded replica count
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", patch, updateservice, service, -n, openshift-update-service,
+               --type, merge, -p, '{"spec":{"replicas":{{ _osus_recorded | int }}}}']
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      changed_when: true
+
+    - name: Remove the recorded UpdateService replica count
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", annotate, updateservice, service, -n, openshift-update-service,
+               "enclave.openshift.io/replicas-before-mirror-rollout-"]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      changed_when: true
+
+    - name: Wait for the UpdateService to be back to its recorded replica count
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, deployment, service, -n, openshift-update-service,
+               -o, json, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_osus_deploy
+      vars:
+        _deploy: "{{ (r_osus_deploy.stdout | from_json) if r_osus_deploy.rc | default(1) == 0 else {} }}"
+      changed_when: false
+      retries: 80
+      delay: 15
+      timeout: 1500
+      until: >-
+        r_osus_deploy.rc | default(1) == 0
+        and (_deploy.spec.replicas | default(0) | int) == (_osus_recorded | int)
+        and (_deploy.status.readyReplicas | default(0) | int) >= (_osus_recorded | int)
+
+    - name: Show the restored UpdateService
+      ansible.builtin.debug:
+        msg: >-
+          UpdateService restored:
+          {{ (r_osus_deploy.stdout | from_json).status.readyReplicas | default(0) }}/{{ _osus_recorded }} ready
