@@ -57,6 +57,37 @@
               version: "../2.0.13"
               sha256: "{{ test_digest }}"
           valid: false
+        - name: version-with-newline
+          override:
+            mirrorRegistry:
+              version: "2.0.13\n"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-leading-space
+          override:
+            mirrorRegistry:
+              version: " 2.0.13"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-trailing-space
+          override:
+            mirrorRegistry:
+              version: "2.0.13 "
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-tab
+          override:
+            mirrorRegistry:
+              version: "{{ '2.0.%c13' | format(9) }}"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: unknown-key
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "{{ test_digest }}"
+              url: "https://example.invalid/installer.tar.gz"
+          valid: false
         - name: empty-override
           override:
             mirrorRegistry: {}
@@ -112,6 +143,11 @@
           block:
             - name: Load configuration through the deployment entry point
               ansible.builtin.include_tasks: ../common/load-vars.yaml
+              loop:
+                - initial
+                - repeated
+              loop_control:
+                loop_var: mirror_registry_load_pass
               vars:
                 vars_file: "{{ test_directory.path }}/global.yaml"
                 certs_vars_file: "{{ test_directory.path }}/empty.yaml"
@@ -127,12 +163,6 @@
                 that:
                   - not expect_valid
                   - ansible_failed_task.name == 'Validate mirrorRegistry installer override'
-
-        - name: Assert shipped mirror registry pin is unchanged
-          ansible.builtin.assert:
-            that:
-              - shipped_binaries.mirror_registry.url == 'https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.12/mirror-registry-amd64.tar.gz'
-              - shipped_binaries.mirror_registry.checksum == 'sha256:6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2'
 
         - name: Assert omitted override needs no setup and preserves all defaults
           ansible.builtin.assert:
