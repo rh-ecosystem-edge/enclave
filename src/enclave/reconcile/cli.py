@@ -295,6 +295,12 @@ def cli(log_level: str) -> None:
         "with --name, --version, --namespace, --channel, --csv-name)"
     ),
 )
+@click.option(
+    "--operators-vars-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Load core operator overrides from this config file (requires --use-defaults)",
+)
 @click.option("--dry-run/--no-dry-run", default=False)
 def operator_versions(
     name: str,
@@ -303,9 +309,13 @@ def operator_versions(
     channel: str | None,
     csv_names: tuple[str, ...],
     use_defaults: bool,
+    operators_vars_file: Path | None,
     dry_run: bool,
 ) -> None:
     """Reconcile operator versions using explicit options or effective core config."""
+    if operators_vars_file is not None and not use_defaults:
+        raise click.UsageError("--operators-vars-file requires --use-defaults")
+
     if use_defaults and any([name, version, namespace, channel, csv_names]):
         raise click.UsageError(
             "--use-defaults is mutually exclusive with --name, --version, "
@@ -340,7 +350,9 @@ def operator_versions(
     try:
         operators = load_operators(
             defaults_file,
-            config_path("operators.yaml"),
+            operators_vars_file
+            if operators_vars_file is not None
+            else config_path("operators.yaml"),
             package_data_path("schemas", "operators.yaml"),
         )["operators"]
     except OperatorConfigError as exc:

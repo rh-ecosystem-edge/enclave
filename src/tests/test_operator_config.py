@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,228 @@ from pytest_mock import MockerFixture
 from enclave.operator_config import OperatorConfigError, load_operators
 from enclave.reconcile.cli import cli, package_data_path
 from enclave.tools.cli import cli as tools_cli
+
+
+@pytest.fixture(scope="module")
+def installed_cli(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Build and install the real wheel, independently of editable source imports."""
+    directory = tmp_path_factory.mktemp("installed-operator-cli")
+    root = package_data_path("defaults", "operators.yaml").parent.parent
+    environment = directory / "venv"
+    commands = [
+        ["uv", "build", "--wheel", "--out-dir", str(directory), str(root)],
+        [
+            "uv",
+            "venv",
+            "--python",
+            sys.executable,
+            str(environment),
+        ],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(environment / "bin/python"),
+            str(directory / "enclave-0.1.0-py3-none-any.whl"),
+        ],
+    ]
+    for command in commands:
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=False, timeout=120
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+    result = subprocess.run(
+        [
+            str(environment / "bin/python"),
+            "-I",
+            "-c",
+            "import enclave.reconcile.cli; print(enclave.reconcile.cli.__file__)",
+        ],
+        cwd=directory,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert str(environment / "lib") in result.stdout
+    return environment / "bin/enclave"
+
+
+@pytest.fixture
+def offline_cli_env(tmp_path: Path, installed_cli: Path) -> dict[str, str]:
+    """Replace only oc, rejecting writes so installed CLI tests cannot mutate a cluster."""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_oc = fake_bin / "oc"
+    fake_oc.write_text(
+        '#!/bin/sh\nset -eu\n[ "$1" = get ] || exit 99\n'
+        "printf '%s\\n' "
+        '\'{"spec":{"channel":"baseline"},"items":['
+        '{"metadata":{"name":"test-plan"},"status":{"phase":"RequiresApproval"},'
+        '"spec":{"clusterServiceVersionNames":["quay-operator.v3.15.10"]}}'
+        "]}'\n",
+    )
+    fake_oc.chmod(0o755)
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    environment["PATH"] = os.pathsep.join([
+        str(fake_bin),
+        str(installed_cli.parent),
+        environment["PATH"],
+    ])
+    environment["KUBECONFIG"] = str(tmp_path / "unused-kubeconfig")
+    return environment
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        None,
+        "operators: []",
+        "operators: [{name: quay-operator, version: 3.15.10, channel: fast-test}]",
+    ],
+)
+def test_installed_operator_config_outside_checkout(
+    tmp_path: Path,
+    installed_cli: Path,
+    offline_cli_env: dict[str, str],
+    content: str | None,
+) -> None:
+    """An outside-checkout installed CLI supports both bundled and selected config."""
+    config = tmp_path / "selected.yaml"
+    config.write_text(content if content is not None else "operators: []")
+    result = subprocess.run(
+        [
+            str(installed_cli),
+            "reconcile",
+            "operator-versions",
+            "--use-defaults",
+            "--dry-run",
+            *(["--operators-vars-file", config.name] if content is not None else []),
+        ],
+        cwd=tmp_path,
+        env=offline_cli_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    overridden = content is not None and "fast-test" in content
+    assert (
+        "quay-enterprise/quay-operator channel=fast-test" in result.stderr
+    ) == overridden
+    assert (
+        "[UPDATE] quay-enterprise/quay-operator:3.15.10" in result.stderr
+    ) == overridden
+    assert result.stderr.count("Updating Subscription ") == 15
+
+
+def _operator_upgrade_dry_run_tasks(root: Path) -> list[dict[str, Any]]:
+    """Exercise the actual upgrade argv and cwd with writes disabled at the CLI."""
+    tasks = yaml.safe_load((root / "playbooks/upgrade.yaml").read_text())[0]["tasks"]
+    selected = [
+        task
+        for task in tasks
+        if task["name"]
+        in {
+            "Check for optional core operator override",
+            "Upgrade operator versions",
+        }
+    ]
+    assert len(selected) == 2
+    command = selected[1]["ansible.builtin.command"]
+    command["argv"] = "{{ (" + command["argv"].strip()[2:-2] + ") + ['--dry-run'] }}"
+    return selected
+
+
+@pytest.mark.parametrize(
+    "kind", ["missing", "directory", "dangling", "yaml", "schema", "non-utf8"]
+)
+def test_installed_explicit_operator_config_invalid(
+    tmp_path: Path,
+    installed_cli: Path,
+    offline_cli_env: dict[str, str],
+    kind: str,
+) -> None:
+    """An explicit bad path or invalid file fails before any reconciliation."""
+    config = tmp_path / "selected.yaml"
+    if kind == "directory":
+        config.mkdir()
+    elif kind == "dangling":
+        config.symlink_to(tmp_path / "absent.yaml")
+    elif kind == "yaml":
+        config.write_text("operators: [")
+    elif kind == "schema":
+        config.write_text("operators: [{name: quay-operator, seed: null}]")
+    elif kind == "non-utf8":
+        config.write_bytes(b"operators: \xff")
+    result = subprocess.run(
+        [
+            str(installed_cli),
+            "reconcile",
+            "operator-versions",
+            "--use-defaults",
+            "--operators-vars-file",
+            str(config),
+            "--dry-run",
+        ],
+        cwd=tmp_path,
+        env=offline_cli_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert str(config) in result.stderr
+    assert "Updating Subscription" not in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        [],
+        [
+            "--name",
+            "quay-operator",
+            "--version",
+            "3.15.10",
+            "--namespace",
+            "quay-enterprise",
+        ],
+        *[
+            ["--use-defaults", option, "value"]
+            for option in (
+                "--name",
+                "--version",
+                "--namespace",
+                "--channel",
+                "--csv-name",
+            )
+        ],
+    ],
+)
+def test_explicit_operator_config_option_combinations(
+    tmp_path: Path, arguments: list[str]
+) -> None:
+    """A config file requires defaults mode and excludes every explicit operator option."""
+    config = tmp_path / "operators.yaml"
+    config.write_text("operators: []")
+    result = CliRunner().invoke(
+        cli,
+        ["operator-versions", "--operators-vars-file", str(config), *arguments],
+        env={"KUBECONFIG": "/fake/kubeconfig"},
+    )
+    assert result.exit_code == 2
+    assert (
+        "mutually exclusive"
+        if "--use-defaults" in arguments
+        else "requires --use-defaults"
+    ) in result.output
 
 
 @pytest.fixture
@@ -192,7 +415,12 @@ def _assert_upgrade_matches(
     reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     result = CliRunner().invoke(
         cli,
-        ["operator-versions", "--use-defaults", "--dry-run"],
+        [
+            "operator-versions",
+            "--use-defaults",
+            "--dry-run",
+            *(["--operators-vars-file", str(override)] if override.exists() else []),
+        ],
         env={"KUBECONFIG": "/fake/kubeconfig"},
     )
     assert result.exit_code == 0, result.output
@@ -341,6 +569,7 @@ def test_ansible_install_and_mirror_consumers(
     content: str | None,
     valid: bool,
     check_mode: bool,
+    offline_cli_env: dict[str, str],
 ) -> None:
     """Exercise load-vars, seed selection, plugin collection and the real mirror template."""
     root = package_data_path("defaults", "operators.yaml").parent.parent
@@ -378,6 +607,7 @@ def test_ansible_install_and_mirror_consumers(
                             root / "playbooks/tasks/collect_core_plugin_operators.yaml"
                         ),
                     },
+                    *_operator_upgrade_dry_run_tasks(root),
                     {
                         "name": "Combine catalogs as the mirror playbook does",
                         "ansible.builtin.set_fact": {
@@ -397,7 +627,7 @@ def test_ansible_install_and_mirror_consumers(
                     {
                         "name": "Write installation and plugin inputs",
                         "ansible.builtin.copy": {
-                            "content": "{{ {'operators': operators, 'seed': operators | selectattr('seed', 'defined') | selectattr('seed') | list, 'plugins': _core_plugin_operators} | to_json }}",
+                            "content": "{{ {'operators': operators, 'seed': operators | selectattr('seed', 'defined') | selectattr('seed') | list, 'plugins': _core_plugin_operators, 'upgrade': r_operator_versions_upgrade} | to_json }}",
                             "dest": str(output),
                             "mode": "0600",
                         },
@@ -406,14 +636,13 @@ def test_ansible_install_and_mirror_consumers(
             }
         ])
     )
-    environment = os.environ.copy()
-    environment.pop("KUBECONFIG", None)
     result = subprocess.run(
         ["ansible-playbook", str(playbook), *(["--check"] if check_mode else [])],
         check=False,
         capture_output=True,
         text=True,
-        env=environment,
+        env=offline_cli_env,
+        cwd=tmp_path.parent,
         timeout=120,
     )
     if not valid:
@@ -425,12 +654,29 @@ def test_ansible_install_and_mirror_consumers(
     if check_mode:
         return
     effective = json.loads(output.read_text())
+    assert effective["upgrade"]["cmd"] == [
+        "enclave",
+        "reconcile",
+        "operator-versions",
+        "--use-defaults",
+        *(["--operators-vars-file", str(override)] if content is not None else []),
+        "--dry-run",
+    ]
+    upgrade_log = effective["upgrade"]["stderr"]
     expected = load_operators(
         tmp_path / "defaults/operators.yaml",
         override,
         tmp_path / "schemas/operators.yaml",
     )
     assert effective["operators"] == expected["operators"]
+    for operator in expected["operators"]:
+        assert (
+            f"{operator['namespace']}/{operator['name']} channel={operator['channel']}"
+            in upgrade_log
+        )
+    assert ("[UPDATE] quay-enterprise/quay-operator:3.15.10" in upgrade_log) == (
+        content is not None and "3.15.10" in content
+    )
     _assert_upgrade_matches(
         tmp_path / "defaults/operators.yaml", override, effective["operators"], mocker
     )

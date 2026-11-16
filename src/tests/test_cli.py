@@ -35,7 +35,9 @@ def test_operator_versions_help() -> None:
     assert "--csv-name" in result.output
     assert "--dry-run" in result.output
     assert "--use-defaults" in result.output
-    assert "--operators" not in result.output
+    assert "--operators-vars-file" in result.output
+    assert "requires --use-defaults" in result.output
+    assert "--operators " not in result.output
 
 
 def test_mgmt_cluster_version_help() -> None:

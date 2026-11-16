@@ -51,8 +51,21 @@ The effective configuration is shared by installation, image mirroring and
 `enclave reconcile operator-versions --use-defaults` (including `playbooks/upgrade.yaml`).
 `--use-defaults` therefore includes this optional config, not just bundled values.
 When using an installed CLI, run it from the active Enclave checkout so it finds
-the same config as the playbooks. Defaults and the schema are also bundled with
-the installed CLI.
+the same config as the playbooks, or select the override explicitly from any directory:
+
+```sh
+enclave reconcile operator-versions --use-defaults --operators-vars-file /path/to/enclave/config/operators.yaml
+```
+
+`--operators-vars-file` requires `--use-defaults` and cannot be combined with the
+explicit operator options (`--name`, `--version`, `--namespace`, `--channel`,
+`--csv-name`). The selected file replaces automatic override discovery, not the
+defaults; a missing or invalid explicit file fails rather than falling back.
+Without this option, checkout discovery is unchanged; outside a checkout an
+installed CLI uses bundled defaults when no config is discovered. Defaults and
+the schema are bundled with the installed CLI. `playbooks/upgrade.yaml` passes
+its checkout's override explicitly when present and runs from that checkout,
+keeping an absent optional file a no-op.
 Plugins continue to read their operators from `plugins/<name>/plugin.yaml`, through
 their separate installation, mirroring and `plugin-operator-versions` paths.
 
