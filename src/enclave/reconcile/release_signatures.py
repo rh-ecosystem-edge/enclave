@@ -50,8 +50,13 @@ Behaviour
   is.
 - On 4.21 and later the gate no longer exists, so only the signature check runs. It
   still matters there, because every release image pulled from a mirror is verified.
-- Registries are accessed with ``--tls-verify=false``. Failures and timeouts of ``oc``
-  and ``skopeo`` raise :class:`ReleaseSignaturesQueryError`.
+- Registries are accessed with ``--tls-verify=false``, because the mirrors may use
+  certificates that this host doesn't trust. This is an accepted risk: the pull secret
+  is sent to, and the tags and digests are read from, whatever answers at each mirror
+  address. The signature check, and the gate acknowledgement that depends on it, are
+  therefore only as trustworthy as the network path to the mirrors.
+- Failures and timeouts of ``oc`` and ``skopeo`` raise
+  :class:`ReleaseSignaturesQueryError`.
 """
 
 import base64
