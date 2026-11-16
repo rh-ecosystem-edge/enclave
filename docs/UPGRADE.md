@@ -16,11 +16,11 @@ The tarball contains all version definitions in `defaults/*.yaml` files and is t
 Upgrading to a new Enclave release follows this sequence:
 
 1. **Deploy new Enclave tarball** - Extract new release to Landing Zone, preserving your `config/*.yaml` customizations
-2. **Sync/Mirror new content** - Run sync process to download and mirror new OpenShift and operator images to local registry (disconnected mode)
-3. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball (includes Metal3 stack)
-4. **Upgrade operators** - Update operators to the versions specified in the new tarball
-5. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
-6. **Upgrade foundation plugin operators** - Update the operators of enabled foundation plugins (e.g. LVMS, ODF) to the versions specified in the new tarball. Their versions follow the OpenShift minor version, so they are upgraded after the cluster
+1. **Sync/Mirror new content** - Run sync process to download and mirror new OpenShift and operator images to local registry (disconnected mode)
+1. **Upgrade Landing Zone components** - Update components to the versions specified in the new tarball (includes Metal3 stack)
+1. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
+1. **Upgrade foundation plugin operators** - Update the operators of enabled foundation plugins (e.g. LVMS, ODF) to the versions specified in the new tarball. Their versions follow the OpenShift minor version, so they are upgraded after the cluster
+1. **Upgrade operators** - Update operators to the versions specified in the new tarball
 
 **Key Principle**: Each Enclave tarball is a versioned release with a pre-defined set of component versions. Upgrades move from one tarball release to another.
 
@@ -49,9 +49,7 @@ Each Enclave tarball release includes:
     ./sync.sh
     ```
 
-    After mirroring, the sync runs `enclave reconcile release-signatures`. It checks that every OpenShift release image tag at 4.20 or later in each release mirror (the `quay.io/openshift-release-dev/ocp-release` mirrors in the cluster's ImageDigestMirrorSets) has its Sigstore signature tag (`sha256-<digest>.sig`). OpenShift 4.21 and later need these to verify release images pulled from a mirror. If any signature is missing, the sync fails and lists the affected images. When all are present and the cluster defines the `ack-4.20-sigstore-in-4.21` admin gate (OpenShift 4.20), the gate is acknowledged in the `admin-acks` ConfigMap, which allows the update to 4.21.
-
-7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade operators and the management cluster to the versions pinned in the tarball. This executes the `playbooks/upgrade.yaml` playbook, which runs migrations, Metal3 component upgrades, followed by `enclave reconcile operator-versions --use-defaults`, `enclave reconcile mgmt-cluster-version --use-defaults` and `enclave reconcile plugin-operator-versions --plugin=<name>` for every enabled foundation plugin (e.g. `lvms`, `odf`, `vast-csi`) that installs operators on the management cluster. Operators of addon plugins are not upgraded automatically yet:
+7. **Execute upgrade script** - Run the upgrade automation to apply configuration migrations, upgrade Landing Zone components (Metal3 stack), then upgrade operators and the management cluster to the versions pinned in the tarball.
 
     ```sh
     ./upgrade.sh
@@ -69,9 +67,9 @@ Each Enclave tarball release includes:
 
     WORKING_DIR=<your global.yaml workingDir variable>
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
-    enclave reconcile operator-versions --use-defaults
     enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile plugin-operator-versions --plugin=<storage plugin, e.g. lvms>
+    enclave reconcile operator-versions --use-defaults
     ```
 
 ---
