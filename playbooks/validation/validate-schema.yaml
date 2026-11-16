@@ -29,3 +29,7 @@
         apply:
           tags: validate-config
       tags: validate-config
+
+- name: Validate mirror registry configuration contracts
+  ansible.builtin.import_playbook: validate-mirror-registry-config.yaml
+  tags: test-fixtures
