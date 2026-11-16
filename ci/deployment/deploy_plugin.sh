@@ -6,7 +6,10 @@
 #
 # Usage: ./deploy_plugin.sh <plugin-name> [ansible-playbook extra args]
 # Example: ./deploy_plugin.sh openshift-ai
-# Example: ./deploy_plugin.sh openshift-ai --tags mirror
+#
+# To mirror a plugin's content without deploying it, use mirror-plugin.yaml
+# (e.g. make mirror-plugin PLUGIN=openshift-ai), not a --tags filter: tag
+# filtering does not propagate into the playbook's include_tasks.
 
 set -euo pipefail
 
@@ -23,9 +26,8 @@ source "${ENCLAVE_DIR}/ci/lib/ssh.sh"
 
 # Check arguments
 if [ $# -lt 1 ]; then
-    error "Usage: $0 <plugin-name> [--tags <tags>]"
+    error "Usage: $0 <plugin-name> [ansible-playbook extra args]"
     error "Example: $0 openshift-ai"
-    error "Example: $0 openshift-ai --tags mirror"
     exit 1
 fi
 

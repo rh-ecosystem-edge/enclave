@@ -1,26 +1,28 @@
 ---
-# Select enabled plugins that define operators and do not set
+# Select enabled plugins of a given type that define operators and do not set
 # installOperators: false, and build the --plugin arguments for
 # `enclave reconcile plugin-operator-versions`.
 #
-# For the moment this task only selects foundation plugins since addon
-# plugins deployed on day 2 are not added to enabled_plugins and we don't
-# have a good way to know if their new contents have been properly mirrored
-# before running this task.
+# Addon plugins deployed on day 2 are recorded in enabled_plugins (by
+# deploy_plugin.yaml) and backfilled for pre-existing installs by an upgrade
+# migration, so both foundation and addon plugins can be discovered here.
 #
 # Required variables:
+#   plugin_type: plugin type to select ('foundation' or 'addon')
 #   plugin_operators_caller: label of the caller, shown in the debug output
 #
 # Sets facts:
 #   plugin_operator_names: list of plugin names
 #   plugin_operator_versions_argv: ['--plugin=<name>', ...]
 
-- name: Validate plugin_operators_caller is provided
+- name: Validate plugin discovery inputs are provided
   ansible.builtin.assert:
     that:
+      - plugin_type is defined
+      - plugin_type | length > 0
       - plugin_operators_caller is defined
       - plugin_operators_caller | length > 0
-    fail_msg: "plugin_operators_caller must be provided"
+    fail_msg: "plugin_type and plugin_operators_caller must be provided"
 
 - name: Find plugin descriptors for operator upgrades
   ansible.builtin.find:
@@ -38,16 +40,17 @@
   loop_control:
     loop_var: plugin_path
 
-- name: Build list of foundation plugins with operators on the management cluster
+- name: Build list of {{ plugin_type }} plugins with operators on the management cluster
   vars:
     _upgrade_plugins: >-
       {{ r_upgrade_plugin_slurp.results
          | map(attribute='content')
          | map('b64decode')
          | map('from_yaml')
-         | selectattr('type', 'equalto', 'foundation')
+         | selectattr('type', 'equalto', plugin_type)
          | selectattr('name', 'in', enabled_plugins)
          | selectattr('operators', 'defined')
+         | selectattr('operators')
          | list }}
   ansible.builtin.set_fact:
     plugin_operator_names: >-

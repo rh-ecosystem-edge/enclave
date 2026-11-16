@@ -1,0 +1,43 @@
+---
+# Mirror a plugin's content (operator catalog and additional images) to the
+# local registry without deploying it. Unlike deploy-plugin.yaml this never
+# installs operators, runs Helm/deploy tasks, or records the plugin in the
+# global config.
+#
+# Usage:
+#   ansible-playbook playbooks/mirror-plugin.yaml -e workingDir=/home/cloud-user -e plugin_name=rhbk
+#
+# Required variables:
+#   workingDir: Working directory on the Landing Zone
+#   plugin_name: Name of the plugin directory under plugins/
+
+- name: Mirror plugin - {{ plugin_name | default('UNSET') }}
+  hosts: localhost
+  gather_facts: false
+  environment:
+    PATH: "{{ workingDir | default('') }}/bin:{{ lookup('env', 'HOME') }}/.local/bin:{{ lookup('env', 'PATH') }}"
+  tasks:
+    - name: Validate workingDir is provided
+      ansible.builtin.assert:
+        that:
+          - workingDir is defined
+          - workingDir | length > 0
+        fail_msg: "workingDir must be provided (e.g., -e workingDir=/home/cloud-user)"
+      tags: always
+
+    - name: Load common variables
+      ansible.builtin.include_tasks:
+        file: common/load-vars.yaml
+      tags: always
+
+    - name: Load plugin context
+      ansible.builtin.include_tasks:
+        file: tasks/load_plugin_context.yaml
+      tags: always
+
+    - name: Mirror plugin steps
+      ansible.builtin.include_tasks:
+        file: tasks/mirror_plugin_steps.yaml
+      vars:
+        plugin_mirror: true
+      tags: always

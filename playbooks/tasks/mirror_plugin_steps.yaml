@@ -1,0 +1,48 @@
+---
+# Mirror a plugin's content: extract Helm chart images, mirror the operator
+# catalog and additional images, and patch the MCE custom-registries.
+#
+# Shared by deploy_plugin.yaml and mirror-plugin.yaml. Requires the plugin
+# context (load_plugin_context.yaml) to have been loaded first. Does not deploy
+# the plugin or mutate the global config.
+#
+# Required variables:
+#   plugin: loaded plugin descriptor
+#   plugin_name, workingDir
+
+- name: "{{ plugin_name }} | Extract images from Helm charts for mirroring"
+  ansible.builtin.include_tasks:
+    file: tasks/helm_extract_images.yaml
+    apply:
+      tags: mirror
+  when:
+    - plugin.helm is defined
+    - plugin.helm
+      | selectattr('extractImages', 'defined')
+      | selectattr('extractImages', 'equalto', true)
+      | rejectattr('repo', 'defined')
+      | list | length > 0
+  tags: mirror
+
+- name: "{{ plugin_name }} | Mirror plugin"
+  ansible.builtin.include_tasks:
+    file: mirror_plugin.yaml
+  when:
+    - plugin_mirror | default(false) | bool
+    - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
+    - disconnected | default(true) | bool
+  tags: mirror
+
+- name: "{{ plugin_name }} | Patch MCE custom-registries with plugin entries"
+  ansible.builtin.include_tasks:
+    file: tasks/patch_mce_registries.yaml
+    apply:
+      tags: mirror
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    plugin_registries_entries: "{{ plugin.registries }}"
+  when:
+    - plugin.registries is defined
+    - disconnected | default(true) | bool
+  tags: mirror

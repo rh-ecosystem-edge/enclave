@@ -21,10 +21,11 @@ Upgrading to a new Enclave release follows this sequence:
 1. **Upgrade the management cluster** - Update OpenShift to the version specified in the new tarball
 1. **Upgrade foundation plugin operators** - Update the operators of enabled foundation plugins (e.g. LVMS, ODF) to the versions specified in the new tarball. Their versions follow the OpenShift minor version, so they are upgraded after the cluster
 1. **Upgrade operators** - Update operators to the versions specified in the new tarball
+1. **Upgrade addon plugin operators** - Update the operators of enabled addon plugins that install operators on the management cluster (e.g. rhbk) to the versions specified in the new tarball. Addons deployed day 2 are recorded in `enabled_plugins`, and an upgrade migration backfills already-installed ones
 
 **Key Principle**: Each Enclave tarball is a versioned release with a pre-defined set of component versions. Upgrades move from one tarball release to another.
 
-**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then operators, then cluster, then foundation plugin operators.
+**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then cluster, then foundation plugin operators, then operators, then addon plugin operators.
 
 ---
 
@@ -76,6 +77,7 @@ Each Enclave tarball release includes:
     enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile plugin-operator-versions --plugin=<storage plugin, e.g. lvms>
     enclave reconcile operator-versions --use-defaults
+    enclave reconcile plugin-operator-versions --plugin=<enabled addon plugin, e.g. rhbk>
     ```
 
 ---

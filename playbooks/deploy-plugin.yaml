@@ -35,4 +35,5 @@
         file: tasks/deploy_plugin.yaml
       vars:
         plugin_mirror: true
+        register_enabled_plugin: true
       tags: always

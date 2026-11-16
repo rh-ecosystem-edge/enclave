@@ -1,0 +1,126 @@
+---
+# Backfill addon plugins into enabled_plugins
+#
+# Addon plugins deployed on day 2 before deploy_plugin.yaml started recording
+# them were never added to enabled_plugins, so sync.sh does not re-mirror their
+# operator catalog and upgrade.yaml does not reconcile their operators.
+#
+# This migration detects addon plugins whose operators are installed on the
+# management cluster (an operator Subscription exists) and, for each:
+#   1. (disconnected only) mirrors its updated operator catalog by running the
+#      mirror-plugin.yaml playbook;
+#   2. records it in the active global config via `enclave tools add-enabled-plugin`.
+# It then unions the detected plugins into the in-memory enabled_plugins so the
+# addon operator reconcile later in this same upgrade run upgrades them against
+# the freshly mirrored catalog.
+#
+# Mirroring here is required because sync.sh runs before upgrade.sh and only
+# mirrors plugins already in enabled_plugins, so an unrecorded addon's updated
+# catalog would otherwise be absent for this run's reconcile.
+#
+# Runs in both connected and disconnected deployments: it only detects
+# Subscriptions, records config, and (disconnected) mirrors.
+#
+# Scope: only addon plugins that install operators on the management cluster are
+# considered. Plugins with installOperators: false (operators run on spokes, e.g.
+# nvidia-gpu, openshift-ai) and helm-only addons (no operators) are out of scope.
+
+- name: Find plugin descriptors
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../plugins"
+    patterns: "plugin.yaml"
+    recurse: true
+    depth: 2
+  register: r_backfill_find
+
+- name: Read plugin descriptors
+  ansible.builtin.slurp:
+    src: "{{ plugin_path }}"
+  loop: "{{ r_backfill_find.files | default([]) | map(attribute='path') | list }}"
+  register: r_backfill_slurp
+  loop_control:
+    loop_var: plugin_path
+
+- name: Select addon plugins with operators not yet enabled
+  ansible.builtin.set_fact:
+    _backfill_addons_with_operators: >-
+      {{ r_backfill_slurp.results | default([])
+         | map(attribute='content')
+         | map('b64decode')
+         | map('from_yaml')
+         | selectattr('type', 'equalto', 'addon')
+         | selectattr('operators', 'defined')
+         | selectattr('operators')
+         | rejectattr('name', 'in', enabled_plugins | default([]))
+         | list }}
+
+- name: Restrict to addons that install operators on the management cluster
+  ansible.builtin.set_fact:
+    _backfill_candidates: >-
+      {{ (_backfill_addons_with_operators
+          | selectattr('installOperators', 'undefined') | list)
+         + (_backfill_addons_with_operators
+            | selectattr('installOperators', 'defined')
+            | selectattr('installOperators') | list) }}
+
+- name: Check for addon operator Subscriptions on the management cluster
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: "{{ item.1.name }}"
+    namespace: "{{ item.1.namespace }}"
+  loop: "{{ _backfill_candidates | subelements('operators') }}"
+  loop_control:
+    label: "{{ item.0.name }}/{{ item.1.name }}"
+  register: r_backfill_subscriptions
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+
+- name: Build the list of installed addon plugins
+  ansible.builtin.set_fact:
+    _backfill_installed_addons: >-
+      {{ r_backfill_subscriptions.results | default([])
+         | selectattr('resources')
+         | map(attribute='item.0.name')
+         | unique | list }}
+
+- name: Mirror installed addon plugins
+  ansible.builtin.command:
+    argv: >-
+      {{ ['ansible-playbook', playbook_dir ~ '/mirror-plugin.yaml',
+          '-e', 'plugin_name=' ~ addon_plugin,
+          '-e', 'workingDir=' ~ workingDir,
+          '-e', 'disconnected=true']
+         + (['-e', 'vars_file=' ~ vars_file] if vars_file is defined else [])
+         + (['-e', 'certs_vars_file=' ~ certs_vars_file] if certs_vars_file is defined else [])
+         + (['-e', 'cloud_infra_vars_file=' ~ cloud_infra_vars_file] if cloud_infra_vars_file is defined else []) }}
+    chdir: "{{ (playbook_dir ~ '/..') | realpath }}"
+  loop: "{{ _backfill_installed_addons | default([]) }}"
+  loop_control:
+    loop_var: addon_plugin
+  register: r_backfill_mirror
+  changed_when: true
+  when: disconnected | default(true) | bool
+
+- name: Record installed addon plugins in enabled_plugins
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - tools
+      - add-enabled-plugin
+      - --config
+      - "{{ vars_file | default(playbook_dir ~ '/../config/global.yaml', true) }}"
+      - --plugin
+      - "{{ addon_plugin }}"
+  loop: "{{ _backfill_installed_addons | default([]) }}"
+  loop_control:
+    loop_var: addon_plugin
+  register: r_backfill_record
+  changed_when: "'[UPDATE]' in r_backfill_record.stdout"
+
+- name: Union installed addon plugins into the in-memory enabled_plugins
+  ansible.builtin.set_fact:
+    enabled_plugins: >-
+      {{ (enabled_plugins | default([]))
+         | union(_backfill_installed_addons | default([])) }}
+  when: _backfill_installed_addons | default([]) | length > 0
