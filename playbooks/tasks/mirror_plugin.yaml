@@ -337,8 +337,8 @@
     updateservice_guard: restore
   when: storage_plugin | default('') == 'lvms'
 
-# The Quay mirror step above deferred the UpdateService restart (only done if it changed the
-# CA) until the rollout has settled.
+# The Quay mirror step above deferred the UpdateService restart (only done if a CA change is
+# pending) until the rollout has settled.
 - name: Restart UpdateService deployment to reload registry CA trust
   ansible.builtin.include_tasks: restart_updateservice_for_ca.yaml
   when:
