@@ -79,6 +79,14 @@ Each Enclave tarball release includes:
     valid core operator overrides. The upgrade playbook selects its checkout's
     override when present, independently of the caller's directory.
 
+    Operator settings are validated for the entire selected batch before any
+    operator reconciliation starts. Versions must be accepted by the existing
+    version comparator after CSV normalization (`+` becomes `-`); for example,
+    `2.17.3`, `4.21.0-202610241344` and `4.20.1-rc.1` are supported, but
+    `v2.17.3` is not. Channels must match `[A-Za-z0-9][A-Za-z0-9._-]*`, such as
+    `stable-v1`, `v1` or `stable-3.15`; spaces are not allowed. Errors identify
+    the source, operator and invalid field. Plugin channels remain optional.
+
 ---
 
 ## Migration System

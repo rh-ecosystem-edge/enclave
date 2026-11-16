@@ -303,6 +303,194 @@ def test_partial_fields_and_order(operator_files: tuple[Path, Path, Path]) -> No
 
 
 @pytest.mark.parametrize(
+    ("field", "value"), [("version", "v2.17.3"), ("channel", "stable 2.17")]
+)
+@pytest.mark.parametrize("source", ["defaults", "override", "plugin", "explicit"])
+def test_operator_settings_reject_before_dispatch(
+    operator_files: tuple[Path, Path, Path],
+    mocker: MockerFixture,
+    field: str,
+    value: str,
+    source: str,
+) -> None:
+    """A malformed later operator rejects the complete input before dispatch or oc."""
+    defaults, override, _schema = operator_files
+    entries = yaml.safe_load(defaults.read_text())["operators"]
+    entries[1][field] = value
+    mocker.patch("enclave.reconcile.cli.defaults_path", return_value=defaults)
+    mocker.patch("enclave.reconcile.cli.config_path", return_value=override)
+    arguments = ["operator-versions", "--use-defaults"]
+    expected_source = str(defaults)
+    if source == "defaults":
+        defaults.write_text(yaml.safe_dump({"operators": entries}))
+    elif source == "override":
+        override.write_text(
+            yaml.safe_dump({"operators": [{"name": "second", field: value}]})
+        )
+        arguments += ["--operators-vars-file", str(override)]
+        expected_source = str(override)
+    elif source == "plugin":
+        plugin_file = defaults.parent / "plugin.yaml"
+        plugin_file.write_text(yaml.safe_dump({"operators": entries}))
+        mocker.patch(
+            "enclave.reconcile.cli.package_data_path", return_value=plugin_file
+        )
+        arguments = ["plugin-operator-versions", "--plugin", "test"]
+        expected_source = "Plugin 'test'"
+    else:
+        arguments = [
+            "operator-versions",
+            "--name",
+            "second",
+            "--namespace",
+            "second-ns",
+            "--version",
+            entries[1]["version"],
+            "--channel",
+            entries[1]["channel"],
+        ]
+        expected_source = "explicit options"
+    dispatch = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    external = mocker.patch("enclave.reconcile.operator_versions.run_oc_command")
+    result = CliRunner().invoke(cli, arguments, env={"KUBECONFIG": "/unused"})
+    assert result.exit_code == 1, result.output
+    assert all(
+        text in result.output for text in (expected_source, "second", field, value)
+    )
+    dispatch.assert_not_called()
+    external.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("version", "v2.17.3"), ("channel", "stable 2.17")]
+)
+@pytest.mark.parametrize("in_defaults", [False, True])
+def test_loader_rejects_invalid_operator_settings(
+    operator_files: tuple[Path, Path, Path],
+    field: str,
+    value: str,
+    *,
+    in_defaults: bool,
+) -> None:
+    """Install/mirror resolution rejects invalid raw defaults and partial overrides."""
+    defaults, override, schema = operator_files
+    if in_defaults:
+        data = yaml.safe_load(defaults.read_text())
+        data["operators"][1][field] = value
+        defaults.write_text(yaml.safe_dump(data))
+    else:
+        override.write_text(
+            yaml.safe_dump({"operators": [{"name": "second", field: value}]})
+        )
+    with pytest.raises(OperatorConfigError) as error:
+        load_operators(defaults, override, schema)
+    assert all(
+        text in str(error.value)
+        for text in (str(defaults if in_defaults else override), "second", field, value)
+    )
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        "4.21.0-202610241344",
+        "4.20.1-rc.1.10",
+        "4.20.1-rc10",
+        "1.2.3+build.4",
+        "1.2",
+        "01.2.3",
+        "1.2.3-custom-label",
+    ],
+)
+@pytest.mark.parametrize(
+    "channel", [None, "stable-v1", "v1", "stable-3.15", "stable_test.1"]
+)
+def test_plugin_settings_preserve_consumer_accepted_forms(
+    tmp_path: Path, mocker: MockerFixture, version: str, channel: str | None
+) -> None:
+    """Preflight retains numeric components, custom suffixes and optional channels."""
+    plugin_file = tmp_path / "plugin.yaml"
+    plugin_file.write_text(
+        yaml.safe_dump({
+            "operators": [
+                {
+                    "name": "test",
+                    "version": version,
+                    "namespace": "test",
+                    "channel": channel,
+                }
+            ]
+        })
+    )
+    mocker.patch("enclave.reconcile.cli.package_data_path", return_value=plugin_file)
+    dispatch = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    result = CliRunner().invoke(
+        cli,
+        ["plugin-operator-versions", "--plugin", "test"],
+        env={"KUBECONFIG": "/unused"},
+    )
+    assert result.exit_code == 0, result.output
+    dry_run = False
+    dispatch.assert_called_once_with(
+        version, "test", ["test"], dry_run, channel=channel, subscription_name="test"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("version", "v2.17.3"), ("channel", "stable 2.17")]
+)
+def test_installed_invalid_operator_settings_before_oc(
+    tmp_path: Path,
+    installed_cli: Path,
+    offline_cli_env: dict[str, str],
+    field: str,
+    value: str,
+) -> None:
+    """The installed reconciler and resolver reject a late override before any oc."""
+    marker = tmp_path / "oc-called"
+    (tmp_path / "bin/oc").write_text(f"#!/bin/sh\ntouch '{marker}'\nexit 99\n")
+    override = tmp_path / "selected.yaml"
+    override.write_text(
+        yaml.safe_dump({"operators": [{"name": "quay-operator", field: value}]})
+    )
+    commands = [
+        [
+            "reconcile",
+            "operator-versions",
+            "--use-defaults",
+            "--operators-vars-file",
+            str(override),
+        ],
+        [
+            "tools",
+            "resolve-core-operators",
+            "--defaults-file",
+            str(package_data_path("defaults", "operators.yaml")),
+            "--schema-file",
+            str(package_data_path("schemas", "operators.yaml")),
+            "--config-file",
+            str(override),
+        ],
+    ]
+    for arguments in commands:
+        result = subprocess.run(
+            [str(installed_cli), *arguments],
+            cwd=tmp_path,
+            env=offline_cli_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=30,
+        )
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert all(
+            text in result.stderr
+            for text in (str(override), "quay-operator", field, value)
+        )
+        assert not marker.exists()
+
+
+@pytest.mark.parametrize(
     "content",
     [
         "",

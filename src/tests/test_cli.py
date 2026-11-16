@@ -791,6 +791,33 @@ def test_plugin_operator_versions_validates_all_plugins_before_reconciling(
     mock_reconcile.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"), [("version", "v2.17.3"), ("channel", "stable 2.17")]
+)
+def test_plugin_operator_versions_later_plugin_settings_fail_before_dispatch(
+    mocker: MockerFixture, plugins_root: Path, field: str, value: str
+) -> None:
+    """A malformed setting in the second plugin prevents dispatch of the first."""
+    _write_plugin(plugins_root, "good", {"operators": [_PLUGIN_OPERATOR]})
+    _write_plugin(
+        plugins_root, "bad", {"operators": [{**_PLUGIN_OPERATOR, field: value}]}
+    )
+    dispatch = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
+    external = mocker.patch("enclave.reconcile.operator_versions.run_oc_command")
+    result = CliRunner().invoke(
+        cli,
+        ["plugin-operator-versions", "--plugin", "good", "--plugin", "bad"],
+        env=_KC,
+    )
+    assert result.exit_code == 1
+    assert all(
+        text in result.output
+        for text in ("Plugin 'bad'", _PLUGIN_OPERATOR["name"], field, value)
+    )
+    dispatch.assert_not_called()
+    external.assert_not_called()
+
+
 def test_plugin_operator_versions_bad_yaml(plugins_root: Path) -> None:
     """Fail with a parse error on malformed YAML."""
     plugin_dir = plugins_root / "plugins" / "plug"

@@ -8,6 +8,7 @@ import click
 import yaml
 
 from enclave.operator_config import OperatorConfigError, load_operators
+from enclave.operator_validation import validate_operator_settings
 from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
     InvalidVersionError,
@@ -209,6 +210,12 @@ def _validate_operator_entries(operators: object, source: str) -> list[OperatorE
                 f"{source}: operator entry {idx} has invalid 'csvNames': must be "
                 "a list of non-blank strings"
             )
+        try:
+            validate_operator_settings(op["version"], channel)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"{source}: operator {op['name']!r}: {exc}"
+            ) from exc
         validated.append(
             OperatorEntry(
                 op["name"],
@@ -330,6 +337,12 @@ def operator_versions(
         ]
         if missing:
             raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
+        try:
+            validate_operator_settings(version, channel)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"explicit options: operator {name!r}: {exc}"
+            ) from exc
         if channel is None:
             operator_versions_reconcile(
                 version, namespace, list(csv_names) or [name], dry_run

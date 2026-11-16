@@ -8,6 +8,8 @@ import yaml
 from jsonschema import Draft7Validator
 from jsonschema.exceptions import ValidationError
 
+from enclave.operator_validation import validate_operator_settings
+
 
 class OperatorConfigError(ValueError):
     """Invalid or unreadable core operator configuration."""
@@ -61,6 +63,13 @@ def _validate(data: object, schema: dict[str, Any], source: Path) -> None:
         raise OperatorConfigError(
             f"Invalid operators in {source} at {location or '<root>'}: {exc.message}",
         ) from exc
+    for entry in cast("dict[str, Any]", data)["operators"]:
+        try:
+            validate_operator_settings(entry.get("version"), entry.get("channel"))
+        except ValueError as exc:
+            raise OperatorConfigError(
+                f"{source}: operator {entry['name']!r}: {exc}",
+            ) from exc
 
 
 def _index_operators(
