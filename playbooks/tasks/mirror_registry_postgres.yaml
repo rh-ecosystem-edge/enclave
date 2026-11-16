@@ -1,0 +1,232 @@
+---
+# Migrate the mirror-registry (Quay) database backend from SQLite to PostgreSQL.
+#
+# mirror-registry 2.0.x only supports a SQLite backend, which limits the Quay
+# registry worker to a single thread and takes a global write lock. Under the
+# concurrent pushes of skopeo/oc-mirror this locks up and returns 413/502 errors.
+# Red Hat KCS 7140667 documents the supported fix: add a PostgreSQL container to
+# the existing quay-pod, repoint DB_URI and raise the worker counts.
+#
+# The migration wipes the Quay database, so it must run right after install and
+# before any content is mirrored. A marker file written only once the migration
+# fully succeeds (including recreating the init user) drives idempotency: while
+# the marker is absent the whole migration re-runs from a clean database, and
+# once it is present the play only ensures the PostgreSQL service stays enabled
+# and running (so it survives reboots) without touching the data.
+
+- name: Get current user id
+  ansible.builtin.command: id -u
+  register: r_uid
+  changed_when: false
+
+- name: Set PostgreSQL migration facts
+  ansible.builtin.set_fact:
+    _pg_user_env:
+      XDG_RUNTIME_DIR: "/run/user/{{ r_uid.stdout }}"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ r_uid.stdout }}/bus"
+    _quay_config_path: "{{ workingDir }}/data/quay-config/config.yaml"
+    _quay_app_unit: "{{ lookup('env', 'HOME') }}/.config/systemd/user/quay-app.service"
+    _pg_marker: "{{ workingDir }}/data/.pg-migration-done"
+
+- name: Migrate Quay backend to PostgreSQL
+  environment: "{{ _pg_user_env }}"
+  block:
+    - name: Check for the PostgreSQL migration marker
+      ansible.builtin.stat:
+        path: "{{ _pg_marker }}"
+      register: r_pg_marker
+
+    - name: Ensure quay-postgres is enabled and running when already migrated
+      when: r_pg_marker.stat.exists
+      ansible.builtin.systemd_service:
+        name: quay-postgres.service
+        scope: user
+        state: started
+        enabled: true
+
+    - name: Perform SQLite to PostgreSQL migration
+      when: not r_pg_marker.stat.exists
+      block:
+        - name: Stop the Quay app service
+          ansible.builtin.systemd_service:
+            name: quay-app.service
+            scope: user
+            state: stopped
+
+        # The database lives in a podman named volume (like the stock
+        # quay-storage/sqlite-storage volumes) so no container-owned files land
+        # under the working directory. Clear any leftover container and volume
+        # first so the migration always starts from an empty database. Ownership
+        # is handled by the ":U" flag on the volume in quay-postgres.service.j2.
+        - name: Stop any existing quay-postgres service
+          ansible.builtin.systemd_service:
+            name: quay-postgres.service
+            scope: user
+            state: stopped
+          failed_when: false
+
+        - name: Remove any stale quay-postgres container
+          ansible.builtin.command: podman rm --ignore --force quay-postgres
+          changed_when: false
+
+        # rc 0 = volume present, rc 1 = absent; any other code is a real error
+        # and must abort rather than be treated as "absent" (which would skip
+        # removal and let PostgreSQL start on stale data).
+        - name: Check for a stale quay-postgres data volume
+          ansible.builtin.command: podman volume exists {{ quayPgVolume }}
+          register: r_pg_volume
+          changed_when: false
+          failed_when: r_pg_volume.rc not in [0, 1]
+
+        # Do not suppress removal failures: if a stale volume cannot be removed
+        # the migration must abort rather than start PostgreSQL on old data and
+        # then write the completion marker.
+        - name: Remove any stale quay-postgres data volume
+          ansible.builtin.command: podman volume rm --force {{ quayPgVolume }}
+          when: r_pg_volume.rc == 0
+          changed_when: true
+
+        # Keep the password out of the world-readable unit file (and out of
+        # systemctl/podman inspect) by passing it through a podman secret, the
+        # same way the stock quay-redis unit handles its password.
+        - name: Create the quay-postgres password secret
+          containers.podman.podman_secret:
+            name: "{{ quayPgSecretName }}"
+            data: "{{ quayPgPassword }}"
+            state: present
+            force: true
+          no_log: true
+
+        - name: Pull the PostgreSQL image
+          ansible.builtin.command: podman pull --authfile {{ pullSecretPath }} {{ quayPgImage }}
+          register: r_pg_pull
+          changed_when: "'Writing manifest' in r_pg_pull.stdout"
+
+        - name: Template the quay-postgres systemd user unit
+          ansible.builtin.template:
+            src: ../../templates/quay-postgres.service.j2
+            dest: "{{ lookup('env', 'HOME') }}/.config/systemd/user/quay-postgres.service"
+            mode: "0600"
+
+        - name: Start the quay-postgres service
+          ansible.builtin.systemd_service:
+            name: quay-postgres.service
+            scope: user
+            state: started
+            enabled: true
+            daemon_reload: true
+
+        - name: Wait for PostgreSQL to accept connections
+          ansible.builtin.command: >-
+            podman exec quay-postgres pg_isready -U {{ quayPgUser }} -d {{ quayPgDatabase }}
+          register: r_pg_ready
+          until: r_pg_ready.rc == 0
+          retries: 30
+          delay: 5
+          changed_when: false
+
+        - name: Create the pg_trgm extension on the Quay database
+          ansible.builtin.command: >-
+            podman exec quay-postgres psql -d {{ quayPgDatabase }}
+            -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+          register: r_pg_trgm
+          changed_when: "'CREATE EXTENSION' in r_pg_trgm.stdout"
+
+        - name: Point Quay DB_URI to PostgreSQL
+          ansible.builtin.replace:
+            path: "{{ _quay_config_path }}"
+            regexp: '^DB_URI:.*$'
+            replace: >-
+              DB_URI: postgresql://{{ quayPgUser | urlencode | replace('/', '%2F') }}:{{ quayPgPassword | urlencode | replace('/', '%2F') }}@localhost/{{ quayPgDatabase }}
+          no_log: true
+
+        - name: Add Quay DB_CONNECTION_ARGS
+          ansible.builtin.blockinfile:
+            path: "{{ _quay_config_path }}"
+            marker: "# {mark} ANSIBLE MANAGED BLOCK - DB_CONNECTION_ARGS"
+            block: |
+              DB_CONNECTION_ARGS:
+                max_connections: {{ quayDbConnArgs.max_connections }}
+                stale_timeout: {{ quayDbConnArgs.stale_timeout }}
+
+        - name: Remove the unsupported-minimum worker override from the Quay app unit
+          ansible.builtin.lineinfile:
+            path: "{{ _quay_app_unit }}"
+            regexp: '^\s*-e WORKER_COUNT_UNSUPPORTED_MINIMUM=.*$'
+            state: absent
+
+        - name: Convert the single-worker override to the web worker count
+          ansible.builtin.lineinfile:
+            path: "{{ _quay_app_unit }}"
+            regexp: '^\s*-e WORKER_COUNT=1\b.*$'
+            line: "    -e WORKER_COUNT_WEB={{ quayWorkerCountWeb }} \\"
+
+        - name: Set the registry worker count on the Quay app unit
+          ansible.builtin.lineinfile:
+            path: "{{ _quay_app_unit }}"
+            regexp: '^\s*-e WORKER_COUNT_REGISTRY=.*$'
+            insertafter: '^\s*-e WORKER_COUNT_WEB=.*$'
+            line: "    -e WORKER_COUNT_REGISTRY={{ quayWorkerCountRegistry }} \\"
+
+        - name: Set the secscan worker count on the Quay app unit
+          ansible.builtin.lineinfile:
+            path: "{{ _quay_app_unit }}"
+            regexp: '^\s*-e WORKER_COUNT_SECSCAN=.*$'
+            insertafter: '^\s*-e WORKER_COUNT_REGISTRY=.*$'
+            line: "    -e WORKER_COUNT_SECSCAN={{ quayWorkerCountSecscan }} \\"
+
+        - name: Restart the Quay app service
+          ansible.builtin.systemd_service:
+            name: quay-app.service
+            scope: user
+            state: restarted
+            daemon_reload: true
+
+        - name: Wait for the Quay health endpoint
+          ansible.builtin.uri:
+            url: "https://{{ quayHostname }}:8443/health/instance"
+            method: GET
+            validate_certs: false
+            status_code: 200
+          register: r_quay_health
+          until: r_quay_health.status == 200
+          retries: 30
+          delay: 10
+
+        # Migrating to a fresh database drops the init user that
+        # mirror-registry created at install time, so recreate it via Quay's
+        # initialize endpoint (available because FEATURE_USER_INITIALIZE is set
+        # and the database is empty). Without this, skopeo/oc-mirror pushes to
+        # the mirror fail with "Invalid Username or Password".
+        - name: Recreate the Quay init user on the fresh database
+          ansible.builtin.uri:
+            url: "https://{{ quayHostname }}:8443/api/v1/user/initialize"
+            method: POST
+            validate_certs: false
+            body_format: json
+            body:
+              username: "{{ quayUser }}"
+              password: "{{ quayPassword }}"
+              email: "{{ quayUser }}@{{ baseDomain }}"
+              access_token: false
+            status_code: 200
+          no_log: true
+
+        - name: Verify the Quay registry v2 endpoint responds
+          ansible.builtin.uri:
+            url: "https://{{ quayHostname }}:8443/v2/"
+            method: GET
+            validate_certs: false
+            status_code: [200, 401]
+          register: r_quay_v2
+          until: r_quay_v2.status in [200, 401]
+          retries: 30
+          delay: 10
+
+        # Written last, so a failure anywhere above leaves no marker and the
+        # whole migration re-runs from a clean database on the next play.
+        - name: Mark the PostgreSQL migration as complete
+          ansible.builtin.copy:
+            dest: "{{ _pg_marker }}"
+            content: "mirror-registry migrated to PostgreSQL (KCS 7140667)\n"
+            mode: "0644"
