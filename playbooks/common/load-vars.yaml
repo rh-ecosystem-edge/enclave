@@ -60,7 +60,6 @@
   loop:
     - control_binaries.yaml
     - download.yaml
-    - operators.yaml
     - platforms.yaml
     - catalogs.yaml
     - mirror_registry.yaml
@@ -69,6 +68,32 @@
     - oc_mirror.yaml
   loop_control:
     loop_var: config_file
+
+- name: Locate core operator defaults relative to the shared task file
+  ansible.builtin.set_fact:
+    core_operator_defaults_file: "{{ lookup('ansible.builtin.first_found', '../../defaults/operators.yaml') }}"
+
+- name: Resolve and validate effective core operator configuration
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - tools
+      - resolve-core-operators
+      - --defaults-file
+      - "{{ core_operator_defaults_file }}"
+      - --config-file
+      - "{{ core_operator_defaults_file | dirname | dirname }}/config/operators.yaml"
+      - --schema-file
+      - "{{ core_operator_defaults_file | dirname | dirname }}/schemas/operators.yaml"
+  delegate_to: localhost
+  become: false
+  check_mode: false
+  changed_when: false
+  register: r_core_operators
+
+- name: Load effective core operators for installation and mirroring
+  ansible.builtin.set_fact:
+    operators: "{{ (r_core_operators.stdout | from_json).operators }}"
 
 - name: Ensure storage plugin is in enabled_plugins
   ansible.builtin.set_fact:

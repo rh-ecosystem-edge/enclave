@@ -7,6 +7,7 @@ from typing import NamedTuple, cast
 import click
 import yaml
 
+from enclave.operator_config import OperatorConfigError, load_operators
 from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
     InvalidVersionError,
@@ -284,7 +285,7 @@ def cli(log_level: str) -> None:
     is_flag=True,
     default=False,
     help=(
-        "Load all operators from defaults/operators.yaml (mutually exclusive "
+        "Load defaults/operators.yaml with optional config/operators.yaml overrides (mutually exclusive "
         "with --name, --version, --namespace, --channel, --csv-name)"
     ),
 )
@@ -298,7 +299,7 @@ def operator_versions(
     use_defaults: bool,
     dry_run: bool,
 ) -> None:
-    """Reconcile operator versions using explicit options or bundled defaults."""
+    """Reconcile operator versions using explicit options or effective core config."""
     if use_defaults and any([name, version, namespace, channel, csv_names]):
         raise click.UsageError(
             "--use-defaults is mutually exclusive with --name, --version, "
@@ -331,14 +332,13 @@ def operator_versions(
     defaults_file = defaults_path("operators.yaml")
 
     try:
-        with defaults_file.open(encoding="utf-8") as fh:
-            operators = yaml.safe_load(fh)["operators"]
-    except FileNotFoundError as exc:
-        raise click.ClickException(
-            f"{defaults_file} not found; run from the repo root"
-        ) from exc
-    except (yaml.YAMLError, KeyError) as exc:
-        raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
+        operators = load_operators(
+            defaults_file,
+            config_path("operators.yaml"),
+            package_data_path("schemas", "operators.yaml"),
+        )["operators"]
+    except OperatorConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     _reconcile_operator_entries(
         _validate_operator_entries(operators, str(defaults_file)), dry_run
