@@ -457,7 +457,7 @@ Operators are configured in `defaults/operators.yaml`:
 operators:
   # Container Registry
   - name: quay-operator
-    channel: stable-3.15
+    channel: stable-3.18
     namespace: quay-enterprise
 
   # Advanced Cluster Management
