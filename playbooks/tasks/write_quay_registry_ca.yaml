@@ -1,0 +1,53 @@
+---
+# The Quay registry CA writes of trust_quay_registry_ca_for_image_config.yaml, which
+# includes them twice: in check mode to detect a change, then for real. Registers
+# r_quay_ca_configmap, r_quay_ca_existing_configmap and r_quay_ca_image_config.
+- name: Create or update ConfigMap with Quay registry CA for image pulls
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: "{{ quayRegistryCAConfigmapName }}"
+        namespace: openshift-config
+      data: "{{ quay_registry_ca_configmap_data }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_configmap
+
+- name: Add Quay registry CA to existing additionalTrustedCA ConfigMap
+  when:
+    - image_config_trusted_ca_name.rc == 0
+    - image_config_trusted_ca_name.stdout | trim | length > 0
+    - image_config_trusted_ca_name.stdout | trim != quayRegistryCAConfigmapName
+  kubernetes.core.k8s:
+    state: patched
+    kind: ConfigMap
+    name: "{{ image_config_trusted_ca_name.stdout | trim }}"
+    namespace: openshift-config
+    merge_type: strategic-merge
+    definition:
+      data: "{{ quay_registry_ca_configmap_data }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_existing_configmap
+
+- name: Patch image config to reference Quay registry CA ConfigMap
+  when:
+    - image_config_trusted_ca_name.rc == 0
+    - image_config_trusted_ca_name.stdout | trim | length == 0
+  kubernetes.core.k8s:
+    state: patched
+    kind: Image
+    name: cluster
+    api_version: config.openshift.io/v1
+    namespace: ""
+    merge_type: merge
+    definition:
+      spec:
+        additionalTrustedCA:
+          name: "{{ quayRegistryCAConfigmapName }}"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_quay_ca_image_config

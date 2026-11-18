@@ -1,7 +1,7 @@
 ---
 # Quay disconnected: prepare and optionally apply IDMS/ITMS from oc-mirror, trust the
 # Quay registry CA for image pulls, wait for the resulting MCO rollout, then restart the
-# UpdateService if the CA changed. On LVMS the UpdateService runs one replica during the
+# UpdateService if a CA change is pending. On LVMS the UpdateService runs one replica during the
 # rollout so its PodDisruptionBudget cannot block the drains.
 # Included from quay_disconnected_finish.yaml and mirror_plugin.yaml.
 #
@@ -180,7 +180,7 @@
     - not (quay_mirror_skip_apply | default(false) | bool)
     - storage_plugin | default('') == 'lvms'
 
-# Restart the UpdateService (only if the CA changed) once the rollout has settled, so its
+# Restart the UpdateService (only if a CA change is pending) once the rollout has settled, so its
 # new replicas start on a quiet cluster with the hub Quay up. Plugin mode: mirror_plugin.yaml
 # restarts it after its own wait.
 - name: Restart UpdateService deployment to reload registry CA trust

@@ -1,27 +1,46 @@
 ---
-# Restart the UpdateService so it reloads the registry CA, only when
-# trust_quay_registry_ca_for_image_config.yaml changed the CA. A needless restart right
-# before a MachineConfig rollout can leave its only ready replica on a draining node,
-# where its PodDisruptionBudget blocks the drain; callers that roll out (the Quay mirror
-# step, plugin mirroring) defer this until the rollout has settled. NotFound
-# (UpdateService not created yet) is fine.
-- name: Restart UpdateService deployment to reload registry CA trust
-  when: >-
-    (r_quay_ca_configmap | default({}) is changed)
-    or (r_quay_ca_existing_configmap | default({}) is changed)
-    or (r_quay_ca_image_config | default({}) is changed)
+# Restart the UpdateService so it reloads the registry CA, only when a CA restart is
+# pending: trust_quay_registry_ca_for_image_config.yaml marks one (ConfigMap
+# openshift-config/enclave-updateservice-ca-restart-pending) before it changes the CA,
+# and it is cleared only after the restart, so a run that fails at any point in between
+# still restarts on the next run. A needless restart right before a MachineConfig rollout can
+# leave its only ready replica on a draining node, where its PodDisruptionBudget blocks
+# the drain; callers that roll out (the Quay mirror step, plugin mirroring) defer this
+# until the rollout has settled. NotFound (UpdateService not created yet) is fine: it
+# starts with the current CA.
+- name: Check for a pending UpdateService CA restart
   ansible.builtin.command:
-    argv:
-      - "{{ workingDir }}/bin/oc"
-      - rollout
-      - restart
-      - deployment/service
-      - -n
-      - openshift-update-service
+    argv: ["{{ workingDir }}/bin/oc", get, configmap, enclave-updateservice-ca-restart-pending,
+           -n, openshift-config, --ignore-not-found, -o, name, --request-timeout=30s]
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_updateservice_rollout_restart
-  changed_when: r_updateservice_rollout_restart.rc == 0
-  failed_when:
-    - r_updateservice_rollout_restart.rc != 0
-    - '"not found" not in r_updateservice_rollout_restart.stderr | lower'
+  register: r_updateservice_restart_pending
+  changed_when: false
+
+- name: Restart the UpdateService for a pending registry CA change
+  when: r_updateservice_restart_pending.stdout | trim | length > 0
+  block:
+    - name: Restart UpdateService deployment to reload registry CA trust
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - rollout
+          - restart
+          - deployment/service
+          - -n
+          - openshift-update-service
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_updateservice_rollout_restart
+      changed_when: r_updateservice_rollout_restart.rc == 0
+      failed_when:
+        - r_updateservice_rollout_restart.rc != 0
+        - '"not found" not in r_updateservice_rollout_restart.stderr | lower'
+
+    - name: Clear the pending UpdateService CA restart
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", delete, configmap, enclave-updateservice-ca-restart-pending,
+               -n, openshift-config, --ignore-not-found, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      changed_when: true

@@ -3,8 +3,9 @@
 # Routes signed by the ingress router CA use router-ca; externally signed routes
 # (for example ZeroSSL) use the intermediate/root CAs fetched from the live chain.
 # OSUS graph-builder reads updateservice-registry from the image.config additionalTrustedCA
-# ConfigMap; nodes use the registry hostname key. Restarts the UpdateService when the CA
-# changed, unless the caller defers it (quay_ca_defer_updateservice_restart).
+# ConfigMap; nodes use the registry hostname key. When the CA changes, marks an
+# UpdateService restart as pending and restarts it, unless the caller defers the restart
+# (quay_ca_defer_updateservice_restart).
 
 - name: Set Quay registry hostname for image trust
   ansible.builtin.set_fact:
@@ -44,55 +45,34 @@
   changed_when: false
   failed_when: false
 
-- name: Create or update ConfigMap with Quay registry CA for image pulls
-  kubernetes.core.k8s:
-    state: present
-    definition:
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: "{{ quayRegistryCAConfigmapName }}"
-        namespace: openshift-config
-      data: "{{ quay_registry_ca_configmap_data }}"
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_quay_ca_configmap
+# Detect a CA change first (check mode) and mark the UpdateService restart as pending
+# before writing, so a failure at any later point, the marker included, leaves the
+# restart pending for the next run. The marker is kept until
+# restart_updateservice_for_ca.yaml has restarted the UpdateService.
+- name: Detect a Quay registry CA change
+  ansible.builtin.include_tasks:
+    file: write_quay_registry_ca.yaml
+    apply:
+      check_mode: true
 
-- name: Add Quay registry CA to existing additionalTrustedCA ConfigMap
-  when:
-    - image_config_trusted_ca_name.rc == 0
-    - image_config_trusted_ca_name.stdout | trim | length > 0
-    - image_config_trusted_ca_name.stdout | trim != quayRegistryCAConfigmapName
-  kubernetes.core.k8s:
-    state: patched
-    kind: ConfigMap
-    name: "{{ image_config_trusted_ca_name.stdout | trim }}"
-    namespace: openshift-config
-    merge_type: strategic-merge
-    definition:
-      data: "{{ quay_registry_ca_configmap_data }}"
+- name: Mark an UpdateService CA restart as pending
+  when: >-
+    (r_quay_ca_configmap | default({}) is changed)
+    or (r_quay_ca_existing_configmap | default({}) is changed)
+    or (r_quay_ca_image_config | default({}) is changed)
+  ansible.builtin.command:
+    argv: ["{{ workingDir }}/bin/oc", create, configmap, enclave-updateservice-ca-restart-pending,
+           -n, openshift-config, --request-timeout=30s]
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_quay_ca_existing_configmap
+  register: r_updateservice_restart_mark
+  changed_when: r_updateservice_restart_mark.rc == 0
+  failed_when:
+    - r_updateservice_restart_mark.rc != 0
+    - '"already exists" not in r_updateservice_restart_mark.stderr | lower'
 
-- name: Patch image config to reference Quay registry CA ConfigMap
-  when:
-    - image_config_trusted_ca_name.rc == 0
-    - image_config_trusted_ca_name.stdout | trim | length == 0
-  kubernetes.core.k8s:
-    state: patched
-    kind: Image
-    name: cluster
-    api_version: config.openshift.io/v1
-    namespace: ""
-    merge_type: merge
-    definition:
-      spec:
-        additionalTrustedCA:
-          name: "{{ quayRegistryCAConfigmapName }}"
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_quay_ca_image_config
+- name: Write the Quay registry CA trust
+  ansible.builtin.include_tasks: write_quay_registry_ca.yaml
 
 # Callers that trigger a MachineConfig rollout set quay_ca_defer_updateservice_restart and
 # include restart_updateservice_for_ca.yaml after the rollout has settled.

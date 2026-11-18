@@ -34,6 +34,15 @@
     (_conditions | selectattr('type', 'equalto', 'Updated')
       | rejectattr('status', 'equalto', 'True') | list | length > 0)
 
+# Without this, an API that never answered would read as "no rollout" and skip the wait.
+- name: Fail when the MachineConfigPools could not be read
+  ansible.builtin.fail:
+    msg: >-
+      Could not read the MachineConfigPools to detect a rollout (oc exit
+      {{ r_mcp_detect.rc | default('?') }}):
+      {{ r_mcp_detect.stderr | default('') | trim | regex_replace('\s+', ' ') | truncate(300) }}
+  when: r_mcp_detect.rc | default(1) != 0
+
 - name: Set MCP updating detected fact
   vars:
     _pools: "{{ (r_mcp_detect.stdout | from_json)['items'] if r_mcp_detect.rc | default(1) == 0 else [] }}"
