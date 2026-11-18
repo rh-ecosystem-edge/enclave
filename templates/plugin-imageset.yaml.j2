@@ -13,10 +13,15 @@ mirror:
 {% for operator_name in operator_names %}
         - name: {{ operator_name }}
           defaultChannel: {{ operator.channel }}
+{% if '+' in (operator.version | string) %}
+          bundles:
+            - name: {{ operator.csvNames | first | default(operator.name) }}.v{{ operator.version | replace('+', '-') }}
+{% else %}
           channels:
             - name: {{ operator.channel }}
               minVersion: {{ operator.init_version | default(operator.version) }}
               maxVersion: {{ operator.version }}
+{% endif %}
 {% endfor %}
 {% for pkg in operator.extraMirrorPackages | default([]) %}
         - name: {{ pkg }}
