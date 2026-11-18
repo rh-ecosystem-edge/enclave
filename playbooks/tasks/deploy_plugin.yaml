@@ -200,6 +200,24 @@
     - disconnected | default(true) | bool
   tags: mirror
 
+# Managed-cluster-only plugins (operators listed, installOperators: false, no Helm
+# charts; see mirror_plugin.yaml) get their mirrors on the clusters they target
+# through ACM.
+- name: "{{ plugin_name }} | Deliver plugin mirrors to its managed clusters"
+  ansible.builtin.include_tasks:
+    file: tasks/configure_plugin_fleet_mirrors.yaml
+    apply:
+      tags: mirror
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.registries | default([]) | length > 0
+    - plugin.operators | default([]) | length > 0
+    - not (plugin.installOperators | default(true) | bool)
+    - plugin.helm | default([]) | length == 0
+    - disconnected | default(true) | bool
+  tags: mirror
+
 - name: "{{ plugin_name }} | Install plugin operators"
   vars:
     default_operator_source: "cs-{{ catalog_mirror }}"
