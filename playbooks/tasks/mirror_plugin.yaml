@@ -262,6 +262,41 @@
 # Both oc-mirror runs (LZ and Quay Enterprise) complete without needing IDMS/ITMS
 # on the cluster. Applying all manifests here triggers one MCO rollout instead of two.
 
+# A plugin that declares operators but doesn't install them on the hub
+# (installOperators: false) and has no Helm charts (which run on the hub) only
+# targets managed clusters, which get their mirrors from MCE custom-registries at
+# install time. Its mirror sets would only roll out the hub, so skip them.
+- name: Decide whether the hub needs the plugin mirror sets
+  ansible.builtin.set_fact:
+    _plugin_hub_mirror_sets: >-
+      {{ not (plugin.operators | default([]) | length > 0
+              and not (plugin.installOperators | default(true) | bool)
+              and plugin.helm | default([]) | length == 0) }}
+
+- name: Skip the hub mirror sets for a managed-cluster-only plugin
+  ansible.builtin.debug:
+    msg: "Mirror sets not applied to the hub: {{ plugin_name }} targets managed clusters only."
+  when: not (_plugin_hub_mirror_sets | bool)
+
+# The LZ cluster-resources directory is applied as a whole by later plugins; move this
+# plugin's IDMS/ITMS out of it so they never reach the hub.
+- name: Move the skipped plugin mirror sets out of the shared cluster-resources directory
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dest="{{ lz_cluster_resources_dir }}-managed-only"
+    mkdir -p "$dest"
+    for f in "{{ lz_cluster_resources_dir }}"/idms-oc-mirror-plugin-{{ plugin_name }}.yaml \
+             "{{ lz_cluster_resources_dir }}"/itms-oc-mirror-plugin-{{ plugin_name }}.yaml; do
+      if [ -f "$f" ]; then mv -f "$f" "$dest/"; echo "moved $f"; fi
+    done
+  args:
+    executable: /bin/bash
+  register: r_move_skipped_mirror_sets
+  changed_when: "'moved' in r_move_skipped_mirror_sets.stdout"
+  when:
+    - not (_plugin_hub_mirror_sets | bool)
+    - lz_cluster_resources_dir is defined
+
 - name: Show mirror manifests to apply
   ansible.builtin.debug:
     msg:
@@ -269,8 +304,71 @@
       quay_idms_manifest: "{{ quay_idms_apply_manifest | default('n/a') }}"
       quay_itms_manifest: "{{ quay_itms_apply_manifest | default('n/a') }}"
   when:
+    - _plugin_hub_mirror_sets | bool
     - (r_plugin_mirror is defined and r_plugin_mirror is success) or
       (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+
+# An interrupted earlier run can leave a rollout unfinished (e.g. after a CA change,
+# which then reports no change on the re-run): a non-paused pool still Updating or not
+# yet Updated. Unreadable pools count as pending so the wait reports them.
+- name: Check for an unfinished MachineConfigPool rollout
+  ansible.builtin.command:
+    argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, json, --request-timeout=30s]
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_plugin_mcp_pending
+  changed_when: false
+  failed_when: false
+  timeout: 120
+
+# A CA change marks a pending UpdateService restart before it is made and the marker is
+# cleared only after the restart (restart_updateservice_for_ca.yaml), so it also catches
+# a re-run that starts before the MCO reports that change's rollout. Unreadable counts
+# as pending.
+- name: Check for a pending UpdateService CA restart
+  ansible.builtin.command:
+    argv: ["{{ workingDir }}/bin/oc", get, configmap, enclave-updateservice-ca-restart-pending,
+           -n, openshift-config, --ignore-not-found, -o, name, --request-timeout=30s]
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_plugin_ca_restart_pending
+  changed_when: false
+  failed_when: false
+  timeout: 120
+
+# The hub rolls out for the mirror sets applied below, for a hub Quay CA change (made
+# by the Quay mirror step above, or left pending by an interrupted run) or to finish an
+# interrupted rollout, even for a managed-cluster-only plugin.
+- name: Decide whether the hub rolls out
+  vars:
+    _pools: "{{ (r_plugin_mcp_pending.stdout | from_json)['items'] if r_plugin_mcp_pending.rc | default(1) == 0 else [] }}"
+    _conditions: >-
+      {{
+        ((_pools | rejectattr('spec.paused', 'defined') | list)
+          + (_pools | selectattr('spec.paused', 'defined') | rejectattr('spec.paused') | list))
+        | selectattr('status.conditions', 'defined')
+        | map(attribute='status.conditions')
+        | flatten
+      }}
+    _mcp_pending: >-
+      {{
+        (r_plugin_mcp_pending.rc | default(1) != 0)
+        or (_conditions | selectattr('type', 'equalto', 'Updating')
+              | selectattr('status', 'equalto', 'True') | list | length > 0)
+        or (_conditions | selectattr('type', 'equalto', 'Updated')
+              | rejectattr('status', 'equalto', 'True') | list | length > 0)
+      }}
+  ansible.builtin.set_fact:
+    _plugin_hub_rollout: >-
+      {{ (_plugin_hub_mirror_sets | bool
+          and ((r_plugin_mirror is defined and r_plugin_mirror is success)
+               or (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)))
+         or (r_quay_ca_configmap | default({}) is changed)
+         or (r_quay_ca_existing_configmap | default({}) is changed)
+         or (r_quay_ca_image_config | default({}) is changed)
+         or (_mcp_pending | bool)
+         or (r_plugin_ca_restart_pending.rc | default(1) != 0)
+         or (r_plugin_ca_restart_pending.stdout | default('') | trim | length > 0) }}
 
 # On LVMS, keep the UpdateService's PodDisruptionBudget from deadlocking the rollout's
 # drains (see updateservice_mirror_rollout_guard.yaml); restored after the wait.
@@ -280,8 +378,7 @@
     updateservice_guard: lower
   when:
     - storage_plugin | default('') == 'lvms'
-    - (r_plugin_mirror is defined and r_plugin_mirror is success) or
-      (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
+    - _plugin_hub_rollout | bool
 
 - name: Apply LZ mirror manifests to cluster
   ansible.builtin.shell: |
@@ -291,6 +388,7 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
+    - _plugin_hub_mirror_sets | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
 
@@ -304,6 +402,7 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
+    - _plugin_hub_mirror_sets | bool
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
     - quay_idms_apply_manifest is defined
@@ -318,18 +417,14 @@
   environment:
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when:
+    - _plugin_hub_mirror_sets | bool
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
     - quay_itms_apply_manifest is defined
 
 - name: Wait for MachineConfigPool to finish updating
   ansible.builtin.include_tasks: wait_mcp.yaml
-  when: >-
-    (r_plugin_mirror is defined and r_plugin_mirror is success)
-    or (r_plugin_mirror_quay is defined and r_plugin_mirror_quay is success)
-    or (r_quay_ca_configmap | default({}) is changed)
-    or (r_quay_ca_existing_configmap | default({}) is changed)
-    or (r_quay_ca_image_config | default({}) is changed)
+  when: _plugin_hub_rollout | bool
 
 - name: Restore the UpdateService after the mirror rollout
   ansible.builtin.include_tasks: updateservice_mirror_rollout_guard.yaml
@@ -370,5 +465,6 @@
   ansible.builtin.include_tasks:
     file: create_stable_catalog_source_aliases.yaml
   when:
+    - _plugin_hub_mirror_sets | bool
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
