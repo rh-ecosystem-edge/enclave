@@ -5,7 +5,8 @@
 # pool without spec.paused counts as not paused. Logs each pool's state and rendered
 # config when a rollout is detected and when it completes. Each poll is bounded by
 # --request-timeout and each wait by a task timeout, so an unreachable API fails the
-# wait instead of hanging it.
+# wait instead of hanging it. After a rollout, also waits for the hub Quay app to be
+# ready again (wait_hub_quay_after_rollout.yaml).
 - name: Wait for MachineConfigPool to detect pending changes (if any)
   ansible.builtin.command:
     argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, json, --request-timeout=30s]
@@ -135,4 +136,9 @@
   loop: "{{ _active }}"
   loop_control:
     label: "{{ item.metadata.name }}"
+  when: _mcp_updating_detected | bool
+
+# The pool tracks nodes, not the pods its drains evicted; make sure the hub Quay came back.
+- name: Wait for the hub Quay after the rollout
+  ansible.builtin.include_tasks: wait_hub_quay_after_rollout.yaml
   when: _mcp_updating_detected | bool
