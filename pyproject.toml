@@ -161,6 +161,7 @@ omit = [
     "*/tests/*",
     # Deliberately untested.
     "*/enclave_ci/environment/*",
+    "*/enclave_ci/verify/*",
 ]
 
 [tool.coverage.report]

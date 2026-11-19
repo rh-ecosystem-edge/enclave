@@ -4,7 +4,7 @@
 # The smoke test itself (osac_smoke.sh) must run on the Landing Zone, where oc
 # and the cluster kubeconfig live and the fulfillment-api route is reachable.
 # This driver runs on the CI runner (or a workstation), locates the Landing Zone
-# and invokes the smoke test there over SSH, mirroring verify_cluster.sh.
+# and invokes the smoke test there over SSH, like `enclave-ci verify cluster`.
 #
 # The Enclave repository is already synced to the Landing Zone by the deploy
 # flow, so the driver runs the copy of osac_smoke.sh that is present there.
@@ -34,7 +34,7 @@ info "Landing Zone IP: ${LZ_IP}"
 # Configure the shared LZ SSH helpers (sets LZ_SSH, LZ_USER, LZ_HOME,
 # LZ_ENCLAVE_DIR and SSH_OPTS). Override SSH_OPTS afterwards to drop the util's
 # `-q` so SSH's own connection errors still surface in the CI log, and to keep
-# the longer connect timeout used by verify_cluster.sh.
+# the longer connect timeout used by `enclave-ci verify cluster`.
 setup_ssh_config "${LZ_IP}"
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10"
 LZ_SESSION_DIR="${LZ_HOME}/sessions/1"

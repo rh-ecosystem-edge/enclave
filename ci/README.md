@@ -135,7 +135,7 @@ Scripts for verifying deployments, collecting logs, and running validation check
 | `verify_infrastructure.sh` | Validate infrastructure (VMs, networks, sushy-tools) |
 | `verify_landing_zone.sh` | Verify Landing Zone VM is accessible and configured |
 | `verify_enclave_installation.sh` | Verify Enclave Lab is installed correctly on Landing Zone |
-| `verify_cluster.sh` | Verify OpenShift cluster is deployed and healthy |
+| `verify_cluster.sh` | Verify the hub right after bootstrap via `enclave-ci verify cluster` (ClusterVersion, nodes, operators, MachineConfigPools, hub Quay, LZ mirror) |
 | `validate.sh` | Run all validation checks in sequence |
 | `collect_ci_artifacts.sh` | Collect logs and artifacts for CI (GitHub Actions) |
 | `collect_step_logs.sh` | Collect logs from specific deployment step |
