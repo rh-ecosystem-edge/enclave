@@ -1,0 +1,35 @@
+---
+- name: Validate serving plugin locally without a cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    plugin_dir: "{{ playbook_dir }}/.."
+  tasks:
+    - name: Load real defaults
+      ansible.builtin.include_vars: "{{ plugin_dir }}/defaults.yaml"
+
+    - name: Render and assert both operator profiles using actual hooks
+      ansible.builtin.include_tasks: render.yaml
+      loop: "{{ query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/config/valid/*.yaml') }}"
+      loop_control:
+        loop_var: profile
+
+    - name: Validate all negative fixtures through Ansible jsonschema consumer
+      ansible.utils.validate:
+        data: "{{ lookup('ansible.builtin.file', item) | from_yaml }}"
+        criteria: "{{ lookup('ansible.builtin.file', plugin_dir ~ '/schemas/' ~ item.split('/schemas/')[1].split('/')[0] ~ '.yaml') | from_yaml }}"
+        engine: ansible.utils.jsonschema
+      loop: >-
+        {{ query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/config/invalid/*.yaml')
+         + query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/defaults/invalid/*.yaml') }}
+      register: r_vllm_invalid
+      ignore_errors: true
+
+    - name: Assert every negative fixture was rejected
+      ansible.builtin.assert:
+        that: item is failed
+        quiet: true
+      loop: "{{ r_vllm_invalid.results }}"
+      loop_control:
+        label: "{{ item.item | basename }}"

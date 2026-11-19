@@ -1,0 +1,47 @@
+---
+- name: Report private serving validation boundary
+  ansible.builtin.debug:
+    msg: >-
+      Hub policy submitted. This does not prove target scheduling, readiness or inference.
+      Label intended ManagedClusters enclave.vllm/serve=true after preparing GPU and model PVC.
+      No gateway, authentication or per-caller limits are installed.
+
+- name: Run opt-in inference inside the explicitly supplied target cluster pod
+  when: vllm_settings.enableSmokeTest
+  block:
+    - name: Require explicit target kubeconfig for inference
+      ansible.builtin.assert:
+        that:
+          - vllm_smoke_kubeconfig is defined
+        fail_msg: Set vllm_smoke_kubeconfig to the selected target cluster kubeconfig; repeat for every selected cluster.
+
+    - name: Wait for ready serving pod on target cluster
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ vllm_smoke_kubeconfig }}"
+        api_version: v1
+        kind: Pod
+        namespace: enclave-vllm
+        label_selectors: [app=enclave-vllm]
+        wait: true
+        wait_condition:
+          type: Ready
+          status: "True"
+        wait_timeout: 1800
+      register: r_vllm_pods
+      retries: 30
+      delay: 10
+      until: r_vllm_pods.resources | length == 1
+
+    - name: Execute actual completion request without logging the body
+      kubernetes.core.k8s_exec:
+        kubeconfig: "{{ vllm_smoke_kubeconfig }}"
+        namespace: enclave-vllm
+        pod: "{{ r_vllm_pods.resources[0].metadata.name }}"
+        container: server
+        command: >-
+          python3 -c 'import json,urllib.request;
+          payload=json.dumps(dict(model="enclave-llm",prompt="Hello",max_tokens=8)).encode();
+          request=urllib.request.Request("http://127.0.0.1:8000/v1/completions",data=payload,headers={"Content-Type":"application/json"});
+          response=json.load(urllib.request.urlopen(request,timeout=120));
+          assert response["choices"] and isinstance(response["choices"][0]["text"],str)'
+      no_log: true

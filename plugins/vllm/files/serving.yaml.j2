@@ -1,0 +1,235 @@
+apiVersion: apps.open-cluster-management.io/v1
+kind: PlacementRule
+metadata:
+  name: enclave-vllm
+  namespace: openshift-acm-policies
+spec:
+  clusterConditions:
+    - type: ManagedClusterConditionAvailable
+      status: "True"
+  clusterSelector:
+    matchLabels:
+      enclave.vllm/serve: "true"
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: PlacementBinding
+metadata:
+  name: enclave-vllm
+  namespace: openshift-acm-policies
+placementRef:
+  apiGroup: apps.open-cluster-management.io
+  kind: PlacementRule
+  name: enclave-vllm
+subjects:
+  - apiGroup: policy.open-cluster-management.io
+    kind: Policy
+    name: enclave-vllm
+---
+apiVersion: policy.open-cluster-management.io/v1
+kind: Policy
+metadata:
+  name: enclave-vllm
+  namespace: openshift-acm-policies
+spec:
+  disabled: false
+  remediationAction: enforce
+  policy-templates:
+    - objectDefinition:
+        apiVersion: policy.open-cluster-management.io/v1
+        kind: ConfigurationPolicy
+        metadata:
+          name: enclave-vllm
+        spec:
+          remediationAction: enforce
+          severity: high
+          object-templates:
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Namespace
+                metadata:
+                  name: enclave-vllm
+                  labels:
+                    pod-security.kubernetes.io/enforce: restricted
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: networking.k8s.io/v1
+                kind: NetworkPolicy
+                metadata:
+                  name: default-deny
+                  namespace: enclave-vllm
+                spec:
+                  podSelector: {}
+                  policyTypes: [Ingress, Egress]
+                  ingress: []
+                  egress: []
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: networking.k8s.io/v1
+                kind: NetworkPolicy
+                metadata:
+                  name: explicit-serving-callers
+                  namespace: enclave-vllm
+                spec:
+                  podSelector:
+                    matchLabels:
+                      app: enclave-vllm
+                  policyTypes: [Ingress]
+                  ingress:
+                    - from:
+                        - namespaceSelector:
+                            matchLabels:
+                              enclave.vllm/caller: "true"
+                          podSelector:
+                            matchLabels:
+                              enclave.vllm/caller: "true"
+                      ports:
+                        - protocol: TCP
+                          port: 8000
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: enclave-llm
+                  namespace: enclave-vllm
+                spec:
+                  type: ClusterIP
+                  selector:
+                    app: enclave-vllm
+                  ports:
+                    - name: http
+                      port: 8000
+                      targetPort: http
+            - complianceType: musthave
+              objectDefinition:
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: enclave-vllm
+                  namespace: enclave-vllm
+                spec:
+                  replicas: 1
+                  strategy:
+                    type: Recreate
+                  selector:
+                    matchLabels:
+                      app: enclave-vllm
+                  template:
+                    metadata:
+                      labels:
+                        app: enclave-vllm
+                      annotations:
+                        enclave.vllm/artifact-identity: {{ vllm_settings.artifactIdentity | to_json }}
+                    spec:
+                      automountServiceAccountToken: false
+                      securityContext:
+                        runAsNonRoot: true
+                        seccompProfile:
+                          type: RuntimeDefault
+                      containers:
+                        - name: server
+                          image: {{ vllm_settings.runtimeImage | to_json }}
+                          imagePullPolicy: IfNotPresent
+                          command: [python3, -m, vllm.entrypoints.openai.api_server]
+                          args:
+                            - --model
+                            - {{ ('/models/' ~ vllm_settings.modelPath) | to_json }}
+                            - --tokenizer
+                            - {{ ('/models/' ~ vllm_settings.modelPath) | to_json }}
+                            - --served-model-name
+                            - enclave-llm
+                            - --host
+                            - "0.0.0.0"
+                            - --port
+                            - "8000"
+                            - --dtype
+                            - {{ vllm_settings.dtype | to_json }}
+                            - --max-model-len
+                            - {{ vllm_settings.maxModelLen | string | to_json }}
+                            - --max-num-seqs
+                            - {{ vllm_settings.maxNumSeqs | string | to_json }}
+                            - --tensor-parallel-size
+                            - {{ vllm_settings.gpuCount | string | to_json }}
+                            - --chat-template-content-format
+                            - {{ vllm_settings.chatTemplateContentFormat | to_json }}
+                            - --generation-config
+                            - vllm
+                            - --disable-log-requests
+                          env:
+                            - name: HF_HUB_OFFLINE
+                              value: "1"
+                            - name: TRANSFORMERS_OFFLINE
+                              value: "1"
+                            - name: HF_DATASETS_OFFLINE
+                              value: "1"
+                            - name: VLLM_NO_USAGE_STATS
+                              value: "1"
+                            - name: DO_NOT_TRACK
+                              value: "1"
+                            - name: HOME
+                              value: /cache
+                            - name: HF_HOME
+                              value: /cache/huggingface
+                            - name: XDG_CACHE_HOME
+                              value: /cache
+                            - name: TMPDIR
+                              value: /cache
+                          ports:
+                            - name: http
+                              containerPort: 8000
+                          securityContext:
+                            allowPrivilegeEscalation: false
+                            readOnlyRootFilesystem: true
+                            capabilities:
+                              drop: [ALL]
+                          resources:
+                            requests:
+                              cpu: {{ vllm_settings.cpu | to_json }}
+                              memory: {{ vllm_settings.memory | to_json }}
+                              nvidia.com/gpu: {{ vllm_settings.gpuCount }}
+                            limits:
+                              cpu: {{ vllm_settings.cpu | to_json }}
+                              memory: {{ vllm_settings.memory | to_json }}
+                              nvidia.com/gpu: {{ vllm_settings.gpuCount }}
+                          startupProbe:
+                            httpGet:
+                              path: /health
+                              port: http
+                            periodSeconds: 10
+                            timeoutSeconds: 5
+                            failureThreshold: 180
+                          readinessProbe:
+                            httpGet:
+                              path: /health
+                              port: http
+                            periodSeconds: 10
+                            timeoutSeconds: 5
+                            failureThreshold: 3
+                          livenessProbe:
+                            httpGet:
+                              path: /health
+                              port: http
+                            periodSeconds: 30
+                            timeoutSeconds: 5
+                            failureThreshold: 10
+                          volumeMounts:
+                            - name: model
+                              mountPath: /models
+                              readOnly: true
+                            - name: cache
+                              mountPath: /cache
+                            - name: shm
+                              mountPath: /dev/shm
+                      volumes:
+                        - name: model
+                          persistentVolumeClaim:
+                            claimName: {{ vllm_settings.modelPVC | to_json }}
+                            readOnly: true
+                        - name: cache
+                          emptyDir:
+                            sizeLimit: {{ vllm_settings.cacheSize | to_json }}
+                        - name: shm
+                          emptyDir:
+                            medium: Memory
+                            sizeLimit: {{ vllm_settings.shmSize | to_json }}

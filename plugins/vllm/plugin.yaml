@@ -1,0 +1,14 @@
+---
+name: vllm
+type: addon
+order: 120
+installOperators: false
+additionalImages:
+  - "{{ vllm.runtimeImage }}"
+registries:
+  - location: "{{ vllm.runtimeImage.split('@')[0] }}"
+    mirror: "{{ vllm.runtimeImage.split('@')[0].split('/')[1:] | join('/') }}"
+requires:
+  vars:
+    - name: vllm
+      description: Configure runtimeImage, modelPVC, modelPath and artifactIdentity in config/plugins/vllm.yaml.

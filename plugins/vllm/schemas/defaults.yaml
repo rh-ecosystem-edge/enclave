@@ -1,0 +1,49 @@
+---
+"$schema": "http://json-schema.org/draft-07/schema"
+type: object
+additionalProperties: false
+required: [vllmDefaults]
+properties:
+  vllmDefaults:
+    type: object
+    additionalProperties: false
+    required:
+      - dtype
+      - maxModelLen
+      - maxNumSeqs
+      - gpuCount
+      - cpu
+      - memory
+      - shmSize
+      - cacheSize
+      - chatTemplateContentFormat
+      - enableSmokeTest
+    properties:
+      dtype:
+        enum: [auto, half, bfloat16, float]
+      maxModelLen:
+        type: integer
+        minimum: 128
+        maximum: 131072
+      maxNumSeqs:
+        type: integer
+        minimum: 1
+        maximum: 32
+      gpuCount:
+        enum: [1, 2, 4, 8]
+      cpu:
+        type: string
+        pattern: '^[1-9][0-9]*$'
+      memory:
+        type: string
+        pattern: '^[1-9][0-9]*(Mi|Gi)$'
+      shmSize:
+        type: string
+        pattern: '^[1-9][0-9]*(Mi|Gi)$'
+      cacheSize:
+        type: string
+        pattern: '^[1-9][0-9]*(Mi|Gi)$'
+      chatTemplateContentFormat:
+        enum: [auto, string, openai]
+      enableSmokeTest:
+        type: boolean

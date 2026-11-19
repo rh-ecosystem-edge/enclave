@@ -1,0 +1,5 @@
+---
+vllm:
+  runtimeImage: registry.example.com/operator/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  modelPVC: preloaded-model
+  modelPath: snapshot
