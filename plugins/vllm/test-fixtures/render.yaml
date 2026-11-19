@@ -2,6 +2,13 @@
 - name: Load operator-selected profile
   ansible.builtin.include_vars: "{{ profile }}"
 
+- name: Reproduce framework config file discovery for actual pre-validation
+  ansible.builtin.set_fact:
+    r_plugin_user_config:
+      stat:
+        exists: true
+        path: "{{ profile }}"
+
 - name: Run real pre-validation and settings resolution
   ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/pre-validate.yaml"
 
@@ -38,6 +45,8 @@
       - vllm_rendered[1].subjects[0].name == vllm_rendered[2].metadata.name
       - vllm_objects | map(attribute='kind') | list == ['Namespace', 'NetworkPolicy', 'NetworkPolicy', 'Service', 'Deployment']
       - vllm_objects[0].metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted'
+      - vllm_rendered[2].spec['policy-templates'][0].objectDefinition.spec['object-templates'][1].complianceType == 'mustonlyhave'
+      - vllm_rendered[2].spec['policy-templates'][0].objectDefinition.spec['object-templates'][2].complianceType == 'mustonlyhave'
       - vllm_objects[1].spec == {'podSelector':{},'policyTypes':['Ingress','Egress'],'ingress':[],'egress':[]}
       - vllm_ingress.from | length == 1
       - vllm_ingress.from[0].namespaceSelector.matchLabels == {'enclave.vllm/caller':'true'}
@@ -62,8 +71,9 @@
       - "'enclave-llm' in vllm_container.args"
       - "'--trust-remote-code' not in vllm_container.args"
       - "'--disable-log-requests' in vllm_container.args"
-      - vllm_settings.maxModelLen | string in vllm_container.args
-      - vllm_settings.gpuCount | string in vllm_container.args
+      - vllm_settings.maxModelLen | int | string in vllm_container.args
+      - vllm_settings.maxNumSeqs | int | string in vllm_container.args
+      - vllm_settings.gpuCount | int | string in vllm_container.args
       - vllm_container.resources.requests == vllm_container.resources.limits
       - vllm_container.resources.limits['nvidia.com/gpu'] == vllm_settings.gpuCount
       - vllm_container.resources.limits.cpu == vllm_settings.cpu

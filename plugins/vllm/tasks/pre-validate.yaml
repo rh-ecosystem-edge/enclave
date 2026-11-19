@@ -7,7 +7,9 @@
 
 - name: Validate serving configuration before mirroring or deployment
   ansible.utils.validate:
-    data: "{{ {'vllm': vllm} }}"
+    data: >-
+      {{ (lookup('ansible.builtin.file', r_plugin_user_config.stat.path) | from_yaml)
+         if (r_plugin_user_config.stat.exists | default(false)) else {'vllm': vllm} }}
     criteria: "{{ lookup('ansible.builtin.file', plugin_dir ~ '/schemas/config.yaml') | from_yaml }}"
     engine: ansible.utils.jsonschema
 

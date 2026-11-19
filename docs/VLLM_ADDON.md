@@ -75,7 +75,7 @@ templates can be supplied through addon configuration. Review model artifacts as
 trusted code/data inputs even without remote-code execution. Request body logging
 is disabled; do not enable sensitive prompt logging at a future gateway.
 
-Optional reference only: Qwen3-8B BF16 on one L4 24GB GPU was discussed as a pilot
+Optional reference only: Qwen3-8B BF16 on one L4 24GB GPU is a pilot
 candidate, but is **unbenchmarked and unvalidated**, not a default, dependency or
 support claim. Choose compatible model, precision, context and memory after
 testing. One dedicated GPU per replica, 4096 context and two scheduler sequences
@@ -108,16 +108,23 @@ are a starting profile, not a throughput/concurrency guarantee.
    reports submission, not readiness or inference. For the opt-in smoke set
    `enableSmokeTest: true` and pass `vllm_smoke_kubeconfig` (a local target
    kubeconfig **path**, never its contents) via normal Ansible extra variables.
+   The path must be nonempty and refer to an existing file; check mode is rejected.
    Run against each selected target. It waits for Ready then executes a real
    loopback `/v1/completions` request from the server container, checking returned
-   choices without logging the response. This does not test network caller paths,
+   served alias, choices and positive generated-token usage without logging the
+   response. Missing, skipped or nonzero exec results fail the smoke check.
+   This does not test network caller paths,
    chat semantics, gateway authentication or capacity. It needs target exec rights.
 5. By default ingress and egress are denied for all namespace pods. To permit a
    separately secured gateway or trusted test client, authorized administrators
    must label **both** its namespace and pod `enclave.vllm/caller=true`. The single
    peer combines namespaceSelector AND podSelector; only TCP 8000 is allowed.
    Do not delegate these labels to untrusted tenants. No DNS/outbound access is
-   granted to the server. Image pulls are node-side, not pod egress.
+   granted to the server. Image pulls are node-side, not pod egress. The two
+   addon NetworkPolicies use exact-spec reconciliation, but Kubernetes policies
+   are additive: administrators must not introduce other permissive policies in
+   this dedicated namespace. Privileged/host-network clients require separate
+   cluster controls; these policies do not constrain cluster administrators.
 
 Internal API address: `http://enclave-llm.enclave-vllm.svc:8000/v1`.
 This is private plaintext transport behind the required future secured gateway,
@@ -142,7 +149,9 @@ git diff --check
 
 The plugin-local Ansible harness renders the actual workload and core image-set
 and registry templates, asserts placement, private networking, security, offline
-flags, resources and both model profiles, and rejects invalid schema fixtures.
+flags, resources and multiple model profiles, and rejects invalid schema fixtures.
+Local synthetic exec/response tests verify smoke failure handling without
+performing inference or connecting to Kubernetes.
 It performs no downloads, cluster connections or deployments. These playbooks are
 not part of the Python tooling unit suite. Core `validate-templates` covers fixed
 core templates and does not replace this plugin test.

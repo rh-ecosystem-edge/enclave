@@ -51,7 +51,8 @@ spec:
                   name: enclave-vllm
                   labels:
                     pod-security.kubernetes.io/enforce: restricted
-            - complianceType: musthave
+            - complianceType: mustonlyhave
+              metadataComplianceType: musthave
               objectDefinition:
                 apiVersion: networking.k8s.io/v1
                 kind: NetworkPolicy
@@ -63,7 +64,8 @@ spec:
                   policyTypes: [Ingress, Egress]
                   ingress: []
                   egress: []
-            - complianceType: musthave
+            - complianceType: mustonlyhave
+              metadataComplianceType: musthave
               objectDefinition:
                 apiVersion: networking.k8s.io/v1
                 kind: NetworkPolicy
@@ -146,11 +148,11 @@ spec:
                             - --dtype
                             - {{ vllm_settings.dtype | to_json }}
                             - --max-model-len
-                            - {{ vllm_settings.maxModelLen | string | to_json }}
+                            - {{ vllm_settings.maxModelLen | int | string | to_json }}
                             - --max-num-seqs
-                            - {{ vllm_settings.maxNumSeqs | string | to_json }}
+                            - {{ vllm_settings.maxNumSeqs | int | string | to_json }}
                             - --tensor-parallel-size
-                            - {{ vllm_settings.gpuCount | string | to_json }}
+                            - {{ vllm_settings.gpuCount | int | string | to_json }}
                             - --chat-template-content-format
                             - {{ vllm_settings.chatTemplateContentFormat | to_json }}
                             - --generation-config
@@ -187,11 +189,11 @@ spec:
                             requests:
                               cpu: {{ vllm_settings.cpu | to_json }}
                               memory: {{ vllm_settings.memory | to_json }}
-                              nvidia.com/gpu: {{ vllm_settings.gpuCount }}
+                              nvidia.com/gpu: {{ vllm_settings.gpuCount | int }}
                             limits:
                               cpu: {{ vllm_settings.cpu | to_json }}
                               memory: {{ vllm_settings.memory | to_json }}
-                              nvidia.com/gpu: {{ vllm_settings.gpuCount }}
+                              nvidia.com/gpu: {{ vllm_settings.gpuCount | int }}
                           startupProbe:
                             httpGet:
                               path: /health

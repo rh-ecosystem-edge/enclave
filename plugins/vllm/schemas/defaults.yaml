@@ -30,6 +30,7 @@ properties:
         minimum: 1
         maximum: 32
       gpuCount:
+        type: integer
         enum: [1, 2, 4, 8]
       cpu:
         type: string

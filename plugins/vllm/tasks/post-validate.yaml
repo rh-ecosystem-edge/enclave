@@ -13,7 +13,21 @@
       ansible.builtin.assert:
         that:
           - vllm_smoke_kubeconfig is defined
-        fail_msg: Set vllm_smoke_kubeconfig to the selected target cluster kubeconfig; repeat for every selected cluster.
+          - vllm_smoke_kubeconfig is string
+          - vllm_smoke_kubeconfig | length > 0
+          - not ansible_check_mode
+        fail_msg: Supply a nonempty target vllm_smoke_kubeconfig path and run without check mode; repeat for every selected cluster.
+
+    - name: Verify explicit target kubeconfig file exists
+      ansible.builtin.stat:
+        path: "{{ vllm_smoke_kubeconfig }}"
+        follow: true
+      register: r_vllm_smoke_config
+
+    - name: Reject missing target kubeconfig instead of using implicit credentials
+      ansible.builtin.assert:
+        that:
+          - r_vllm_smoke_config.stat.isreg | default(false)
 
     - name: Wait for ready serving pod on target cluster
       kubernetes.core.k8s_info:
@@ -30,7 +44,9 @@
       register: r_vllm_pods
       retries: 30
       delay: 10
-      until: r_vllm_pods.resources | length == 1
+      until:
+        - r_vllm_pods is succeeded
+        - r_vllm_pods.resources | length == 1
 
     - name: Execute actual completion request without logging the body
       kubernetes.core.k8s_exec:
@@ -39,9 +55,13 @@
         pod: "{{ r_vllm_pods.resources[0].metadata.name }}"
         container: server
         command: >-
-          python3 -c 'import json,urllib.request;
+          python3 -c 'import json,sys,urllib.request;
           payload=json.dumps(dict(model="enclave-llm",prompt="Hello",max_tokens=8)).encode();
           request=urllib.request.Request("http://127.0.0.1:8000/v1/completions",data=payload,headers={"Content-Type":"application/json"});
           response=json.load(urllib.request.urlopen(request,timeout=120));
-          assert response["choices"] and isinstance(response["choices"][0]["text"],str)'
+          sys.exit(0 if response.get("model")=="enclave-llm" and response.get("choices")
+          and isinstance(response["choices"][0].get("text"),str)
+          and response.get("usage",{}).get("completion_tokens",0)>0 else 1)'
+      register: r_vllm_smoke
+      failed_when: r_vllm_smoke.rc | default(-1) != 0 or r_vllm_smoke is skipped
       no_log: true
