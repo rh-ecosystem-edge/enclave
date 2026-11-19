@@ -162,3 +162,64 @@
       - (lvmsQuayAppUpdateStrategy | default('RollingUpdate')) == 'Recreate'
       - (quay_app_deployment.resources[0].spec.strategy.type | default('')) != 'Recreate'
     register: quay_strategy_patch_result
+
+# The Quay app (LocalStorage) and both Postgres databases sit on node-local LVMS
+# volumes, so each can only run on one master. After a MachineConfig drain, other
+# evicted pods can fill that master first and leave them Pending. A PriorityClass above
+# the default (0), and below the platform classes, puts them first in the scheduling
+# queue when their node returns and lets them preempt lower-priority pods there.
+# The QuayRegistry overrides have no priority field, so patch the Deployments.
+- name: Create the PriorityClass for node-pinned Quay pods (LVMS)
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: scheduling.k8s.io/v1
+      kind: PriorityClass
+      metadata:
+        name: enclave-quay-pinned
+      value: 100000
+      globalDefault: false
+      preemptionPolicy: PreemptLowerPriority
+      description: >-
+        Quay pods pinned to one node by a node-local LVMS volume; lets them reclaim
+        their node after a drain.
+  register: r_quay_pinned_priorityclass
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_pinned_priorityclass is succeeded
+
+- name: Wait for the node-pinned Quay deployments to exist (LVMS)
+  kubernetes.core.k8s_info:
+    api_version: apps/v1
+    kind: Deployment
+    namespace: quay-enterprise
+    name: "{{ item }}"
+  loop:
+    - registry-quay-app
+    - registry-quay-database
+    - registry-clair-postgres
+  register: r_quay_pinned_deployments
+  retries: 30
+  delay: 10
+  until: r_quay_pinned_deployments.resources | length > 0
+
+- name: Give the node-pinned Quay deployments the pinned PriorityClass (LVMS)
+  kubernetes.core.k8s:
+    state: patched
+    api_version: apps/v1
+    kind: Deployment
+    namespace: quay-enterprise
+    name: "{{ item.item }}"
+    definition:
+      spec:
+        template:
+          spec:
+            priorityClassName: enclave-quay-pinned
+  loop: "{{ r_quay_pinned_deployments.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  when: (item.resources[0].spec.template.spec.priorityClassName | default('')) != 'enclave-quay-pinned'
+  register: r_quay_pinned_patch
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_quay_pinned_patch is succeeded
