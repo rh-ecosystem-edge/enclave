@@ -267,6 +267,8 @@ All PRs are automatically reviewed by CodeRabbit, configured per Red Hat Product
   - Fix the issue and commit the change, OR
   - Respond to the comment explaining why you're not fixing it (with reasoning)
 - **Out-of-scope comments**: CodeRabbit may flag issues outside the scope of your PR. In such cases, create a separate PR to address them rather than expanding the current PR's scope
+- **Always mention `@coderabbitai`** when answering a comment, so the reply is routed back to the bot
+- **Always prefer replying in the comment's thread** over top-posting a new comment on the PR (top-post only when there is no thread to reply to, e.g. an outside-diff finding)
 - When all feedback is addressed, request approval: `@coderabbitai approve`
 
 CodeRabbit's configuration enforces security best practices across injection prevention, cryptography, container hardening, supply chain security, and more. Comments should be taken seriously as they often flag real security or correctness issues.
