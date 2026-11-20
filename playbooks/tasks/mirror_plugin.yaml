@@ -345,6 +345,9 @@
     - r_plugin_mirror_quay is defined
     - r_plugin_mirror_quay is success
 
+# Match only this plugin's catalog source for the current y-stream
+# (cs-<catalog_mirror>-v<major>-<minor>) so neither an unrelated wedged
+# CatalogSource nor a stale earlier-y-stream source can satisfy the wait.
 - name: Wait for updated CatalogSource to be ready
   kubernetes.core.k8s_info:
     api_version: operators.coreos.com/v1alpha1
@@ -357,11 +360,14 @@
   delay: 10
   until: >-
     r_catalog_sources.resources | default([])
-    | selectattr('status', 'defined')
-    | selectattr('status.connectionState', 'defined')
+    | selectattr('metadata.name', 'match',
+        '^cs-' ~ (catalog_mirror | regex_escape)
+        ~ '-v' ~ (mgmt_openshift_version.split('.')[:2] | join('-')) ~ '$')
+    | selectattr('status.connectionState.lastObservedState', 'defined')
     | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
-    | list | length >= (r_catalog_sources.resources | length)
+    | list | length > 0
   when:
+    - plugin.operators | default([]) | length > 0
     - plugin.installOperators | default(true)
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
@@ -369,6 +375,8 @@
 - name: Create stable aliases for mirrored plugin CatalogSources
   ansible.builtin.include_tasks:
     file: create_stable_catalog_source_aliases.yaml
+  vars:
+    stable_catalog_source_name_filter: "{{ catalog_mirror | regex_escape }}"
   when:
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
