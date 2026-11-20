@@ -2,6 +2,8 @@ name: E2E ODF (Scheduled)
 
 # Weekly ODF E2E test. Dispatches the disconnected E2E workflow with
 # storage-plugin=odf so no cron-matching logic is needed (ODF is disconnected-only).
+# It also adds the SNO managed cluster: this run already uses the large runner the
+# SNO needs, so it gives the SNO path weekly coverage without another scheduled job.
 
 on:
   schedule:
@@ -24,7 +26,8 @@ jobs:
           gh workflow run e2e-disconnected.yml \
             --ref "${{ github.ref }}" \
             -f storage-plugin=odf \
+            -f additional-sno-vm=true \
             -f send-slack-notification=true \
             -f workflow-display-name="E2E ODF" \
             -R "${{ github.repository }}"
-          echo "Dispatched E2E Disconnected with ODF storage plugin" | tee -a $GITHUB_STEP_SUMMARY
+          echo "Dispatched E2E Disconnected with ODF storage plugin and the SNO managed cluster" | tee -a $GITHUB_STEP_SUMMARY

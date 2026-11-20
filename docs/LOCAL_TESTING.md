@@ -334,11 +334,12 @@ ssh cloud-user@$LZ_IP "journalctl -xef"
 LZ_IP=$(./ci/utils/get_landing_zone_ip.sh)
 SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
-# Get degraded operators
+# Get degraded or unavailable operators
 ssh $SSH_OPTS cloud-user@$LZ_IP \
   "export KUBECONFIG=/home/cloud-user/sessions/1/ocp-cluster/auth/kubeconfig && \
-   oc get co -o json | jq -r '.items[] | select(.status.conditions[] | \
-   select(.type==\"Degraded\" and .status==\"True\")) | .metadata.name'"
+   oc get co -o json | jq -r '.items[] | select(any(.status.conditions[]?; \
+   (.type==\"Degraded\" and .status==\"True\") or (.type==\"Available\" and .status!=\"True\"))) \
+   | .metadata.name'"
 
 # Describe specific operator
 ssh $SSH_OPTS cloud-user@$LZ_IP \
