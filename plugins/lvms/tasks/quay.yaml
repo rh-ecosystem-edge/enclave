@@ -74,10 +74,14 @@
   register: r_quay_lvms
   until: r_quay_lvms is succeeded
 
+# The Quay app gets an LVMS PVC for its registry storage only with LocalStorage in
+# disconnected mode; that volume is node-local and ties the app to one node.
+- name: Set whether the Quay app uses an LVMS PVC
+  ansible.builtin.set_fact:
+    quay_app_on_lvms_pvc: "{{ quayBackend == 'LocalStorage' and disconnected | default(true) | bool }}"
+
 - name: Quay LVMS storage (PVC and deployment patch)
-  when:
-    - quayBackend == 'LocalStorage'
-    - disconnected | default(true)
+  when: quay_app_on_lvms_pvc | bool
   block:
   - name: Wait for Quay app deployment to exist (LVMS)
     kubernetes.core.k8s_info:
@@ -163,8 +167,8 @@
       - (quay_app_deployment.resources[0].spec.strategy.type | default('')) != 'Recreate'
     register: quay_strategy_patch_result
 
-# The Quay app (LocalStorage) and both Postgres databases sit on node-local LVMS
-# volumes, so each can only run on one master. After a MachineConfig drain, other
+# Both Postgres databases, and the Quay app when it uses an LVMS PVC, sit on node-local
+# LVMS volumes, so each can only run on one master. After a MachineConfig drain, other
 # evicted pods can fill that master first and leave them Pending. A PriorityClass above
 # the default (0), and below the platform classes, puts them first in the scheduling
 # queue when their node returns and lets them preempt lower-priority pods there.
@@ -194,10 +198,9 @@
     kind: Deployment
     namespace: quay-enterprise
     name: "{{ item }}"
-  loop:
-    - registry-quay-app
-    - registry-quay-database
-    - registry-clair-postgres
+  loop: >-
+    {{ (['registry-quay-app'] if quay_app_on_lvms_pvc | bool else [])
+       + ['registry-quay-database', 'registry-clair-postgres'] }}
   register: r_quay_pinned_deployments
   retries: 30
   delay: 10
