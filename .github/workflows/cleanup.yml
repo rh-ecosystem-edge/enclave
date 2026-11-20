@@ -15,7 +15,7 @@ on:
       reap_age_hours:
         description: 'Reap CI VMs (eci-/ecd-/nc-/nd-) older than this many hours'
         required: false
-        default: '12'
+        default: '15'
         type: string
   schedule:
     # Hourly scheduled cleanup (standard level: make clean + age-based reap).
@@ -43,7 +43,7 @@ jobs:
       CLEANUP_LEVEL: ${{ inputs.cleanup_level || 'standard' }}
       # Scheduled runs pass no inputs, so age-based reaping runs at every level
       # (including the weekly 'standard' cron) with this default.
-      REAP_AGE_HOURS: ${{ inputs.reap_age_hours || '12' }}
+      REAP_AGE_HOURS: ${{ inputs.reap_age_hours || '15' }}
 
     steps:
       - name: Checkout code

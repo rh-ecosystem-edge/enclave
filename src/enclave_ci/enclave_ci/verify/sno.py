@@ -70,12 +70,42 @@ def verify_sno(
         attempts,
         delay,
         report,
+        verbose=True,
     )
     if not problems:
         for text in CLUSTER_HEALTHY_LINES:
             report.line(text)
         report.line("✅ ManagedCluster Joined and Available (hub)")
         report.line("✅ SNO managed cluster is healthy")
+        report.log()
+        report.log("State (informational):")
+        for title, args in (
+            ("ClusterVersion (SNO)", ("get", "clusterversion")),
+            ("Nodes (SNO)", ("get", "nodes", "-o", "wide")),
+            ("Cluster operators (SNO)", ("get", "clusteroperators")),
+            ("MachineConfigPools (SNO)", ("get", "mcp")),
+        ):
+            report_command(sno, report, title, *args, summary=False)
+        report_command(
+            hub,
+            report,
+            "ManagedCluster (hub)",
+            "get",
+            "managedcluster",
+            name,
+            "--show-labels",
+            summary=False,
+        )
+        report_command(
+            hub,
+            report,
+            "ManagedClusterAddons (hub)",
+            "get",
+            "managedclusteraddons",
+            "-n",
+            name,
+            summary=False,
+        )
         return True
 
     report.line("❌ SNO managed cluster is not healthy:")
@@ -284,7 +314,7 @@ def verify_sno_update_service(
         upstream_problems, owners = _upstream_problems(sno, state["expected"])
         return problems + upstream_problems
 
-    problems = poll(check, attempts, delay, report)
+    problems = poll(check, attempts, delay, report, verbose=True)
 
     retrieved = sno.oc(
         "get",
@@ -299,6 +329,29 @@ def verify_sno_update_service(
 
     if not problems:
         report.line("✅ Update service policy patched the SNO ClusterVersion")
+        report.log()
+        report.log("State (informational):")
+        report_command(
+            hub,
+            report,
+            f"Policies replicated to {name} (hub)",
+            "get",
+            "policy",
+            "-n",
+            name,
+            summary=False,
+        )
+        report_command(
+            sno,
+            report,
+            "ClusterVersion spec (SNO)",
+            "get",
+            "clusterversion",
+            "version",
+            "-o",
+            "jsonpath={.spec}",
+            summary=False,
+        )
         return True
 
     report.line("❌ Update service patch not applied:")

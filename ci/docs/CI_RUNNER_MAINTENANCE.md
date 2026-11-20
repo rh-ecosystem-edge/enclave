@@ -156,7 +156,7 @@ set -euo pipefail
 # hours such as 12.5 are allowed). awk parses it — avoiding Bash integer-only arithmetic
 # and octal interpretation of a leading zero — and emits the equivalent minutes, rounded
 # UP so a fractional threshold never truncates to a smaller (or zero) age gate.
-AGE_HOURS=${REAP_AGE_HOURS:-12}
+AGE_HOURS=${REAP_AGE_HOURS:-15}
 AGE_MIN=$(awk -v h="$AGE_HOURS" 'BEGIN{
   if (h !~ /^[0-9]+(\.[0-9]+)?$/ || h+0 <= 0) exit 1
   m = h*60; r = int(m); if (m > r) r++   # ceil: never under-shoot the threshold

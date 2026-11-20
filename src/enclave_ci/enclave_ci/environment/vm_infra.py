@@ -1397,7 +1397,7 @@ def destroy(cfg: Config) -> None:  # ruff: ignore[complex-structure, too-many-br
 # "^${CLUSTER_NAME}_"), so VMs left by a cancelled/timed-out/killed job are never
 # reclaimed by any later run and accumulate forever. reap sweeps ALL CI clusters
 # on the host and tears down every one whose definition is older than a threshold
-# (default 12h, safely above the longest e2e job timeout of 600 minutes).
+# (default 15h, safely above the longest e2e job timeout of 840 minutes).
 
 # CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
 # 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is

@@ -10,6 +10,7 @@ import click
 
 from enclave_ci.verify.cluster import verify_cluster
 from enclave_ci.verify.common import Cluster, LandingZone, Report, hub_kubeconfig
+from enclave_ci.verify.openshift_ai import verify_sno_openshift_ai
 from enclave_ci.verify.sno import verify_sno, verify_sno_update_service
 
 # Allow-lists for values that reach SSH or a path on the Landing Zone.
@@ -130,4 +131,13 @@ def sno_update_service(
     """Check the update service policy patched the SNO; exit 1 if not."""
     hub, sno_cluster, report = _sno_clusters(lz_ip, lz_user, session_dir, sno_name)
     if not verify_sno_update_service(hub, sno_cluster, sno_name, report):
+        sys.exit(1)
+
+
+@cli.command("sno-openshift-ai")
+@_sno_options
+def sno_openshift_ai(lz_ip: str, sno_name: str, lz_user: str, session_dir: str) -> None:
+    """Check OpenShift AI is installed and ready on the SNO; exit 1 if not."""
+    hub, sno_cluster, report = _sno_clusters(lz_ip, lz_user, session_dir, sno_name)
+    if not verify_sno_openshift_ai(hub, sno_cluster, sno_name, report):
         sys.exit(1)
