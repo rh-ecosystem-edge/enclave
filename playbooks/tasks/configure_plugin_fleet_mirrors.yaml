@@ -22,24 +22,24 @@
 - name: Collect the plugin's PlacementRules
   ansible.builtin.set_fact:
     _plugin_placement_rules: >-
-      {% set rules = [] %}
-      {% if plugin.clusterSelector is defined and plugin.clusterSelector | length > 0 %}
-      {% set _ = rules.append({
+      {%- set rules = [] -%}
+      {%- if plugin.clusterSelector is defined and plugin.clusterSelector | length > 0 -%}
+      {%- set _ = rules.append({
           'name': plugin.name ~ '-fleet-configuration',
           'namespace': 'openshift-acm-policies'
-        }) %}
-      {% endif %}
-      {% for placement_file in query('ansible.builtin.fileglob', plugin_dir ~ '/files/*placementrule*') %}
-      {% for placement_rule in lookup('ansible.builtin.template', placement_file) | from_yaml_all %}
-      {% if placement_rule.kind | default('') == 'PlacementRule' %}
-      {% set _ = rules.append({
+        }) -%}
+      {%- endif -%}
+      {%- for placement_file in query('ansible.builtin.fileglob', plugin_dir ~ '/files/*placementrule*') -%}
+      {%- for placement_rule in lookup('ansible.builtin.template', placement_file) | from_yaml_all -%}
+      {%- if placement_rule.kind | default('') == 'PlacementRule' -%}
+      {%- set _ = rules.append({
           'name': placement_rule.metadata.name,
           'namespace': placement_rule.metadata.namespace | default('openshift-acm-policies')
-        }) %}
-      {% endif %}
-      {% endfor %}
-      {% endfor %}
-      {{ rules }}
+        }) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ rules | to_yaml | from_yaml }}
 
 - name: Reject PlacementRules outside the ACM policies namespace
   ansible.builtin.assert:
