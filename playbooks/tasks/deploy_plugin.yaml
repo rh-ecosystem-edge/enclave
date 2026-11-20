@@ -137,6 +137,21 @@
     - item.when | default(true) | bool
   tags: always
 
+- name: "{{ plugin_name }} | Validate managed-only mirror configuration"
+  ansible.builtin.assert:
+    that:
+      - not (
+          plugin.operators | default([]) | length > 0
+          and not (plugin.installOperators | default(true) | bool)
+          and plugin.helm | default([]) | length == 0
+          and plugin.registries | default([]) | length == 0
+        )
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' is managed-cluster-only but declares no registries.
+      Add at least one entry under registries, or enable operator installation/use a
+      Helm chart so the plugin has a valid mirror-delivery path.
+  tags: always
+
 - name: "{{ plugin_name }} | Run pre-validate"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/pre-validate.yaml"

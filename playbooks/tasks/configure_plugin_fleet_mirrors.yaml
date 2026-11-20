@@ -19,19 +19,27 @@
   until: r_fleet_mirrors_ns is success
 
 # deploy_plugin.yaml creates <name>-fleet-configuration only for a non-empty selector.
-- name: Collect the plugin's clusterSelector PlacementRule
+- name: Collect the plugin's PlacementRules
   ansible.builtin.set_fact:
     _plugin_placement_rules: >-
-      {{ [plugin.name ~ '-fleet-configuration'] if plugin.clusterSelector | default({}) | length > 0 else [] }}
-
-- name: Add the PlacementRules shipped in the plugin's files
-  ansible.builtin.set_fact:
-    _plugin_placement_rules: >-
-      {{ _plugin_placement_rules
-         + (lookup('ansible.builtin.template', item) | from_yaml_all
-            | selectattr('kind', 'defined') | selectattr('kind', 'equalto', 'PlacementRule')
-            | map(attribute='metadata.name') | list) }}
-  loop: "{{ query('ansible.builtin.fileglob', plugin_dir ~ '/files/*placementrule*') }}"
+      {% set rules = [] %}
+      {% if plugin.clusterSelector is defined and plugin.clusterSelector | length > 0 %}
+      {% set _ = rules.append({
+          'name': plugin.name ~ '-fleet-configuration',
+          'namespace': 'openshift-acm-policies'
+        }) %}
+      {% endif %}
+      {% for placement_file in query('ansible.builtin.fileglob', plugin_dir ~ '/files/*placementrule*') %}
+      {% for placement_rule in lookup('ansible.builtin.template', placement_file) | from_yaml_all %}
+      {% if placement_rule.kind | default('') == 'PlacementRule' %}
+      {% set _ = rules.append({
+          'name': placement_rule.metadata.name,
+          'namespace': placement_rule.metadata.namespace | default('openshift-acm-policies')
+        }) %}
+      {% endif %}
+      {% endfor %}
+      {% endfor %}
+      {{ rules }}
 
 - name: Warn when the plugin has no PlacementRule to target
   ansible.builtin.debug:
@@ -58,17 +66,18 @@
       apiVersion: policy.open-cluster-management.io/v1
       kind: PlacementBinding
       metadata:
-        name: "plugin-mirrors-{{ plugin.name }}-{{ item }}"
+        name: "plugin-mirrors-{{ plugin.name }}-{{ item.namespace }}-{{ item.name }}"
         namespace: openshift-acm-policies
       placementRef:
         apiGroup: apps.open-cluster-management.io
         kind: PlacementRule
-        name: "{{ item }}"
+        name: "{{ item.name }}"
+        namespace: "{{ item.namespace }}"
       subjects:
         - apiGroup: policy.open-cluster-management.io
           kind: Policy
           name: "plugin-mirrors-{{ plugin.name }}"
-  loop: "{{ _plugin_placement_rules | unique }}"
+  loop: "{{ _plugin_placement_rules | unique | list }}"
   register: r_fleet_mirrors_binding
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
