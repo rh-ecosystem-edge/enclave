@@ -110,6 +110,7 @@ Scripts for deploying OpenShift clusters on the provisioned infrastructure.
 | `deploy_phase.sh` | Deploy specific phase of deployment (for phased workflows) |
 | `deploy_plugin.sh` | Deploy a single plugin on the Landing Zone |
 | `deploy_sno.sh` | Deploy an SNO managed cluster on the additional SNO VM from its discovered agent, import it into ACM and extract its kubeconfig (disconnected) |
+| `label_sno.sh` | Label the SNO ManagedCluster on the hub (e.g. for openshift-ai's policies) |
 | `generate_ironic_cert.sh` | Generate TLS certificate for the Ironic ISO server; self-signed (local CA) by default, or a real DNS-01 certificate from a public CA when `ENCLAVE_CERT_TYPE` is set |
 
 **Deployment Modes:**
@@ -139,6 +140,7 @@ Scripts for verifying deployments, collecting logs, and running validation check
 | `verify_cluster.sh` | Verify the hub right after bootstrap via `enclave-ci verify cluster` (ClusterVersion, nodes, operators, MachineConfigPools, hub Quay, LZ mirror) |
 | `verify_sno.sh` | Verify the SNO managed cluster via `enclave-ci verify sno`: the same ClusterVersion, node, operator and MachineConfigPool checks as the hub (not the hub-only registry checks), and a Joined/Available ManagedCluster on the hub |
 | `verify_sno_update_service.sh` | Verify via `enclave-ci verify sno-update-service` that the hub update service policy set the SNO ClusterVersion upstream |
+| `verify_sno_openshift_ai.sh` | Verify via `enclave-ci verify sno-openshift-ai` that OpenShift AI is installed and ready on the SNO (policies Compliant, operators installed, `default-dsc` Ready) |
 | `validate.sh` | Run all validation checks in sequence |
 | `collect_ci_artifacts.sh` | Collect logs and artifacts for CI (GitHub Actions) |
 | `collect_step_logs.sh` | Collect logs from specific deployment step |
@@ -185,6 +187,7 @@ Standalone utility scripts used by other scripts.
 | Script | Purpose |
 |--------|---------|
 | `get_landing_zone_ip.sh` | Get Landing Zone VM IP address (with dynamic subnet detection) |
+| `run_parallel.sh` | Run named commands in parallel, wait for all, and report each result and duration (step outputs, summary table) |
 
 **Example:**
 ```bash

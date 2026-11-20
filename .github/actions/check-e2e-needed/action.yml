@@ -81,11 +81,15 @@ runs:
           odf:
             - 'plugins/odf/**'
             - 'ci/infrastructure/setup_ceph*'
-          # The SNO job is the only one that discovers a real host and checks the
-          # update service policy on a managed cluster, so discovery changes
-          # (node-management plugin, phase 07 until it moves) and that policy trigger it too.
+          # The SNO job is the only one that discovers a real host, checks the update
+          # service policy on a managed cluster and deploys openshift-ai there (with its
+          # mirrors delivered by policy), so discovery changes (node-management plugin,
+          # phase 07 until it moves), that policy, the openshift-ai plugin and the plugin
+          # fleet mirrors trigger it too.
           sno:
             - 'ci/deployment/deploy_sno.sh'
+            - 'ci/deployment/label_sno.sh'
+            - 'ci/utils/run_parallel.sh'
             - 'ci/verification/verify_sno*.sh'
             - 'src/enclave_ci/enclave_ci/verify/**'
             - 'src/enclave_ci/enclave_ci/environment/vm_infra.py'
@@ -93,6 +97,9 @@ runs:
             - 'plugins/node-management/**'
             - 'playbooks/07-configure-discovery.yaml'
             - 'operators/cincinnati-operator/**'
+            - 'plugins/openshift-ai/**'
+            - 'playbooks/tasks/configure_plugin_fleet_mirrors.yaml'
+            - 'files/plugin-fleet-mirrors/**'
 
     # ci/** changes, each excluding its own documentation
     # (ci/docs/**). Uses the "every" quantifier so a file
