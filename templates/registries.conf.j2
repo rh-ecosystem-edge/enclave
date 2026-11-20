@@ -111,6 +111,12 @@
 
 [[registry]]
   prefix = ""
+  location = "registry.redhat.io/container-native-virtualization"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443/container-native-virtualization"
+
+[[registry]]
+  prefix = ""
   location = "registry.redhat.io/rh-sso-7"
 [[registry.mirror]]
   location = "{{ quayHostname }}:8443/rh-sso-7"
