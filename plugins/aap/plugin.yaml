@@ -13,9 +13,3 @@ operators:
     global: true
     csvNames:
       - aap-operator
-
-registries:
-  - location: registry.redhat.io/ansible-automation-platform
-    mirror: ansible-automation-platform
-  - location: registry.redhat.io/ansible-automation-platform-26
-    mirror: ansible-automation-platform-26
