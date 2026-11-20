@@ -150,6 +150,8 @@
       Plugin '{{ plugin.name }}' is managed-cluster-only but declares no registries.
       Add at least one entry under registries, or enable operator installation/use a
       Helm chart so the plugin has a valid mirror-delivery path.
+  when:
+    - disconnected | default(true) | bool
   tags: always
 
 - name: "{{ plugin_name }} | Run pre-validate"

@@ -41,6 +41,19 @@
       {% endfor %}
       {{ rules }}
 
+- name: Reject PlacementRules outside the ACM policies namespace
+  ansible.builtin.assert:
+    that:
+      - item.namespace == 'openshift-acm-policies'
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' declares PlacementRule '{{ item.name }}' in namespace
+      '{{ item.namespace }}'. Plugin mirror PlacementRules must be in
+      'openshift-acm-policies' because ACM PlacementBinding cannot reference a rule
+      in another namespace.
+  loop: "{{ _plugin_placement_rules }}"
+  loop_control:
+    label: "{{ item.namespace }}/{{ item.name }}"
+
 - name: Warn when the plugin has no PlacementRule to target
   ansible.builtin.debug:
     msg: >-
@@ -72,7 +85,6 @@
         apiGroup: apps.open-cluster-management.io
         kind: PlacementRule
         name: "{{ item.name }}"
-        namespace: "{{ item.namespace }}"
       subjects:
         - apiGroup: policy.open-cluster-management.io
           kind: Policy
