@@ -3,6 +3,7 @@ name: E2E OSAC
 # OSAC plugin stack E2E deployment (connected mode).
 # Triggers on changes to OSAC-related plugins or manual dispatch.
 # Calls the reusable e2e-deployment workflow with the OSAC plugin chain.
+# CI trigger: no-op change to exercise the E2E OSAC job on a PR.
 
 on:
   workflow_dispatch:
