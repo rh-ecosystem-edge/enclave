@@ -262,7 +262,11 @@ properties:
       $ref: "#/definitions/operator"
   installOperators:
     type: boolean
-    description: Install operators on management cluster.
+    description: >-
+      Install operators on management cluster. Defaults to true. With operators
+      listed, installOperators false and no helm charts (which run on the
+      management cluster), the plugin targets only managed clusters: its mirror
+      sets are not applied to the management cluster.
   installOperatorsFleet:
     type: boolean
     description: >-

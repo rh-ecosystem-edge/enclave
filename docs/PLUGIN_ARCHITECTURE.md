@@ -71,8 +71,9 @@ registries:
 | `order` | Deploy order among same-type plugins. Lower = first. LVMS is 10, ODF is 10. |
 | `catalog` | Operator catalog name (`redhat` or `certified`). Defaults to `redhat`. |
 | `operators` | List of OLM operators to install. Each entry is passed to `configure_operator.yaml`. |
-| `installOperators` | Set to `false` to skip operator installation (mirror-only plugins). Defaults to `true`. |
+| `installOperators` | Set to `false` to skip operator installation on the management cluster. Defaults to `true`. A plugin that lists `operators` with `installOperators: false` and has no `helm` charts (which run on the management cluster) targets only managed clusters: in disconnected mode its content is still mirrored and added to MCE `custom-registries`, but its IDMS/ITMS and CatalogSource are not applied to the management cluster, so deploying it does not roll out the management cluster (unless the deploy changes the management cluster's Quay CA, which rolls it out for any plugin; a rollout or CA change an interrupted earlier run left unfinished is still guarded and waited for). |
 | `clusterSelector` | Label-matching expressions to identify and select specific managed clusters for deploying the plugin (using ACM policies). |
+| `installOperatorsFleet` | With `clusterSelector`, install the plugin's operators on the selected managed clusters through ACM policies. Set to `false` to deploy only the CatalogSource to them. Defaults to `true`. It does not affect the management cluster's mirror sets, which depend on `installOperators`. |
 | `defaults` | Variables loaded into Ansible scope before tasks run. Alternative to `defaults.yaml` — cannot use both. All top-level property names must be prefixed with the plugin name (e.g. `lvmsDefaults`, not just `Defaults`). DO NOT USE, this property has been deprecated.|
 | `registries` | Registry mirror entries for MCE patching and `registries.conf`. |
 | `additionalImages` | Extra images to include in the plugin's oc-mirror image set. |
@@ -95,7 +96,7 @@ Here's what runs and in what order:
  4. tasks/early-validate.yaml     <- custom validation (no cluster access)
  5. tasks/pre-validate.yaml       <- "is the cluster ready for me?"
  6. Extract Helm images            <- helm template on charts with extractImages: true, merge into additionalImages
- 7. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests
+ 7. Mirror (plugin-mode only)      <- template imageset, run oc-mirror, apply manifests (managed-cluster-only plugins: mirrored, not applied)
  8. Install operators              <- from plugin.yaml operators list (if installOperators != false)
  9. tasks/post-operators.yaml     <- "set up infrastructure that Helm or deploy needs"
 10. Deploy Helm charts             <- from plugin.yaml helm list (values templates rendered here)
@@ -224,7 +225,7 @@ The per-plugin validation in `deploy_plugin.yaml` remains as defense-in-depth du
 
 ### Mirroring (disconnected)
 
-Foundation Plugins have their operators collected by `collect_core_plugin_operators.yaml` and included in the core oc-mirror run. Addon plugins run their own oc-mirror invocation during step 6 of their lifecycle.
+Foundation Plugins have their operators collected by `collect_core_plugin_operators.yaml` and included in the core oc-mirror run. Addon plugins run their own oc-mirror invocation during step 7 of their lifecycle, into the Landing Zone mirror and the management cluster's Quay, and then apply their mirror sets (IDMS/ITMS, CatalogSource) to the management cluster, which rolls out its nodes. Plugins that list `operators` with `installOperators: false` and no `helm` charts skip that apply (see `installOperators`).
 
 Operators with `csvMirror: true` have their `csvNames` entries added as separate packages in the image set.
 
