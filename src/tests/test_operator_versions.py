@@ -730,6 +730,47 @@ def test_reconcile_replaces_plus_in_version(mocker: MockerFixture) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "version",
+    [
+        "4.21.0-202610241344",
+        "4.20.1-rc.1.10",
+        "4.20.1-rc10",
+        "1.2.3+build.4",
+        "1.2",
+        "01.2.3",
+        "1.2.3-custom-label",
+    ],
+)
+def test_reconcile_accepted_version_comparison(
+    mocker: MockerFixture, oc_result: OcResultFactory, version: str
+) -> None:
+    """Preflight and actual InstallPlan comparison accept the same version forms."""
+    normalized = version.replace("+", "-")
+    external = mocker.patch(
+        "enclave.reconcile.operator_versions.run_oc_command",
+        return_value=oc_result(
+            stdout=_plans(_plan("plan", "RequiresApproval", [f"test.v{normalized}"]))
+        ),
+    )
+    reconcile(version, "test-ns", ["test"], dry_run=True)
+    external.assert_called_once()
+    assert external.call_args.args[0][1] == "get"
+
+
+@pytest.mark.parametrize(
+    ("version", "channel"), [("v2.17.3", "stable"), ("2.17.3", "stable 2.17")]
+)
+def test_reconcile_invalid_settings_before_oc(
+    mocker: MockerFixture, version: str, channel: str
+) -> None:
+    """Direct consumers reject settings before even reading a Subscription."""
+    external = mocker.patch("enclave.reconcile.operator_versions.run_oc_command")
+    with pytest.raises(ValueError, match="Invalid operator"):
+        reconcile(version, "test-ns", ["test"], dry_run=False, channel=channel)
+    external.assert_not_called()
+
+
 def test_reconcile_multiple_csv_names(mocker: MockerFixture) -> None:
     """When multiple CSV names are given, approve is called once and wait is called per CSV."""
     mock_approve = mocker.patch(

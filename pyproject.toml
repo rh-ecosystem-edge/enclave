@@ -36,6 +36,7 @@ dev = [
     "pytest-cov ==7.1.0",
     "pytest-mock ==3.15.1",
     "ruff ==0.16.10",
+    "types-jsonschema ==4.26.0.20261006",
     "yamllint ==1.38.0",
 ]
 
@@ -52,17 +53,18 @@ constraint-dependencies = [
 members = ["src/enclave_ci"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml", "plugins"]
+only-include = ["src", "defaults/operators.yaml", "defaults/platforms.yaml", "schemas/operators.yaml", "plugins"]
 exclude = ["/plugins/*/*", "!/plugins/*/plugin.yaml"]
 
 [tool.hatch.build.targets.wheel]
-only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml", "plugins"]
+only-include = ["src/enclave", "defaults/operators.yaml", "defaults/platforms.yaml", "schemas/operators.yaml", "plugins"]
 exclude = ["/plugins/*/*", "!/plugins/*/plugin.yaml"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
 "defaults" = "enclave/defaults"
 "plugins" = "enclave/plugins"
+"schemas" = "enclave/schemas"
 
 [tool.ruff]
 line-length = 88

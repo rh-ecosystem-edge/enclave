@@ -1,0 +1,8 @@
+---
+# Optional core operator overrides, merged by name into defaults/operators.yaml.
+# Copy to config/operators.yaml only when overrides are needed.
+operators:
+  - name: quay-operator
+    version: 3.15.9
+  - name: multicluster-engine
+    channel: stable-2.17
