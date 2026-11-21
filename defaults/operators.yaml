@@ -99,7 +99,7 @@ operators:
       - external-secrets-operator
 
   - name: compliance-operator
-    version: 1.10.0
+    version: 1.10.1
     channel: stable
     init_version: 1.10.0
     namespace: openshift-compliance
