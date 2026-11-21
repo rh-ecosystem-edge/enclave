@@ -1,3 +1,13 @@
+# Catch-all: redirect every registry.redhat.io namespace to the local registry.
+# oc-mirror writes related images host-stripped (registry.redhat.io/<ns>/<repo> ->
+# <mirror>/<ns>/<repo>), so a single namespace-preserving mirror covers them all.
+# More specific entries below win by longest-prefix match (e.g. mirror-by-digest-only).
+[[registry]]
+  prefix = ""
+  location = "registry.redhat.io"
+[[registry.mirror]]
+  location = "{{ quayHostname }}:8443"
+
 [[registry]]
   prefix = ""
   location = "registry.redhat.io/redhat"
