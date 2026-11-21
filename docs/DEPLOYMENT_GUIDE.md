@@ -1,5 +1,19 @@
 # Enclave Lab Deployment Guide
 
+## Temporary execution preflight
+
+Setup checks native execution in the effective temporary directory before
+installing dependencies, both as the invoking user and within privileged setup.
+This covers bootstrap, sync, Make setup targets, CI setup, and standalone setup
+scripts. The probe copies the trusted system `/usr/bin/true`, executes the copy,
+and removes its directory on success, failure, or handled termination signals.
+It does not change mount options or security policies.
+
+If the check fails, select a writable, executable `TMPDIR` approved by your
+administrator. Do not assume `/var/tmp` is executable. Privileged setup uses the
+environment allowed by sudo, which may differ from the invoking user's TMPDIR;
+ask the administrator how to select an approved directory in that context.
+
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
 ## Table of Contents
