@@ -1,0 +1,186 @@
+---
+- name: Define isolated mirror registry configuration cases
+  hosts: localhost
+  gather_facts: false
+  vars:
+    test_digest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  tasks:
+    - name: Add local configuration test hosts
+      ansible.builtin.add_host:
+        name: "mirror-registry-{{ item.name }}"
+        groups: mirror_registry_config_tests
+        ansible_connection: local
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        config_override: "{{ item.override }}"
+        expect_valid: "{{ item.valid }}"
+      loop:
+        - name: defaults
+          override: {}
+          valid: true
+        - name: version-and-sha256
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "{{ test_digest }}"
+          valid: true
+        - name: version-only
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+          valid: false
+        - name: sha256-only
+          override:
+            mirrorRegistry:
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: malformed-digest
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "not-a-sha256"
+          valid: false
+        - name: prefixed-digest
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "sha256:{{ test_digest }}"
+          valid: false
+        - name: digest-with-newline
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "{{ test_digest }}\n"
+          valid: false
+        - name: invalid-version
+          override:
+            mirrorRegistry:
+              version: "../2.0.13"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-newline
+          override:
+            mirrorRegistry:
+              version: "2.0.13\n"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-leading-space
+          override:
+            mirrorRegistry:
+              version: " 2.0.13"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-trailing-space
+          override:
+            mirrorRegistry:
+              version: "2.0.13 "
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: version-with-tab
+          override:
+            mirrorRegistry:
+              version: "{{ '2.0.%c13' | format(9) }}"
+              sha256: "{{ test_digest }}"
+          valid: false
+        - name: unknown-key
+          override:
+            mirrorRegistry:
+              version: "2.0.13"
+              sha256: "{{ test_digest }}"
+              url: "https://example.invalid/installer.tar.gz"
+          valid: false
+        - name: empty-override
+          override:
+            mirrorRegistry: {}
+          valid: false
+      loop_control:
+        label: "{{ item.name }}"
+
+- name: Exercise mirror registry schema and shared configuration loader
+  hosts: mirror_registry_config_tests
+  gather_facts: false
+  vars:
+    shipped_binaries: "{{ (lookup('ansible.builtin.file', '../../defaults/control_binaries.yaml') | from_yaml).control_binaries }}"
+    global_schema: >-
+      {{ lookup('ansible.builtin.file', '../../schemas/global.yaml') | from_yaml
+         | combine(lookup('ansible.builtin.file', '../../schemas/definitions.yaml') | from_yaml, recursive=True) }}
+    fixture_config: >-
+      {{ lookup('ansible.builtin.file', '../../test-fixtures/schemas/global/valid/local-lvms.yaml') | from_yaml
+         | combine(config_override) }}
+  tasks:
+    - name: Create temporary configuration directory
+      ansible.builtin.tempfile:
+        state: directory
+        prefix: enclave-mirror-registry-test-
+      register: test_directory
+
+    - name: Validate configuration without downloading or installing anything
+      block:
+        - name: Write test global configuration
+          ansible.builtin.copy:
+            content: "{{ fixture_config | to_nice_yaml }}"
+            dest: "{{ test_directory.path }}/global.yaml"
+            mode: "0600"
+
+        - name: Write empty optional configuration
+          ansible.builtin.copy:
+            content: "{}\n"
+            dest: "{{ test_directory.path }}/empty.yaml"
+            mode: "0600"
+
+        - name: Validate global configuration schema
+          ansible.utils.validate:
+            data: "{{ fixture_config | to_json }}"
+            criteria: "{{ global_schema | to_json }}"
+            engine: ansible.utils.jsonschema
+          register: schema_result
+          ignore_errors: true
+
+        - name: Assert schema acceptance matches the contract
+          ansible.builtin.assert:
+            that: (schema_result is success) == expect_valid
+
+        - name: Exercise shared loader including after-default resolution
+          block:
+            - name: Load configuration through the deployment entry point
+              ansible.builtin.include_tasks: ../common/load-vars.yaml
+              loop:
+                - initial
+                - repeated
+              loop_control:
+                loop_var: mirror_registry_load_pass
+              vars:
+                vars_file: "{{ test_directory.path }}/global.yaml"
+                certs_vars_file: "{{ test_directory.path }}/empty.yaml"
+                cloud_infra_vars_file: "{{ test_directory.path }}/empty.yaml"
+                resolved_platforms_vars_file: "{{ test_directory.path }}/absent-platforms.yaml"
+
+            - name: Assert invalid configuration did not pass the loader
+              ansible.builtin.assert:
+                that: expect_valid
+          rescue:
+            - name: Assert loader rejects invalid mirrorRegistry configuration clearly
+              ansible.builtin.assert:
+                that:
+                  - not expect_valid
+                  - ansible_failed_task.name == 'Validate mirrorRegistry installer override'
+
+        - name: Assert omitted override needs no setup and preserves all defaults
+          ansible.builtin.assert:
+            that:
+              - mirrorRegistry is not defined
+              - control_binaries == shipped_binaries
+          when: config_override | length == 0
+
+        - name: Assert valid override resolves download inputs and preserves other binaries
+          ansible.builtin.assert:
+            that:
+              - control_binaries.mirror_registry.url == 'https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.13/mirror-registry-amd64.tar.gz'
+              - control_binaries.mirror_registry.checksum == 'sha256:' ~ config_override.mirrorRegistry.sha256
+              - control_binaries | dict2items | rejectattr('key', 'equalto', 'mirror_registry') | list ==
+                shipped_binaries | dict2items | rejectattr('key', 'equalto', 'mirror_registry') | list
+          when: expect_valid and config_override | length > 0
+      always:
+        - name: Remove temporary configuration directory
+          ansible.builtin.file:
+            path: "{{ test_directory.path }}"
+            state: absent

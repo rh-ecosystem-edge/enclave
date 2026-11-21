@@ -1448,6 +1448,37 @@ Core operators are defined in `defaults/operators.yaml`. Plugin operators are de
 
 ### Control Binaries
 
+#### `mirrorRegistry` (optional consumer override)
+
+**Location**: `config/global.yaml`
+
+Select a mirror-registry installer without editing repository defaults. Omit this
+object to keep the shipped installer (currently version `2.0.12` and its pinned
+SHA256 in `defaults/control_binaries.yaml`); no additional configuration is needed.
+
+```yaml
+mirrorRegistry:
+  version: "2.0.12"
+  sha256: "6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
+```
+
+Both fields are required when the object is present. `version` must be a quoted
+`major.minor.patch` release string. `sha256` must be the selected archive's actual
+SHA256: exactly 64 lowercase hexadecimal characters, without a `sha256:` prefix.
+Obtain and verify the digest from a trusted release source; changing the version
+without supplying the matching digest is not supported. Unknown fields, partial
+overrides, and malformed values fail configuration validation before downloading.
+
+The loader applies this selection **after** common defaults and derives the URL:
+`https://mirror.openshift.com/pub/cgw/mirror-registry/<version>/mirror-registry-amd64.tar.gz`.
+It supplies `sha256:<sha256>` to Ansible's downloader and preserves all other
+control binaries, including `oc`, Helm, and `oc-mirror`.
+
+This selects the archive downloaded during preparation/sync and used for a new
+mirror-registry installation. It does **not** upgrade an existing registry:
+installation is skipped when the `quay-app` container already exists. Follow the
+supported registry upgrade procedure separately for existing installations.
+
 #### `control_binaries`
 
 **Description**: URLs and checksums for required binaries.
@@ -1466,8 +1497,8 @@ control_binaries:
     url: "https://developers.redhat.com/content-gateway/file/pub/openshift-v4/clients/helm/3.17.1/helm-linux-amd64"
     checksum: "sha256:ef6c04f6a748d0f1d624a94a56dc0db83f8d70a65e3dbb19e94107126efcc5fd"
   mirror_registry:
-    url: "https://developers.redhat.com/content-gateway/file/pub/openshift-v4/clients/mirror-registry/1.3.11/mirror-registry.tar.gz"
-    checksum: "sha256:b2fbf8b13d794cdebb8baee48afbfa78d13c4d76a1c60fc99d52c3c9abd31cf1"
+    url: "https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.12/mirror-registry-amd64.tar.gz"
+    checksum: "sha256:6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
   oc_mirror:
     url: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/4.19.17/oc-mirror.tar.gz"
     checksum: "sha256:83a9e2a99a0600e50d0ee49a10758609a1d6e4acb0d00745098745e71516a2e9"
@@ -1482,7 +1513,7 @@ control_binaries:
 **Notes**:
 - Checksums are verified after download
 - URLs should point to official Red Hat sources
-- Update version numbers as needed
+- For consumer mirror-registry selection, use `mirrorRegistry` above rather than editing defaults
 
 ### RHCOS ISOs
 

@@ -74,6 +74,26 @@ properties:
     "$ref": "#/definitions/cidr"
   ocMirrorLogLevel:
     "$ref": "#/definitions/ocMirrorLogLevel"
+  mirrorRegistry:
+    type: object
+    description: Optional mirror-registry installer selection; omit to use shipped defaults
+    additionalProperties: false
+    required:
+      - version
+      - sha256
+    properties:
+      version:
+        type: string
+        pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+        not:
+          pattern: '\s'
+        description: Mirror-registry release version, for example 2.0.12
+      sha256:
+        type: string
+        minLength: 64
+        maxLength: 64
+        pattern: '^[0-9a-f]{64}$'
+        description: Archive SHA256 as 64 lowercase hexadecimal characters without a prefix
   quayPinnedImageSetEnabled:
     type: boolean
     default: false

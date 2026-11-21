@@ -70,6 +70,22 @@
   loop_control:
     loop_var: config_file
 
+- name: Validate mirrorRegistry installer override
+  ansible.utils.validate:
+    data: "{{ mirrorRegistry | to_json }}"
+    criteria: "{{ (lookup('ansible.builtin.file', '../../schemas/global.yaml') | from_yaml).properties.mirrorRegistry | to_json }}"
+    engine: ansible.utils.jsonschema
+  when: mirrorRegistry is defined
+
+- name: Resolve mirror-registry installer after common defaults
+  ansible.builtin.set_fact:
+    control_binaries: >-
+      {{ control_binaries | combine({'mirror_registry': {
+           'url': 'https://mirror.openshift.com/pub/cgw/mirror-registry/' ~ mirrorRegistry.version ~ '/mirror-registry-amd64.tar.gz',
+           'checksum': 'sha256:' ~ mirrorRegistry.sha256
+         }}, recursive=True) }}
+  when: mirrorRegistry is defined
+
 - name: Ensure storage plugin is in enabled_plugins
   ansible.builtin.set_fact:
     enabled_plugins: "{{ enabled_plugins | union([storage_plugin]) }}"
