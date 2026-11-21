@@ -30,6 +30,11 @@
   ansible.builtin.include_tasks:
     file: tasks/configure_hardware_ironic_cleanup.yaml
 
+- name: Validate installed API, etcd and ingress node network paths
+  ansible.builtin.include_tasks: validate_network_paths.yaml
+  vars:
+    network_validation_stage: postinstall
+
 - name: Verify pod Capacity on all master nodes
   block:
     - name: Wait for KubeletConfig to be recognized by the cluster
