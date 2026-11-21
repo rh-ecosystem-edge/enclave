@@ -132,7 +132,7 @@ mirror-plugin:
 		echo "Error: PLUGIN variable must be set. Usage: make mirror-plugin PLUGIN=<name>"; \
 		exit 1; \
 	fi
-	@$(AP) playbooks/deploy-plugin.yaml $(AP_FLAGS) -e 'plugin_name=$(PLUGIN)' -e 'plugin_mirror=true' --tags mirror
+	@$(AP) playbooks/mirror-plugin.yaml $(AP_FLAGS) -e 'plugin_name=$(PLUGIN)'
 
 # Convenience targets
 bootstrap:

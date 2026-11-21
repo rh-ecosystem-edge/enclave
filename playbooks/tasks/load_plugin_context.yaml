@@ -1,0 +1,157 @@
+---
+# Load a plugin's descriptor, defaults, user config and catalog variables.
+#
+# Shared setup used by both deploy_plugin.yaml and mirror-plugin.yaml. It only
+# loads variables and validates requirements; it does not mirror, deploy or
+# mutate any configuration.
+#
+# Required variables:
+#   plugin_name: Name of the plugin directory under plugins/
+#
+# Sets: plugin (descriptor), plugin_dir, catalog_image, catalog_mirror,
+#   catalog_version, and any plugin defaults.
+
+- name: Validate plugin_name is provided
+  ansible.builtin.assert:
+    that:
+      - plugin_name is defined
+      - plugin_name | length > 0
+      - plugin_name is regex('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    fail_msg: "plugin_name must be a valid name (alphanumeric, dots, hyphens, underscores; no path separators)"
+  tags: always
+
+- name: "{{ plugin_name }} | Set plugin directory"
+  ansible.builtin.set_fact:
+    plugin_dir: "{{ playbook_dir }}/../plugins/{{ plugin_name }}"
+  tags: always
+
+- name: "{{ plugin_name }} | Verify plugin.yaml exists"
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/plugin.yaml"
+  register: r_plugin_yaml
+  tags: always
+
+- name: "{{ plugin_name }} | Fail if plugin.yaml is missing"
+  ansible.builtin.assert:
+    that: r_plugin_yaml.stat.exists
+    fail_msg: "Plugin descriptor not found: {{ plugin_dir }}/plugin.yaml"
+  tags: always
+
+- name: "{{ plugin_name }} | Load plugin descriptor"
+  ansible.builtin.include_vars:
+    file: "{{ plugin_dir }}/plugin.yaml"
+    name: plugin
+  tags: always
+
+- name: "{{ plugin_name }} | Display plugin info"
+  ansible.builtin.debug:
+    msg: "Loading plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
+  tags: always
+
+- name: "{{ plugin_name }} | Stat plugin defaults.yaml"
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/defaults.yaml"
+  register: r_plugin_defaults_yaml
+  tags: always
+
+- name: "{{ plugin_name }} | Fail if both defaults.yaml and defaults field are defined"
+  ansible.builtin.fail:
+    msg: "Plugin '{{ plugin.name }}' has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
+  when:
+    - r_plugin_defaults_yaml.stat.exists
+    - plugin.defaults is defined
+  tags: always
+
+- name: "{{ plugin_name }} | Load plugin defaults from defaults.yaml"
+  ansible.builtin.include_vars:
+    file: "{{ plugin_dir }}/defaults.yaml"
+  when: r_plugin_defaults_yaml.stat.exists
+  tags: always
+
+# noqa: var-naming[no-jinja] — Jinja2 in the variable name is the only way
+# to set dynamic fact names from a dict.
+- name: "{{ plugin_name }} | Load plugin defaults from plugin.yaml"  # noqa: var-naming[no-jinja]
+  ansible.builtin.set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  loop: "{{ plugin.defaults | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  when:
+    - plugin.defaults is defined
+    - not r_plugin_defaults_yaml.stat.exists
+  tags: always
+
+# Load user config for this plugin (config/plugins/<name>.yaml) if it exists.
+# The load-vars.yaml only loads config files for plugins in enabled_plugins,
+# but day-2 plugins deployed via deploy-plugin.yaml may not be in that list.
+- name: "{{ plugin_name }} | Stat plugin user config file"
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../config/plugins/{{ plugin_name }}.yaml"
+  register: r_plugin_user_config
+  tags: always
+
+- name: "{{ plugin_name }} | Load plugin user config"
+  ansible.builtin.include_vars:
+    file: "{{ r_plugin_user_config.stat.path }}"
+  when: r_plugin_user_config.stat.exists
+  tags: always
+
+- name: "{{ plugin_name }} | Validate plugin requirements (vars)"
+  ansible.builtin.assert:
+    that: "item.name in vars"
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' requires variable '{{ item.name }}' but it is not defined.
+      {{ item.description | default('') }}
+  loop: "{{ plugin.requires.vars | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - plugin.requires is defined
+    - plugin.requires.vars is defined
+    - item.when | default(true) | bool
+  tags: always
+
+- name: "{{ plugin_name }} | Stat plugin required files"
+  ansible.builtin.stat:
+    path: "{{ plugin_dir }}/{{ item.path }}"
+  loop: "{{ plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+  register: r_required_files
+  when:
+    - plugin.requires is defined
+    - plugin.requires.files is defined
+  tags: always
+
+- name: "{{ plugin_name }} | Validate plugin requirements (files)"
+  ansible.builtin.assert:
+    that: r_required_files.results[ansible_loop.index0].stat.exists
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' requires file '{{ item.path }}' but it was not found at
+      {{ plugin_dir }}/{{ item.path }}.
+      {{ item.description | default('') }}
+  loop: "{{ plugin.requires.files | default([]) }}"
+  loop_control:
+    label: "{{ item.path }}"
+    extended: true
+  when:
+    - plugin.requires is defined
+    - plugin.requires.files is defined
+    - item.when | default(true) | bool
+  tags: always
+
+- name: "{{ plugin_name }} | Set catalog image and mirror defaults"
+  ansible.builtin.set_fact:
+    catalog_image: "{{ rh_operator_catalog }}"
+    catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
+    catalog_version: "{{ rh_operator_catalog_version }}"
+  tags: always
+
+- name: "{{ plugin_name }} | Override variables for certified catalog"
+  ansible.builtin.set_fact:
+    catalog_image: "{{ certified_operator_catalog }}"
+    catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
+    catalog_version: "{{ certified_operator_catalog_version }}"
+  when:
+    - plugin.catalog | default("") == "certified"
+  tags: always
