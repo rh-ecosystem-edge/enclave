@@ -1,0 +1,96 @@
+---
+- name: Load operator-selected profile
+  ansible.builtin.include_vars: "{{ profile }}"
+
+- name: Reproduce framework config file discovery for actual pre-validation
+  ansible.builtin.set_fact:
+    r_plugin_user_config:
+      stat:
+        exists: true
+        path: "{{ profile }}"
+
+- name: Run real pre-validation and settings resolution
+  ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/pre-validate.yaml"
+
+- name: Load real plugin descriptor
+  ansible.builtin.include_vars:
+    file: "{{ plugin_dir }}/plugin.yaml"
+    name: plugin
+
+- name: Render actual deployment and mirror inputs
+  ansible.builtin.set_fact:
+    vllm_rendered: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/serving.yaml.j2') | from_yaml_all | list }}"
+    vllm_imageset: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/../../templates/plugin-imageset.yaml.j2') | from_yaml }}"
+    vllm_registry_config: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/../../templates/registries.conf.j2') }}"
+  vars:
+    _core_plugin_registries: "{{ plugin.registries }}"
+    quayHostname: landing-zone.example.com
+
+- name: Extract rendered ACM workload objects
+  ansible.builtin.set_fact:
+    vllm_objects: "{{ vllm_rendered[2].spec['policy-templates'][0].objectDefinition.spec['object-templates'] | map(attribute='objectDefinition') | list }}"
+
+- name: Extract serving container and networking
+  ansible.builtin.set_fact:
+    vllm_pod: "{{ vllm_objects[4].spec.template.spec }}"
+    vllm_container: "{{ vllm_objects[4].spec.template.spec.containers[0] }}"
+    vllm_ingress: "{{ vllm_objects[2].spec.ingress[0] }}"
+
+- name: Assert placement policy security and mirror wiring
+  ansible.builtin.assert:
+    that:
+      - vllm_rendered | map(attribute='kind') | list == ['PlacementRule', 'PlacementBinding', 'Policy']
+      - vllm_rendered[0].spec.clusterSelector.matchLabels == {'enclave.vllm/serve':'true'}
+      - vllm_rendered[1].placementRef.name == vllm_rendered[0].metadata.name
+      - vllm_rendered[1].subjects[0].name == vllm_rendered[2].metadata.name
+      - vllm_objects | map(attribute='kind') | list == ['Namespace', 'NetworkPolicy', 'NetworkPolicy', 'Service', 'Deployment']
+      - vllm_objects[0].metadata.labels['pod-security.kubernetes.io/enforce'] == 'restricted'
+      - vllm_rendered[2].spec['policy-templates'][0].objectDefinition.spec['object-templates'][1].complianceType == 'mustonlyhave'
+      - vllm_rendered[2].spec['policy-templates'][0].objectDefinition.spec['object-templates'][2].complianceType == 'mustonlyhave'
+      - vllm_objects[1].spec == {'podSelector':{},'policyTypes':['Ingress','Egress'],'ingress':[],'egress':[]}
+      - vllm_ingress.from | length == 1
+      - vllm_ingress.from[0].namespaceSelector.matchLabels == {'enclave.vllm/caller':'true'}
+      - vllm_ingress.from[0].podSelector.matchLabels == {'enclave.vllm/caller':'true'}
+      - vllm_ingress.ports == [{'protocol':'TCP','port':8000}]
+      - vllm_objects[3].spec.type == 'ClusterIP'
+      - vllm_objects[3].spec.selector == vllm_objects[4].spec.selector.matchLabels
+      - vllm_objects[4].spec.replicas == 1
+      - vllm_objects[4].spec.strategy.type == 'Recreate'
+      - not vllm_pod.automountServiceAccountToken
+      - "'hostNetwork' not in vllm_pod"
+      - "'hostPID' not in vllm_pod"
+      - "'initContainers' not in vllm_pod"
+      - vllm_pod.securityContext.runAsNonRoot
+      - vllm_pod.securityContext.seccompProfile.type == 'RuntimeDefault'
+      - not vllm_container.securityContext.allowPrivilegeEscalation
+      - vllm_container.securityContext.readOnlyRootFilesystem
+      - vllm_container.securityContext.capabilities.drop == ['ALL']
+      - vllm_container.image == vllm.runtimeImage
+      - vllm_container.command == ['python3', '-m', 'vllm.entrypoints.openai.api_server']
+      - "'/models/' ~ vllm.modelPath in vllm_container.args"
+      - "'enclave-llm' in vllm_container.args"
+      - "'--trust-remote-code' not in vllm_container.args"
+      - "'--disable-log-requests' in vllm_container.args"
+      - vllm_settings.maxModelLen | int | string in vllm_container.args
+      - vllm_settings.maxNumSeqs | int | string in vllm_container.args
+      - vllm_settings.gpuCount | int | string in vllm_container.args
+      - vllm_container.resources.requests == vllm_container.resources.limits
+      - vllm_container.resources.limits['nvidia.com/gpu'] == vllm_settings.gpuCount
+      - vllm_container.resources.limits.cpu == vllm_settings.cpu
+      - vllm_container.resources.limits.memory == vllm_settings.memory
+      - vllm_pod.volumes[0].persistentVolumeClaim.claimName == vllm.modelPVC
+      - vllm_pod.volumes[0].persistentVolumeClaim.readOnly
+      - vllm_container.volumeMounts[0].readOnly
+      - vllm_pod.volumes[2].emptyDir.medium == 'Memory'
+      - vllm_pod.volumes[1].emptyDir.sizeLimit == vllm_settings.cacheSize
+      - vllm_pod.volumes[2].emptyDir.sizeLimit == vllm_settings.shmSize
+      - vllm_objects[4].spec.template.metadata.annotations['enclave.vllm/artifact-identity'] == vllm.artifactIdentity
+      - vllm_container.startupProbe.failureThreshold * vllm_container.startupProbe.periodSeconds == 1800
+      - vllm_container.readinessProbe.httpGet.path == '/health'
+      - vllm_container.livenessProbe.httpGet.path == '/health'
+      - vllm_container.env | selectattr('name', 'equalto', 'HF_HUB_OFFLINE') | map(attribute='value') | list == ['1']
+      - vllm_container.env | selectattr('name', 'equalto', 'TRANSFORMERS_OFFLINE') | map(attribute='value') | list == ['1']
+      - vllm_imageset.mirror.additionalImages == [{'name':vllm.runtimeImage}]
+      - "plugin.registries[0].location == vllm.runtimeImage.split('@')[0]"
+      - "plugin.registries[0].location in vllm_registry_config"
+      - "'landing-zone.example.com:8443/' ~ plugin.registries[0].mirror in vllm_registry_config"

@@ -1,0 +1,16 @@
+---
+vllm:
+  runtimeImage: registry.example.com/other/runtime@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+  modelPVC: other-model
+  modelPath: models/revision_2
+  artifactIdentity: immutable-release:2
+  dtype: half
+  maxModelLen: 8192
+  maxNumSeqs: 1
+  gpuCount: 2
+  cpu: "8"
+  memory: 32Gi
+  shmSize: 4Gi
+  cacheSize: 8Gi
+  chatTemplateContentFormat: string
+  enableSmokeTest: true

@@ -1,0 +1,6 @@
+---
+vllm:
+  runtimeImage: registry.example.com/operator/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  modelPVC: preloaded-model
+  modelPath: https://models.example.com/snapshot
+  artifactIdentity: immutable-release:1

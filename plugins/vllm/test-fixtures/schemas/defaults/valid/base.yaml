@@ -1,0 +1,12 @@
+---
+vllmDefaults:
+  dtype: bfloat16
+  maxModelLen: 4096
+  maxNumSeqs: 2
+  gpuCount: 1
+  cpu: "4"
+  memory: 16Gi
+  shmSize: 2Gi
+  cacheSize: 4Gi
+  chatTemplateContentFormat: auto
+  enableSmokeTest: false

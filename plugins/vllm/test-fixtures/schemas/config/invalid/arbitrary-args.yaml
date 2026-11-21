@@ -1,0 +1,7 @@
+---
+vllm:
+  runtimeImage: registry.example.com/operator/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  modelPVC: preloaded-model
+  modelPath: snapshot
+  artifactIdentity: immutable-release:1
+  args: [--trust-remote-code]

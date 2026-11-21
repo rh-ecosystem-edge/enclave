@@ -1,0 +1,9 @@
+---
+vllm:
+  runtimeImage: registry.example.com/operator/runtime@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  modelPVC: preloaded-model
+  modelPath: snapshot
+  artifactIdentity: immutable-release:1
+  gpuCount: 1.0
+  maxModelLen: 4096.0
+  maxNumSeqs: 2.0

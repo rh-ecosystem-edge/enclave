@@ -1,0 +1,59 @@
+---
+- name: Validate serving plugin locally without a cluster
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    plugin_dir: "{{ playbook_dir }}/.."
+  tasks:
+    - name: Load real defaults
+      ansible.builtin.include_vars: "{{ plugin_dir }}/defaults.yaml"
+
+    - name: Render and assert operator profiles using actual hooks
+      ansible.builtin.include_tasks: render.yaml
+      loop: "{{ query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/config/valid/*.yaml') }}"
+      loop_control:
+        loop_var: profile
+
+    - name: Run local regressions for opt-in inference validation
+      ansible.builtin.include_tasks: smoke.yaml
+
+    - name: Point actual pre-validation at a config with an unknown root key
+      ansible.builtin.set_fact:
+        r_plugin_user_config:
+          stat:
+            exists: true
+            path: "{{ plugin_dir }}/test-fixtures/schemas/config/invalid/unknown-root.yaml"
+        vllm_rejected_root: false
+
+    - name: Verify standalone pre-validation rejects the entire invalid file
+      block:
+        - name: Run actual pre-validation against invalid file
+          ansible.builtin.include_tasks: "{{ plugin_dir }}/tasks/pre-validate.yaml"
+      rescue:
+        - name: Record expected schema rejection
+          ansible.builtin.set_fact:
+            vllm_rejected_root: "{{ ansible_failed_task.name == 'Validate serving configuration before mirroring or deployment' }}"
+
+    - name: Assert unknown root properties cannot bypass standalone validation
+      ansible.builtin.assert:
+        that: vllm_rejected_root
+
+    - name: Validate all negative fixtures through Ansible jsonschema consumer
+      ansible.utils.validate:
+        data: "{{ lookup('ansible.builtin.file', item) | from_yaml }}"
+        criteria: "{{ lookup('ansible.builtin.file', plugin_dir ~ '/schemas/' ~ item.split('/schemas/')[1].split('/')[0] ~ '.yaml') | from_yaml }}"
+        engine: ansible.utils.jsonschema
+      loop: >-
+        {{ query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/config/invalid/*.yaml')
+         + query('ansible.builtin.fileglob', plugin_dir ~ '/test-fixtures/schemas/defaults/invalid/*.yaml') }}
+      register: r_vllm_invalid
+      ignore_errors: true
+
+    - name: Assert every negative fixture was rejected
+      ansible.builtin.assert:
+        that: item is failed
+        quiet: true
+      loop: "{{ r_vllm_invalid.results }}"
+      loop_control:
+        label: "{{ item.item | basename }}"

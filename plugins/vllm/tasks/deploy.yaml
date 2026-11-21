@@ -1,0 +1,18 @@
+---
+- name: Ensure hub policy namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: openshift-acm-policies
+
+- name: Apply serving policy and explicit placement on the hub
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', plugin_dir ~ '/files/serving.yaml.j2') | from_yaml_all | list }}"
+  register: r_vllm_policy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_vllm_policy is success
