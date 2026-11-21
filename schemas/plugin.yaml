@@ -289,7 +289,10 @@ properties:
       be removed from enclave in a future release.
   registries:
     type: array
-    description: Registry mirror entries for MCE custom-registries patching.
+    description: >-
+      Registry mirror entries mapping each operator image source to its mirror
+      namespace. Used to redirect the plugin mirror (registries.conf) to the local
+      registry and for MCE custom-registries patching.
     items:
       $ref: "#/definitions/registry"
   additionalImages:
@@ -322,6 +325,22 @@ properties:
 dependencies:
   installOperatorsFleet:
     - clusterSelector
+# A plugin that installs operators must declare the registry mirror entries for its
+# operator images, so the plugin mirror can redirect them to the local registry.
+if:
+  properties:
+    operators:
+      type: array
+      minItems: 1
+  required:
+    - operators
+then:
+  properties:
+    registries:
+      type: array
+      minItems: 1
+  required:
+    - registries
 required:
   - name
   - type
