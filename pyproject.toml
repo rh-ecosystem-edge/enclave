@@ -29,7 +29,7 @@ enclave = "enclave.cli:cli"
 
 [dependency-groups]
 dev = [
-    "ansible-lint ==26.10.1",
+    "ansible-lint ==26.11.0",
     "anymarkup ==0.8.1",
     "mypy ==2.3.1",
     "pytest ==9.1.1",
