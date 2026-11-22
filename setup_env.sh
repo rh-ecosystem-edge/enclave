@@ -25,7 +25,7 @@ dnf install -y \
     vim
 
 # Install AWS CLI v2 from official installer
-AWS_CLI_VERSION=2.38.4
+AWS_CLI_VERSION=2.41.1
 AWSCLI_TMP=$(mktemp -d)
 trap 'rm -rf "${AWSCLI_TMP}"' EXIT
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "${AWSCLI_TMP}/awscliv2.zip"
