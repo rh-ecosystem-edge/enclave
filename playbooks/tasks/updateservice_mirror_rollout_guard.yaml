@@ -46,11 +46,12 @@
       ansible.builtin.set_fact:
         _quay_wait_deadline: "{{ now(utc=true).timestamp() | float + 900 }}"
 
-    # One 15-minute deadline across all attempts (each poll is bounded by --request-timeout).
+    # One 15-minute deadline across all attempts. The process timeout converts a
+    # stalled oc invocation into rc 124 so failed_when/until can continue polling.
     - name: Wait for the hub Quay app to be ready after the rollout
       ansible.builtin.command:
-        argv: ["{{ workingDir }}/bin/oc", get, deployment, registry-quay-app, -n, quay-enterprise,
-               --ignore-not-found, -o, json, --request-timeout=30s]
+        argv: [timeout, 60s, "{{ workingDir }}/bin/oc", get, deployment, registry-quay-app,
+               -n, quay-enterprise, --ignore-not-found, -o, json, --request-timeout=30s]
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
       register: r_quay_app_after_rollout
