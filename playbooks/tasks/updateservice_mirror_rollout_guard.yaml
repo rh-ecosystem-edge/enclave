@@ -12,6 +12,24 @@
 #                               until that many replicas are ready
 # The annotation survives an interrupted run, so a re-run restores the original count.
 
+- name: Read the UpdateService for the mirror rollout ({{ updateservice_guard }})
+  ansible.builtin.command:
+    argv: ["{{ workingDir }}/bin/oc", get, updateservice, service, -n, openshift-update-service,
+           -o, json, --request-timeout=30s]
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_osus_guard
+  changed_when: false
+  failed_when: false
+
+- name: Set UpdateService guard facts
+  vars:
+    _osus: "{{ (r_osus_guard.stdout | from_json) if r_osus_guard.rc == 0 else {} }}"
+  ansible.builtin.set_fact:
+    _osus_exists: "{{ r_osus_guard.rc == 0 }}"
+    _osus_replicas: "{{ _osus.spec.replicas | default(0) | int }}"
+    _osus_recorded: "{{ _osus.metadata.annotations['enclave.openshift.io/replicas-before-mirror-rollout'] | default('') }}"
+
 # A MachineConfigPool reports Updated once its nodes are back, not once the pods its
 # drains evicted are running again. The hub Quay app's LVMS volume ties it to one node;
 # if other evicted pods filled that node, the app stays Pending and the UpdateService
@@ -19,7 +37,10 @@
 # ready replica and otherwise fails naming the Quay app pods that are not running and
 # why (e.g. their FailedScheduling message). No-op when the Quay app doesn't exist.
 - name: Wait for the hub Quay app before restoring the UpdateService
-  when: updateservice_guard == 'restore'
+  when:
+    - updateservice_guard == 'restore'
+    - _osus_exists | bool
+    - _osus_recorded | length > 0
   block:
     - name: Start the hub Quay wait clock
       ansible.builtin.set_fact:
@@ -37,7 +58,6 @@
       failed_when: false
       retries: 120
       delay: 15
-      timeout: 60
       until: >-
         (r_quay_app_after_rollout.rc | default(1) == 0
          and (r_quay_app_after_rollout.stdout | trim | length == 0
