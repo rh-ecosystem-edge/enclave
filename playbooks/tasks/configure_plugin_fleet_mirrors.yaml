@@ -1,0 +1,96 @@
+---
+# Deliver a managed-cluster-only plugin's registry mirrors to the clusters it targets.
+#
+# A managed cluster gets custom-registries only at install time, so a cluster installed
+# before the plugin (or labeled for it later) would lack the plugin's mirrors. An ACM
+# Policy creates IDMS/ITMS for the plugin's registries, pointing at the hub Quay, on
+# the clusters selected by the plugin's PlacementRules: its clusterSelector rule
+# (<name>-fleet-configuration) and the PlacementRules in its files/*placementrule*.
+#
+# Required variables: plugin, plugin_name, plugin_dir, clusterName, baseDomain.
+
+- name: Ensure the ACM policies namespace exists
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../files/plugin-fleet-configuration/00-namespace.yaml') | from_yaml }}"
+  register: r_fleet_mirrors_ns
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_fleet_mirrors_ns is success
+
+# deploy_plugin.yaml creates <name>-fleet-configuration only for a non-empty selector.
+- name: Collect the plugin's PlacementRules
+  ansible.builtin.set_fact:
+    _plugin_placement_rules: >-
+      {%- set rules = [] -%}
+      {%- if plugin.clusterSelector is defined and plugin.clusterSelector | length > 0 -%}
+      {%- set _ = rules.append({
+          'name': plugin.name ~ '-fleet-configuration',
+          'namespace': 'openshift-acm-policies'
+        }) -%}
+      {%- endif -%}
+      {%- for placement_file in query('ansible.builtin.fileglob', plugin_dir ~ '/files/*placementrule*') -%}
+      {%- for placement_rule in lookup('ansible.builtin.template', placement_file) | from_yaml_all -%}
+      {%- if placement_rule.kind | default('') == 'PlacementRule' -%}
+      {%- set _ = rules.append({
+          'name': placement_rule.metadata.name,
+          'namespace': placement_rule.metadata.namespace | default('openshift-acm-policies')
+        }) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ rules | to_yaml | from_yaml }}
+
+- name: Reject PlacementRules outside the ACM policies namespace
+  ansible.builtin.assert:
+    that:
+      - item.namespace == 'openshift-acm-policies'
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' declares PlacementRule '{{ item.name }}' in namespace
+      '{{ item.namespace }}'. Plugin mirror PlacementRules must be in
+      'openshift-acm-policies' because ACM PlacementBinding cannot reference a rule
+      in another namespace.
+  loop: "{{ _plugin_placement_rules }}"
+  loop_control:
+    label: "{{ item.namespace }}/{{ item.name }}"
+
+- name: Warn when the plugin has no PlacementRule to target
+  ansible.builtin.debug:
+    msg: >-
+      {{ plugin_name }} has no PlacementRule (no clusterSelector, no
+      files/*placementrule*); its mirrors Policy is created but not bound to any cluster.
+  when: _plugin_placement_rules | length == 0
+
+- name: Create the plugin mirrors Policy
+  kubernetes.core.k8s:
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', playbook_dir ~ '/../files/plugin-fleet-mirrors/10-policy-mirrors.yaml.j2') | from_yaml }}"
+  register: r_fleet_mirrors_policy
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_fleet_mirrors_policy is success
+
+# One binding per PlacementRule; a rule created later (by the plugin's deploy) is
+# picked up once it exists.
+- name: Bind the plugin mirrors Policy to the plugin's PlacementRules
+  kubernetes.core.k8s:
+    state: present
+    definition:
+      apiVersion: policy.open-cluster-management.io/v1
+      kind: PlacementBinding
+      metadata:
+        name: "plugin-mirrors-{{ plugin.name }}-{{ item.namespace }}-{{ item.name }}"
+        namespace: openshift-acm-policies
+      placementRef:
+        apiGroup: apps.open-cluster-management.io
+        kind: PlacementRule
+        name: "{{ item.name }}"
+      subjects:
+        - apiGroup: policy.open-cluster-management.io
+          kind: Policy
+          name: "plugin-mirrors-{{ plugin.name }}"
+  loop: "{{ _plugin_placement_rules | unique | list }}"
+  register: r_fleet_mirrors_binding
+  retries: "{{ k8s_retries }}"
+  delay: "{{ k8s_delay }}"
+  until: r_fleet_mirrors_binding is success

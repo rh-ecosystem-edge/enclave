@@ -137,6 +137,23 @@
     - item.when | default(true) | bool
   tags: always
 
+- name: "{{ plugin_name }} | Validate managed-only mirror configuration"
+  ansible.builtin.assert:
+    that:
+      - not (
+          plugin.operators | default([]) | length > 0
+          and not (plugin.installOperators | default(true) | bool)
+          and plugin.helm | default([]) | length == 0
+          and plugin.registries | default([]) | length == 0
+        )
+    fail_msg: >-
+      Plugin '{{ plugin.name }}' is managed-cluster-only but declares no registries.
+      Add at least one entry under registries, or enable operator installation/use a
+      Helm chart so the plugin has a valid mirror-delivery path.
+  when:
+    - disconnected | default(true) | bool
+  tags: always
+
 - name: "{{ plugin_name }} | Run pre-validate"
   ansible.builtin.include_tasks:
     file: "{{ plugin_dir }}/tasks/pre-validate.yaml"
@@ -197,6 +214,24 @@
     plugin_registries_entries: "{{ plugin.registries }}"
   when:
     - plugin.registries is defined
+    - disconnected | default(true) | bool
+  tags: mirror
+
+# Managed-cluster-only plugins (operators listed, installOperators: false, no Helm
+# charts; see mirror_plugin.yaml) get their mirrors on the clusters they target
+# through ACM.
+- name: "{{ plugin_name }} | Deliver plugin mirrors to its managed clusters"
+  ansible.builtin.include_tasks:
+    file: tasks/configure_plugin_fleet_mirrors.yaml
+    apply:
+      tags: mirror
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  when:
+    - plugin.registries | default([]) | length > 0
+    - plugin.operators | default([]) | length > 0
+    - not (plugin.installOperators | default(true) | bool)
+    - plugin.helm | default([]) | length == 0
     - disconnected | default(true) | bool
   tags: mirror
 

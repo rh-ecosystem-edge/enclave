@@ -266,7 +266,8 @@ properties:
       Install operators on management cluster. Defaults to true. With operators
       listed, installOperators false and no helm charts (which run on the
       management cluster), the plugin targets only managed clusters: its mirror
-      sets are not applied to the management cluster.
+      sets are not applied to the management cluster but delivered to the
+      managed clusters it targets by ACM policy.
   installOperatorsFleet:
     type: boolean
     description: >-
@@ -289,7 +290,10 @@ properties:
       be removed from enclave in a future release.
   registries:
     type: array
-    description: Registry mirror entries for MCE custom-registries patching.
+    description: >-
+      Registry mirror entries for MCE custom-registries patching and, for
+      managed-cluster-only plugins, the IDMS/ITMS delivered to their managed
+      clusters by ACM policy.
     items:
       $ref: "#/definitions/registry"
   additionalImages:
