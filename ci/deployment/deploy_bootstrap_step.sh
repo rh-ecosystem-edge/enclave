@@ -53,6 +53,9 @@ ENCLAVE_CLUSTER_NAME="${ENCLAVE_CLUSTER_NAME:-enclave-test}"
 # Source cluster environment
 load_cluster_env
 
+# Keep the duration opt-in local to this script.
+export -n ENCLAVE_CI_CHECK_MIRROR_DURATION
+
 # Landing Zone IP (static DHCP lease, from cluster-env.sh)
 CLUSTER_IP="${ENCLAVE_LZ_CLUSTER_IP:-}"
 
@@ -92,10 +95,25 @@ if [ -n "${ENCLAVE_DEPLOYMENT_MODE:-}" ]; then
     info "Deployment mode: $ENCLAVE_DEPLOYMENT_MODE"
 fi
 
+MIRROR_START_SECONDS=
+if [[ "$STEP_NAME" == build-cache && "${ENCLAVE_CI_CHECK_MIRROR_DURATION:-}" == true ]]; then
+    MIRROR_START_SECONDS=$SECONDS
+fi
+
 # shellcheck disable=SC2086
 # Use pipefail on the remote shell so the exit code of bootstrap.sh
 # propagates through the tee pipeline (without it, tee always returns 0).
 if ssh -t $SSH_OPTS "$LZ_SSH" "set -o pipefail; cd $LZ_ENCLAVE_DIR && ${EXPORT_VARS}./bootstrap.sh --step $STEP_NAME --non-interactive 2>&1 | tee $LOG_FILE"; then
+    if [[ -n "$MIRROR_START_SECONDS" ]]; then
+        MIRROR_DURATION_SECONDS=$((SECONDS - MIRROR_START_SECONDS))
+        MIRROR_LIMIT_SECONDS=3600
+        output "Local cache build took ${MIRROR_DURATION_SECONDS} s (limit: ${MIRROR_LIMIT_SECONDS} s)." ||
+            warning "Could not write the local cache build duration to the GitHub Actions summary."
+        if (( MIRROR_DURATION_SECONDS > MIRROR_LIMIT_SECONDS )); then
+            error "Local cache build exceeded the ${MIRROR_LIMIT_SECONDS} s limit."
+            exit 1
+        fi
+    fi
     echo ""
     success "Bootstrap step completed successfully: $STEP_NAME"
 else

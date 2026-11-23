@@ -312,6 +312,8 @@ jobs:
 
       - name: Bootstrap - Build local cache
         id: bootstrap_build_cache
+        env:
+          ENCLAVE_CI_CHECK_MIRROR_DURATION: ${{ inputs.mode == 'disconnected' }}
         run: |
           echo "## Bootstrap: Build Cache" >> $GITHUB_STEP_SUMMARY
           make -f Makefile.ci deploy-cluster-mirror
