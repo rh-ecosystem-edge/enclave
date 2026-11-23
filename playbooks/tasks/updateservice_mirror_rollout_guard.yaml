@@ -20,7 +20,18 @@
     KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   register: r_osus_guard
   changed_when: false
-  failed_when: false
+  # Only a missing UpdateService (or its CRD) means there is nothing to guard; any other
+  # error is retried, then fails, instead of silently skipping the guard.
+  vars:
+    _osus_absent: >-
+      {{ 'notfound' in (r_osus_guard.stderr | default('') | lower | replace(' ', ''))
+         or "doesn't have a resource type" in (r_osus_guard.stderr | default('') | lower) }}
+  failed_when:
+    - r_osus_guard.rc != 0
+    - not (_osus_absent | bool)
+  retries: 5
+  delay: 10
+  until: r_osus_guard.rc == 0 or (_osus_absent | bool)
 
 - name: Set UpdateService guard facts
   vars:
@@ -103,35 +114,6 @@
               Pods: {{ _why }}.
               {{ 'Could not read the Deployment: ' ~ (r_quay_app_after_rollout.stderr | default('') | trim | truncate(200))
                  if r_quay_app_after_rollout.rc | default(1) != 0 else '' }}
-
-- name: Read the UpdateService for the mirror rollout ({{ updateservice_guard }})
-  ansible.builtin.command:
-    argv: ["{{ workingDir }}/bin/oc", get, updateservice, service, -n, openshift-update-service,
-           -o, json, --request-timeout=30s]
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_osus_guard
-  changed_when: false
-  # Only a missing UpdateService (or its CRD) means there is nothing to guard; any other
-  # error is retried, then fails, instead of silently skipping the guard.
-  vars:
-    _osus_absent: >-
-      {{ 'notfound' in (r_osus_guard.stderr | default('') | lower | replace(' ', ''))
-         or "doesn't have a resource type" in (r_osus_guard.stderr | default('') | lower) }}
-  failed_when:
-    - r_osus_guard.rc != 0
-    - not (_osus_absent | bool)
-  retries: 5
-  delay: 10
-  until: r_osus_guard.rc == 0 or (_osus_absent | bool)
-
-- name: Set UpdateService guard facts
-  vars:
-    _osus: "{{ (r_osus_guard.stdout | from_json) if r_osus_guard.rc == 0 else {} }}"
-  ansible.builtin.set_fact:
-    _osus_exists: "{{ r_osus_guard.rc == 0 }}"
-    _osus_replicas: "{{ _osus.spec.replicas | default(0) | int }}"
-    _osus_recorded: "{{ _osus.metadata.annotations['enclave.openshift.io/replicas-before-mirror-rollout'] | default('') }}"
 
 - name: Lower the UpdateService to one replica for the mirror rollout
   when:
