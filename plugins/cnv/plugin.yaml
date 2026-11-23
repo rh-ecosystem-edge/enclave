@@ -11,3 +11,7 @@ operators:
     namespace: openshift-cnv
     csvNames:
       - kubevirt-hyperconverged-operator
+
+registries:
+  - location: registry.redhat.io/container-native-virtualization
+    mirror: container-native-virtualization
