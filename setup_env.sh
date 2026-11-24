@@ -2,6 +2,8 @@
 
 set -e
 
+readonly TMPDIR="${TMPDIR:-/tmp}"
+export TMPDIR
 bash "$(dirname -- "${BASH_SOURCE[0]}")/scripts/validation/check_tmp_exec.sh"
 
 # Install prerequisites
@@ -28,8 +30,8 @@ dnf install -y \
 
 # Install AWS CLI v2 from official installer
 AWS_CLI_VERSION=2.42.3
-AWSCLI_TMP=$(mktemp -d)
-trap 'rm -rf "${AWSCLI_TMP}"' EXIT
+AWSCLI_TMP=$(/usr/bin/mktemp -d -- "${TMPDIR}/enclave-awscli.XXXXXXXXXX")
+trap '/usr/bin/rm -rf -- "${AWSCLI_TMP}"' EXIT
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "${AWSCLI_TMP}/awscliv2.zip"
 unzip -q "${AWSCLI_TMP}/awscliv2.zip" -d "${AWSCLI_TMP}"
 "${AWSCLI_TMP}/aws/install" --update
