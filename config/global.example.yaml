@@ -122,8 +122,8 @@ storage_plugin: lvms
 # Omitted: uses the pinned defaults/control_binaries.yaml installer.
 # This does not upgrade an existing quay-app container.
 # mirrorRegistry:
-#   version: "2.0.12"
-#   sha256: "6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
+#   version: "2.0.13"
+#   sha256: "ea18a4eb3a4389a24d8d1eddb51f14859e133a54cb7a040c99af181f3d37d526"
 
 # Apply master PinnedImageSet after Quay mirror (default: true). Set false to skip
 # post-mirror prefetch pinning (e.g. faster iteration or when MCO pin step is unwanted).

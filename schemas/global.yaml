@@ -87,7 +87,7 @@ properties:
         pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
         not:
           pattern: '\s'
-        description: Mirror-registry release version, for example 2.0.12
+        description: Mirror-registry release version, for example 2.0.13
       sha256:
         type: string
         minLength: 64

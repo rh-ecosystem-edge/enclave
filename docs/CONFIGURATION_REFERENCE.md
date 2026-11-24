@@ -1453,13 +1453,14 @@ Core operators are defined in `defaults/operators.yaml`. Plugin operators are de
 **Location**: `config/global.yaml`
 
 Select a mirror-registry installer without editing repository defaults. Omit this
-object to keep the shipped installer (currently version `2.0.12` and its pinned
-SHA256 in `defaults/control_binaries.yaml`); no additional configuration is needed.
+object to keep the shipped installer and its pinned SHA256 in
+`defaults/control_binaries.yaml`; no additional configuration is needed.
+The example explicitly selects the current shipped release, `2.0.13`.
 
 ```yaml
 mirrorRegistry:
-  version: "2.0.12"
-  sha256: "6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
+  version: "2.0.13"
+  sha256: "ea18a4eb3a4389a24d8d1eddb51f14859e133a54cb7a040c99af181f3d37d526"
 ```
 
 Both fields are required when the object is present. `version` must be a quoted
@@ -1497,8 +1498,8 @@ control_binaries:
     url: "https://developers.redhat.com/content-gateway/file/pub/openshift-v4/clients/helm/3.17.1/helm-linux-amd64"
     checksum: "sha256:ef6c04f6a748d0f1d624a94a56dc0db83f8d70a65e3dbb19e94107126efcc5fd"
   mirror_registry:
-    url: "https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.12/mirror-registry-amd64.tar.gz"
-    checksum: "sha256:6de43edfd77a61bb27116bb7a9a5715884722a811f92cd5d9dfca406afb457b2"
+    url: "https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.13/mirror-registry-amd64.tar.gz"
+    checksum: "sha256:ea18a4eb3a4389a24d8d1eddb51f14859e133a54cb7a040c99af181f3d37d526"
   oc_mirror:
     url: "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/4.19.17/oc-mirror.tar.gz"
     checksum: "sha256:83a9e2a99a0600e50d0ee49a10758609a1d6e4acb0d00745098745e71516a2e9"
