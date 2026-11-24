@@ -30,7 +30,7 @@ dnf install -y \
 
 # Install AWS CLI v2 from official installer
 AWS_CLI_VERSION=2.42.3
-AWSCLI_TMP=$(/usr/bin/mktemp -d -- "${TMPDIR}/enclave-awscli.XXXXXXXXXX")
+AWSCLI_TMP=$(/usr/bin/mktemp -d -- "${TMPDIR%/}/enclave-awscli.XXXXXXXXXX")
 trap '/usr/bin/rm -rf -- "${AWSCLI_TMP}"' EXIT
 curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWS_CLI_VERSION}.zip" -o "${AWSCLI_TMP}/awscliv2.zip"
 unzip -q "${AWSCLI_TMP}/awscliv2.zip" -d "${AWSCLI_TMP}"

@@ -8,7 +8,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 fail() {
-    printf 'FAIL temporary execution (%s): %s\n' "${1}" "${TMPDIR:-/tmp}" >&2
+    printf 'FAIL temporary execution (%s): %q\n' "${1}" "${TMPDIR:-/tmp}" >&2
     printf '%s\n' 'Select an administrator-approved writable, executable TMPDIR and retry. Privileged setup uses the environment allowed by sudo; a user TMPDIR may not carry through. Do not change noexec policies.' >&2
     exit 1
 }
@@ -37,8 +37,8 @@ check_privileged_tmpdir() (
         component=${remaining%%/*}
         [[ "$component" != . && "$component" != .. ]] || fail 'privileged TMPDIR must not contain dot components'
         checked+="/$component"
-        require_trusted_directory "$component" "$checked"
-        cd -P -- "$component" || fail 'cannot enter privileged TMPDIR ancestry'
+        require_trusted_directory "./$component" "$checked"
+        cd -P -- "./$component" || fail 'cannot enter privileged TMPDIR ancestry'
         if [[ "$remaining" == */* ]]; then
             remaining=${remaining#*/}
         else
@@ -54,4 +54,4 @@ fi
 probe_dir=$(/usr/bin/mktemp -d) || fail 'cannot create directory'
 /usr/bin/cp -- /usr/bin/true "$probe_dir/probe" || fail 'cannot copy trusted native executable'
 "$probe_dir/probe" || fail 'native execution denied or failed'
-printf 'PASS temporary native execution: %s (uid %s)\n' "${TMPDIR:-/tmp}" "$(id -u)"
+printf 'PASS temporary native execution: %q (uid %s)\n' "${TMPDIR:-/tmp}" "$(id -u)"
