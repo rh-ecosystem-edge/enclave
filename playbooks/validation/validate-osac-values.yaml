@@ -94,3 +94,16 @@
           operator.fulfillment.serverAddress must target the internal Fulfillment
           listener for private API traffic, not the public listener.
         success_msg: "operator.fulfillment.serverAddress targets the internal listener ({{ osac_profile_name | default('unnamed') }})"
+
+    # BMF uses this issuer for Secret API token validation. Assert the value is
+    # wired to the same external Keycloak realm as the rest of OSAC.
+    - name: Assert BMF Secret API issuer URL
+      vars:
+        _actual: "{{ _osac_values.bmf.secretAPI.issuerUrl | default('') }}"
+        _expected: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
+      ansible.builtin.assert:
+        that:
+          - _actual == _expected
+        fail_msg: >-
+          bmf.secretAPI.issuerUrl must use the external Keycloak realm issuer.
+        success_msg: "BMF Secret API issuer URL is configured ({{ osac_profile_name | default('unnamed') }})"
