@@ -95,13 +95,3 @@
           ansible.builtin.debug:
             var: r_release_signatures.stderr_lines
           tags: release-signatures
-
-        - name: Restart catalog source pods to pick up new operator versions
-          when: disconnected | default(true) | bool
-          ansible.builtin.include_tasks:
-            file: tasks/restart_catalog_pods.yaml
-            apply:
-              tags: restart-catalog-pods
-              environment:
-                KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-          tags: restart-catalog-pods

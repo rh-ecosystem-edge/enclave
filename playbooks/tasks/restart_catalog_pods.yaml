@@ -1,13 +1,13 @@
 ---
-# Restart catalog source pods to pick up new operator versions after mirroring.
-# This forces OLM to recreate the pods and detect newly mirrored operator versions.
+# Refresh only the CatalogSources published by this mirror invocation.
+# OLM recreates these pods and pulls the current content of the catalog tag.
 
-- name: Get catalog source pods in openshift-marketplace
+- name: Get pods for the mirrored CatalogSources
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: openshift-marketplace
     label_selectors:
-      - "olm.catalogSource"
+      - "olm.catalogSource in ({{ mirrored_catalog_sources | join(',') }})"
   register: r_catalog_pods
 
 - name: Delete catalog source pods to trigger refresh
@@ -17,26 +17,55 @@
     kind: Pod
     name: "{{ item.metadata.name }}"
     namespace: openshift-marketplace
+    delete_options:
+      preconditions:
+        uid: "{{ item.metadata.uid }}"
   loop: "{{ r_catalog_pods.resources }}"
-  when: r_catalog_pods.resources | length > 0
+  loop_control:
+    label: "{{ item.metadata.name }}"
   register: r_delete_catalog_pods
   retries: "{{ k8s_retries }}"
   delay: "{{ k8s_delay }}"
   until: r_delete_catalog_pods is success
 
-- name: Wait for catalog source pods to be recreated
+- name: Wait for ready replacement pods for the mirrored CatalogSources
   kubernetes.core.k8s_info:
     kind: Pod
     namespace: openshift-marketplace
     label_selectors:
-      - "olm.catalogSource={{ item.metadata.labels['olm.catalogSource'] }}"
+      - "olm.catalogSource={{ mirrored_catalog_source }}"
     field_selectors:
       - "status.phase=Running"
-  loop: "{{ r_catalog_pods.resources }}"
-  when: r_catalog_pods.resources | length > 0
+  loop: "{{ mirrored_catalog_sources }}"
+  loop_control:
+    loop_var: mirrored_catalog_source
   register: r_catalog_pods_running
   retries: 30
   delay: 10
-  until:
-    - r_catalog_pods_running.resources is defined
-    - r_catalog_pods_running.resources | length > 0
+  until: >-
+    r_catalog_pods_running.resources | default([])
+    | rejectattr('metadata.uid', 'in', r_catalog_pods.resources | map(attribute='metadata.uid') | list)
+    | rejectattr('metadata.deletionTimestamp', 'defined')
+    | selectattr('status.conditions', 'defined')
+    | map(attribute='status.conditions')
+    | flatten
+    | selectattr('type', 'equalto', 'Ready')
+    | selectattr('status', 'equalto', 'True')
+    | list | length > 0
+
+- name: Wait for refreshed CatalogSources to be ready
+  kubernetes.core.k8s_info:
+    api_version: operators.coreos.com/v1alpha1
+    kind: CatalogSource
+    namespace: openshift-marketplace
+  register: r_refreshed_catalog_sources
+  retries: 24
+  delay: 10
+  until: >-
+    r_refreshed_catalog_sources.resources | default([])
+    | selectattr('metadata.name', 'in', mirrored_catalog_sources)
+    | selectattr('status', 'defined')
+    | selectattr('status.connectionState', 'defined')
+    | selectattr('status.connectionState.lastObservedState', 'defined')
+    | selectattr('status.connectionState.lastObservedState', 'equalto', 'READY')
+    | list | length == mirrored_catalog_sources | length

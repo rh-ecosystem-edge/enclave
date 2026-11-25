@@ -49,3 +49,31 @@
 - name: Create stable aliases for mirrored CatalogSources
   ansible.builtin.include_tasks:
     file: create_stable_catalog_source_aliases.yaml
+
+- name: Read the catalog targets from this mirror run
+  ansible.builtin.set_fact:
+    _mirrored_registry_catalog_sources: []
+    _mirrored_operator_catalogs: >-
+      {{ (lookup('ansible.builtin.file', workingDir ~ '/config/imagesetconfiguration.yaml')
+          | from_yaml).mirror.operators | default([]) }}
+
+- name: Build the list of mirrored CatalogSources and their stable aliases
+  ansible.builtin.set_fact:
+    _mirrored_registry_catalog_sources: >-
+      {{ _mirrored_registry_catalog_sources + [_stable_source, _versioned_source] }}
+  vars:
+    _stable_source: "cs-{{ item.targetCatalog | basename }}"
+    _versioned_source: "{{ _stable_source }}-{{ item.catalog.split(':') | last | replace('.', '-') }}"
+  loop: "{{ _mirrored_operator_catalogs }}"
+  loop_control:
+    label: "{{ item.targetCatalog }}"
+
+- name: Refresh the catalogs published by the main mirror
+  ansible.builtin.include_tasks:
+    file: restart_catalog_pods.yaml
+    apply:
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  vars:
+    mirrored_catalog_sources: "{{ _mirrored_registry_catalog_sources | unique | list }}"
+  when: _mirrored_registry_catalog_sources | length > 0
