@@ -107,7 +107,10 @@ the web server starts, blocks on its first Postgres **commit** (an RBD write),
 never binds `:8080`, and is then killed by its startup/liveness probes -- a
 permanent crashloop that looks like a Quay/app bug. Reads still work
 (`select 1` returns in milliseconds); only **writes** freeze. If ODF Quay is
-crashlooping during the operators/mirror phase, check Ceph health first.
+crashlooping during the operators/mirror phase, check Ceph health first. The
+hub Quay wait after the mirror rollout (`wait_hub_quay_after_rollout.yaml`)
+fails fast in this case, naming the not-running `quay-app` pods, so follow that
+failure straight to Ceph health instead of waiting for a downstream 503.
 
 ### ODF 4.21 requires `HEALTH_OK`
 

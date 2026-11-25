@@ -172,6 +172,13 @@
       or (r_quay_ca_configmap is changed) or (r_quay_ca_existing_configmap is changed)
       or (r_quay_ca_image_config is changed) or (mcp_rollout_pending | default(false) | bool)
 
+# The rollout restarts the Quay app pods on every storage backend (Pending on LVMS
+# node-local volumes, crash-looping on ODF); wait for a ready replica before anything
+# pulls from the registry again.
+- name: Wait for the hub Quay app after the Quay mirrors rollout
+  ansible.builtin.include_tasks: ../../playbooks/tasks/wait_hub_quay_after_rollout.yaml
+  when: not (quay_mirror_skip_apply | default(false) | bool)
+
 - name: Restore the UpdateService after the mirror rollout
   ansible.builtin.include_tasks: ../../playbooks/tasks/updateservice_mirror_rollout_guard.yaml
   vars:
