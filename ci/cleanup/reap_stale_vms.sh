@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs.
+# Reap leaked CI clusters older than REAP_AGE_HOURS (default 15h) across all runs.
 
 set -euo pipefail
 

@@ -137,7 +137,7 @@ details.
 
 The LZ disk is sized by `vm_infra.py` (via `LANDINGZONE_DISK`), which creates the LZ
 volume; `provision_landing_zone.sh` writes the cloud image into it and resizes to that
-size. For disconnected+odf it is **1500GB**.
+size. For disconnected+odf it is **1500GB**; the ODF + SNO/OpenShift AI job uses **2000GB**.
 
 It must be that large because the mirror lands on the LZ **twice**:
 
@@ -145,9 +145,9 @@ It must be that large because the mirror lands on the LZ **twice**:
 - the Ceph loopback OSD files under `/var/lib/ceph-loops` (~575GB actual for the
   ~512GB of RadosGW data)
 
-plus the OS and per-run session data. See the `LANDINGZONE_DISK` row in
-[`vm-infra.md`](vm-infra.md) for the connected / disconnected / disconnected+odf
-values.
+plus the OS and per-run session data. The additional 500GB for the ODF + SNO/OpenShift AI
+job provides mirror headroom. See the `LANDINGZONE_DISK` row in [`vm-infra.md`](vm-infra.md)
+for the connected / disconnected / disconnected+odf values.
 
 ### Why grow rather than shrink the mirror
 

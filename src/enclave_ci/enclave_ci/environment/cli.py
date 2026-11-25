@@ -12,14 +12,14 @@ from pathlib import Path
 
 import click
 
-DEFAULT_REAP_AGE_HOURS = 12.0
+DEFAULT_REAP_AGE_HOURS = 15.0
 # A cluster's define-age exceeding the longest possible job runtime is what proves
-# it is leaked rather than in-flight: the e2e jobs cap out at 660 minutes (11h, the
-# scheduled run with the SNO VM) via timeout-minutes, so any cluster older than that
-# cannot belong to a running job.
+# it is leaked rather than in-flight: the e2e jobs cap out at 840 minutes (14h, the
+# scheduled run with the SNO VM and openshift-ai) via timeout-minutes, so any cluster
+# older than that cannot belong to a running job.
 # Destructive reaps refuse thresholds below this floor (use --force to override on
 # a host you know is idle); --dry-run is always allowed for inspection.
-MIN_REAP_AGE_HOURS = 12.0
+MIN_REAP_AGE_HOURS = 15.0
 
 
 def _reap_age_from_env() -> float:

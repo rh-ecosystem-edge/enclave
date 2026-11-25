@@ -234,6 +234,8 @@ class Config:
                 f"ERROR: STORAGE_PLUGIN must be 'lvms' or 'odf', got {storage_plugin!r}"
             )
 
+        additional_sno_vm = optbool("ENCLAVE_ADDITIONAL_SNO_VM", default=False)
+
         if storage_plugin == "odf":
             # ODF runs solo per host. Masters need more than the lvms 32 GB for
             # the ODF/ACM/MCE control plane and Ceph consumers, but the Quay
@@ -248,7 +250,7 @@ class Config:
             # ODF additionally keeps a second copy of the mirror on the LZ: oc-mirror's
             # local container cache plus the Ceph loopback OSD files (~900 GB raw, 3x
             # OSD_SIZE_GB) that back RadosGW/RBD, on top of the mirror/OS/buffer.
-            default_lz_disk = 1500
+            default_lz_disk = 2000 if additional_sno_vm else 1500
             # ODF stands up a single-node Ceph cluster (MON + MGR + OSDs) on the
             # LZ alongside Quay and oc-mirror; 8 GB (and even 16 GB) is not enough
             # and the guest OOM-kills Quay during the operators phase, so give ODF
@@ -260,12 +262,16 @@ class Config:
             default_master_extra = 1200 if deployment_mode == "disconnected" else 60
             # Disconnected mirrors the full release + OLM catalogs locally, so the LZ
             # needs far more than connected (Quay ~130 GB, oc-mirror, ISOs, OS, buffer).
-            default_lz_disk = 1000 if deployment_mode == "disconnected" else 600
+            # The OpenShift AI SNO job adds a large optional mirror payload here too.
+            default_lz_disk = (
+                (1500 if additional_sno_vm else 1000)
+                if deployment_mode == "disconnected"
+                else 600
+            )
             # No Ceph on the LZ for non-ODF; the LZ still runs Quay + oc-mirror.
             default_lz_mem = 16384
 
         num_masters = optint("ENCLAVE_NUM_MASTERS", 3)
-        additional_sno_vm = optbool("ENCLAVE_ADDITIONAL_SNO_VM", default=False)
         # Masters lease .{20..20+num_masters-1}; the SNO VM leases .30. Reject a
         # master count that would push a master onto the SNO VM's address.
         if additional_sno_vm and MASTER_IP_OFFSET + num_masters > SNO_VM_IP_OFFSET:
@@ -1397,7 +1403,7 @@ def destroy(cfg: Config) -> None:  # ruff: ignore[complex-structure, too-many-br
 # "^${CLUSTER_NAME}_"), so VMs left by a cancelled/timed-out/killed job are never
 # reclaimed by any later run and accumulate forever. reap sweeps ALL CI clusters
 # on the host and tears down every one whose definition is older than a threshold
-# (default 12h, safely above the longest e2e job timeout of 600 minutes).
+# (default 15h, safely above the longest e2e job timeout of 840 minutes).
 
 # CI cluster tokens: eci-/ecd- (e2e connected/disconnected + dry-run) use an
 # 8-hex run-id hash; nc-/nd- (nightly) use a YYYYMMDD datestamp. The suffix is

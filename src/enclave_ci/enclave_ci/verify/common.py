@@ -6,6 +6,7 @@ over SSH with that cluster's kubeconfig, and the JSON is evaluated here.
 """
 
 import json
+import re
 import shlex
 import subprocess
 import time
@@ -115,6 +116,10 @@ class Report:
             with Path(self._summary_path).open("a", encoding="utf-8") as summary:
                 summary.write(text + "\n")
 
+    def log(self, text: str = "") -> None:
+        """Write to stdout only (job log detail kept out of the step summary)."""
+        self._echo(text)
+
 
 def one_line(text: str, limit: int) -> str:
     """Collapse whitespace and cut to ``limit`` characters."""
@@ -122,9 +127,17 @@ def one_line(text: str, limit: int) -> str:
 
 
 def last_error(result: CommandResult) -> str:
-    """Last stderr line (trimmed), or the exit code when stderr is empty."""
+    """Last stderr line, with URLs and credential-like values redacted."""
     lines = result.stderr.strip().splitlines()
-    return one_line(lines[-1], MESSAGE_LIMIT) if lines else f"exit {result.returncode}"
+    if not lines:
+        return f"exit {result.returncode}"
+    message = one_line(lines[-1], MESSAGE_LIMIT)
+    message = re.sub(r"https?://\S+", "<redacted-url>", message)
+    return re.sub(
+        r"(?i)(?:bearer\s+|(?:token|password|secret)=)\S+",
+        "<redacted-credential>",
+        message,
+    )
 
 
 def parse_json(result: CommandResult) -> Item | None:
@@ -303,20 +316,27 @@ def kubeconfig_found(cluster: Cluster, report: Report) -> bool:
 
 
 def report_command(
-    cluster: Cluster, report: Report, title: str, *args: str, tail: int = 0
+    cluster: Cluster,
+    report: Report,
+    title: str,
+    *args: str,
+    tail: int = 0,
+    summary: bool = True,
 ) -> None:
     """Print the output of ``oc <args>`` under ``title`` (informational, never fails).
 
-    ``tail`` keeps only the last lines (0 keeps all).
+    ``tail`` keeps only the last lines (0 keeps all); ``summary=False`` writes to the
+    job log only.
     """
-    report.line()
-    report.line(f"### {title}")
+    write = report.line if summary else report.log
+    write()
+    write(f"### {title}")
     result = cluster.oc(*args)
     if result.returncode != 0:
-        report.line(f"⚠️ Could not run 'oc {' '.join(args)}': {last_error(result)}")
+        write(f"⚠️ Could not run 'oc {' '.join(args)}': {last_error(result)}")
         return
     lines = result.stdout.rstrip("\n").splitlines()
-    report.line("\n".join(lines[-tail:] if tail else lines))
+    write("\n".join(lines[-tail:] if tail else lines))
 
 
 def report_snapshots(
@@ -328,11 +348,16 @@ def report_snapshots(
 
 
 def poll(
-    check: Callable[[], list[str]], attempts: int, delay: float, report: Report
+    check: Callable[[], list[str]],
+    attempts: int,
+    delay: float,
+    report: Report,
+    verbose: bool = False,
 ) -> list[str]:
     """Run ``check`` until it finds no problems, up to ``attempts`` times.
 
     Returns the problems of the last attempt; between attempts, reports progress.
+    ``verbose`` also lists every problem of each attempt in the job log.
     """
     problems: list[str] = []
     for attempt in range(1, attempts + 1):
@@ -343,5 +368,8 @@ def poll(
             f"  [{attempt}/{attempts}] {len(problems)} problem(s), first: "
             f"{problems[0]} — waiting {delay:g}s"
         )
+        if verbose:
+            for problem in problems:
+                report.log(f"      - {problem}")
         time.sleep(delay)
     return problems

@@ -141,24 +141,39 @@ changes. `E2E Connected` does not run on PRs — it runs nightly and on manual d
    - **cert-type** (disconnected only): TLS certificate type for ingress/API/Ironic certs; empty = self-signed,
      `zerossl-ecdsa` = real certificate via ZeroSSL DNS-01 challenge (default: empty)
    - **additional-sno-vm** (disconnected only): Add an SNO managed cluster on an additional VM,
-     installed via assisted-service and imported into ACM (default: false). Runs on the larger
-     `enclave-large-odf-aws` runner and adds about an hour.
+     installed via assisted-service and imported into ACM, with OpenShift AI on it (default:
+     false). Runs on the dedicated `enclave-large-sno-openshift-ai-aws` runner and adds about four hours.
    - **skip-cleanup**: Leave infrastructure running (default: false)
    - **send-slack-notification**: Send Slack notification (default: false)
 
 **SNO managed cluster** (`additional-sno-vm`): besides manual dispatch, it is enabled in
 the weekly ODF run (`e2e-odf-schedule.yml`) and on disconnected PRs that change the SNO CI
-scripts (`ci/deployment/deploy_sno.sh`, `ci/verification/verify_sno*.sh`,
+scripts (`ci/deployment/deploy_sno.sh`, `ci/deployment/label_sno.sh`,
+`ci/utils/run_parallel.sh`, `ci/verification/verify_sno*.sh`,
 `src/enclave_ci/enclave_ci/verify/**`),
 `src/enclave_ci/enclave_ci/environment/vm_infra.py`,
 `ci/infrastructure/generate_enclave_vars.sh`, discovery (`plugins/node-management/**`,
-`playbooks/07-configure-discovery.yaml`) or the update service policy
-(`operators/cincinnati-operator/**`). After the bootstrap phases and the hub verification
-the job deploys the SNO on the discovered VM, without the `openshift-samples` capability,
-and imports it into ACM (`deploy-sno`), then checks its health (`verify-sno`) and that the
-hub update service policy set its `ClusterVersion.spec.upstream`
-(`verify-sno-update-service`). Once the SNO is deployed, each check runs even if an
-earlier one failed. Diagnostics are under `managed_sno/` in the artifacts bundle. See
+`playbooks/07-configure-discovery.yaml`), the update service policy
+(`operators/cincinnati-operator/**`), the openshift-ai plugin (`plugins/openshift-ai/**`) or
+the plugin fleet mirrors (`playbooks/tasks/configure_plugin_fleet_mirrors.yaml`,
+`files/plugin-fleet-mirrors/**`). After the bootstrap phases and the hub verification, one
+step (`deploy-sno-openshift-ai`, through `ci/utils/run_parallel.sh`) runs in parallel:
+- the SNO install on the discovered VM, without the `openshift-samples` capability, and
+  its ACM import (`deploy_sno.sh`);
+- the openshift-ai plugin deployment (`deploy_plugin.sh openshift-ai`), which mirrors its
+  content into the hub Quay and creates its policies without rolling out the hub. It is
+  deployed only here, never through `enabled-plugins`.
+
+The SNO/OpenShift AI job uses the dedicated storage-less runner regardless of whether the storage plugin is LVMS or ODF. The step waits for both and reports each result and duration (step outputs `sno` and
+`openshift_ai`). Then: the SNO health (`verify-sno`), the update service patch of its
+`ClusterVersion.spec.upstream` (`verify-sno-update-service`), the
+`sovcloud.open-cluster-management.io/openshift-ai=true` label on the SNO
+(`label-sno-openshift-ai`), and OpenShift AI on it (`verify-sno-openshift-ai`: the
+`model-*` and `plugin-mirrors-openshift-ai` policies Compliant, every operator installed,
+`default-dsc` Ready with KServe Managed). Each check runs once its prerequisites
+succeeded, even if an earlier check, or the openshift-ai deployment, failed. SNO runs get
+four more hours of timeout (600 minutes, 840 on a schedule). Diagnostics are under
+`managed_sno/` in the artifacts bundle. See
 [docs/design/sno-managed-cluster-ci.md](../../docs/design/sno-managed-cluster-ci.md).
 
 **Note on real certificates** (`cert-type` set): The workflow calls `make -f Makefile.ci generate-ironic-cert`

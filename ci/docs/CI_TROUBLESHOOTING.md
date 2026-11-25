@@ -94,7 +94,8 @@ artifacts/
         ├── <pod>.log           Per-pod logs, all containers, 2000-line tail (+ _previous.log)
         └── health-instance.txt /health/instance body naming the failing subsystem
 └── managed_sno/                Only when the SNO managed cluster is enabled (additional-sno-vm)
-    ├── logs/                   deploy_sno / verify_sno / verify_sno_update_service step logs
+    ├── logs/                   deploy_sno / verify_sno* step logs, and parallel_sno.log /
+    │                           parallel_openshift_ai.log (the parallel deploy step's tasks)
     ├── state/                  Every run (level: deployment)
     │   ├── hub/                AgentClusterInstall, ClusterDeployment, Agents, BareMetalHosts,
     │   │                       InfraEnv, ManagedCluster, add-ons (JSON with status;
@@ -111,7 +112,9 @@ artifacts/
         │                       containers, network, registries.conf), agent.log, journal.log
         │                       (assisted-service tokens and signed URLs scrubbed)
         └── sno/                problem-pods/ (describe, logs, --previous), events, klusterlet
-                                and add-on pod logs, ConfigurationPolicies
+                                and add-on pod logs, ConfigurationPolicies; openshift-ai/
+                                (Subscriptions, CSVs, InstallPlans, CatalogSources,
+                                DataScienceCluster, DSCInitialization, IDMS/ITMS)
 ```
 
 The in-flight sampler also writes `inflight/managed-sno.log` (SNO VM state and SNO API
@@ -127,7 +130,7 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 
 | Symptom in the step log | Look first at |
 | --- | --- |
-| `ProgressDeadlineExceeded`, rollout never completes | `cluster/events.txt` (`FailedScheduling`, `Insufficient memory/cpu`), `cluster/pods.txt` (Pending pod), the Pending pod's `*_describe.txt` |
+| `ProgressDeadlineExceeded`, rollout never completes | When `wait_mcp` fails, its message already includes the MCPs, nodes, PodDisruptionBudgets, pending pods and the last warning events (a PDB with `ALLOWED DISRUPTIONS 0` plus a node in `SchedulingDisabled` means a blocked drain; a pending replacement pod is the usual reason a drain stays blocked). For the full history: `cluster/events.txt` (`FailedScheduling`, `Insufficient memory/cpu`), `cluster/pods.txt` (Pending pod), the Pending pod's `*_describe.txt` |
 | Quay unhealthy / crashloop | After a mirror rollout, the "hub Quay app … has no ready replica" failure already names the not-running pods and why (all storage backends). Then `cluster/quay-diagnostics-*/quayregistry.yaml` (`.status.conditions`), `overview.txt`, per-pod `*.log` and `*_previous.log`, `health-instance.txt` |
 | Operator/ClusterOperator degraded | `cluster/cluster-status.txt` (degraded CO list), then the operator pod logs under `cluster/` |
 | PVC unbound / storage | `cluster/events.txt` (ProvisioningFailed), `cluster/plugin-diagnostics/openshift-storage.txt` (events with node names redacted, StorageCluster/CephCluster state/phase/message/conditions, CSI CRs (ClientProfile phase/message), NooBaa phase/conditions, backingstores, PVCs, ceph-csi-config keys/sizes, ctrlplugin configmap volumes/mounts, rook/ceph-csi/ocs-operator/csi-rbdplugin/noobaa-operator logs, secret names), `cluster/quay-diagnostics-*/overview.txt` (PVCs), `libvirt/` storage |
@@ -137,6 +140,7 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 | SNO deploy fails with `hub not ready for the SNO install` | the `mcp-busy=… registry=… assisted-service=…` line in `managed_sno/logs/deploy_sno_*.log` shows which part was not ready (a pool still rolling out, the mirror registry not answering `/v2/`, assisted-service down), followed by `oc get mcp`, nodes, Quay pods and assisted-service |
 | SNO managed cluster never installs / never joins ACM | `managed_sno/logs/deploy_sno_*.log`, then `managed_sno/failure/hub/install-events.txt`, `agent-validations.txt`, `managed_sno/state/hub/managedcluster.json` (conditions) and `failure/hub/logs/import-controller.log` |
 | Update service patch missing on the SNO | `managed_sno/state/hub/policy-compliance.txt`, `managed_sno/state/sno/clusterversion.yaml` (`spec.upstream`; its `managedFields` entries name the field managers that own it), `managed_sno/failure/sno/configurationpolicies.yaml` |
+| OpenShift AI not ready on the SNO (`verify-sno-openshift-ai`) | `managed_sno/logs/verify_sno_openshift_ai_*.log` (which policies, CSVs or DSC condition failed), `managed_sno/logs/parallel_openshift_ai.log` (the plugin deploy), `managed_sno/failure/sno/openshift-ai/` (Subscriptions, CSVs, InstallPlans, DataScienceCluster, IDMS/ITMS: no `plugin-mirrors-openshift-ai` IDMS means the mirrors policy hasn't reached the SNO), and the config-policy-controller log under `managed_sno/failure/sno/open-cluster-management-agent-addon/` |
 | Plugin deploys wrong values / misconfiguration (e.g. a service enabled/disabled unexpectedly, bad hostname) | `landing-zone/config/` (input config, incl. `config/plugins/<plugin>.yaml`), `landing-zone/helm-values/` (what was actually rendered and applied) |
 
 Worked example: an LVMS Quay rollout hang (OSAC-4957) showed only

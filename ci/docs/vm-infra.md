@@ -254,7 +254,7 @@ sushy-tools uses them as Redfish system IDs (`bmcSystemId`).
 | `MASTER_DISK` | no | 120 | Master primary disk in GiB |
 | `MASTER_EXTRA_DISK` | derived | 1200 (disconnected+lvms) / 60 | Master extra disk in GiB; not directly overridable — derived from `STORAGE_PLUGIN` and `ENCLAVE_DEPLOYMENT_MODE` |
 | `LANDINGZONE_MEMORY` | no | 16384 / 24576 (odf) | Landing Zone RAM in MiB; the odf default gives Ceph-on-LZ headroom |
-| `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (odf) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; odf additionally needs ~900 GB for the Ceph loopback OSD files |
+| `LANDINGZONE_DISK` | no | 600 (connected) / 1000 (disconnected) / 1500 (disconnected + SNO) / 1500 (odf) / 2000 (odf + SNO) | Landing Zone disk in GiB. Disconnected mirrors the full release locally; disconnected + SNO/OpenShift AI gets extra mirror headroom; odf additionally needs ~900 GB for the Ceph loopback OSD files and gets 2000 GiB with SNO |
 | `LANDINGZONE_VCPU` | no | 16 | Landing Zone vCPU count |
 | `SNO_VM_MEMORY` | no | 32768 | SNO VM RAM in MiB |
 | `SNO_VM_VCPU` | no | 16 | SNO VM vCPU count |
@@ -302,8 +302,8 @@ sudo -E "$ENCLAVE_CI" environment -v create
 sudo -E "$ENCLAVE_CI" environment create --print-subnet
 
 # Reap: tear down ALL CI clusters older than a threshold (cross-run GC)
-sudo REAP_AGE_HOURS=12 "$ENCLAVE_CI" environment reap
-sudo "$ENCLAVE_CI" environment reap --age-hours 12
+sudo REAP_AGE_HOURS=15 "$ENCLAVE_CI" environment reap
+sudo "$ENCLAVE_CI" environment reap --age-hours 15
 ```
 
 `--print-subnet` runs the same locked selection logic as `create` and prints
@@ -339,9 +339,9 @@ safety:
   no cluster pool owns. `reap` deletes those not referenced by any defined domain
   and older than the threshold.
 
-The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `12`, above the
-longest e2e job timeout of 660 minutes). A destructive reap refuses a
-threshold below the safety floor (`12h`, just above that timeout) unless `--force`
+The threshold is `--age-hours` or `$REAP_AGE_HOURS` (default `15`, above the
+longest e2e job timeout of 840 minutes). A destructive reap refuses a
+threshold below the safety floor (`15h`, just above that timeout) unless `--force`
 is given, so a misconfigured value cannot tear down an in-flight run sharing the
 host; `--dry-run` is exempt. Non-numeric or non-finite thresholds are rejected.
 Optional `$BASE_WORKING_DIR` is a fallback for locating a cluster's working
@@ -356,7 +356,7 @@ reap, with distinct effects:
 
 - `ENABLE_PREJOB_REAP` — the on/off switch. Set it to `false` to disable pre-job
   reaping entirely; any other value (or unset) leaves it enabled.
-- `REAP_AGE_HOURS` — the numeric age threshold in hours (default `12`). This
+- `REAP_AGE_HOURS` — the numeric age threshold in hours (default `15`). This
   **tunes** the threshold; it never disables reaping. Do **not** set it to
   `false` — it is forwarded to `vm_infra.py`, which rejects a non-numeric value
   and fails the step. Use `ENABLE_PREJOB_REAP=false` to turn reaping off.
