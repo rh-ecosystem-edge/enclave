@@ -158,12 +158,6 @@ properties:
   osac_db_database:
     type: string
     description: PostgreSQL database name.
-  osac_aap_project_git_uri:
-    type: string
-    description: Git URI for AAP config-as-code project.
-  osac_aap_project_git_branch:
-    type: string
-    description: Git branch for AAP config-as-code project.
   osac_kafka_ns:
     type: string
     description: Namespace for the OSAC Kafka cluster (must match kafka.clusterNamespace in the OSAC chart).

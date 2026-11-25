@@ -1,0 +1,7 @@
+# Profile: AAP config-as-code source overrides
+#
+# Ensures explicit Git source overrides are rendered, while the default profile
+# verifies that the chart-stamped revision is left untouched.
+osac_profile_name: aap-project
+osac_aap_project_git_uri: "https://github.com/osac-project/osac-fork"
+osac_aap_project_git_branch: 'feature/"quoted"'

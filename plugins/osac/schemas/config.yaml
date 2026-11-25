@@ -32,6 +32,18 @@ properties:
       Connection URL for external database. When provided with osacBYODatabase=true,
       post-operators.yaml creates the fulfillment-db secret from this value.
       If omitted, the user must pre-create the fulfillment-db secret manually.
+  osac_aap_project_git_uri:
+    type: string
+    minLength: 1
+    description: >-
+      Development-only override for the AAP config-as-code project Git URI.
+      Omit it to use the project source packaged with the OSAC chart.
+  osac_aap_project_git_branch:
+    type: string
+    minLength: 1
+    description: >-
+      Development-only override for the AAP config-as-code project revision.
+      Omit it to use the chart-stamped revision packaged with the OSAC chart.
   osac_images:
     type: object
     additionalProperties: false

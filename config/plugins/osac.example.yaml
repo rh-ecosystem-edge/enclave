@@ -42,6 +42,11 @@
 # osacBYODatabase: true
 # osacDatabaseUrl: "postgres://user@host:5432/dbname?sslmode=require"
 
+# Optional: development-only AAP config-as-code source overrides.
+# Omit both to use the project source and chart-stamped revision packaged with the OSAC chart.
+# osac_aap_project_git_uri: "https://github.com/osac-project/osac-fork"
+# osac_aap_project_git_branch: "development"
+
 # Optional: override container images (chart defaults apply when unset)
 # osac_images:
 #   osac_operator: "ghcr.io/osac-project/osac-operator:v0.0.4"

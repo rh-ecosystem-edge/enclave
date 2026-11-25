@@ -75,8 +75,36 @@
       ansible.builtin.set_fact:
         _osac_values: "{{ _osac_values_raw.content | b64decode | from_yaml }}"
 
-    # Expected value held in a var so a failed assertion prints only the
-    # condition expression, not the internal hostname (kept out of CI logs).
+    # The published chart owns the default AAP config-as-code source and the
+    # revision stamped into that chart. Enclave must not silently replace it
+    # with a moving branch such as main.
+    - name: Assert default AAP project source follows the chart
+      vars:
+        _osac_config_as_code: "{{ _osac_values.aap.configAsCode | default({}) }}"
+      when: osac_aap_project_git_uri is not defined and osac_aap_project_git_branch is not defined
+      ansible.builtin.assert:
+        that:
+          - "'projectGitUri' not in _osac_config_as_code"
+          - "'projectGitBranch' not in _osac_config_as_code"
+        fail_msg: >-
+          Default OSAC values must omit aap.configAsCode.projectGitUri and
+          projectGitBranch so the chart-stamped AAP project revision is used.
+        success_msg: "Default AAP project source follows the chart-stamped revision ({{ osac_profile_name | default('unnamed') }})"
+
+    - name: Assert explicit AAP project source overrides are rendered
+      vars:
+        _osac_config_as_code: "{{ _osac_values.aap.configAsCode | default({}) }}"
+      when: osac_aap_project_git_uri is defined or osac_aap_project_git_branch is defined
+      ansible.builtin.assert:
+        that:
+          - osac_aap_project_git_uri is not defined or _osac_config_as_code.projectGitUri | default('') == osac_aap_project_git_uri
+          - osac_aap_project_git_branch is not defined or _osac_config_as_code.projectGitBranch | default('') == osac_aap_project_git_branch
+        fail_msg: >-
+          Explicit osac_aap_project_git_uri and osac_aap_project_git_branch
+          overrides must be passed through as aap.configAsCode.projectGitUri
+          and projectGitBranch.
+        success_msg: "Explicit AAP project source overrides rendered correctly ({{ osac_profile_name | default('unnamed') }})"
+
     - name: Expected internal Fulfillment listener for the operator
       ansible.builtin.set_fact:
         _osac_expected_fulfillment: "fulfillment-internal-api:8001"
