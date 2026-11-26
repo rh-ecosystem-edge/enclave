@@ -10,6 +10,17 @@
       - "olm.catalogSource in ({{ mirrored_catalog_sources | join(',') }})"
   register: r_catalog_pods
 
+# The plugin mirror supplies a pre-publication snapshot. Pods created during
+# the mirror are left running, including all pods on a first install.
+- name: Select catalog pods that still need a refresh
+  ansible.builtin.set_fact:
+    _catalog_pods_to_refresh: >-
+      {{ r_catalog_pods.resources
+         | selectattr('metadata.uid', 'in',
+             catalog_pods_before_mirror | default(r_catalog_pods.resources)
+             | map(attribute='metadata.uid') | list)
+         | list }}
+
 - name: Delete catalog source pods to trigger refresh
   kubernetes.core.k8s:
     state: absent
@@ -20,7 +31,7 @@
     delete_options:
       preconditions:
         uid: "{{ item.metadata.uid }}"
-  loop: "{{ r_catalog_pods.resources }}"
+  loop: "{{ _catalog_pods_to_refresh }}"
   loop_control:
     label: "{{ item.metadata.name }}"
   register: r_delete_catalog_pods
@@ -44,7 +55,7 @@
   delay: 10
   until: >-
     r_catalog_pods_running.resources | default([])
-    | rejectattr('metadata.uid', 'in', r_catalog_pods.resources | map(attribute='metadata.uid') | list)
+    | rejectattr('metadata.uid', 'in', _catalog_pods_to_refresh | map(attribute='metadata.uid') | list)
     | rejectattr('metadata.deletionTimestamp', 'defined')
     | selectattr('status.conditions', 'defined')
     | map(attribute='status.conditions')

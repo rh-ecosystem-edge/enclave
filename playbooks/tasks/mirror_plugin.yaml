@@ -10,6 +10,37 @@
       Validation Error: Ensure 'plugin' is defined, 'plugin_mirror' is set to true,
       'plugin.operators' or 'plugin.additionalImages' are not empty, and 'disconnected' is true.
 
+# A plugin that declares operators but doesn't install them on the hub
+# (installOperators: false) and has no Helm charts (which run on the hub) only
+# targets managed clusters, which get its mirrors through ACM
+# (configure_plugin_fleet_mirrors.yaml). Its mirror sets would only roll out the hub,
+# so skip them.
+- name: Decide whether the hub needs the plugin mirror sets
+  ansible.builtin.set_fact:
+    _plugin_hub_mirror_sets: >-
+      {{ not (plugin.operators | default([]) | length > 0
+              and not (plugin.installOperators | default(true) | bool)
+              and plugin.helm | default([]) | length == 0) }}
+
+- name: Set the plugin CatalogSources to refresh
+  ansible.builtin.set_fact:
+    _plugin_mirrored_catalog_sources:
+      - "cs-{{ catalog_mirror }}-{{ catalog_version | replace('.', '-') }}"
+      - "cs-{{ catalog_mirror }}"
+
+- name: Snapshot existing plugin catalog pods before mirroring
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - "olm.catalogSource in ({{ _plugin_mirrored_catalog_sources | join(',') }})"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_plugin_catalog_pods_before_mirror
+  when:
+    - _plugin_hub_mirror_sets | bool
+    - plugin.operators | default([]) | length > 0
+
 - name: Template plugin imageset configuration
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
@@ -133,18 +164,6 @@
   when:
     - r_plugin_mirror is defined
     - r_plugin_mirror is success
-
-# A plugin that declares operators but doesn't install them on the hub
-# (installOperators: false) and has no Helm charts (which run on the hub) only
-# targets managed clusters, which get its mirrors through ACM
-# (configure_plugin_fleet_mirrors.yaml). Its mirror sets would only roll out the hub,
-# so skip them.
-- name: Decide whether the hub needs the plugin mirror sets
-  ansible.builtin.set_fact:
-    _plugin_hub_mirror_sets: >-
-      {{ not (plugin.operators | default([]) | length > 0
-              and not (plugin.installOperators | default(true) | bool)
-              and plugin.helm | default([]) | length == 0) }}
 
 - name: Skip the hub mirror sets for a managed-cluster-only plugin
   ansible.builtin.debug:
@@ -457,9 +476,8 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   vars:
-    mirrored_catalog_sources:
-      - "cs-{{ catalog_mirror }}-{{ catalog_version | replace('.', '-') }}"
-      - "cs-{{ catalog_mirror }}"
+    mirrored_catalog_sources: "{{ _plugin_mirrored_catalog_sources }}"
+    catalog_pods_before_mirror: "{{ r_plugin_catalog_pods_before_mirror.resources }}"
   when:
     - _plugin_hub_mirror_sets | bool
     - plugin.operators | default([]) | length > 0
