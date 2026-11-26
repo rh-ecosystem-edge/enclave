@@ -90,6 +90,9 @@
         - name: Set up enclave kubeconfig symlink
           ansible.builtin.include_tasks:
             file: tasks/setup_enclave_kubeconfig_symlink.yaml
+            apply:
+              tags: wait-deployment
+          tags: wait-deployment
 
         - name: Wait for deployment
           ansible.builtin.include_tasks:
