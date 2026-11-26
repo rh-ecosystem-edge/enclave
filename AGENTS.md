@@ -272,3 +272,9 @@ All PRs are automatically reviewed by CodeRabbit, configured per Red Hat Product
 - When all feedback is addressed, request approval: `@coderabbitai approve`
 
 CodeRabbit's configuration enforces security best practices across injection prevention, cryptography, container hardening, supply chain security, and more. Comments should be taken seriously as they often flag real security or correctness issues.
+
+## Skills
+
+Repository skills live in `.agents/skills/`. For each skill, add a relative
+symlink in `.claude/skills/` pointing to the corresponding skill directory so
+Claude Code can discover it.
