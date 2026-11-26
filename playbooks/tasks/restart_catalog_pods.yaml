@@ -10,14 +10,14 @@
       - "olm.catalogSource in ({{ mirrored_catalog_sources | join(',') }})"
   register: r_catalog_pods
 
-# The plugin mirror supplies a pre-publication snapshot. Pods created during
-# the mirror are left running, including all pods on a first install.
+# The plugin mirror snapshots pods after publishing and before applying sources.
+# Pods created after that snapshot can pull the new tag on startup.
 - name: Select catalog pods that still need a refresh
   ansible.builtin.set_fact:
     _catalog_pods_to_refresh: >-
       {{ r_catalog_pods.resources
          | selectattr('metadata.uid', 'in',
-             catalog_pods_before_mirror | default(r_catalog_pods.resources)
+             catalog_pods_after_publish | default(r_catalog_pods.resources)
              | map(attribute='metadata.uid') | list)
          | list }}
 

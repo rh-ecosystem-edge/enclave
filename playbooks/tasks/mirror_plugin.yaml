@@ -28,19 +28,6 @@
       - "cs-{{ catalog_mirror }}-{{ catalog_version | replace('.', '-') }}"
       - "cs-{{ catalog_mirror }}"
 
-- name: Snapshot existing plugin catalog pods before mirroring
-  kubernetes.core.k8s_info:
-    kind: Pod
-    namespace: openshift-marketplace
-    label_selectors:
-      - "olm.catalogSource in ({{ _plugin_mirrored_catalog_sources | join(',') }})"
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_plugin_catalog_pods_before_mirror
-  when:
-    - _plugin_hub_mirror_sets | bool
-    - plugin.operators | default([]) | length > 0
-
 - name: Template plugin imageset configuration
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/plugin-imageset.yaml.j2"
@@ -102,6 +89,19 @@
           {{ _oc_mirror_plugin_tail.stdout | default('Unable to read oc-mirror log tail.') }}
 
           Full log: {{ _oc_mirror_plugin_log }}
+
+- name: Snapshot existing plugin catalog pods after publishing the catalog
+  kubernetes.core.k8s_info:
+    kind: Pod
+    namespace: openshift-marketplace
+    label_selectors:
+      - "olm.catalogSource in ({{ _plugin_mirrored_catalog_sources | join(',') }})"
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_plugin_catalog_pods_after_publish
+  when:
+    - _plugin_hub_mirror_sets | bool
+    - plugin.operators | default([]) | length > 0
 
 - name: Prepare LZ mirror manifests
   block:
@@ -477,7 +477,7 @@
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   vars:
     mirrored_catalog_sources: "{{ _plugin_mirrored_catalog_sources }}"
-    catalog_pods_before_mirror: "{{ r_plugin_catalog_pods_before_mirror.resources }}"
+    catalog_pods_after_publish: "{{ r_plugin_catalog_pods_after_publish.resources }}"
   when:
     - _plugin_hub_mirror_sets | bool
     - plugin.operators | default([]) | length > 0
