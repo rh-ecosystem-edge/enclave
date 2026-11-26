@@ -228,6 +228,11 @@ aap:
 {% set _osac_bmaas_enabled = 'bmaas' in osacProfilesList %}
 {% set _osac_bm_backend = (osacBcmEnabled | default(false) | bool) or (osacMetal3Enabled | default(false) | bool) %}
 bmf:
+  # BMF's Secret API issuer is consumed directly by the BMF deployment. Keep
+  # this explicit rather than relying on the chart default, which can render a
+  # malformed Keycloak URL when the external hostname is supplied by Enclave.
+  secretAPI:
+    issuerUrl: "https://{{ _osac_keycloak_hostname }}/realms/{{ osac_keycloak_realm }}"
 {% if _osac_bmaas_enabled and not _osac_bm_backend %}
   # bmaas is enabled only to satisfy the chart's caas -> (vmaas|bmaas) schema
   # requirement, but no bare-metal inventory backend (BCM or Metal3) is
