@@ -22,9 +22,9 @@ installOperatorsFleet: false
 
 operators:
   - name: odf-operator
-    version: 4.21.15-rhodf
-    channel: stable-4.21
-    init_version: 4.21.15-rhodf
+    version: 4.22.9-rhodf
+    channel: stable-4.22
+    init_version: 4.22.9-rhodf
     namespace: openshift-storage
     csvMirror: true
     csvNames:

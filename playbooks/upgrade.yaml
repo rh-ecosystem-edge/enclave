@@ -56,6 +56,36 @@
         var: r_mgmt_cluster_upgrade.stderr_lines
       when: upgrade_mgmt_cluster | default(true) | bool
 
+    - name: Read management cluster version before upgrading operators
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - get
+          - clusterversion
+          - version
+          - -o
+          - json
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_operator_upgrade_cluster_version
+      changed_when: false
+      check_mode: false
+      when: upgrade_operators | default(true) | bool
+
+    - name: Require the cluster to have completed the operator catalog y-stream update
+      vars:
+        _cluster_update: "{{ (r_operator_upgrade_cluster_version.stdout | from_json).status.history | first }}"
+        _catalog_y_stream: "{{ rh_operator_catalog_version | regex_replace('^v', '') }}"
+      ansible.builtin.assert:
+        that:
+          - _cluster_update.state == 'Completed'
+          - _cluster_update.version.split('.')[:2] | join('.') == _catalog_y_stream
+        fail_msg: >-
+          The bundled operator versions require a completed OpenShift {{ _catalog_y_stream }} update.
+          The management cluster reports {{ _cluster_update.version }} ({{ _cluster_update.state }}).
+          Set upgrade_operators=false while staging an intermediate OpenShift update.
+      when: upgrade_operators | default(true) | bool
+
     - name: Discover plugin operators to upgrade
       ansible.builtin.include_tasks:
         file: tasks/upgrade/discover-plugin-operators.yaml

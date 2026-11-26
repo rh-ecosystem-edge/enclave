@@ -6,8 +6,8 @@ order: 10
 catalog: certified
 operators:
   - name: vast-csi-operator
-    version: 2.6.5
-    init_version: 2.6.5
+    version: 2.7.3
+    init_version: 2.7.3
     channel: stable
     namespace: vast-csi
 

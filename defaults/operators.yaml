@@ -38,9 +38,9 @@ operators:
     global: true
 
   - name: openshift-pipelines-operator-rh
-    version: 1.20.5
-    channel: pipelines-1.20
-    init_version: 1.20.3
+    version: 1.21.3
+    channel: pipelines-1.21
+    init_version: 1.21.0
     namespace: openshift-pipelines
     global: true
 
@@ -67,17 +67,17 @@ operators:
     namespace: openshift-logging
 
   - name: redhat-oadp-operator
-    version: 1.5.8
+    version: 1.6.2
     channel: stable
-    init_version: 1.5.5
+    init_version: 1.6.0
     namespace: openshift-oadp
     csvNames:
       - oadp-operator
 
   - name: openshift-cert-manager-operator
-    version: 1.18.1
+    version: 1.19.0
     channel: stable-v1
-    init_version: 1.18.1
+    init_version: 1.19.0
     namespace: cert-manager-operator
     csvNames:
       - cert-manager-operator
@@ -105,9 +105,9 @@ operators:
     namespace: openshift-compliance
 
   - name: metallb-operator
-    version: 4.21.0-202610241344
+    version: 4.22.0-202611031655
     channel: stable
-    init_version: 4.21.0-202610241344
+    init_version: 4.22.0-202611031655
     namespace: metallb-system
     global: true
     csvNames:

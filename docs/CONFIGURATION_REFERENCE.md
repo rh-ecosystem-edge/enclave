@@ -1019,9 +1019,9 @@ certified_operator_catalog: "registry.redhat.io/redhat/certified-operator-index"
 
 **Type**: String
 
-**Example**:
+**Default**:
 ```yaml
-certified_operator_catalog_version: "v4.20"
+certified_operator_catalog_version: "v4.22"
 ```
 
 #### `rh_operator_catalog`
@@ -1041,9 +1041,9 @@ rh_operator_catalog: "registry.redhat.io/redhat/redhat-operator-index"
 
 **Type**: String
 
-**Example**:
+**Default**:
 ```yaml
-rh_operator_catalog_version: "v4.20"
+rh_operator_catalog_version: "v4.22"
 ```
 
 ### Datacenter Cache Configuration

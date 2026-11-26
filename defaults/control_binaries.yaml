@@ -1,8 +1,8 @@
 ---
 control_binaries:
   openshift_client:
-    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.21.32/openshift-client-linux.tar.gz"
-    checksum: "sha256:48b49af98c07d6e3cb4111bf5e1648f3c1ba0ebf80a08d16fe1c08bba7b53dda"
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.22.22/openshift-client-linux.tar.gz"
+    checksum: "sha256:dafaca983ff4a1de782fc0f281552789955a2020cdbddd8f505d16f0f7d879aa"
   helm:
     url: "https://mirror.openshift.com/pub/openshift-v4/clients/helm/3.17.1/helm-linux-amd64"
     checksum: "sha256:ef6c04f6a748d0f1d624a94a56dc0db83f8d70a65e3dbb19e94107126efcc5fd"
@@ -10,5 +10,5 @@ control_binaries:
     url: "https://mirror.openshift.com/pub/cgw/mirror-registry/2.0.13/mirror-registry-amd64.tar.gz"
     checksum: "sha256:ea18a4eb3a4389a24d8d1eddb51f14859e133a54cb7a040c99af181f3d37d526"
   oc_mirror:
-    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.21.32/oc-mirror.tar.gz"
-    checksum: "sha256:730660229becb6526725bd017e9482b3d01bd9b725f88065e702027cd40de6ca"
+    url: "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/4.22.22/oc-mirror.tar.gz"
+    checksum: "sha256:da10d6736b52b17570f17d5f706c3c516b757adfc2f3306a8f58297bc149bb97"
