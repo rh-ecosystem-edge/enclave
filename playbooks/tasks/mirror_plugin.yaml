@@ -428,9 +428,10 @@
   ansible.builtin.include_tasks: wait_mcp.yaml
   when: _plugin_hub_rollout | bool
 
-# The rollout restarts the Quay app pods on every storage backend (Pending on LVMS
-# node-local volumes, crash-looping on ODF); wait for a ready replica before anything
-# pulls from the registry again. On LVMS this also prepares the UpdateService restore.
+# Wait for a ready replica so a not-ready Quay fails here with its pod diagnostics
+# instead of later with 503s.
+# quay_disconnected_mirrors.yaml above is prepare-only (quay_mirror_skip_apply),
+# so this is the plugin path's only hub Quay wait.
 - name: Wait for the hub Quay app after the mirror rollout
   ansible.builtin.include_tasks: wait_hub_quay_after_rollout.yaml
 
