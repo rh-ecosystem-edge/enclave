@@ -885,6 +885,23 @@ enabled_plugins:
 ODF plugin configuration lives in `config/plugins/odf.yaml`. See
 `config/plugins/odf.example.yaml` for the full template.
 
+The bundled ODF operator and catalog target OpenShift 4.22. Selecting a 4.20 or
+4.21 OpenShift release in `config/platforms.yaml` changes the release selection
+only. For an older management cluster, use an Enclave release with the matching
+operator and catalog set.
+
+If you maintain a custom older release matrix, carry over the matching catalog
+and core operator pins and the entire ODF operator entry from that release's
+`plugins/odf/plugin.yaml`. Its `version`, `init_version`, `channel`, and
+`csvNames` must agree with the selected catalog. The bundled 4.22.9 entry includes
+`ocs-tls-profiles`, which is absent from the earlier ODF 4.20.7 and 4.21.15
+catalog versions. Both image-set generators use `csvNames` to select packages,
+and fresh installs and upgrades use it for InstallPlan approval and readiness
+waits. Keeping that CSV name with the older pins makes the wait time out.
+Run the playbooks and `enclave reconcile plugin-operator-versions` from the same
+Enclave checkout so both read the same descriptor. For staged upgrades, follow
+the [upgrade order](UPGRADE.md#planning-the-move-to-openshift-422).
+
 ##### Preparing an external Ceph cluster for ODF
 
 Enclave deploys ODF in **external mode**: ODF does not manage its own Ceph, it

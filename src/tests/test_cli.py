@@ -826,6 +826,59 @@ def test_repo_plugins_with_mgmt_operators_load(mocker: MockerFixture) -> None:
     assert mock_reconcile.call_count >= len(names)
 
 
+def test_odf_reconcile_approves_and_waits_for_tls_profiles(
+    mocker: MockerFixture,
+) -> None:
+    """Allow the ODF dependency plan and require its TLS profiles CSV to succeed."""
+    descriptor = yaml.safe_load(
+        (_REPO_PLUGINS / "odf/plugin.yaml").read_text(encoding="utf-8")
+    )
+    version = descriptor["operators"][0]["version"]
+    tls_csv = f"ocs-tls-profiles.v{version}"
+    reconcile_module = "enclave.reconcile.operator_versions"
+    mocker.patch(
+        f"{reconcile_module}._update_subscription_channel",
+        return_value=(False, f"odf-operator.v{version}"),
+    )
+    mocker.patch(
+        f"{reconcile_module}._get_install_plans",
+        return_value=[
+            {
+                "metadata": {"name": "dependency-plan"},
+                "spec": {
+                    "approved": False,
+                    "clusterServiceVersionNames": [
+                        f"odf-dependencies.v{version}",
+                        tls_csv,
+                    ],
+                },
+                "status": {"phase": "RequiresApproval"},
+            }
+        ],
+    )
+    approve = mocker.patch(f"{reconcile_module}._approve_plan")
+    wait = mocker.patch(f"{reconcile_module}.wait_for_resource_status")
+
+    result = CliRunner().invoke(
+        cli, ["plugin-operator-versions", "--plugin", "odf"], env=_KC
+    )
+
+    assert result.exit_code == 0, result.output
+    dry_run = False
+    approve.assert_called_once_with(
+        dry_run, "openshift-storage", "dependency-plan", "ocs-tls-profiles", version
+    )
+    wait.assert_any_call(
+        "clusterserviceversion.operators.coreos.com",
+        tls_csv,
+        "phase",
+        "Succeeded",
+        namespace="openshift-storage",
+        timeout_minutes=30,
+        sleep_interval=10,
+    )
+
+
 def test_package_data_path_prefers_installed_location(
     tmp_path: Path, mocker: MockerFixture
 ) -> None:

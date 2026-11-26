@@ -30,6 +30,7 @@ operators:
     csvNames:
       - odf-operator
       - odf-dependencies
+      - ocs-tls-profiles
       - odf-csi-addons-operator
       - rook-ceph-operator
       - ocs-operator
