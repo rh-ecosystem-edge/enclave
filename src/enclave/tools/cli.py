@@ -1,7 +1,6 @@
 """Click commands for ``enclave tools``."""
 
 import logging
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -232,9 +231,6 @@ def check_root_ca(config: str) -> None:
         )
 
 
-PLUGIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-
-
 @cli.command("add-enabled-plugin")
 @click.option(
     "--config",
@@ -249,10 +245,6 @@ PLUGIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 )
 def add_enabled_plugin(config: str, plugin: str) -> None:
     """Record a plugin in enabled_plugins in the global config, preserving comments."""
-    if not PLUGIN_NAME_RE.fullmatch(plugin):
-        raise click.BadParameter(
-            f"must match {PLUGIN_NAME_RE.pattern}", param_hint="--plugin"
-        )
     try:
         changed = add_enabled_plugin_helper(Path(config), plugin)
     except AddEnabledPluginError as exc:

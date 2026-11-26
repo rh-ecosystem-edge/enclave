@@ -659,10 +659,12 @@ def test_plugin_operator_versions_csv_names_default_to_name(
     """Use the operator name as CSV name when csvNames is absent."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     _write_plugin(
-        plugins_root, "plug", {"name": "plug", "operators": [_PLUGIN_OPERATOR]}
+        plugins_root,
+        "custom.addon",
+        {"name": "custom.addon", "operators": [_PLUGIN_OPERATOR]},
     )
     result = CliRunner().invoke(
-        cli, ["plugin-operator-versions", "--plugin", "plug"], env=_KC
+        cli, ["plugin-operator-versions", "--plugin", "custom.addon"], env=_KC
     )
     assert result.exit_code == 0, result.output
     assert mock_reconcile.call_args.args[2] == ["op-a"]
@@ -700,11 +702,11 @@ def test_plugin_operator_versions_multiple_plugins_and_operators(
     ]
 
 
-@pytest.mark.parametrize("name", ["../plug", "a/b", "Plug", "-plug", ""])
+@pytest.mark.parametrize("name", ["../plug", "a/b", r"a\b", ".", "..", ""])
 def test_plugin_operator_versions_rejects_invalid_name(
     mocker: MockerFixture, name: str
 ) -> None:
-    """Reject plugin names that do not match the plugin name pattern."""
+    """Reject plugin arguments that are not single directory names."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     result = CliRunner().invoke(
         cli, ["plugin-operator-versions", "--plugin", name], env=_KC

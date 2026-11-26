@@ -171,17 +171,17 @@ def test_cli_idempotent_reports_ok(tmp_path: Path) -> None:
     assert "[OK]" in result.output
 
 
-def test_cli_rejects_invalid_plugin_name(tmp_path: Path) -> None:
-    """An invalid plugin name is rejected before touching the file."""
+def test_cli_accepts_dotted_plugin_name(tmp_path: Path) -> None:
+    """A descriptor name containing a dot is recorded."""
     config = tmp_path / "global.yaml"
     config.write_text(_CONFIG_WITH_LIST, encoding="utf-8")
 
     result = CliRunner().invoke(
         cli,
-        ["add-enabled-plugin", "--config", str(config), "--plugin", "Bad_Name"],
+        ["add-enabled-plugin", "--config", str(config), "--plugin", "custom.addon"],
     )
-    assert result.exit_code != 0
-    assert "--plugin" in result.output
+    assert result.exit_code == 0, result.output
+    assert "custom.addon" in config.read_text(encoding="utf-8")
 
 
 def test_cli_missing_config_errors(tmp_path: Path) -> None:

@@ -28,7 +28,6 @@ from enclave.utils import (
 )
 
 OPENSHIFT_VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?")
-PLUGIN_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
 class OperatorEntry(NamedTuple):
@@ -235,9 +234,11 @@ def _reconcile_operator_entries(entries: list[OperatorEntry], dry_run: bool) -> 
 
 def _load_plugin_operators(plugin_name: str) -> list[OperatorEntry]:
     """Load and validate the operators of plugins/<plugin_name>/plugin.yaml."""
-    if not PLUGIN_NAME_RE.fullmatch(plugin_name):
+    if plugin_name in {"", ".", ".."} or any(
+        char in plugin_name for char in ("/", "\\", "\0")
+    ):
         raise click.UsageError(
-            f"Invalid plugin name {plugin_name!r}: must match {PLUGIN_NAME_RE.pattern}"
+            f"Invalid plugin name {plugin_name!r}: expected a directory name"
         )
 
     plugin_file = package_data_path("plugins", plugin_name, "plugin.yaml")
