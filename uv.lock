@@ -86,7 +86,7 @@ wheels = [
 
 [[package]]
 name = "ansible-compat"
-version = "26.11.0"
+version = "26.11.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ansible-core" },
@@ -95,9 +95,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "subprocess-tee" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/b3/64652d98718d5a597a15c2eb95e55fd6935b1c4eeee316370e5a498a2a6e/ansible_compat-26.11.0.tar.gz", hash = "sha256:35cbe829e0b5a9acb85d34b8d5da2eb45acaf767f6651f90e0ab2f3a96a060bb", size = 295998, upload-time = "2026-11-05T08:41:46.716Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/58/4e/52311092d3168346557c31d1090225cc57dbe48ecc399c2e400da4c6065f/ansible_compat-26.11.1.tar.gz", hash = "sha256:d22e0a48d8d79e727b0f56db3573b02bde2189b5bfbef067230a34c0bcbff94a", size = 305831, upload-time = "2026-11-25T10:39:51.937Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/3e/696ba32885c888867214baba910cc07c13aa410884a04ff0892f9b744e3c/ansible_compat-26.11.0-py3-none-any.whl", hash = "sha256:c06a486b39ced440f9f6fb9a99583c73d9239c94ece822a27ea2242173462dda", size = 29027, upload-time = "2026-11-05T08:41:45.462Z" },
+    { url = "https://files.pythonhosted.org/packages/13/aa/eec431e7b5db6f86defb0acb6805d3101255c48c74637cf1bc1c6fd7aa86/ansible_compat-26.11.1-py3-none-any.whl", hash = "sha256:ed9717fde1705a58678c1503e46316a36f7392229c2444d2b2f1b6de12be9f25", size = 29025, upload-time = "2026-11-25T10:39:50.619Z" },
 ]
 
 [[package]]
