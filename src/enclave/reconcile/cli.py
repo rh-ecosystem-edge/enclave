@@ -23,6 +23,9 @@ from enclave.utils import (
     KubeconfigGroup,
     KubeconfigNotFoundError,
     configure_logging,
+    enclave_checkout_root,
+    find_plugin_descriptor,
+    package_data_path,
     semver_key,
     setup_kubeconfig,
 )
@@ -40,36 +43,6 @@ class OperatorEntry(NamedTuple):
     channel: str | None
 
 
-def _enclave_checkout_root() -> Path | None:
-    """Find the checkout whose playbooks and defaults belong to this CLI."""
-    package_dir = Path(__file__).resolve().parent
-    for start in (Path.cwd(), package_dir):
-        for candidate in (start, *start.parents):
-            if (candidate / "defaults/platforms.yaml").is_file() and (
-                candidate / "playbooks/common/load-vars.yaml"
-            ).is_file():
-                return candidate
-    return None
-
-
-def package_data_path(*parts: str) -> Path:
-    """Resolve a data file from the active checkout or the installed package.
-
-    Installed: site-packages/enclave/reconcile/cli.py → site-packages/enclave/<parts>.
-    Editable: src/enclave/reconcile/cli.py → src/enclave/ has no data, so fall back
-    to repo_root/<parts>.
-    """
-    checkout = _enclave_checkout_root()
-    if checkout is not None:
-        return checkout.joinpath(*parts)
-
-    enclave_pkg = Path(__file__).resolve().parent.parent
-    path = enclave_pkg.joinpath(*parts)
-    if not path.exists():
-        path = enclave_pkg.parent.parent.joinpath(*parts)
-    return path
-
-
 def defaults_path(filename: str) -> Path:
     """Resolve a defaults file from the active checkout or installed package."""
     return package_data_path("defaults", filename)
@@ -77,7 +50,7 @@ def defaults_path(filename: str) -> Path:
 
 def config_path(filename: str) -> Path:
     """Resolve config from the Enclave checkout used by its Ansible playbooks."""
-    checkout = _enclave_checkout_root()
+    checkout = enclave_checkout_root()
     if checkout is not None:
         return checkout / "config" / filename
 
@@ -234,14 +207,7 @@ def _reconcile_operator_entries(entries: list[OperatorEntry], dry_run: bool) -> 
 
 def _load_plugin_operators(plugin_name: str) -> list[OperatorEntry]:
     """Load and validate the operators of plugins/<plugin_name>/plugin.yaml."""
-    if plugin_name in {"", ".", ".."} or any(
-        char in plugin_name for char in ("/", "\\", "\0")
-    ):
-        raise click.UsageError(
-            f"Invalid plugin name {plugin_name!r}: expected a directory name"
-        )
-
-    plugin_file = package_data_path("plugins", plugin_name, "plugin.yaml")
+    plugin_file = find_plugin_descriptor(package_data_path("plugins"), plugin_name)
     try:
         with plugin_file.open(encoding="utf-8") as fh:
             descriptor = yaml.safe_load(fh)

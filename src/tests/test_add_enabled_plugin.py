@@ -171,8 +171,12 @@ def test_cli_idempotent_reports_ok(tmp_path: Path) -> None:
     assert "[OK]" in result.output
 
 
-def test_cli_accepts_dotted_plugin_name(tmp_path: Path) -> None:
+def test_cli_accepts_dotted_plugin_name(tmp_path: Path, mocker: MockerFixture) -> None:
     """A descriptor name containing a dot is recorded."""
+    plugin_dir = tmp_path / "plugins" / "custom.addon"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "plugin.yaml").write_text("name: custom.addon\n", encoding="utf-8")
+    mocker.patch("enclave.tools.cli.package_data_path", return_value=plugin_dir.parent)
     config = tmp_path / "global.yaml"
     config.write_text(_CONFIG_WITH_LIST, encoding="utf-8")
 
@@ -197,3 +201,21 @@ def test_cli_missing_config_errors(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code != 0
+
+
+def test_cli_rejects_unknown_plugin(tmp_path: Path, mocker: MockerFixture) -> None:
+    """An unavailable descriptor leaves the configuration untouched."""
+    mocker.patch(
+        "enclave.tools.cli.package_data_path", return_value=tmp_path / "plugins"
+    )
+    config = tmp_path / "global.yaml"
+    config.write_text(_CONFIG_WITH_LIST, encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["add-enabled-plugin", "--config", str(config), "--plugin", "missing"],
+    )
+
+    assert result.exit_code == 1
+    assert "Plugin 'missing' not found" in result.output
+    assert config.read_text(encoding="utf-8") == _CONFIG_WITH_LIST

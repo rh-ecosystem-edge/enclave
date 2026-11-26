@@ -19,6 +19,44 @@ LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 LOG_FORMATS = ["full", "plain"]
 
 
+def enclave_checkout_root() -> Path | None:
+    """Find the checkout whose playbooks and defaults belong to this CLI."""
+    package_dir = Path(__file__).resolve().parent
+    for start in (Path.cwd(), package_dir):
+        for candidate in (start, *start.parents):
+            if (candidate / "defaults/platforms.yaml").is_file() and (
+                candidate / "playbooks/common/load-vars.yaml"
+            ).is_file():
+                return candidate
+    return None
+
+
+def package_data_path(*parts: str) -> Path:
+    """Resolve a data file from the active checkout or the installed package.
+
+    Installed: site-packages/enclave/utils.py → site-packages/enclave/<parts>.
+    Editable: src/enclave/utils.py → src/enclave/ has no data, so fall back
+    to repo_root/<parts>.
+    """
+    checkout = enclave_checkout_root()
+    if checkout is not None:
+        return checkout.joinpath(*parts)
+
+    enclave_pkg = Path(__file__).resolve().parent
+    path = enclave_pkg.joinpath(*parts)
+    if not path.exists():
+        path = enclave_pkg.parent.parent.joinpath(*parts)
+    return path
+
+
+def find_plugin_descriptor(plugins_dir: Path, plugin_name: str) -> Path:
+    """Find an available plugin by its directory name."""
+    for descriptor in plugins_dir.glob("*/plugin.yaml"):
+        if descriptor.parent.name == plugin_name and descriptor.is_file():
+            return descriptor
+    raise click.ClickException(f"Plugin {plugin_name!r} not found")
+
+
 def configure_logging(log_level: str, log_format: str = "full") -> None:
     """Configure logging with the specified level and format if not already configured.
 
