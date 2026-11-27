@@ -6,135 +6,15 @@
 #   workingDir: Working directory on the Landing Zone
 #
 # This file is included from both deploy-plugin.yaml (standalone) and
-# 05-operators.yaml (core pipeline integration).
+# 05-operators.yaml (core pipeline integration). Plugin context loading and the
+# mirror steps are shared with mirror-plugin.yaml via load_plugin_context.yaml
+# and mirror_plugin_steps.yaml.
 
-- name: Validate plugin_name is provided
-  ansible.builtin.assert:
-    that:
-      - plugin_name is defined
-      - plugin_name | length > 0
-      - plugin_name is regex('^[A-Za-z0-9][A-Za-z0-9._-]*$')
-    fail_msg: "plugin_name must be a valid name (alphanumeric, dots, hyphens, underscores; no path separators)"
-  tags: always
-
-- name: "{{ plugin_name }} | Set plugin directory"
-  ansible.builtin.set_fact:
-    plugin_dir: "{{ playbook_dir }}/../plugins/{{ plugin_name }}"
-  tags: always
-
-- name: "{{ plugin_name }} | Verify plugin.yaml exists"
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/plugin.yaml"
-  register: r_plugin_yaml
-  tags: always
-
-- name: "{{ plugin_name }} | Fail if plugin.yaml is missing"
-  ansible.builtin.assert:
-    that: r_plugin_yaml.stat.exists
-    fail_msg: "Plugin descriptor not found: {{ plugin_dir }}/plugin.yaml"
-  tags: always
-
-- name: "{{ plugin_name }} | Load plugin descriptor"
-  ansible.builtin.include_vars:
-    file: "{{ plugin_dir }}/plugin.yaml"
-    name: plugin
-  tags: always
-
-- name: "{{ plugin_name }} | Display plugin info"
-  ansible.builtin.debug:
-    msg: "Deploying plugin '{{ plugin.name }}' (type={{ plugin.type }}, order={{ plugin.order | default('unset') }}, mirror={{ plugin_mirror | default(false) | bool }})"
-  tags: always
-
-- name: "{{ plugin_name }} | Stat plugin defaults.yaml"
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/defaults.yaml"
-  register: r_plugin_defaults_yaml
-  tags: always
-
-- name: "{{ plugin_name }} | Fail if both defaults.yaml and defaults field are defined"
-  ansible.builtin.fail:
-    msg: "Plugin '{{ plugin.name }}' has both defaults.yaml and a defaults: field in plugin.yaml. Only one is allowed."
-  when:
-    - r_plugin_defaults_yaml.stat.exists
-    - plugin.defaults is defined
-  tags: always
-
-- name: "{{ plugin_name }} | Load plugin defaults from defaults.yaml"
-  ansible.builtin.include_vars:
-    file: "{{ plugin_dir }}/defaults.yaml"
-  when: r_plugin_defaults_yaml.stat.exists
-  tags: always
-
-# noqa: var-naming[no-jinja] — Jinja2 in the variable name is the only way
-# to set dynamic fact names from a dict.
-- name: "{{ plugin_name }} | Load plugin defaults from plugin.yaml"  # noqa: var-naming[no-jinja]
-  ansible.builtin.set_fact:
-    "{{ item.key }}": "{{ item.value }}"
-  loop: "{{ plugin.defaults | dict2items }}"
-  loop_control:
-    label: "{{ item.key }}"
-  when:
-    - plugin.defaults is defined
-    - not r_plugin_defaults_yaml.stat.exists
-  tags: always
-
-# Load user config for this plugin (config/plugins/<name>.yaml) if it exists.
-# The load-vars.yaml only loads config files for plugins in enabled_plugins,
-# but day-2 plugins deployed via deploy-plugin.yaml may not be in that list.
-- name: "{{ plugin_name }} | Stat plugin user config file"
-  ansible.builtin.stat:
-    path: "{{ playbook_dir }}/../config/plugins/{{ plugin_name }}.yaml"
-  register: r_plugin_user_config
-  tags: always
-
-- name: "{{ plugin_name }} | Load plugin user config"
-  ansible.builtin.include_vars:
-    file: "{{ r_plugin_user_config.stat.path }}"
-  when: r_plugin_user_config.stat.exists
-  tags: always
-
-- name: "{{ plugin_name }} | Validate plugin requirements (vars)"
-  ansible.builtin.assert:
-    that: "item.name in vars"
-    fail_msg: >-
-      Plugin '{{ plugin.name }}' requires variable '{{ item.name }}' but it is not defined.
-      {{ item.description | default('') }}
-  loop: "{{ plugin.requires.vars | default([]) }}"
-  loop_control:
-    label: "{{ item.name }}"
-  when:
-    - plugin.requires is defined
-    - plugin.requires.vars is defined
-    - item.when | default(true) | bool
-  tags: always
-
-- name: "{{ plugin_name }} | Stat plugin required files"
-  ansible.builtin.stat:
-    path: "{{ plugin_dir }}/{{ item.path }}"
-  loop: "{{ plugin.requires.files | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
-  register: r_required_files
-  when:
-    - plugin.requires is defined
-    - plugin.requires.files is defined
-  tags: always
-
-- name: "{{ plugin_name }} | Validate plugin requirements (files)"
-  ansible.builtin.assert:
-    that: r_required_files.results[ansible_loop.index0].stat.exists
-    fail_msg: >-
-      Plugin '{{ plugin.name }}' requires file '{{ item.path }}' but it was not found at
-      {{ plugin_dir }}/{{ item.path }}.
-      {{ item.description | default('') }}
-  loop: "{{ plugin.requires.files | default([]) }}"
-  loop_control:
-    label: "{{ item.path }}"
-    extended: true
-  when:
-    - plugin.requires is defined
-    - plugin.requires.files is defined
-    - item.when | default(true) | bool
+- name: "{{ plugin_name | default('plugin') }} | Load plugin context"
+  ansible.builtin.include_tasks:
+    file: tasks/load_plugin_context.yaml
+    apply:
+      tags: always
   tags: always
 
 - name: "{{ plugin_name }} | Validate managed-only mirror configuration"
@@ -164,57 +44,11 @@
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/pre-validate.yaml') | length > 0
   tags: pre-validate
 
-- name: "{{ plugin_name }} | Extract images from Helm charts for mirroring"
+- name: "{{ plugin_name }} | Mirror plugin steps"
   ansible.builtin.include_tasks:
-    file: tasks/helm_extract_images.yaml
+    file: tasks/mirror_plugin_steps.yaml
     apply:
       tags: mirror
-  when:
-    - plugin.helm is defined
-    - plugin.helm
-      | selectattr('extractImages', 'defined')
-      | selectattr('extractImages', 'equalto', true)
-      | rejectattr('repo', 'defined')
-      | list | length > 0
-  tags: mirror
-
-- name: "{{ plugin_name }} | Set catalog image and mirror defaults"
-  ansible.builtin.set_fact:
-    catalog_image: "{{ rh_operator_catalog }}"
-    catalog_mirror: "{{ mirror_rh_operator_catalog }}-{{ plugin.name }}"
-    catalog_version: "{{ rh_operator_catalog_version }}"
-  tags: always
-
-- name: "{{ plugin_name }} | Override variables for certified catalog"
-  ansible.builtin.set_fact:
-    catalog_image: "{{ certified_operator_catalog }}"
-    catalog_mirror: "{{ mirror_certified_rh_operator_catalog }}-{{ plugin.name }}"
-    catalog_version: "{{ certified_operator_catalog_version }}"
-  when:
-    - plugin.catalog | default("") == "certified"
-  tags: always
-
-- name: "{{ plugin_name }} | Mirror plugin"
-  ansible.builtin.include_tasks:
-    file: mirror_plugin.yaml
-  when:
-    - plugin_mirror | default(false) | bool
-    - plugin.operators | default([]) | length > 0 or plugin.additionalImages | default([]) | length > 0
-    - disconnected | default(true) | bool
-  tags: mirror
-
-- name: "{{ plugin_name }} | Patch MCE custom-registries with plugin entries"
-  ansible.builtin.include_tasks:
-    file: tasks/patch_mce_registries.yaml
-    apply:
-      tags: mirror
-      environment:
-        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  vars:
-    plugin_registries_entries: "{{ plugin.registries }}"
-  when:
-    - plugin.registries is defined
-    - disconnected | default(true) | bool
   tags: mirror
 
 # Managed-cluster-only plugins (operators listed, installOperators: false, no Helm
@@ -299,6 +133,29 @@
       environment:
         KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
   when: lookup('ansible.builtin.fileglob', plugin_dir ~ '/tasks/deploy.yaml') | length > 0
+  tags: deploy
+
+# Record the plugin in enabled_plugins so sync.sh re-mirrors its operator catalog
+# and upgrade.yaml reconciles its operators. Only on the standalone day-2 path
+# (register_enabled_plugin) and only for plugins whose operators install on the
+# management cluster (installOperators != false, non-empty operators). Target the
+# active global config selected by vars_file, matching common/load-vars.yaml.
+- name: "{{ plugin_name }} | Record plugin in enabled_plugins"
+  ansible.builtin.command:
+    argv:
+      - enclave
+      - tools
+      - add-enabled-plugin
+      - --config
+      - "{{ vars_file | default(playbook_dir ~ '/../config/global.yaml', true) }}"
+      - --plugin
+      - "{{ plugin.name }}"
+  register: r_register_enabled_plugin
+  changed_when: "'[UPDATE]' in r_register_enabled_plugin.stdout"
+  when:
+    - register_enabled_plugin | default(false) | bool
+    - plugin.operators | default([]) | length > 0
+    - plugin.installOperators | default(true)
   tags: deploy
 
 - name: "{{ plugin_name }} | Run post-validate"

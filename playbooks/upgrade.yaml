@@ -56,14 +56,15 @@
         var: r_mgmt_cluster_upgrade.stderr_lines
       when: upgrade_mgmt_cluster | default(true) | bool
 
-    - name: Discover plugin operators to upgrade
+    - name: Discover foundation plugin operators to upgrade
       ansible.builtin.include_tasks:
         file: tasks/upgrade/discover-plugin-operators.yaml
       vars:
+        plugin_type: foundation
         plugin_operators_caller: upgrade
       when: upgrade_operators | default(true) | bool
 
-    - name: Upgrade plugin operator versions
+    - name: Upgrade foundation plugin operator versions
       ansible.builtin.command:
         argv: "{{ ['enclave', 'reconcile', 'plugin-operator-versions'] + plugin_operator_versions_argv }}"
       register: r_plugin_operator_versions_upgrade
@@ -72,7 +73,7 @@
         - upgrade_operators | default(true) | bool
         - plugin_operator_names | length > 0
 
-    - name: Print plugin operator versions upgrade output
+    - name: Print foundation plugin operator versions upgrade output
       ansible.builtin.debug:
         var: r_plugin_operator_versions_upgrade.stderr_lines
       when:
@@ -93,3 +94,27 @@
       ansible.builtin.debug:
         var: r_operator_versions_upgrade.stderr_lines
       when: upgrade_operators | default(true) | bool
+
+    - name: Discover addon plugin operators to upgrade
+      ansible.builtin.include_tasks:
+        file: tasks/upgrade/discover-plugin-operators.yaml
+      vars:
+        plugin_type: addon
+        plugin_operators_caller: upgrade
+      when: upgrade_operators | default(true) | bool
+
+    - name: Upgrade addon plugin operator versions
+      ansible.builtin.command:
+        argv: "{{ ['enclave', 'reconcile', 'plugin-operator-versions'] + plugin_operator_versions_argv }}"
+      register: r_addon_plugin_operator_versions_upgrade
+      changed_when: "'[UPDATE]' in r_addon_plugin_operator_versions_upgrade.stderr"
+      when:
+        - upgrade_operators | default(true) | bool
+        - plugin_operator_names | length > 0
+
+    - name: Print addon plugin operator versions upgrade output
+      ansible.builtin.debug:
+        var: r_addon_plugin_operator_versions_upgrade.stderr_lines
+      when:
+        - upgrade_operators | default(true) | bool
+        - plugin_operator_names | length > 0

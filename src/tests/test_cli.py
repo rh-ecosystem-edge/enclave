@@ -7,9 +7,9 @@ import yaml
 from click.testing import CliRunner
 from pytest_mock import MockerFixture
 
-from enclave.reconcile.cli import cli, config_path, defaults_path, package_data_path
+from enclave.reconcile.cli import cli, config_path, defaults_path
 from enclave.reconcile.release_signatures import ReleaseSignaturesQueryError
-from enclave.utils import KubeconfigNotFoundError
+from enclave.utils import KubeconfigNotFoundError, package_data_path
 
 _KC = {"KUBECONFIG": "/fake/kubeconfig"}
 
@@ -420,9 +420,9 @@ def test_config_path_uses_enclave_checkout_from_another_working_directory(
     (other_project / "config").mkdir(parents=True)
     (other_project / "config/platforms.yaml").touch()
 
-    source_file = checkout / "src/enclave/reconcile/cli.py"
+    source_file = checkout / "src/enclave/utils.py"
     source_file.parent.mkdir(parents=True)
-    mocker.patch("enclave.reconcile.cli.__file__", str(source_file))
+    mocker.patch("enclave.utils.__file__", str(source_file))
     mocker.patch("enclave.reconcile.cli.Path.cwd", return_value=other_project)
 
     assert config_path("platforms.yaml") == checkout / "config/platforms.yaml"
@@ -659,10 +659,12 @@ def test_plugin_operator_versions_csv_names_default_to_name(
     """Use the operator name as CSV name when csvNames is absent."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     _write_plugin(
-        plugins_root, "plug", {"name": "plug", "operators": [_PLUGIN_OPERATOR]}
+        plugins_root,
+        "custom.addon",
+        {"name": "custom.addon", "operators": [_PLUGIN_OPERATOR]},
     )
     result = CliRunner().invoke(
-        cli, ["plugin-operator-versions", "--plugin", "plug"], env=_KC
+        cli, ["plugin-operator-versions", "--plugin", "custom.addon"], env=_KC
     )
     assert result.exit_code == 0, result.output
     assert mock_reconcile.call_args.args[2] == ["op-a"]
@@ -700,17 +702,17 @@ def test_plugin_operator_versions_multiple_plugins_and_operators(
     ]
 
 
-@pytest.mark.parametrize("name", ["../plug", "a/b", "Plug", "-plug", ""])
+@pytest.mark.parametrize("name", ["../plug", "a/b", r"a\b", ".", "..", ""])
 def test_plugin_operator_versions_rejects_invalid_name(
     mocker: MockerFixture, name: str
 ) -> None:
-    """Reject plugin names that do not match the plugin name pattern."""
+    """Reject plugin arguments that are not single directory names."""
     mock_reconcile = mocker.patch("enclave.reconcile.cli.operator_versions_reconcile")
     result = CliRunner().invoke(
         cli, ["plugin-operator-versions", "--plugin", name], env=_KC
     )
-    assert result.exit_code == 2
-    assert "Invalid plugin name" in result.output
+    assert result.exit_code == 1
+    assert "not found" in result.output
     mock_reconcile.assert_not_called()
 
 
@@ -827,9 +829,7 @@ def test_package_data_path_prefers_installed_location(
     (installed / "reconcile").mkdir(parents=True)
     (installed / "plugins" / "lvms").mkdir(parents=True)
     (installed / "plugins" / "lvms" / "plugin.yaml").touch()
-    mocker.patch(
-        "enclave.reconcile.cli.__file__", str(installed / "reconcile" / "cli.py")
-    )
+    mocker.patch("enclave.utils.__file__", str(installed / "utils.py"))
     mocker.patch("enclave.reconcile.cli.Path.cwd", return_value=tmp_path)
     assert package_data_path("plugins", "lvms", "plugin.yaml") == (
         installed / "plugins" / "lvms" / "plugin.yaml"
@@ -852,9 +852,7 @@ def test_package_data_path_prefers_enclave_checkout(
     (installed / "reconcile").mkdir(parents=True)
     (installed / "plugins/lvms").mkdir(parents=True)
     (installed / "plugins/lvms/plugin.yaml").touch()
-    mocker.patch(
-        "enclave.reconcile.cli.__file__", str(installed / "reconcile" / "cli.py")
-    )
+    mocker.patch("enclave.utils.__file__", str(installed / "utils.py"))
     mocker.patch("enclave.reconcile.cli.Path.cwd", return_value=checkout)
 
     assert package_data_path("plugins", "lvms", "plugin.yaml") == (
