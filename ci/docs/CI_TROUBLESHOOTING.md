@@ -128,7 +128,7 @@ URLs are stripped — but treat them as best-effort: do not add raw secret dumps
 | Symptom in the step log | Look first at |
 | --- | --- |
 | `ProgressDeadlineExceeded`, rollout never completes | `cluster/events.txt` (`FailedScheduling`, `Insufficient memory/cpu`), `cluster/pods.txt` (Pending pod), the Pending pod's `*_describe.txt` |
-| Quay unhealthy / crashloop | `cluster/quay-diagnostics-*/quayregistry.yaml` (`.status.conditions`), then `overview.txt`, per-pod `*.log` and `*_previous.log`, `health-instance.txt` |
+| Quay unhealthy / crashloop | After a mirror rollout, the "hub Quay app … has no ready replica" failure already names the not-running pods and why (all storage backends). Then `cluster/quay-diagnostics-*/quayregistry.yaml` (`.status.conditions`), `overview.txt`, per-pod `*.log` and `*_previous.log`, `health-instance.txt` |
 | Operator/ClusterOperator degraded | `cluster/cluster-status.txt` (degraded CO list), then the operator pod logs under `cluster/` |
 | PVC unbound / storage | `cluster/events.txt` (ProvisioningFailed), `cluster/plugin-diagnostics/openshift-storage.txt` (events with node names redacted, StorageCluster/CephCluster state/phase/message/conditions, CSI CRs (ClientProfile phase/message), NooBaa phase/conditions, backingstores, PVCs, ceph-csi-config keys/sizes, ctrlplugin configmap volumes/mounts, rook/ceph-csi/ocs-operator/csi-rbdplugin/noobaa-operator logs, secret names), `cluster/quay-diagnostics-*/overview.txt` (PVCs), `libvirt/` storage |
 | Mirroring / disconnected image pull | `landing-zone/pipeline-logs/` (`oc-mirror*`, `mirroring_errors_*`) |
