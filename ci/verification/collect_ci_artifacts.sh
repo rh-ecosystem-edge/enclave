@@ -1065,7 +1065,9 @@ collect_managed_sno_logs() {
     mkdir -p "${OUTPUT_DIR}/managed_sno/logs"
     shopt -s nullglob
     local f
-    for f in deploy_sno_*.log verify_sno_*.log; do
+    # parallel_*.log: the SNO install and openshift-ai deployment tasks (their durations
+    # are in the step summary and outputs).
+    for f in deploy_sno_*.log verify_sno_*.log parallel_*.log; do
         cp "$f" "${OUTPUT_DIR}/managed_sno/logs/" || true
     done
     shopt -u nullglob
@@ -1223,6 +1225,15 @@ if [ -f "$SNO_KC" ]; then
         done
     done
     sno get configurationpolicy -A -o yaml > "$OUT/sno/configurationpolicies.yaml" 2>&1
+    # OpenShift AI on the SNO (installed by the openshift-ai policies once labeled).
+    mkdir -p "$OUT/sno/openshift-ai"
+    for r in subscriptions.operators.coreos.com clusterserviceversions.operators.coreos.com \
+             installplans.operators.coreos.com catalogsources.operators.coreos.com; do
+        sno get "$r" -A -o wide > "$OUT/sno/openshift-ai/${r%%.*}.txt" 2>&1
+    done
+    sno get datasciencecluster -o yaml > "$OUT/sno/openshift-ai/datascienceclusters.yaml" 2>&1
+    sno get dscinitialization -o yaml > "$OUT/sno/openshift-ai/dscinitializations.yaml" 2>&1
+    sno get imagedigestmirrorsets,imagetagmirrorsets -o yaml > "$OUT/sno/openshift-ai/mirror-sets.yaml" 2>&1
 fi
 
 # Publish the archive only once complete, so a timeout never leaves a partial one.

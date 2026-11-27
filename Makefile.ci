@@ -23,9 +23,11 @@ include Makefile
         build-ci-image push-ci-image test-ci-image build-push-ci-image \
         deploy-cluster-setup deploy-cluster-validate deploy-cluster-acquire-hardware \
         deploy-cluster-write-migration-tasks deploy-cluster-plugins deploy-sno \
+        deploy-sno-openshift-ai label-sno-openshift-ai \
         environment provision-landing-zone verify-landing-zone \
         install-enclave verify-enclave-installation setup-ceph \
-        verify clean verify-cluster verify-sno verify-sno-update-service osac-smoke \
+        verify clean verify-cluster verify-sno verify-sno-update-service \
+        verify-sno-openshift-ai osac-smoke \
         preflight-checks collect-artifacts-basic collect-artifacts-deployment \
         collect-artifacts-full ci-flow-connected ci-flow-disconnected \
 	generate-ironic-cert clean-infra reap-stale-vms start-stopped-runners \
@@ -78,11 +80,12 @@ help:
 	@echo "  make -f Makefile.ci verify-cluster                   - Verify OpenShift cluster deployment"
 	@echo "  make -f Makefile.ci verify-sno                       - Verify the SNO managed cluster and its ACM import"
 	@echo "  make -f Makefile.ci verify-sno-update-service        - Verify the update service policy patched the SNO"
+	@echo "  make -f Makefile.ci verify-sno-openshift-ai          - Verify OpenShift AI is installed and ready on the SNO"
 	@echo "  make -f Makefile.ci osac-smoke                       - Run OSAC CLI post-install smoke test (connected)"
 	@echo ""
 	@echo "CI Helper targets:"
 	@echo "  make -f Makefile.ci clean-infra                      - Tear down infrastructure"
-	@echo "  make -f Makefile.ci reap-stale-vms                   - Reap leaked CI VMs older than REAP_AGE_HOURS (default 12h)"
+	@echo "  make -f Makefile.ci reap-stale-vms                   - Reap leaked CI VMs older than REAP_AGE_HOURS (default 15h)"
 	@echo "  make -f Makefile.ci start-stopped-runners            - Start stopped runner services on this host"
 	@echo "  make -f Makefile.ci preflight-checks                 - Run pre-flight environment checks"
 	@echo "  make -f Makefile.ci collect-artifacts-basic          - Collect basic artifacts"
@@ -106,6 +109,8 @@ help:
 	@echo "  make -f Makefile.ci deploy-cluster-discovery              - Configure hardware discovery"
 	@echo "  make -f Makefile.ci deploy-cluster-write-migration-tasks  - Seed migration control file"
 	@echo "  make -f Makefile.ci deploy-sno                            - Deploy the SNO managed cluster and import it into ACM"
+	@echo "  make -f Makefile.ci deploy-sno-openshift-ai               - Deploy the SNO and the openshift-ai plugin in parallel"
+	@echo "  make -f Makefile.ci label-sno-openshift-ai                - Label the SNO ManagedCluster for openshift-ai"
 	@echo ""
 	@echo "Plugin deployment (via SSH to Landing Zone):"
 	@echo "  make -f Makefile.ci deploy-plugin PLUGIN=<name>      - Deploy a specific plugin"
@@ -239,6 +244,15 @@ deploy-cluster-write-migration-tasks:
 deploy-sno:
 	@./ci/deployment/deploy_sno.sh
 
+# The SNO install and the openshift-ai plugin deployment in parallel; results and
+# durations as step outputs (sno, openshift_ai).
+deploy-sno-openshift-ai:
+	@./ci/utils/run_parallel.sh sno './ci/deployment/deploy_sno.sh' \
+		openshift_ai './ci/deployment/deploy_plugin.sh openshift-ai'
+
+label-sno-openshift-ai:
+	@./ci/deployment/label_sno.sh sovcloud.open-cluster-management.io/openshift-ai=true
+
 deploy-plugin:
 	@./ci/deployment/deploy_plugin.sh $(PLUGIN)
 
@@ -359,7 +373,7 @@ build-push-ci-image: build-ci-image push-ci-image
 clean-infra:
 	@./ci/cleanup/cleanup.sh
 
-# Reap leaked CI clusters older than REAP_AGE_HOURS (default 12h) across all runs
+# Reap leaked CI clusters older than REAP_AGE_HOURS (default 15h) across all runs
 reap-stale-vms:
 	@./ci/cleanup/reap_stale_vms.sh
 
@@ -450,6 +464,9 @@ verify-sno:
 
 verify-sno-update-service:
 	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_sno_update_service.sh
+
+verify-sno-openshift-ai:
+	@ENCLAVE_CLUSTER_NAME=$(ENCLAVE_CLUSTER_NAME) WORKING_DIR=$(WORKING_DIR) ./ci/verification/verify_sno_openshift_ai.sh
 
 # OSAC CLI post-install smoke test (connected environments only). Exercises the
 # fulfillment API end-to-end through its route via the osac CLI on the LZ.

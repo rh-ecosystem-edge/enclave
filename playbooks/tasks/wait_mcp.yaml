@@ -5,7 +5,11 @@
 # pool without spec.paused counts as not paused. Logs each pool's state and rendered
 # config when a rollout is detected and when it completes. Each poll is bounded by
 # --request-timeout and each wait by a task timeout, so an unreachable API fails the
-# wait instead of hanging it.
+# wait instead of hanging it. If the wait fails, the rescue collects a concise
+# snapshot of pools, nodes, PodDisruptionBudgets, pending pods and recent warning
+# events, so the reason (for example a node drain blocked by a PDB-protected pod,
+# or a replacement pod that cannot schedule) is visible in the deployment log
+# instead of only in the collected artifacts.
 - name: Wait for MachineConfigPool to detect pending changes (if any)
   ansible.builtin.command:
     argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, json, --request-timeout=30s]
@@ -84,38 +88,117 @@
     label: "{{ item.metadata.name }}"
   when: _mcp_updating_detected | bool
 
-- name: Wait for MachineConfigPool to finish updating
-  ansible.builtin.command:
-    argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, json, --request-timeout=30s]
-  environment:
-    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
-  register: r_mcp
-  vars:
-    _pools: "{{ (r_mcp.stdout | from_json)['items'] if r_mcp.rc | default(1) == 0 else [] }}"
-    _conditions: >-
-      {{
-        ((_pools | rejectattr('spec.paused', 'defined') | list)
-          + (_pools | selectattr('spec.paused', 'defined') | rejectattr('spec.paused') | list))
-        | selectattr('status.conditions', 'defined')
-        | map(attribute='status.conditions')
-        | flatten
-      }}
-  changed_when: false
-  retries: 60
-  delay: 30
-  timeout: 2400
+- name: Wait for the MachineConfigPool rollout to finish
   when: _mcp_updating_detected | bool
-  until: >-
-    (r_mcp.rc | default(1) == 0)
-    and
-    (_conditions | selectattr('type', 'equalto', 'Updating')
-      | selectattr('status', 'equalto', 'True') | list | length == 0)
-    and
-    (_conditions | selectattr('type', 'equalto', 'Updated')
-      | rejectattr('status', 'equalto', 'True') | list | length == 0)
-    and
-    (_conditions | selectattr('type', 'equalto', 'Degraded')
-      | selectattr('status', 'equalto', 'True') | list | length == 0)
+  block:
+    - name: Wait for MachineConfigPool to finish updating
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, json, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: r_mcp
+      vars:
+        _pools: "{{ (r_mcp.stdout | from_json)['items'] if r_mcp.rc | default(1) == 0 else [] }}"
+        _conditions: >-
+          {{
+            ((_pools | rejectattr('spec.paused', 'defined') | list)
+              + (_pools | selectattr('spec.paused', 'defined') | rejectattr('spec.paused') | list))
+            | selectattr('status.conditions', 'defined')
+            | map(attribute='status.conditions')
+            | flatten
+          }}
+      changed_when: false
+      retries: 60
+      delay: 30
+      timeout: 2400
+      until: >-
+        (r_mcp.rc | default(1) == 0)
+        and
+        (_conditions | selectattr('type', 'equalto', 'Updating')
+          | selectattr('status', 'equalto', 'True') | list | length == 0)
+        and
+        (_conditions | selectattr('type', 'equalto', 'Updated')
+          | rejectattr('status', 'equalto', 'True') | list | length == 0)
+        and
+        (_conditions | selectattr('type', 'equalto', 'Degraded')
+          | selectattr('status', 'equalto', 'True') | list | length == 0)
+
+  rescue:
+    - name: Show MachineConfigPool status after a failed rollout wait
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, mcp, -o, wide, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: _mcp_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show node status after a failed MachineConfigPool rollout
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, nodes, -o, wide, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: _node_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show PodDisruptionBudgets after a failed MachineConfigPool rollout
+      ansible.builtin.command:
+        argv: ["{{ workingDir }}/bin/oc", get, pdb, -A, --request-timeout=30s]
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: _pdb_status
+      changed_when: false
+      failed_when: false
+
+    - name: Show pods that cannot be scheduled after a failed MachineConfigPool rollout
+      ansible.builtin.command:
+        argv:
+          - "{{ workingDir }}/bin/oc"
+          - get
+          - pods
+          - -A
+          - --field-selector
+          - status.phase=Pending
+          - -o
+          - wide
+          - --request-timeout=30s
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: _pending_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Show recent warning events after a failed MachineConfigPool rollout
+      ansible.builtin.shell: >-
+        {{ workingDir }}/bin/oc get events --all-namespaces
+        --field-selector type=Warning --sort-by='.lastTimestamp'
+        --request-timeout=30s | tail -50
+      environment:
+        KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+      register: _warning_events
+      changed_when: false
+      failed_when: false
+
+    - name: MachineConfigPool rollout did not finish
+      ansible.builtin.fail:
+        msg: |-
+          MachineConfigPool rollout did not finish after {{ r_mcp.attempts | default('unknown') }} attempts.
+
+          MachineConfigPools:
+          {{ _mcp_status.stdout | default('') }}{{ _mcp_status.stderr | default('') }}
+
+          Nodes (a node stuck in SchedulingDisabled/NotReady usually means a blocked drain):
+          {{ _node_status.stdout | default('') }}{{ _node_status.stderr | default('') }}
+
+          PodDisruptionBudgets (ALLOWED DISRUPTIONS 0 can block node drains):
+          {{ _pdb_status.stdout | default('') }}{{ _pdb_status.stderr | default('') }}
+
+          Pending pods (a replacement that cannot schedule keeps a drain blocked):
+          {{ _pending_pods.stdout | default('') }}{{ _pending_pods.stderr | default('') }}
+
+          Recent warning events (drain/eviction failures appear here):
+          {{ _warning_events.stdout | default('') }}{{ _warning_events.stderr | default('') }}
 
 - name: MCP rollout complete
   vars:

@@ -6,3 +6,4 @@ self-hosted-runner:
     - enclave-small         # For cleanup infra, not needed in aws
     - enclave-large-aws     # Large nested-virt E2E jobs (PR-context and nightly)
     - enclave-large-odf-aws # ODF disconnected E2E (Ceph-capable servers)
+    - enclave-large-sno-openshift-ai-aws # OpenShift AI/SNO E2E (LVMS or ODF)

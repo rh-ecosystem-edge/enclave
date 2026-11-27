@@ -139,11 +139,11 @@ of the two.
 
 Both must run on the runner that owns the VMs and `cluster-env.sh`, so they cannot be separate
 GitHub jobs. One workflow step calls a small generic helper, `ci/utils/run_parallel.sh`, with the
-two make targets as named commands. The helper starts them as background processes, each logging to
-its own file (lines are also streamed to the step output with a task prefix), waits for both, prints
-both logs and fails if either failed. It reports which task failed in the step summary, so the
-failed-step reporting stays accurate, and publishes each task's result as a step output
-(`sno=success|failure`, `openshift-ai=success|failure`), so later steps can depend on the task they
+two commands as named tasks. The helper starts them as background processes, each logging to its
+own file (lines are also streamed to the step output with a task prefix), waits for both and fails
+if either failed. It reports each task's result and duration in the step summary, so the
+failed-step reporting stays accurate, and publishes them as step outputs (`sno=success|failure`,
+`openshift_ai=success|failure`, plus `<task>_seconds`), so later steps can depend on the task they
 need instead of on the step as a whole.
 
 The helper waits for both tasks instead of failing fast: if one fails early, the other runs to
@@ -157,11 +157,10 @@ The checks run in this order, each as its own step. GitHub Actions skips the rem
 a failure by default, so every check runs with `!cancelled()` and is gated on the result of the
 task it depends on, not on whether earlier steps failed:
 
-- SNO checks and the label: the SNO install succeeded — `steps.deploy_sno.outcome == 'success'`
-  while the SNO is deployed by its own step, then `steps.<parallel-step>.outputs.sno == 'success'`
-  once openshift-ai runs alongside it. A failed openshift-ai deployment does not hide the SNO
-  results.
-- OpenShift AI check: both tasks succeeded and the label step succeeded.
+- SNO checks and the label: the SNO install succeeded (`steps.deploy_sno.outputs.sno ==
+  'success'`). A failed openshift-ai deployment does not hide the SNO results.
+- OpenShift AI check: the openshift-ai task succeeded (`steps.deploy_sno.outputs.openshift_ai ==
+  'success'`) and the label step succeeded, which implies the SNO install did.
 
 So each check reports even when an earlier one failed, and none runs against a task that failed.
 Any failed step, including the parallel step when either task failed, fails the job, and the
@@ -184,9 +183,11 @@ failed-step summary names the first one:
 1. **Label the SNO:** the ManagedCluster gets
    `sovcloud.open-cluster-management.io/openshift-ai=true`, so the openshift-ai PlacementRule
    selects it. Labeling after the update service check keeps the two independent.
-1. **OpenShift AI** (`ci/verification/verify_sno_openshift_ai.sh`): the four `model-*` replicated
-   policies are Compliant for the SNO, and on the SNO the operators are installed and
-   DataScienceCluster `default-dsc` is Ready with KServe `Managed`.
+1. **OpenShift AI** (`ci/verification/verify_sno_openshift_ai.sh`, running `enclave-ci verify
+   sno-openshift-ai`): the four `model-*` replicated policies and `plugin-mirrors-openshift-ai` (the
+   plugin's registry mirrors, delivered by policy because the SNO was installed before the plugin
+   was deployed) are Compliant for the SNO, and on the SNO every Subscription has a Succeeded CSV
+   and DataScienceCluster `default-dsc` is Ready with KServe `Managed`.
 
 ### CI workflow
 
@@ -218,8 +219,10 @@ Callers that do not set the input are unchanged. After the bootstrap phases:
   discovers a real host or exercises the update service policy on a managed cluster, so those
   changes are tested here. When it matches, the disconnected PR run sets `additional-sno-vm=true`.
   It keeps the storage plugin the rest of the decision picked: `lvms`, or `odf` when ODF files
-  changed too. `plugins/openshift-ai/**` joins the filter with the OpenShift AI milestone, when the
-  job starts deploying the plugin.
+  changed too. Since the OpenShift AI milestone the filter also covers `plugins/openshift-ai/**`,
+  the plugin fleet mirrors (`playbooks/tasks/configure_plugin_fleet_mirrors.yaml`,
+  `files/plugin-fleet-mirrors/**`) and the new helpers (`ci/deployment/label_sno.sh`,
+  `ci/utils/run_parallel.sh`).
 - **The weekly ODF run** (below), for regular coverage independent of PRs.
 - **Manual dispatch**, for an on-demand run.
 
@@ -231,8 +234,10 @@ weekly ODF run passes `additional-sno-vm=true` instead of adding a new scheduled
 - **No new runner capacity.** A weekly run is already paid for on the runner class the SNO needs.
 - **Memory fits.** ODF hub VMs take about 168 GiB (3 × 48 GiB masters, 24 GiB Landing Zone); the
   SNO adds 32 GiB, for about 200 GiB of 256 GiB.
-- **Time fits.** The ODF run takes about 3 hours; the SNO adds about an hour, and SNO runs get an
-  extra hour of timeout (7 hours for a dispatched disconnected run).
+- **Time fits.** The ODF run takes about 3 hours. The SNO adds about an hour, and the openshift-ai
+  deployment in parallel with it about three more (its mirror into the hub Quay is the long pole),
+  so SNO runs get four more hours of timeout: 10 hours for a dispatched or PR disconnected run, 14
+  on a schedule. The environment reap threshold and its safety floor (15 hours) stay above that.
 - **Disk needs measuring.** The ODF Landing Zone already holds the mirror and the Ceph loopback OSD
   files on the runner's scratch volume; the SNO disks are thin-provisioned, but the first runs must
   confirm the headroom. If it is too tight, the SNO sizing or the scratch volume size is adjusted.

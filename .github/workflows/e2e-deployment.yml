@@ -53,7 +53,7 @@ on:
         type: string
         default: ''
       additional-sno-vm:
-        description: 'Add an SNO managed cluster on an additional VM (disconnected only); false = auto-decide from changed files'
+        description: 'Add an SNO managed cluster on an additional VM, with OpenShift AI on it (disconnected only); false = auto-decide from changed files'
         type: boolean
         default: false
 
@@ -92,11 +92,13 @@ jobs:
     name: E2E ${{ inputs.mode }} (${{ matrix.storage-plugin }})
     needs: check-e2e-needed
     if: needs.check-e2e-needed.outputs.should_run == 'true'
-    # ODF and the SNO managed cluster need the larger runner; everything else uses the standard one.
-    runs-on: ${{ ((inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') || needs.check-e2e-needed.outputs.additional_sno_vm == 'true') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
+    # OpenShift AI/SNO gets a dedicated storage-less runner regardless of storage plugin;
+    # disconnected ODF without SNO uses the ODF pool, and other E2E jobs use the standard pool.
+    runs-on: ${{ needs.check-e2e-needed.outputs.additional_sno_vm == 'true' && fromJSON('["self-hosted", "enclave-large-sno-openshift-ai-aws"]') || (inputs.mode == 'disconnected' && matrix.storage-plugin == 'odf') && fromJSON('["self-hosted", "enclave-large-odf-aws"]') || fromJSON('["self-hosted", "enclave-large-aws"]') }}
     # Connected is fast; disconnected mirrors content (longer, longest on nightly).
-    # The SNO managed cluster (disconnected only) adds about an hour.
-    timeout-minutes: ${{ inputs.mode == 'connected' && 210 || (needs.check-e2e-needed.outputs.additional_sno_vm == 'true' && (github.event_name == 'schedule' && 660 || 420) || (github.event_name == 'schedule' && 600 || 360)) }}
+    # The SNO managed cluster (disconnected only) and the openshift-ai plugin deployed
+    # with it (its mirror into the hub Quay is the long pole) add about four hours.
+    timeout-minutes: ${{ inputs.mode == 'connected' && 210 || (needs.check-e2e-needed.outputs.additional_sno_vm == 'true' && (github.event_name == 'schedule' && 840 || 600) || (github.event_name == 'schedule' && 600 || 360)) }}
 
     strategy:
       fail-fast: false
@@ -210,7 +212,7 @@ jobs:
       - name: Reap stale cross-run CI VMs
         if: vars.ENABLE_PREJOB_REAP != 'false'
         env:
-          REAP_AGE_HOURS: ${{ vars.REAP_AGE_HOURS || '12' }}
+          REAP_AGE_HOURS: ${{ vars.REAP_AGE_HOURS || '15' }}
           BASE_WORKING_DIR: ${{ vars.BASE_WORKING_DIR }}
         run: make -f Makefile.ci reap-stale-vms
 
@@ -387,23 +389,39 @@ jobs:
         id: verify_cluster
         run: make -f Makefile.ci verify-cluster
 
-      # SNO managed cluster: discovery already registered the SNO VM as an Agent.
-      - name: Deploy SNO managed cluster
+      # SNO managed cluster: discovery already registered the SNO VM as an Agent. The
+      # SNO install and the openshift-ai plugin deployment (mirror into the hub Quay and
+      # its ACM policies; it doesn't roll out the hub) run in parallel; the step waits
+      # for both and outputs each result (sno, openshift_ai) and duration. openshift-ai
+      # is deployed only here, never through ENABLED_PLUGINS.
+      - name: Deploy SNO managed cluster and openshift-ai
         if: needs.check-e2e-needed.outputs.additional_sno_vm == 'true'
         id: deploy_sno
-        run: make -f Makefile.ci deploy-sno
+        run: make -f Makefile.ci deploy-sno-openshift-ai
 
-      # Each SNO check runs once the SNO is deployed, even if an earlier check
-      # failed, so every check reports; any failure still fails the job.
+      # Each SNO check runs once its prerequisites succeeded, even if an earlier check
+      # failed (or openshift-ai did), so every check reports; any failure still fails
+      # the job.
       - name: Verify SNO managed cluster
-        if: ${{ !cancelled() && steps.deploy_sno.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deploy_sno.outputs.sno == 'success' }}
         id: verify_sno
         run: make -f Makefile.ci verify-sno
 
       - name: Verify update service patch on the SNO
-        if: ${{ !cancelled() && steps.deploy_sno.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.deploy_sno.outputs.sno == 'success' }}
         id: verify_sno_update_service
         run: make -f Makefile.ci verify-sno-update-service
+
+      # Selects the SNO for the openshift-ai policies (and its plugin-mirrors policy).
+      - name: Label the SNO for openshift-ai
+        if: ${{ !cancelled() && steps.deploy_sno.outputs.sno == 'success' }}
+        id: label_sno_openshift_ai
+        run: make -f Makefile.ci label-sno-openshift-ai
+
+      - name: Verify OpenShift AI on the SNO
+        if: ${{ !cancelled() && steps.deploy_sno.outputs.openshift_ai == 'success' && steps.label_sno_openshift_ai.outcome == 'success' }}
+        id: verify_sno_openshift_ai
+        run: make -f Makefile.ci verify-sno-openshift-ai
 
       - name: Deploy trust-manager plugin
         if: contains(format(',{0},', env.ENABLED_PLUGINS), ',trust-manager,')
@@ -666,9 +684,11 @@ jobs:
             ["bootstrap_discovery"]="Bootstrap: Discovery"
             ["bootstrap_write_migration_tasks"]="Bootstrap: Write migration tasks"
             ["verify_cluster"]="Verify cluster deployment"
-            ["deploy_sno"]="Deploy SNO managed cluster"
+            ["deploy_sno"]="Deploy SNO managed cluster and openshift-ai"
             ["verify_sno"]="Verify SNO managed cluster"
             ["verify_sno_update_service"]="Verify update service patch on the SNO"
+            ["label_sno_openshift_ai"]="Label the SNO for openshift-ai"
+            ["verify_sno_openshift_ai"]="Verify OpenShift AI on the SNO"
             ["deploy_trust_manager"]="Deploy trust-manager plugin"
             ["deploy_rhbk"]="Deploy rhbk plugin"
             ["deploy_aap"]="Deploy aap plugin"
@@ -697,6 +717,8 @@ jobs:
             deploy_sno
             verify_sno
             verify_sno_update_service
+            label_sno_openshift_ai
+            verify_sno_openshift_ai
             deploy_trust_manager
             deploy_rhbk
             deploy_aap
