@@ -32,6 +32,3 @@ osac_db_image: "registry.redhat.io/rhel10/postgresql-18:latest"
 osac_db_size: 5Gi
 osac_db_user: service
 osac_db_database: service
-
-osac_aap_project_git_uri: "https://github.com/osac-project/osac"
-osac_aap_project_git_branch: main

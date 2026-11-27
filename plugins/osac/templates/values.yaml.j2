@@ -157,6 +157,10 @@ service:
               param: client-secret
 
 # Chart manages the AAP instance
+{% set _osac_aap_git_uri = osac_aap_project_git_uri | default(none) %}
+{% set _osac_aap_git_branch = osac_aap_project_git_branch | default(none) %}
+{% set _osac_aap_bootstrap_image = osac_images.aap_bootstrap if (osac_images is defined and osac_images.aap_bootstrap is defined) else none %}
+{% set _osac_config_as_code_keys = (_osac_aap_bootstrap_image is not none) or (_osac_aap_git_uri is not none) or (_osac_aap_git_branch is not none) %}
 aap:
   aap:
     instance:
@@ -164,17 +168,23 @@ aap:
       name: "{{ osac_aap_name }}"
   bootstrap:
     enabled: true
-{% if osac_images is defined and osac_images.aap_bootstrap is defined %}
-    image: "{{ osac_images.aap_bootstrap }}"
+{% if _osac_aap_bootstrap_image is not none %}
+    image: "{{ _osac_aap_bootstrap_image }}"
 {% endif %}
     backoffLimit: 15
     readinessConsecutiveSuccesses: 3
+{% if _osac_config_as_code_keys %}
   configAsCode:
-{% if osac_images is defined and osac_images.aap_bootstrap is defined %}
-    eeImage: "{{ osac_images.aap_bootstrap }}"
+{% if _osac_aap_bootstrap_image is not none %}
+    eeImage: "{{ _osac_aap_bootstrap_image }}"
 {% endif %}
-    projectGitUri: "{{ osac_aap_project_git_uri }}"
-    projectGitBranch: "{{ osac_aap_project_git_branch }}"
+{% if _osac_aap_git_uri is not none %}
+    projectGitUri: {{ _osac_aap_git_uri | to_json }}
+{% endif %}
+{% if _osac_aap_git_branch is not none %}
+    projectGitBranch: {{ _osac_aap_git_branch | to_json }}
+{% endif %}
+{% endif %}
   instanceGroups:
 {% if _osac_netris is not none %}
     # Connection settings go on networkFulfillment; the chart copies URL/TLS to clusterFulfillment.

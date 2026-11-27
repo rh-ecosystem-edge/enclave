@@ -140,10 +140,6 @@ osac_db_size: 5Gi
 osac_db_user: service
 osac_db_database: service
 
-# AAP bootstrap
-osac_aap_project_git_uri: "https://github.com/osac-project/osac"
-osac_aap_project_git_branch: main
-
 # Kafka cluster (AMQ Streams / Strimzi). The main OSAC chart provisions a
 # KafkaUser against this cluster; the cluster itself is created by
 # tasks/kafka.yaml. clusterName/clusterNamespace must match the OSAC chart

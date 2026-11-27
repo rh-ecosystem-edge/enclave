@@ -102,6 +102,10 @@ osacAapLicenseFile: "/home/<user>/aap-license.zip"
 | `osacProfilesList` | list | No | `[caas, bmaas]` | Enabled service profiles: `vmaas`, `caas`, `bmaas` |
 | `osacBYODatabase` | boolean | No | `false` | Use an external database instead of the built-in dev postgres |
 | `osacDatabaseUrl` | string | No | — | Connection URL for external database (requires `osacBYODatabase: true`) |
+| `osac_aap_project_git_uri` | string | No | Chart default | Development-only override for the AAP config-as-code project Git URI |
+| `osac_aap_project_git_branch` | string | No | Chart-stamped revision | Development-only override for the AAP config-as-code project revision |
+
+The AAP config-as-code Git fields are development-only. Omit both to use the project source and revision packaged with the OSAC chart.
 
 ## Deployment
 
