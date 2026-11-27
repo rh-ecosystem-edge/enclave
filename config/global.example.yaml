@@ -23,7 +23,7 @@ defaultDNS: YOUR_DNS_SERVER           # Example: 9.30.31.32
 defaultGateway: YOUR_GATEWAY          # Example: 192.168.2.10
 defaultPrefix: 24
 
-# First control plane node IP (in the machineNetwork)
+# Selected rendezvous host IP (in the machineNetwork)
 rendezvousIP: YOUR_RENDEZVOUS_IP      # Example: 192.168.2.24
 
 # LZ IP where HTTP server serves the installation ISO to IPMI nodes
@@ -146,8 +146,9 @@ sshPubPath: "YOUR_SSH_PUB_KEY_PATH"
 # ============================================================================
 agent_hosts:
   - name: YOUR_HOST_NAME              # Example: mgmt-ctl01
-    macAddress: YOUR_MAC_ADDRESS      # Example: 0c:c4:7a:62:fe:ec
-    ipAddress: YOUR_IP_ADDRESS        # Should match rendezvousIP for first node
+    # Optional with simple IP-based config. Omit to discover from the Redfish BMC.
+    # macAddress: YOUR_MAC_ADDRESS    # Example: 0c:c4:7a:62:fe:ec
+    ipAddress: YOUR_IP_ADDRESS        # Match rendezvousIP on the selected rendezvous host
     redfish: YOUR_REDFISH_IP          # IPMI/Redfish management IP
     rootDisk: YOUR_ROOT_DISK_PATH     # Example: /dev/disk/by-path/pci-0000:00:11.4-ata-1.0
     redfishUser: YOUR_REDFISH_USER

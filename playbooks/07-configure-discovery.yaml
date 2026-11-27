@@ -6,6 +6,17 @@
     - name: Load common variables
       ansible.builtin.include_tasks: common/load-vars.yaml
 
+    - name: Resolve missing discovery host MAC addresses
+      when: discovery_hosts is defined and discovery_hosts | length > 0
+      ansible.builtin.include_tasks: tasks/resolve_host_macs.yaml
+      vars:
+        hosts_to_resolve: "{{ discovery_hosts }}"
+
+    - name: Use resolved discovery host MAC addresses
+      when: discovery_hosts is defined and discovery_hosts | length > 0
+      ansible.builtin.set_fact:
+        discovery_hosts: "{{ resolved_host_macs }}"
+
     - name: Enable persistent Metal3 deployment
       ansible.builtin.set_fact:
         metal3_persistent: true
