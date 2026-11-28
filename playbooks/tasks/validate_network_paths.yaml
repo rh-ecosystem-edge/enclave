@@ -1,0 +1,104 @@
+---
+- name: Query installed nodes for post-install topology
+  private_action:
+    module: kubernetes.core.k8s_info
+    arguments:
+      kind: Node
+  environment:
+    KUBECONFIG: "{{ workingDir }}/ocp-cluster/auth/kubeconfig"
+  register: r_network_nodes
+  failed_when: false
+  when: network_validation_stage == 'postinstall'
+  no_log: true
+
+- name: Resolve matrix-scoped SSH common arguments privately
+  network_probe_context:
+  register: r_network_probe_context
+  no_log: true
+
+- name: Prepare protected stage-specific network input
+  ansible.builtin.set_fact:
+    _network_validation_input: >-
+      {{ {'stage': network_validation_stage,
+          'hosts': agent_hosts,
+          'inventory': (discovered_hosts | default([])) if network_validation_stage == 'preinstall'
+                       else (r_network_nodes.resources | default([])),
+          'machine_network': machineNetwork,
+          'disconnected': disconnected | default(true) | bool,
+          'mirror': quayHostname,
+          'api_vip': apiVIP,
+          'ingress_vip': ingressVIP,
+          'ssh_key': ansible_ssh_private_key_file | default(ansible_private_key_file | default('')),
+          'ssh_public_key_path': sshPubPath | default(''),
+          'ssh_user': 'core',
+          'ssh_args': r_network_probe_context.ssh_common_args} | to_json }}
+  no_log: true
+
+- name: Capture requested private network input without SSH credentials
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+        - --capture-input
+      stdin: >-
+        {{ {'input': _network_validation_input | from_json,
+            'directory': network_validation_capture_dir,
+            'working_directory': workingDir} | to_json }}
+  when: network_validation_capture_dir is defined
+  register: r_network_capture
+  changed_when: r_network_capture.rc == 0
+  failed_when: false
+  no_log: true
+
+- name: Require fresh protected diagnostic input when requested
+  ansible.builtin.assert:
+    that: network_validation_capture_dir is not defined or r_network_capture.rc | default(2) == 0
+    quiet: true
+    fail_msg: "Private network input capture failed; no existing input may be reused."
+
+- name: Collect directed node-origin network validation matrix
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+      stdin: "{{ _network_validation_input }}"
+  register: r_network_matrix
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Parse protected results into a topology-free summary
+  private_action:
+    module: ansible.builtin.command
+    arguments:
+      argv:
+        - "{{ ansible_playbook_python }}"
+        - "{{ playbook_dir }}/../scripts/validation/network_matrix.py"
+        - --summary
+      stdin: "{{ r_network_matrix.stdout | default('') }}"
+  register: r_network_summary
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Report network validation status counts without topology
+  ansible.builtin.debug:
+    msg: >-
+      {{ r_network_summary.stdout if r_network_summary.rc | default(2) == 0
+         else 'Network result unavailable or invalid; no topology logged.' }}
+
+- name: Require complete applicable node-origin network validation
+  ansible.builtin.assert:
+    that:
+      - r_network_summary.rc | default(2) == 0
+      - r_network_matrix.rc | default(2) == 0
+    quiet: true
+    fail_msg: >-
+      Network validation failed or is NOT TESTED, or its result could not be parsed.
+      Check SSH access, configuration, destination ownership, listener readiness and connectivity.
+      An operator can collect the full matrix separately into a protected file.
+      No firewall cause is inferred. Pre-install failures leave the installation gate closed.
