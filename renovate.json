@@ -42,7 +42,7 @@
       ],
       "datasourceTemplate": "custom.redhat-operator-catalog",
       "versioningTemplate": "semver",
-      "registryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.21"
+      "registryUrlTemplate": "https://catalog.redhat.com/api/containers/v1/operators/bundles?filter=package=={{packageName}};channel_name=={{packageChannel}};ocp_version==4.22"
     },
     {
       "customType": "regex",

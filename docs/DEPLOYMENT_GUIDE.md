@@ -472,7 +472,7 @@ operators:
 
   # OpenShift Pipelines (Tekton)
   - name: openshift-pipelines-operator-rh
-    channel: pipelines-1.20
+    channel: pipelines-1.21
     namespace: openshift-pipelines
 
   # Network Observability

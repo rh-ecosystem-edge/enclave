@@ -24,7 +24,19 @@ Upgrading to a new Enclave release follows this sequence:
 
 **Key Principle**: Each Enclave tarball is a versioned release with a pre-defined set of component versions. Upgrades move from one tarball release to another.
 
-**Important**: Components must be upgraded in order—tarball first, then sync content, then landing zone, then operators, then cluster, then foundation plugin operators.
+**Important**: Follow the order above. The management cluster upgrade precedes foundation plugin operators and then core operators.
+
+### Planning the move to OpenShift 4.22
+
+On the public amd64 `stable-4.22` graph, the direct update from 4.21.32 to 4.22.22 is conditional because of `VSphereConfigCloudControllerCrash`. The graph contains ordinary edges to 4.22.22 from 4.21.39 through 4.21.42. The `stable-4.21` graph has no path from 4.21.32 to those intermediates that uses only ordinary edges, so verify available updates on the actual cluster before choosing a route. [4.21 stable graph](https://api.openshift.com/api/upgrades_info/v1/graph?channel=stable-4.21&arch=amd64) · [4.22 stable graph](https://api.openshift.com/api/upgrades_info/v1/graph?channel=stable-4.22&arch=amd64)
+
+Keep the normal upgrade checks enabled. Use the cluster's update recommendations to determine whether the direct conditional update is recommended for its configuration. If the cluster recommends an intermediate patch on its current y-stream, add that patch to the effective `openshift_versions` list and select it with `enclave reconcile mgmt-cluster-version --version X.Y.Z`. On a disconnected deployment, sync after adding an intermediate so the local mirror and OSUS can offer it. Wait for that update to complete, then check the target channel and the cluster's upgrade eligibility again. For clusters still on 4.20, plan the move through 4.21 first.
+
+During a staged update, keep 4.22.22 as the default in the platform list used by sync so the mirrored catalog aliases follow the bundled catalogs. Select an intermediate explicitly with the management-cluster command above, or set `upgrade_operators=false` if you use the upgrade playbook with an intermediate as its target. Reconcile foundation and core operators after the cluster has completed its 4.22 update.
+
+On Azure or vSphere, check the `managedBootImages` configuration before updating from 4.21 to 4.22. If it is unset, explicitly disable managed boot images for compute nodes or provide the documented `ack-4.21-boot-image-opt-out-in-4.22` acknowledgment to accept the new default. The signature acknowledgment that sync handles for 4.20 to 4.21 covers a separate gate. [Red Hat's 4.22 update preparation guide](https://github.com/openshift/openshift-docs/blob/enterprise-4.22/modules/update-preparing-azure-vsphere-ack.adoc)
+
+If the cluster runs the CNV plugin, plan its OpenShift Virtualization updates through each minor release. Update OpenShift to the next minor before updating OpenShift Virtualization to that minor. [Red Hat's OpenShift Virtualization upgrade guidance](https://github.com/openshift/openshift-docs/blob/enterprise-4.22/modules/conditional-virt-about-upgrading-virt.adoc)
 
 ---
 

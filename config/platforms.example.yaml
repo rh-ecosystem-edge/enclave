@@ -13,6 +13,7 @@
 # Optional version list override. Uncomment and edit to replace the tested list
 # from defaults/platforms.yaml. Exactly one entry must have default: true.
 # openshift_versions:
-#   - version: 4.20.21
 #   - version: 4.20.32
+#   - version: 4.21.32
+#   - version: 4.22.22
 #     default: true

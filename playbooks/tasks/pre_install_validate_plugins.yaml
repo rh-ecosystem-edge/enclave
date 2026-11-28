@@ -21,6 +21,8 @@
   ansible.builtin.slurp:
     src: /etc/assisted/rendezvous-host.env
   delegate_to: rendezvous
+  # The 4.22 agent ISO writes this file as root with mode 0600.
+  become: true
   register: r_rendezvous_env
   retries: 30
   delay: 5

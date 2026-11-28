@@ -28,7 +28,7 @@ The override mechanism shifts version management responsibility to consumers whi
 - **Defines**: Tested y-stream release range
 - **Updates**: With each Enclave release based on validation and testing
 
-The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes tested versions in `defaults/platforms.yaml`. Every version in that list is part of the Enclave-tested baseline. The current defaults list 4.20.32 and 4.21.32, with 4.21.32 marked as the default; the examples below assume that baseline unless stated otherwise. The `default: true` marker selects the default for a fresh management cluster installation and for `--use-defaults`; other listed versions remain available as explicit choices.
+The enclave team validates OpenShift versions against the Enclave stack (operators, plugins, and experiences) and publishes the baseline in `defaults/platforms.yaml`. The bundled list includes 4.20.32, 4.21.32, and 4.22.22. The `default: true` marker selects 4.22.22 for a fresh management cluster installation and for `--use-defaults`. The other listed versions remain explicit choices.
 
 **Example** `defaults/platforms.yaml`:
 ```yaml
@@ -36,10 +36,9 @@ The enclave team validates OpenShift versions against the Enclave stack (operato
 openshift_versions:
   - version: 4.20.32
   - version: 4.21.32
+  - version: 4.22.22
     default: true
 ```
-
-This signals that the listed versions have been tested with this Enclave release, with 4.21.32 selected as the default.
 
 ### Consumer Responsibility
 
@@ -104,11 +103,15 @@ The `enclave reconcile mgmt-cluster-version` command:
 
 `--latest` can select a different version after the configured list changes. Use `--version` in repeatable automation when the target must stay pinned.
 
+For existing 4.21 clusters, check the available updates and platform-specific acknowledgments before selecting 4.22.22. See [Planning the move to OpenShift 4.22](UPGRADE.md#planning-the-move-to-openshift-422).
+
+The bundled operator pins and catalogs target 4.22. For a fresh management deployment on an older y-stream, use an Enclave release with a matching operator catalog and pins. The older release choices in `openshift_versions` can still be selected for OpenShift version reconciliation and for managed-cluster install images. For a disconnected managed cluster on an older y-stream, verify that its matching catalog tag is available in the hub mirror before installing operators. Sync from this release publishes the bundled 4.22 catalogs.
+
 ### Applying the Override
 
 #### Existing Deployments
 
-No action required. Existing deployments continue using `defaults/platforms.yaml` as before.
+Changing the bundled default affects future version selection and leaves the version running on an existing cluster in place until an upgrade is requested. A consumer-defined `openshift_versions` list continues to take precedence, including its default.
 
 #### Adopting the Override
 

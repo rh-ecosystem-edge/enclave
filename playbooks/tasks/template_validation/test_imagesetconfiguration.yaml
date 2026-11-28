@@ -68,6 +68,19 @@
   ansible.builtin.set_fact:
     all_packages_odf: "{{ imageset_odf.mirror.operators | map(attribute='packages') | flatten }}"
 
+- name: Validate the ODF TLS profiles package uses the ODF version and channel
+  vars:
+    odf_operator: "{{ plugin_odf.operators | selectattr('name', 'equalto', 'odf-operator') | first }}"
+    tls_profiles: "{{ all_packages_odf | selectattr('name', 'equalto', 'ocs-tls-profiles') | list }}"
+  ansible.builtin.assert:
+    that:
+      - tls_profiles | length == 1
+      - tls_profiles[0].defaultChannel == odf_operator.channel
+      - tls_profiles[0].channels | length == 1
+      - tls_profiles[0].channels[0].name == odf_operator.channel
+      - tls_profiles[0].channels[0].minVersion == odf_operator.init_version
+      - tls_profiles[0].channels[0].maxVersion == odf_operator.version
+
 - name: Identify versioned packages (have defaultChannel) vs bare mirror packages (lvms)
   ansible.builtin.set_fact:
     versioned_packages_lvms: "{{ all_packages_lvms | selectattr('defaultChannel', 'defined') | list }}"
