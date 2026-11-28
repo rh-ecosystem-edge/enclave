@@ -7,6 +7,7 @@ set -e
 # root resolves to /run/containers/storage, which is not writable by the user.
 dnf install -y \
     bind-utils \
+    chrony \
     curl \
     jq \
     httpd \
