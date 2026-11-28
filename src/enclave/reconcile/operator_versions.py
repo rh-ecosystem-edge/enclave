@@ -2,10 +2,10 @@
 
 import json
 import logging
-import re
 import time
 from typing import Any
 
+from enclave.operator_validation import validate_operator_settings
 from enclave.utils import (
     log_subprocess_output,
     run_oc_command,
@@ -26,8 +26,7 @@ def _update_subscription_channel(
 
     Returns a (changed, current_csv) tuple.
     """
-    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", channel) is None:
-        raise ValueError(f"Invalid operator channel {channel!r}")
+    validate_operator_settings(channel=channel)
 
     result = run_oc_command([
         "oc",
@@ -408,6 +407,7 @@ def reconcile(
     waits up to 30 minutes (polling every 10 s) for its phase to become
     Succeeded. The writes and CSV wait are skipped in dry-run mode.
     """
+    validate_operator_settings(version, channel)
     op_version_map = {csv: version.replace("+", "-") for csv in csv_names}
     upgrade_path_targets: set[str] | None = None
     if channel is not None:

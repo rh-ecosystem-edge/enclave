@@ -5,30 +5,62 @@ type: object
 
 definitions:
   operator:
+    allOf:
+    - $ref: "#/definitions/operatorOverride"
+    dependencies:
+      csvMirror:
+      - csvNames
+    required:
+    - name
+    - version
+    - channel
+    - namespace
+  overrides:
+    type: object
     additionalProperties: false
+    required:
+    - operators
+    properties:
+      operators:
+        type: array
+        items:
+          $ref: "#/definitions/operatorOverride"
+  operatorOverride:
+    type: object
+    additionalProperties: false
+    required:
+    - name
     properties:
       name:
         type: string
+        pattern: '\S'
         description: Operator package name as it appears in the catalog.
       version:
         type: string
+        pattern: '\S'
         description: Operator version.
       channel:
         type: string
+        pattern: '\S'
         description: Update channel for the operator.
       init_version:
         type: string
+        pattern: '\S'
         description: Initial operator version.
       namespace:
         type: string
+        pattern: '\S'
         description: Target namespace where the operator will be installed.
       source:
         type: string
+        pattern: '\S'
         description: Catalog source name (from oc-mirror configuration).
       csvNames:
         type: array
+        minItems: 1
         items:
           type: string
+          pattern: '\S'
           description: ClusterServiceVersion name for the operator.
       csvMirror:
         type: boolean
@@ -37,6 +69,7 @@ definitions:
         type: array
         items:
           type: string
+          pattern: '\S'
         description: Additional packages to mirror as bare entries without version constraints.
       global:
         type: boolean
@@ -47,19 +80,13 @@ definitions:
       connected_auto:
         type: boolean
         description: Use automatic install plan approval when not disconnected.
-    dependencies:
-      csvMirror:
-      - csvNames
-    required:
-    - name
-    - version
-    - channel
-    - namespace
-
 additionalProperties: false
+required:
+- operators
 properties:
   operators:
     type: array
+    minItems: 1
     description: List of operators to install and configure.
     items:
       $ref: "#/definitions/operator"

@@ -75,8 +75,23 @@ Each Enclave tarball release includes:
     export KUBECONFIG=$WORKING_DIR/ocp-cluster/auth/kubeconfig
     enclave reconcile mgmt-cluster-version --use-defaults
     enclave reconcile plugin-operator-versions --plugin=<storage plugin, e.g. lvms>
-    enclave reconcile operator-versions --use-defaults
+    enclave reconcile operator-versions --use-defaults --operators-vars-file /path/to/enclave/config/operators.yaml
     ```
+
+    The operator config path is optional: omit `--operators-vars-file` when no
+    override file exists. Without it, run from the active Enclave checkout to
+    discover `config/operators.yaml`; an installed CLI outside a checkout can
+    otherwise use bundled defaults. An explicit path must exist and contain
+    valid core operator overrides. The upgrade playbook selects its checkout's
+    override when present, independently of the caller's directory.
+
+    Operator settings are validated for the entire selected batch before any
+    operator reconciliation starts. Versions must be accepted by the existing
+    version comparator after CSV normalization (`+` becomes `-`); for example,
+    `2.17.3`, `4.21.0-202610241344` and `4.20.1-rc.1` are supported, but
+    `v2.17.3` is not. Channels must match `[A-Za-z0-9][A-Za-z0-9._-]*`, such as
+    `stable-v1`, `v1` or `stable-3.15`; spaces are not allowed. Errors identify
+    the source, operator and invalid field. Plugin channels remain optional.
 
 ---
 

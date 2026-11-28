@@ -7,6 +7,8 @@ from typing import NamedTuple, cast
 import click
 import yaml
 
+from enclave.operator_config import OperatorConfigError, load_operators
+from enclave.operator_validation import validate_operator_settings
 from enclave.reconcile.cluster_upgrade import (
     ClusterUpgradeError,
     InvalidVersionError,
@@ -208,6 +210,12 @@ def _validate_operator_entries(operators: object, source: str) -> list[OperatorE
                 f"{source}: operator entry {idx} has invalid 'csvNames': must be "
                 "a list of non-blank strings"
             )
+        try:
+            validate_operator_settings(op["version"], channel)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"{source}: operator {op['name']!r}: {exc}"
+            ) from exc
         validated.append(
             OperatorEntry(
                 op["name"],
@@ -290,9 +298,15 @@ def cli(log_level: str) -> None:
     is_flag=True,
     default=False,
     help=(
-        "Load all operators from defaults/operators.yaml (mutually exclusive "
+        "Load defaults/operators.yaml with optional config/operators.yaml overrides (mutually exclusive "
         "with --name, --version, --namespace, --channel, --csv-name)"
     ),
+)
+@click.option(
+    "--operators-vars-file",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Load core operator overrides from this config file (requires --use-defaults)",
 )
 @click.option("--dry-run/--no-dry-run", default=False)
 def operator_versions(
@@ -302,9 +316,13 @@ def operator_versions(
     channel: str | None,
     csv_names: tuple[str, ...],
     use_defaults: bool,
+    operators_vars_file: Path | None,
     dry_run: bool,
 ) -> None:
-    """Reconcile operator versions using explicit options or bundled defaults."""
+    """Reconcile operator versions using explicit options or effective core config."""
+    if operators_vars_file is not None and not use_defaults:
+        raise click.UsageError("--operators-vars-file requires --use-defaults")
+
     if use_defaults and any([name, version, namespace, channel, csv_names]):
         raise click.UsageError(
             "--use-defaults is mutually exclusive with --name, --version, "
@@ -319,6 +337,12 @@ def operator_versions(
         ]
         if missing:
             raise click.UsageError(f"Missing option(s): {', '.join(missing)}")
+        try:
+            validate_operator_settings(version, channel)
+        except ValueError as exc:
+            raise click.ClickException(
+                f"explicit options: operator {name!r}: {exc}"
+            ) from exc
         if channel is None:
             operator_versions_reconcile(
                 version, namespace, list(csv_names) or [name], dry_run
@@ -337,14 +361,15 @@ def operator_versions(
     defaults_file = defaults_path("operators.yaml")
 
     try:
-        with defaults_file.open(encoding="utf-8") as fh:
-            operators = yaml.safe_load(fh)["operators"]
-    except FileNotFoundError as exc:
-        raise click.ClickException(
-            f"{defaults_file} not found; run from the repo root"
-        ) from exc
-    except (yaml.YAMLError, KeyError) as exc:
-        raise click.ClickException(f"Failed to parse {defaults_file}: {exc}") from exc
+        operators = load_operators(
+            defaults_file,
+            operators_vars_file
+            if operators_vars_file is not None
+            else config_path("operators.yaml"),
+            package_data_path("schemas", "operators.yaml"),
+        )["operators"]
+    except OperatorConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     _reconcile_operator_entries(
         _validate_operator_entries(operators, str(defaults_file)), dry_run

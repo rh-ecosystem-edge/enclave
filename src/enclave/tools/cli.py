@@ -1,5 +1,6 @@
 """Click commands for ``enclave tools``."""
 
+import json
 import logging
 import sys
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any
 import click
 import yaml
 
+from enclave.operator_config import OperatorConfigError, load_operators
 from enclave.tools.cert_utils import pem_blocks
 from enclave.tools.check_certificate_chains import (
     CertificateValidationError,
@@ -38,6 +40,23 @@ def _load_certs_config(config_path: str) -> dict[str, Any]:
 @click.group(cls=KubeconfigGroup)
 def cli() -> None:
     """Enclave tools CLI."""
+
+
+@cli.command("resolve-core-operators")
+@click.option("--defaults-file", required=True, type=click.Path(path_type=Path))
+@click.option("--config-file", required=True, type=click.Path(path_type=Path))
+@click.option("--schema-file", required=True, type=click.Path(path_type=Path))
+def resolve_core_operators(
+    defaults_file: Path,
+    config_file: Path,
+    schema_file: Path,
+) -> None:
+    """Print validated effective core operators as JSON for Ansible consumers."""
+    try:
+        effective = load_operators(defaults_file, config_file, schema_file)
+    except OperatorConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(json.dumps(effective))
 
 
 @cli.command("resolve-quay-registry-ca", no_args_is_help=True)
@@ -230,6 +249,7 @@ def check_root_ca(config: str) -> None:
 check_certificate_chains.no_kubeconfig = True  # type: ignore[attr-defined]
 get_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
 check_root_ca.no_kubeconfig = True  # type: ignore[attr-defined]
+resolve_core_operators.no_kubeconfig = True  # type: ignore[attr-defined]
 
 if __name__ == "__main__":
     cli()
