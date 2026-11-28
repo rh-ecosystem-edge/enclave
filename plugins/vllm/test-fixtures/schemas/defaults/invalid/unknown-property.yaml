@@ -1,0 +1,3 @@
+---
+vllmDefaults:
+  command: curl

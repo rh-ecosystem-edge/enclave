@@ -1,0 +1,6 @@
+---
+vllm:
+  runtimeImage: registry.example.com/operator/runtime:latest
+  modelPVC: preloaded-model
+  modelPath: snapshot
+  artifactIdentity: immutable-release:1

@@ -1,0 +1,69 @@
+---
+- name: Load actual inference task for local regression tests
+  ansible.builtin.set_fact:
+    vllm_smoke_task: "{{ (lookup('ansible.builtin.file', plugin_dir ~ '/tasks/post-validate.yaml') | from_yaml)[1].block[-1] }}"
+
+- name: Exercise actual smoke response validator locally with synthetic responses
+  ansible.builtin.command:
+    argv:
+      - "{{ ansible_playbook_python }}"
+      - -c
+      - >-
+        import io,shlex,sys,urllib.request;
+        urllib.request.urlopen=lambda *args,**kwargs: io.StringIO(sys.argv[1]);
+        exec(shlex.split(sys.argv[2])[2])
+      - "{{ item.response | to_json }}"
+      - "{{ vllm_smoke_task['kubernetes.core.k8s_exec'].command }}"
+  loop:
+    - response: {model: enclave-llm, choices: [{text: Hello}], usage: {completion_tokens: 1}}
+      expected: 0
+    - response: {model: enclave-llm, choices: [], usage: {completion_tokens: 0}}
+      expected: 1
+    - response: {model: enclave-llm, choices: [{text: Hello}]}
+      expected: 1
+    - response: {model: other-model, choices: [{text: Hello}], usage: {completion_tokens: 1}}
+      expected: 1
+  register: r_vllm_response_tests
+  failed_when: false
+  changed_when: false
+
+- name: Assert inference response validation fails closed
+  ansible.builtin.assert:
+    that: item.rc == item.item.expected
+    quiet: true
+  loop: "{{ r_vllm_response_tests.results }}"
+  loop_control:
+    label: "{{ item.item.expected }}"
+
+- name: Bind exec regression to the actual literal failure condition
+  ansible.builtin.assert:
+    that:
+      - vllm_smoke_task.failed_when == 'r_vllm_smoke.rc | default(-1) != 0 or r_vllm_smoke is skipped'
+      - vllm_smoke_task.register == 'r_vllm_smoke'
+      - vllm_smoke_task.no_log
+
+- name: Exercise exec failure condition without contacting a cluster
+  ansible.builtin.debug:
+    msg: Synthetic exec result
+  vars:
+    r_vllm_smoke: "{{ item.result }}"
+  failed_when: r_vllm_smoke.rc | default(-1) != 0 or r_vllm_smoke is skipped
+  loop:
+    - result: {rc: 0}
+      expectedFailure: false
+    - result: {rc: 1}
+      expectedFailure: true
+    - result: {}
+      expectedFailure: true
+    - result: {rc: 0, skipped: true}
+      expectedFailure: true
+  register: r_vllm_exec_tests
+  ignore_errors: true
+
+- name: Assert missing nonzero and skipped exec results cannot pass
+  ansible.builtin.assert:
+    that: item.failed == item.item.expectedFailure
+    quiet: true
+  loop: "{{ r_vllm_exec_tests.results }}"
+  loop_control:
+    label: "{{ item.item.result }}"

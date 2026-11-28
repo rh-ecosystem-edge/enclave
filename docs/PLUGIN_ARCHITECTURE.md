@@ -1,5 +1,10 @@
 # Enclave Plugin Architecture
 
+For a serving-only addon example with a configurable preloaded model and private
+networking, see [Standalone vLLM serving demonstration](VLLM_ADDON.md). Its secured
+shared HTTPS gateway and per-caller limits are prerequisites, not implemented by
+the addon.
+
 ## Overview
 
 The plugin system allows components (storage backends, AI/ML stacks, GPU operators) to be packaged as self-contained units under `plugins/`. Each plugin carries its own operator definitions, mirroring configuration, deployment logic, and defaults. The core pipeline discovers and runs plugins through a standard interface without component-specific branching.
