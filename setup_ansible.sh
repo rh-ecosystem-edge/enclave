@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+bash "$SCRIPT_DIR/scripts/validation/check_tmp_exec.sh"
+
 UV_VERSION="0.12.23"
 UV_PREFIX="$HOME/.local"
 

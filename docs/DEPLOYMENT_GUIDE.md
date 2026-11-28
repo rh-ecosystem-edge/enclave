@@ -1,5 +1,42 @@
 # Enclave Lab Deployment Guide
 
+## Temporary execution preflight
+
+Setup checks native execution in the effective temporary directory before
+installing dependencies, both as the invoking user and within privileged setup.
+This covers bootstrap, sync, Make setup targets, CI setup, and standalone setup
+scripts. The probe copies the trusted system `/usr/bin/true`, executes the copy,
+and removes its directory on success, failure, or handled termination signals.
+It does not change mount options or security policies.
+
+If the check fails, select a writable, executable `TMPDIR` approved by your
+administrator. Do not assume `/var/tmp` is executable. Privileged setup uses the
+environment allowed by sudo, which may differ from the invoking user's TMPDIR;
+ask the administrator how to select an approved directory in that context.
+
+When the effective UID is root, `TMPDIR` must be an absolute path with no
+symlink, `.` or `..` components, repeated slashes, trailing slash (except `/`),
+or control characters. Every directory from `/` through `TMPDIR` must be owned
+by root and not writable by group or others. The only writable exception is
+the literal root-owned, sticky `/tmp`; any child selected below it must still
+be root-owned and not group/other-writable. Arbitrary sticky directories,
+including a writable `/var/tmp`, and user-owned directories are rejected.
+An administrator-provisioned private directory under an accepted chain is
+supported; the check does not provision or fix directory permissions.
+
+The check walks from `/` using Bash and non-dereferencing GNU `stat`, validating
+each directory before entering it. Under this policy, an unprivileged user
+cannot replace an accepted component: non-writable parents prevent replacement,
+and sticky `/tmp` protects root-owned children. GNU `mktemp -d` then creates a
+private root-owned child (mode 0700 or more restrictive), protecting its native probe through copy,
+execution and cleanup. `setup_env.sh` freezes and exports that same effective
+`TMPDIR` before the check and uses it explicitly for AWS CLI staging. This
+assumes the normal trusted root administrator, system utilities and filesystem
+permission enforcement; it does not defend against privileged mount or policy
+changes during setup. Non-root invocations retain the existing effective
+`TMPDIR` behavior. No interpreter-only fallback or mount-policy relaxation is
+performed when the native probe fails.
+
 This guide provides comprehensive documentation for deploying the Enclave Lab environment using Ansible. The deployment automates the installation of an OpenShift Container Platform (OCP) cluster with various operators and post-installation configurations.
 
 ## Table of Contents
