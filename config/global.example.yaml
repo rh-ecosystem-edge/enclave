@@ -117,6 +117,14 @@ storage_plugin: lvms
 # Log level for oc-mirror (default: info, options: trace, debug, info, error)
 # ocMirrorLogLevel: debug
 
+# Optional mirror-registry installer selection. Set both fields or omit the object.
+# Use the selected archive's actual SHA256: 64 lowercase hex characters, no prefix.
+# Omitted: uses the pinned defaults/control_binaries.yaml installer.
+# This does not upgrade an existing quay-app container.
+# mirrorRegistry:
+#   version: "2.0.13"
+#   sha256: "ea18a4eb3a4389a24d8d1eddb51f14859e133a54cb7a040c99af181f3d37d526"
+
 # Apply master PinnedImageSet after Quay mirror (default: true). Set false to skip
 # post-mirror prefetch pinning (e.g. faster iteration or when MCO pin step is unwanted).
 # quayPinnedImageSetEnabled: false
