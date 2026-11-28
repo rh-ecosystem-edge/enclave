@@ -20,7 +20,9 @@
     file: create_stable_catalog_source_alias.yaml
   loop: >-
     {{ r_catalog_sources_for_aliases.resources | default([])
-       | selectattr('metadata.name', 'match', '^cs-.*' ~ _stable_catalog_source_version_suffix ~ '$')
+       | selectattr('metadata.name', 'match',
+           '^cs-' ~ (stable_catalog_source_name_filter | default('.*', true))
+           ~ _stable_catalog_source_version_suffix ~ '$')
        | list }}
   loop_control:
     loop_var: versioned_catalog_source
